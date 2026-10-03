@@ -1,16 +1,23 @@
+import Link from "next/link";
+import { SiteHeader } from "@/components/SiteHeader";
+
 export default function Home() {
   return (
-    <main>
-      <div className="logo">
-        Kolbase<small>praticiens × organisations</small>
-      </div>
-      <h1>Trouvez le bon praticien. Montez la collaboration. Le reste suit.</h1>
-      <p>
-        Kolbase met en relation les chirurgiens-dentistes et les organisations du secteur — industriels,
-        sociétés savantes, organismes de formation, associations. Chercher, proposer, candidater,
-        contractualiser : tout part d&apos;une rencontre, et la paperasse réglementaire suit toute seule.
-      </p>
-      <span className="badge">Plateforme en construction</span>
-    </main>
+    <>
+      <SiteHeader />
+      <main>
+        <h1>Trouvez le bon praticien. Montez la collaboration. Le reste suit.</h1>
+        <p>
+          Kolbase met en relation les chirurgiens-dentistes et les organisations du secteur — industriels,
+          sociétés savantes, organismes de formation, associations. Chercher, proposer, candidater,
+          contractualiser : tout part d&apos;une rencontre, et la paperasse réglementaire suit toute seule.
+        </p>
+        <div className="actions">
+          <Link href="/inscription" className="btn">Créer mon compte praticien</Link>
+          <Link href="/connexion" className="btn ghost">J&apos;ai déjà un compte</Link>
+        </div>
+        <span className="badge">Plateforme en construction</span>
+      </main>
+    </>
   );
 }
