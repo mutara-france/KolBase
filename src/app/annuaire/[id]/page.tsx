@@ -1,7 +1,9 @@
 import { notFound } from "next/navigation";
 import { SiteHeader } from "@/components/SiteHeader";
 import { db } from "@/lib/db";
+import Link from "next/link";
 import { requireDirectoryAccess } from "@/lib/orgs";
+import { PROJECT_ROLES } from "@/lib/projects";
 
 export const metadata = { title: "Fiche expert — Kolbase" };
 
@@ -14,6 +16,7 @@ export default async function Page({ params }: { params: Promise<{ id: string }>
   });
   if (!e) notFound();
   const isOrgViewer = viewer.memberships.length > 0;
+  const projectOrg = viewer.memberships.find((m) => PROJECT_ROLES.includes(m.role));
 
   return (
     <>
@@ -22,6 +25,11 @@ export default async function Page({ params }: { params: Promise<{ id: string }>
         <div>
           <h1>Dr {e.user.firstName} {e.user.lastName}</h1>
           <p className="muted">{[e.profession, e.specialty, e.subspecialty].filter(Boolean).join(" · ")}</p>
+          {projectOrg && (
+            <Link className="btn" href={`/organisations/${projectOrg.organizationId}/dossiers/nouveau?expert=${e.id}`}>
+              Solliciter{viewer.memberships.length > 1 ? ` au nom de ${projectOrg.organization.name}` : ""}
+            </Link>
+          )}
         </div>
         <section className="card">
           <dl className="facts">
