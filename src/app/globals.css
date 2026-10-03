@@ -33,3 +33,25 @@ p { color: var(--muted); font-size: 17px; line-height: 1.6; }
 .notice.error { background: #fef2f2; color: var(--err); }
 .notice.ok { background: #f0fdf4; color: var(--ok); }
 ul.muted { margin: 0; padding-left: 20px; }
+.form textarea { font: inherit; font-weight: 400; padding: 10px 12px; border: 1px solid var(--line); border-radius: 8px; width: 100%; resize: vertical; }
+.form fieldset { border: 1px solid var(--line); border-radius: 8px; padding: 12px; margin: 0; }
+.form legend { font-size: 14px; font-weight: 600; padding: 0 4px; }
+.checks { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 8px; }
+.navlink { color: var(--ink); text-decoration: none; font-weight: 600; font-size: 15px; padding: 8px 10px; }
+.tile { display: flex; flex-direction: column; gap: 6px; text-decoration: none; color: var(--ink); padding: 18px; }
+.tile:hover { border-color: var(--brand); }
+.grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 14px; }
+.tags { display: flex; flex-wrap: wrap; gap: 6px; }
+.tag { background: #eef2ff; color: var(--brand); border-radius: 999px; padding: 3px 10px; font-size: 13px; }
+.table { width: 100%; border-collapse: collapse; font-size: 14px; margin-top: 12px; display: block; overflow-x: auto; }
+.table th, .table td { text-align: left; padding: 8px 10px; border-bottom: 1px solid var(--line); white-space: nowrap; }
+.table th { color: var(--muted); font-weight: 600; }
+.table form { margin: 0; }
+.link { background: none; border: 0; padding: 0; font: inherit; color: var(--brand); cursor: pointer; text-decoration: underline; }
+.link.danger { color: var(--err); }
+.copy { display: flex; gap: 8px; }
+.copy input { flex: 1; font: inherit; font-size: 13px; padding: 8px 10px; border: 1px solid var(--line); border-radius: 8px; min-width: 0; }
+.facts { display: grid; grid-template-columns: max-content 1fr; gap: 8px 16px; margin: 0; }
+.facts dt { color: var(--muted); font-size: 14px; }
+.facts dd { margin: 0; }
+.search .row > label { flex: 1 1 200px; }
