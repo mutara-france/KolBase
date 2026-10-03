@@ -29,6 +29,20 @@ model User {
   registrations Registration[]
   messages      Message[]
   auditLogs     AuditLog[]
+  sessions      Session[]
+}
+
+// Session de connexion : seul le hash du jeton est stocké.
+model Session {
+  id        String   @id @default(cuid())
+  tokenHash String   @unique
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  expiresAt DateTime
+  userAgent String?
+  createdAt DateTime @default(now())
+
+  @@index([userId])
 }
 
 // Un praticien a toujours un profil ; il devient KOL quand il se référence (listed = true).
