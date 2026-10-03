@@ -14,7 +14,7 @@ export default function Home() {
         </p>
         <div className="actions">
           <Link href="/inscription" className="btn">Créer mon compte praticien</Link>
-          <Link href="/connexion" className="btn ghost">J&apos;ai déjà un compte</Link>
+          <Link href="/evenements" className="btn ghost">Voir l&apos;agenda</Link>
         </div>
         <span className="badge">Plateforme en construction</span>
       </main>
