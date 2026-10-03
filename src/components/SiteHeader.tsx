@@ -12,6 +12,8 @@ export async function SiteHeader() {
       <nav>
         {user ? (
           <>
+            {(user.memberships.length > 0 || user.practitioner?.listed) && <Link href="/annuaire" className="navlink">Annuaire</Link>}
+            {user.memberships.length > 0 && <Link href="/organisations" className="navlink">Organisations</Link>}
             <Link href="/compte" className="btn ghost">
               {user.firstName} {user.lastName}
             </Link>

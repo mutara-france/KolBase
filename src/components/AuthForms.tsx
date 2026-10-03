@@ -27,13 +27,14 @@ export function SignInForm({ next }: { next?: string }) {
 
 const PROFESSIONS = ["Chirurgien-dentiste", "Chirurgien-dentiste spécialiste ODF", "Chirurgien oral", "Médecin stomatologue", "Assistant(e) dentaire", "Prothésiste dentaire", "Étudiant(e) en odontologie"];
 
-export function SignUpForm() {
+export function SignUpForm({ next }: { next?: string }) {
   const [state, action, pending] = useActionState(signUp, undefined);
   return (
     <form action={action} className="card form">
       <h1>Créer un compte</h1>
       <p className="muted">Un seul compte pour vous inscrire aux événements et, si vous le souhaitez, vous référencer comme expert.</p>
       <Notice state={state} />
+      <input type="hidden" name="next" value={next ?? ""} />
       <div className="row">
         <label>Prénom<input name="firstName" autoComplete="given-name" required /></label>
         <label>Nom<input name="lastName" autoComplete="family-name" required /></label>
