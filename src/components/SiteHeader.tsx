@@ -10,8 +10,10 @@ export async function SiteHeader() {
         Kolbase<small>praticiens × organisations</small>
       </Link>
       <nav>
+        <Link href="/evenements" className="navlink">Agenda</Link>
         {user ? (
           <>
+            <Link href="/inscriptions" className="navlink">Mes inscriptions</Link>
             {(user.memberships.length > 0 || user.practitioner?.listed) && <Link href="/annuaire" className="navlink">Annuaire</Link>}
             {user.memberships.length > 0 && <Link href="/organisations" className="navlink">Organisations</Link>}
             <Link href="/compte" className="btn ghost">
