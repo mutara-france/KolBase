@@ -362,7 +362,8 @@ model OpenCall {
   budgetMaxCents Int?
   deadline       DateTime?
   description    String?
-  status         String       @default("open")
+  status         String       @default("open") // open | closed
+  createdById    String?
   createdAt      DateTime     @default(now())
 
   applications Application[]
@@ -375,6 +376,8 @@ model Application {
   practitionerId String
   practitioner   PractitionerProfile @relation(fields: [practitionerId], references: [id])
   message        String?
+  status         String              @default("pending") // pending | retained | rejected
+  projectId      String?             // dossier ouvert si la candidature est retenue
   createdAt      DateTime            @default(now())
 
   @@unique([openCallId, practitionerId])
