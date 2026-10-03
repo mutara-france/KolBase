@@ -3,6 +3,8 @@ import { EditOrgForm, InviteForm } from "@/components/OrgForms";
 import { db } from "@/lib/db";
 import { ORG_KIND_LABEL, ROLE_LABEL, requireMembership } from "@/lib/orgs";
 import { removeMembership, revokeInvitation } from "@/lib/org-actions";
+import Link from "next/link";
+import { COMPLIANCE_ROLES, EVENT_MANAGER_ROLES } from "@/lib/events";
 
 export const metadata = { title: "Organisation — Kolbase" };
 
@@ -26,6 +28,12 @@ export default async function Page({ params }: { params: Promise<{ id: string }>
         <div>
           <h1>{org.name}</h1>
           <p className="muted">{ORG_KIND_LABEL[org.kind]} · vos rôles : {roles.map((r) => ROLE_LABEL[r]).join(", ")}</p>
+        </div>
+
+        <div className="actions">
+          {roles.some((r) => EVENT_MANAGER_ROLES.includes(r)) && <Link className="btn" href={`/organisations/${id}/evenements`}>Événements</Link>}
+          {roles.some((r) => COMPLIANCE_ROLES.includes(r)) && <Link className="btn ghost" href={`/organisations/${id}/hospitalites`}>Hospitalités</Link>}
+          <Link className="btn ghost" href="/annuaire">Annuaire des experts</Link>
         </div>
 
         <section className="card">
