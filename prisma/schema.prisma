@@ -203,8 +203,12 @@ model Project {
   typeId          String
   therapeuticArea String?
   origin          String?
+  description     String?
   status          ProjectStatus @default(ATT_EXPERTS)
   declared        Boolean       @default(false)
+  complianceNote  String?
+  ordreRef        String?
+  createdById     String?
   createdAt       DateTime      @default(now())
   updatedAt       DateTime      @updatedAt
 
@@ -222,8 +226,13 @@ model ProjectExpert {
   practitionerId String
   practitioner   PractitionerProfile @relation(fields: [practitionerId], references: [id])
   status         ProjectStatus       @default(ATT_EXPERTS)
-  feeCents       Int?
-  days           Float?
+  feeCents       Int?                // honoraires totaux proposés (€ HT, en centimes)
+  days           Float?              // nombre d'unités (journées, interventions…)
+  responseNote   String?
+  respondedAt    DateTime?
+  createdAt      DateTime            @default(now())
+
+  messages Message[]
 
   @@unique([projectId, practitionerId])
 }
@@ -244,6 +253,9 @@ model Message {
   id        String   @id @default(cuid())
   projectId String
   project   Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  // Fil de discussion entre l'organisation et un expert donné.
+  projectExpertId String?
+  projectExpert   ProjectExpert? @relation(fields: [projectExpertId], references: [id], onDelete: Cascade)
   authorId  String
   author    User     @relation(fields: [authorId], references: [id])
   body      String
