@@ -30,6 +30,8 @@ model User {
   messages      Message[]
   auditLogs     AuditLog[]
   sessions      Session[]
+  invitationsSent     Invitation[] @relation("invitedBy")
+  invitationsAccepted Invitation[] @relation("acceptedBy")
 }
 
 // Session de connexion : seul le hash du jeton est stocké.
@@ -121,6 +123,25 @@ model Organization {
   // Mandats : une organisation peut mandater un prestataire.
   mandatesGiven    Mandate[] @relation("mandator")
   mandatesReceived Mandate[] @relation("agency")
+  invitations      Invitation[]
+}
+
+// Invitation d'un membre par lien (jeton à usage unique, stocké haché).
+model Invitation {
+  id             String       @id @default(cuid())
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  role           OrgRole
+  email          String?
+  tokenHash      String       @unique
+  invitedById    String
+  invitedBy      User         @relation("invitedBy", fields: [invitedById], references: [id])
+  expiresAt      DateTime
+  acceptedAt     DateTime?
+  acceptedById   String?
+  acceptedBy     User?        @relation("acceptedBy", fields: [acceptedById], references: [id])
+  revokedAt      DateTime?
+  createdAt      DateTime     @default(now())
 }
 
 // Rôles côté organisation (cf. ROLE_LABEL du prototype).
