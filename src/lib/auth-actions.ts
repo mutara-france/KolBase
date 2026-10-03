@@ -38,7 +38,9 @@ export async function signUp(_: FormState, form: FormData): Promise<FormState> {
   });
   await audit(user.id, "user.signup", "User", user.id);
   await createSession(user.id);
-  redirect("/compte");
+  const next = str(form, "next");
+  if (next.startsWith("/") && !next.startsWith("//")) redirect(next);
+  redirect(profession ? "/compte" : "/organisations/nouvelle");
 }
 
 export async function signIn(_: FormState, form: FormData): Promise<FormState> {
