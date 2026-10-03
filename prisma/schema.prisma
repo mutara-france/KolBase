@@ -1,0 +1,349 @@
+// KolBase — modèle de données initial
+// Dérivé du prototype « Kolbase plateforme » (rôles, dossiers, événements, hospitalités).
+
+generator client {
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+// ─── Comptes ────────────────────────────────────────────────────────────────
+
+model User {
+  id           String    @id @default(cuid())
+  email        String    @unique
+  passwordHash String?
+  firstName    String
+  lastName     String
+  phone        String?
+  locale       String    @default("fr")
+  notifyPrefs  Json      @default("{}")
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+
+  practitioner  PractitionerProfile?
+  memberships   Membership[]
+  registrations Registration[]
+  messages      Message[]
+  auditLogs     AuditLog[]
+}
+
+// Un praticien a toujours un profil ; il devient KOL quand il se référence (listed = true).
+model PractitionerProfile {
+  id            String   @id @default(cuid())
+  userId        String   @unique
+  user          User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  profession    String
+  rpps          String?  @unique
+  rppsVerified  Boolean  @default(false)
+  country       String   @default("FR")
+  city          String?
+  hospital      String?
+  specialty     String?
+  subspecialty  String?
+  languages     String[]
+  interventionTypes String[]
+  dayRateCents  Int?
+  orcid         String?
+  bio           String?
+  responseDays  Int?
+  listed        Boolean  @default(false) // référencé comme expert (KOL)
+  listedAt      DateTime?
+  visibility    Json     @default("{}")
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  structures    PractitionerStructure[]
+  projectLinks  ProjectExpert[]
+  applications  Application[]
+}
+
+// Structure d'exercice / de facturation du praticien (SELARL, SCM…).
+model PractitionerStructure {
+  id             String              @id @default(cuid())
+  practitionerId String
+  practitioner   PractitionerProfile @relation(fields: [practitionerId], references: [id], onDelete: Cascade)
+  name           String
+  legalForm      String
+  siren          String?
+  role           String?
+  sharePercent   Int?
+  isPayee        Boolean             @default(false)
+  since          DateTime?
+}
+
+enum OrgKind {
+  INDUSTRIEL
+  SOCIETE_SAVANTE
+  ASSOCIATION_PRO
+  ORGANISME_FORMATION
+  PRESTATAIRE
+}
+
+model Organization {
+  id           String   @id @default(cuid())
+  name         String
+  kind         OrgKind
+  sector       String?
+  headquarters String?
+  size         String?
+  areas        String[]
+  about        String?
+  policy       String?
+  contactEmail String?
+  responseDays Int?
+  listed       Boolean  @default(false)
+  visibility   Json     @default("{}")
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  members       Membership[]
+  projects      Project[]
+  events        Event[]
+  openCalls     OpenCall[]
+  // Mandats : une organisation peut mandater un prestataire.
+  mandatesGiven    Mandate[] @relation("mandator")
+  mandatesReceived Mandate[] @relation("agency")
+}
+
+// Rôles côté organisation (cf. ROLE_LABEL du prototype).
+enum OrgRole {
+  ADMIN
+  EDUCATION      // clinical
+  EVENEMENTS     // organisateur
+  CUMUL          // éducation + événements
+  PRESTATAIRE    // externe mandaté
+  RELECTURE      // mlr
+  CONFORMITE     // compliance
+}
+
+model Membership {
+  id             String       @id @default(cuid())
+  userId         String
+  user           User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  role           OrgRole
+  createdAt      DateTime     @default(now())
+
+  @@unique([userId, organizationId, role])
+}
+
+model Mandate {
+  id         String       @id @default(cuid())
+  mandatorId String
+  mandator   Organization @relation("mandator", fields: [mandatorId], references: [id])
+  agencyId   String
+  agency     Organization @relation("agency", fields: [agencyId], references: [id])
+  scope      String?
+  startsAt   DateTime     @default(now())
+  endsAt     DateTime?
+}
+
+// ─── Dossiers (collaborations praticien ↔ organisation) ────────────────────
+
+enum ProjectStatus {
+  ATT_EXPERTS   // En attente des experts
+  ATT_IND       // En attente de l'organisation
+  ACCORD        // Accord de principe
+  EN_VALID      // En validation conformité
+  BLOQUE        // Bloqué par la conformité
+  VALIDE        // Validé par la conformité
+  ORDRE         // Autorisation de l'Ordre en cours
+  REFUS_ORDRE   // Autorisation refusée
+  SIGNATURE     // En signature
+  SIGNE         // Signé
+  TERMINE       // Terminé
+  DECLINE       // Décliné
+}
+
+model Project {
+  id              String        @id @default(cuid())
+  organizationId  String
+  organization    Organization  @relation(fields: [organizationId], references: [id])
+  title           String
+  typeId          String
+  therapeuticArea String?
+  origin          String?
+  status          ProjectStatus @default(ATT_EXPERTS)
+  declared        Boolean       @default(false)
+  createdAt       DateTime      @default(now())
+  updatedAt       DateTime      @updatedAt
+
+  experts   ProjectExpert[]
+  documents Document[]
+  messages  Message[]
+  expenses  Expense[]
+  events    Event[]
+}
+
+model ProjectExpert {
+  id             String              @id @default(cuid())
+  projectId      String
+  project        Project             @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  practitionerId String
+  practitioner   PractitionerProfile @relation(fields: [practitionerId], references: [id])
+  status         ProjectStatus       @default(ATT_EXPERTS)
+  feeCents       Int?
+  days           Float?
+
+  @@unique([projectId, practitionerId])
+}
+
+model Document {
+  id         String   @id @default(cuid())
+  projectId  String
+  project    Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  type       String   // convention, programme, support…
+  name       String
+  version    Int      @default(1)
+  storageKey String?
+  approved   Boolean  @default(false)
+  createdAt  DateTime @default(now())
+}
+
+model Message {
+  id        String   @id @default(cuid())
+  projectId String
+  project   Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  authorId  String
+  author    User     @relation(fields: [authorId], references: [id])
+  body      String
+  createdAt DateTime @default(now())
+}
+
+model Expense {
+  id          String   @id @default(cuid())
+  projectId   String
+  project     Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  label       String
+  amountCents Int
+  date        DateTime
+  status      String   @default("draft")
+}
+
+// ─── Événements, inscriptions, hospitalités ────────────────────────────────
+
+enum EventFormat {
+  PRESENTIEL
+  DISTANCIEL
+  HYBRIDE
+}
+
+model Event {
+  id               String       @id @default(cuid())
+  organizationId   String
+  organization     Organization @relation(fields: [organizationId], references: [id])
+  projectId        String?
+  project          Project?     @relation(fields: [projectId], references: [id])
+  title            String
+  typeId           String
+  therapeuticArea  String?
+  description      String?
+  startsAt         DateTime
+  durationMinutes  Int?
+  format           EventFormat  @default(PRESENTIEL)
+  city             String?
+  venue            String?
+  capacity         Int?
+  registrationOpen Boolean      @default(true)
+  publishedAt      DateTime?
+  speakerCallOpen  Boolean      @default(false)
+  speakerDeadline  DateTime?
+  speakerSlots     Int?
+  createdAt        DateTime     @default(now())
+  updatedAt        DateTime     @updatedAt
+
+  benefits      EventBenefit[]
+  registrations Registration[]
+}
+
+// Prestation d'hospitalité proposée par l'événement (café, cocktail, nuitée…), valorisée.
+model EventBenefit {
+  id         String  @id @default(cuid())
+  eventId    String
+  event      Event   @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  catalogId  String  // id de BENEFIT_CATALOG
+  label      String
+  valueCents Int
+
+  accepted RegistrationBenefit[]
+}
+
+// L'inscription passe toujours par un compte (rattachement nominatif des hospitalités).
+model Registration {
+  id             String   @id @default(cuid())
+  eventId        String
+  event          Event    @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  userId         String
+  user           User     @relation(fields: [userId], references: [id])
+  kind           String   @default("participant") // participant | speaker
+  profession     String?
+  structure      String?
+  createdAt      DateTime @default(now())
+  declared       Boolean  @default(false)
+  declarationRef String?
+
+  benefits RegistrationBenefit[]
+
+  @@unique([eventId, userId])
+}
+
+model RegistrationBenefit {
+  registrationId String
+  registration   Registration @relation(fields: [registrationId], references: [id], onDelete: Cascade)
+  benefitId      String
+  benefit        EventBenefit @relation(fields: [benefitId], references: [id])
+  valueCents     Int          // valeur figée au moment de l'acceptation
+
+  @@id([registrationId, benefitId])
+}
+
+// ─── Opportunités (appels ouverts) ─────────────────────────────────────────
+
+model OpenCall {
+  id             String       @id @default(cuid())
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id])
+  title          String
+  specialty      String?
+  typeId         String
+  budgetMinCents Int?
+  budgetMaxCents Int?
+  deadline       DateTime?
+  description    String?
+  status         String       @default("open")
+  createdAt      DateTime     @default(now())
+
+  applications Application[]
+}
+
+model Application {
+  id             String              @id @default(cuid())
+  openCallId     String
+  openCall       OpenCall            @relation(fields: [openCallId], references: [id], onDelete: Cascade)
+  practitionerId String
+  practitioner   PractitionerProfile @relation(fields: [practitionerId], references: [id])
+  message        String?
+  createdAt      DateTime            @default(now())
+
+  @@unique([openCallId, practitionerId])
+}
+
+// ─── Traçabilité ───────────────────────────────────────────────────────────
+
+model AuditLog {
+  id         String   @id @default(cuid())
+  actorId    String?
+  actor      User?    @relation(fields: [actorId], references: [id])
+  action     String
+  entityType String
+  entityId   String
+  data       Json?
+  createdAt  DateTime @default(now())
+
+  @@index([entityType, entityId])
+}
