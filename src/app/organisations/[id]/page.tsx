@@ -5,6 +5,7 @@ import { ORG_KIND_LABEL, ROLE_LABEL, requireMembership } from "@/lib/orgs";
 import { removeMembership, revokeInvitation } from "@/lib/org-actions";
 import Link from "next/link";
 import { COMPLIANCE_ROLES, EVENT_MANAGER_ROLES } from "@/lib/events";
+import { PROJECT_VIEW_ROLES } from "@/lib/projects";
 
 export const metadata = { title: "Organisation — Kolbase" };
 
@@ -31,6 +32,7 @@ export default async function Page({ params }: { params: Promise<{ id: string }>
         </div>
 
         <div className="actions">
+          {roles.some((r) => PROJECT_VIEW_ROLES.includes(r)) && <Link className="btn" href={`/organisations/${id}/dossiers`}>Dossiers</Link>}
           {roles.some((r) => EVENT_MANAGER_ROLES.includes(r)) && <Link className="btn" href={`/organisations/${id}/evenements`}>Événements</Link>}
           {roles.some((r) => COMPLIANCE_ROLES.includes(r)) && <Link className="btn ghost" href={`/organisations/${id}/hospitalites`}>Hospitalités</Link>}
           <Link className="btn ghost" href="/annuaire">Annuaire des experts</Link>
