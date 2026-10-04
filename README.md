@@ -14,8 +14,8 @@ industriels, sociétés savantes, associations, organismes de formation.
 ```bash
 cp .env.example .env          # renseigner DATABASE_URL et AUTH_SECRET
 npm install
-npx prisma db push            # crée les tables
-npm run db:seed               # données de démonstration
+npx prisma migrate deploy     # crée les tables (migrations versionnées)
+DEMO_PASSWORD=… npm run db:seed   # données fictives de démonstration
 npm run dev                   # http://localhost:3000
 ```
 
@@ -35,9 +35,19 @@ Voir `prisma/schema.prisma`. Principes repris du prototype :
 
 Chaque commit sur `main` est déployé automatiquement par Render.
 
-> Phase de démarrage : le schéma est appliqué avec `prisma db push`. Dès la première version
-> stable, créer la migration initiale (`npm run db:migrate:dev -- --name init`), la versionner,
-> et remplacer `preDeployCommand` par `npm run db:migrate` dans `render.yaml`.
+Avant chaque mise en production, Render exécute `npm run deploy:prepare` (`scripts/predeploy.sh`) :
+
+1. baseline automatique d'une base créée avant les migrations (`scripts/baseline.mjs`) ;
+2. `prisma migrate deploy` (dossier `prisma/migrations`) ;
+3. si `SEED_DEMO=1`, chargement des données fictives (`prisma/seed.ts`, idempotent).
+
+Pour faire évoluer le modèle : modifier `prisma/schema.prisma`, puis `npm run db:migrate:dev -- --name <nom>`
+en local, et versionner le dossier de migration créé.
+
+### Données de démonstration
+
+Variables Render : `SEED_DEMO` (1 = actif, 0 = désactivé), `DEMO_PASSWORD` (mot de passe commun des comptes
+`@demo.kolbase.local`), `DEMO_ADMIN_EMAILS` (comptes réels à rendre administrateurs des organisations de démo).
 
 ## Feuille de route
 

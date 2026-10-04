@@ -19,9 +19,8 @@ services:
     branch: main
     autoDeployTrigger: commit
     buildCommand: npm ci && npm run build
-    # Phase de démarrage : synchronise le schéma. À remplacer par
-    # « npm run db:migrate » dès que les migrations Prisma sont versionnées.
-    preDeployCommand: npx prisma db push
+    # Migrations versionnées (prisma/migrations) + données de démo si SEED_DEMO=1.
+    preDeployCommand: npm run deploy:prepare
     startCommand: npm start
     healthCheckPath: /api/health
     envVars:
@@ -34,4 +33,13 @@ services:
       - key: AUTH_SECRET
         generateValue: true
       - key: APP_URL
+        sync: false
+      # Données fictives de démonstration (mettre à 0 avant l'ouverture au public).
+      - key: SEED_DEMO
+        value: "1"
+      # Mot de passe commun des comptes de démo : à saisir dans le tableau de bord Render.
+      - key: DEMO_PASSWORD
+        sync: false
+      # Comptes réels à rendre administrateurs des organisations de démo (e-mails séparés par des virgules).
+      - key: DEMO_ADMIN_EMAILS
         sync: false
