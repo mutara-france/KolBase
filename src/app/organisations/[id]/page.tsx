@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { CalendarDays, ClipboardList, ExternalLink, Gift, Megaphone, Search, Users } from "lucide-react";
+import { CalendarDays, ClipboardList, ExternalLink, Gift, Megaphone, Mic, Receipt, Search, Users } from "lucide-react";
 import { SiteHeader } from "@/components/SiteHeader";
 import { Avatar } from "@/components/Avatar";
 import { StatCard } from "@/components/PublicCards";
@@ -77,11 +77,33 @@ export default async function Page({ params }: { params: Promise<{ id: string }>
     }
   }
 
+  if (can.events && org.kind !== "PRESTATAIRE") {
+    const [speakerApps, rfqs] = await Promise.all([
+      db.speakerApplication.groupBy({ by: ["eventId"], where: { status: "pending", event: { organizationId: id } }, _count: true }),
+      db.rfq.findMany({ where: { organizationId: id, status: { in: ["draft", "sent"] } }, include: { event: { select: { title: true } }, _count: { select: { quotes: true, suppliers: true } } } }),
+    ]);
+    const n = speakerApps.reduce((s, a) => s + a._count, 0);
+    if (n) todos.push({ href: `${base}/intervenants`, title: `${n} candidature${n > 1 ? "s" : ""} d'intervenant à examiner`, detail: `${speakerApps.length} appel${speakerApps.length > 1 ? "s" : ""}`, icon: "Mic", tone: "warn" });
+    for (const r of rfqs) {
+      const label = r.event?.title ?? "Demande de devis";
+      if (r.status === "draft") todos.push({ href: `${base}/prestataires`, title: `Demande de devis à envoyer : ${label}`, icon: "Receipt" });
+      else if (r._count.quotes > 0) todos.push({ href: `${base}/prestataires`, title: `Devis à comparer : ${label}`, detail: `${r._count.quotes} devis sur ${r._count.suppliers} prestataire${r._count.suppliers > 1 ? "s" : ""}`, icon: "Receipt", tone: "warn" });
+    }
+  }
+  if (org.kind === "PRESTATAIRE") {
+    const waiting = await db.rfqSupplier.findMany({ where: { supplierId: id, declined: false, rfq: { status: "sent", quotes: { none: { supplierId: id } } } }, include: { rfq: { include: { organization: { select: { name: true } }, event: { select: { title: true } } } } } });
+    for (const w of waiting)
+      todos.push({ href: `${base}/devis`, title: `Devis demandé par ${w.rfq.organization.name}`, detail: w.rfq.event?.title ?? w.rfq.needs.slice(0, 60), icon: "Receipt", tone: "warn" });
+  }
+
   const shortcuts = [
     can.view && { href: `${base}/dossiers`, label: "Dossiers", icon: ClipboardList },
     can.project && { href: `${base}/dossiers/nouveau`, label: "Nouveau dossier", icon: ClipboardList },
     can.project && { href: `${base}/opportunites`, label: "Opportunités", icon: Megaphone },
     can.events && { href: `${base}/evenements/nouveau`, label: "Nouvel événement", icon: CalendarDays },
+    can.events && org.kind !== "PRESTATAIRE" && { href: `${base}/intervenants`, label: "Appels à intervenants", icon: Mic },
+    can.events && org.kind !== "PRESTATAIRE" && { href: `${base}/prestataires`, label: "Prestataires et devis", icon: Receipt },
+    org.kind === "PRESTATAIRE" && { href: `${base}/devis`, label: "Demandes de devis", icon: Receipt },
     can.compliance && { href: `${base}/hospitalites`, label: "Hospitalités", icon: Gift },
     { href: "/annuaire", label: "Annuaire des experts", icon: Search },
     { href: `${base}/membres`, label: "Membres et réglages", icon: Users },
