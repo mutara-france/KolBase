@@ -14,7 +14,7 @@ export default async function Page({ params }: { params: Promise<{ id: string }>
   const user = await getCurrentUser();
   const viewer: Viewer = user?.practitioner?.id === id ? "proprietaire" : user ? "membre" : "public";
   const org = user?.memberships.find((m) => PROJECT_ROLES.includes(m.role));
-  const profile = await ExpertProfile({ id, viewer, solicitHref: org ? `/organisations/${org.organizationId}/dossiers/nouveau?expert=${id}` : null });
+  const profile = await ExpertProfile({ id, viewer, userId: user?.id ?? null, solicitHref: org ? `/organisations/${org.organizationId}/dossiers/nouveau?expert=${id}` : null });
   if (!profile) notFound();
   return (
     <>
