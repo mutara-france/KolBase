@@ -7,11 +7,11 @@ export function initialsOf(name: string) {
   return ((parts[0]?.[0] ?? "") + (parts.length > 1 ? parts[parts.length - 1][0] : "")).toUpperCase();
 }
 
-export function Avatar({ name, size = 40, square = false }: { name: string; size?: number; square?: boolean }) {
+export function Avatar({ name, size = 40, square = false, ring = false }: { name: string; size?: number; square?: boolean; ring?: boolean }) {
   const hue = HUES[Math.abs(hashCode(name)) % HUES.length];
   return (
     <span
-      className={`avatar${square ? " square" : ""}`}
+      className={`avatar${square ? " square" : ""}${ring ? " ring" : ""}`}
       style={{ width: size, height: size, fontSize: Math.round(size * 0.38), background: `linear-gradient(135deg, hsl(${hue} 70% 55%), hsl(${(hue + 30) % 360} 65% 45%))` }}
       aria-hidden
     >

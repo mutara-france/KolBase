@@ -3,6 +3,7 @@ import { getCurrentUser } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { Avatar } from "@/components/Avatar";
 import { Logo } from "@/components/Logo";
+import { PublicNav } from "@/components/PublicNav";
 import { MenuToggle, Sidebar, type NavSection } from "@/components/Sidebar";
 import { COMPLIANCE_ROLES, EVENT_MANAGER_ROLES } from "@/lib/events";
 import { PROJECT_ROLES, PROJECT_VIEW_ROLES } from "@/lib/projects";
@@ -16,26 +17,7 @@ import type { OrgRole } from "@/generated/prisma/client";
 export async function SiteHeader({ variant = "app" }: { variant?: "app" | "public" }) {
   const user = await getCurrentUser();
 
-  if (!user || variant === "public") {
-    return (
-      <header className="public-nav">
-        <Logo />
-        <nav>
-          <Link href="/evenements" className="nav-link">Événements</Link>
-          <Link href="/annuaire" className="nav-link">Experts</Link>
-          <Link href="/opportunites" className="nav-link">Opportunités</Link>
-          {user ? (
-            <Link href="/compte" className="btn">Mon espace</Link>
-          ) : (
-            <>
-              <Link href="/connexion" className="nav-link">Se connecter</Link>
-              <Link href="/inscription" className="btn">Créer un compte</Link>
-            </>
-          )}
-        </nav>
-      </header>
-    );
-  }
+  if (!user || variant === "public") return <PublicNav loggedIn={!!user} />;
 
   const p = user.practitioner;
   const pending = p
