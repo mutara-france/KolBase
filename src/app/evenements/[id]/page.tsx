@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { CalendarPlus } from "lucide-react";
 import { notFound } from "next/navigation";
 import { SiteHeader } from "@/components/SiteHeader";
 import { RegisterForm } from "@/components/EventForms";
@@ -34,6 +35,7 @@ export default async function Page({ params }: { params: Promise<{ id: string }>
           <span className="tag">{eventTypeLabel(event.typeId)}</span>
           <h1>{event.title}</h1>
           <p className="muted">Organisé par {event.organization.name}</p>
+          {!past && <a className="btn ghost small" href={`/evenements/${id}/calendrier`}><CalendarPlus size={14} /> Ajouter à mon agenda</a>}
         </div>
         <section className="card">
           <dl className="facts">
