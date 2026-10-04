@@ -129,6 +129,7 @@ model Organization {
   responseDays Int?
   listed       Boolean  @default(false)
   visibility   Json     @default("{}")
+  complianceSettings Json @default("{}")
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
 
@@ -226,6 +227,8 @@ model Project {
   ordreRef        String?
   createdById     String?
   budgetCents     Int?
+  declarationRef  String?   // référence de publication Transparence Santé
+  declaredAt      DateTime?
   createdAt       DateTime      @default(now())
   updatedAt       DateTime      @updatedAt
 
