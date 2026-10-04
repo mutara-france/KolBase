@@ -58,6 +58,7 @@ export async function SiteHeader({ variant = "app" }: { variant?: "app" | "publi
         ...(has(PROJECT_VIEW_ROLES, o.roles) ? [{ href: `${base}/dossiers`, label: "Dossiers", icon: "ClipboardList" as const }] : []),
         ...(has(PROJECT_ROLES, o.roles) ? [{ href: `${base}/opportunites`, label: "Opportunités", icon: "Megaphone" as const }] : []),
         ...(has(EVENT_MANAGER_ROLES, o.roles) ? [{ href: `${base}/evenements`, label: "Événements", icon: "CalendarDays" as const }] : []),
+        ...(has(COMPLIANCE_ROLES, o.roles) ? [{ href: `${base}/conformite`, label: "Conformité", icon: "ShieldCheck" as const }] : []),
         ...(has(COMPLIANCE_ROLES, o.roles) ? [{ href: `${base}/hospitalites`, label: "Hospitalités", icon: "Gift" as const }] : []),
         { href: `${base}/membres`, label: "Membres et réglages", icon: "Users" as const },
       ],
