@@ -136,13 +136,15 @@ async function main() {
   for (const p of PRACS) {
     const uid = p.id.replace("demo-p-", "demo-u-");
     await upsertUser(uid, p.first, p.last, passwordHash);
+    // Identité vérifiée pour la plupart des experts de démo (illustre le badge « Vérifié »).
+    const verified = p.listed && !["demo-p-lemoine", "demo-p-mercier", "demo-p-simon"].includes(p.id);
     await db.practitionerProfile.upsert({
       where: { id: p.id },
-      update: {},
+      update: { rppsVerified: verified },
       create: {
         id: p.id, userId: uid, profession: p.profession, city: p.city, specialty: p.specialty, subspecialty: p.sub, hospital: p.hospital,
         languages: p.langs ?? ["fr"], interventionTypes: p.types ?? [], dayRateCents: p.rate ? p.rate * 100 : null, orcid: p.orcid,
-        bio: p.bio, listed: p.listed, listedAt: p.listed ? at(-200 + Math.floor(Math.random() * 150)) : null, responseDays: p.listed ? 3 : null,
+        bio: p.bio, listed: p.listed, rppsVerified: verified, listedAt: p.listed ? at(-200 + Math.floor(Math.random() * 150)) : null, responseDays: p.listed ? 3 : null,
       },
     });
   }
