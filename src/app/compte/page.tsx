@@ -5,7 +5,7 @@ import { ExpertProfileForm } from "@/components/OrgForms";
 import { requireUser } from "@/lib/auth";
 import { INTERVENTION_TYPES } from "@/lib/orgs";
 import { db } from "@/lib/db";
-import { KolVisibilityForm, PublicationForm, StructureForm } from "@/components/ProfileForms";
+import { KolVisibilityForm, OrcidImportForm, PublicationForm, StructureForm } from "@/components/ProfileForms";
 import { kolVisibility } from "@/lib/visibility";
 import { removePublication, removeStructure } from "@/lib/profile-actions";
 
@@ -51,11 +51,12 @@ export default async function Page({ searchParams }: { searchParams: Promise<{ a
         {p && (
           <section className="card stack">
             <h2>Publications ({pubs.length})</h2>
+            <OrcidImportForm orcid={p.orcid} syncedAt={p.orcidSyncedAt ? p.orcidSyncedAt.toLocaleDateString("fr-FR", { timeZone: "Europe/Paris" }) : null} />
             {pubs.length > 0 && (
               <ul className="pub-list">
                 {pubs.map((x) => (
                   <li key={x.id} className="flex-between">
-                    <span><strong>{x.title}</strong><br /><span className="text-xs">{[x.journal, x.year].filter(Boolean).join(" · ")}</span></span>
+                    <span><strong>{x.title}</strong><br /><span className="text-xs">{[x.journal, x.year, x.source === "orcid" ? "importée d'ORCID" : null].filter(Boolean).join(" · ")}</span></span>
                     <form action={removePublication}><input type="hidden" name="id" value={x.id} /><button className="link danger">Retirer</button></form>
                   </li>
                 ))}
