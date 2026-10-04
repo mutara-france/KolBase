@@ -100,6 +100,11 @@ export default async function Page({ params }: { params: Promise<{ id: string; p
               {e.days ?? "—"} {type?.unit ?? "unité"}{(e.days ?? 0) > 1 ? "s" : ""} · {e.feeCents != null ? formatEUR(e.feeCents) : "—"} HT{" "}
               <FmvBadge typeId={project.typeId} feeCents={e.feeCents} units={e.days} />
             </p>
+            {e.status !== "ATT_EXPERTS" && e.status !== "DECLINE" && (
+              <a className="btn ghost small" href={`/organisations/${id}/dossiers/${projectId}/convention/${e.id}`} target="_blank" rel="noreferrer">
+                Convention (PDF)
+              </a>
+            )}
             <Thread messages={e.messages} meId={user.id} />
             {e.status !== "DECLINE" && <MessageForm linkId={e.id} />}
           </section>
