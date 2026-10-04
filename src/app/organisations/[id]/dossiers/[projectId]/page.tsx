@@ -8,6 +8,8 @@ import { requireMembership } from "@/lib/orgs";
 import { COMPLIANCE_ROLES, formatEUR } from "@/lib/events";
 import { collabType, PROJECT_ROLES, PROJECT_VIEW_ROLES, STATUS_LABEL, TRANSITIONS, type TransitionKey } from "@/lib/projects";
 import { advanceProject } from "@/lib/project-actions";
+import { BudgetPanel, ConflictsPanel, MaterialsPanel } from "@/components/DossierSections";
+import { REVIEW_ROLES } from "@/lib/projects";
 
 export const metadata = { title: "Dossier — Kolbase" };
 
@@ -15,6 +17,13 @@ const ACTION_LABEL: Record<string, string> = {
   "project.create": "Dossier créé",
   "solicitation.accept": "Accord de principe d'un expert",
   "solicitation.decline": "Un expert a décliné",
+  "project.propose": "Proposition reçue de l'expert",
+  "project.budget": "Budget modifié",
+  "expense.add": "Dépense ajoutée",
+  "expense.remove": "Dépense retirée",
+  "material.submit": "Support soumis à la relecture",
+  "material.approve": "Support approuvé",
+  "material.changes": "Modifications demandées sur un support",
 };
 
 export default async function Page({ params }: { params: Promise<{ id: string; projectId: string }> }) {
@@ -86,7 +95,11 @@ export default async function Page({ params }: { params: Promise<{ id: string; p
           </section>
         )}
 
+        {project.status === "ATT_IND" && <p className="notice warn">Proposition spontanée de l&apos;expert : acceptez-la pour ouvrir le circuit, ou déclinez-la.</p>}
         {project.description && <section className="card"><h2>Objet</h2><p>{project.description}</p></section>}
+        <ConflictsPanel projectId={projectId} />
+        <MaterialsPanel orgId={id} projectId={projectId} canSubmit={isProject} canReview={roles.some((r) => REVIEW_ROLES.includes(r))} />
+        <BudgetPanel orgId={id} projectId={projectId} canEdit={isProject} />
 
         {project.experts.map((e) => (
           <section key={e.id} className="card">
@@ -115,7 +128,8 @@ export default async function Page({ params }: { params: Promise<{ id: string; p
           <ul className="history">
             {history.map((h) => {
               const d = h.data as { to?: string; note?: string } | null;
-              const label = ACTION_LABEL[h.action] ?? (d?.to ? `→ ${STATUS_LABEL[d.to as keyof typeof STATUS_LABEL] ?? d.to}` : h.action);
+              const dm = h.data as { title?: string; version?: number } | null;
+              const label = (ACTION_LABEL[h.action] ? ACTION_LABEL[h.action] + (dm?.title ? ` : ${dm.title}${dm.version ? ` (v${dm.version})` : ""}` : "") : null) ?? (d?.to ? `→ ${STATUS_LABEL[d.to as keyof typeof STATUS_LABEL] ?? d.to}` : h.action);
               return (
                 <li key={h.id}>
                   <span className="muted">{h.createdAt.toLocaleString("fr-FR", { timeZone: "Europe/Paris", dateStyle: "short", timeStyle: "short" })}</span>{" "}
