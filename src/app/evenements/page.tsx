@@ -15,7 +15,7 @@ export default async function Page() {
   });
   return (
     <>
-      <SiteHeader />
+      <SiteHeader variant="public" />
       <main className="stack">
         <div>
           <h1>Agenda</h1>
