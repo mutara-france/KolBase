@@ -10,7 +10,7 @@ export default async function Page({ searchParams }: { searchParams: Promise<{ n
   const { next } = await searchParams;
   return (
     <>
-      <SiteHeader />
+      <SiteHeader variant="public" />
       <main className="narrow"><SignInForm next={next} /></main>
     </>
   );
