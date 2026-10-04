@@ -53,6 +53,8 @@ export const PROJECT_VIEW_ROLES: OrgRole[] = [...PROJECT_ROLES, "CONFORMITE", "R
 
 /** Transitions possibles : qui peut faire quoi, depuis quel statut. */
 export const TRANSITIONS = {
+  accept_proposal: { from: ["ATT_IND"], to: "ACCORD", roles: "project", label: "Accepter la proposition" },
+  decline_proposal: { from: ["ATT_IND"], to: "DECLINE", roles: "project", label: "Décliner la proposition" },
   submit: { from: ["ACCORD"], to: "EN_VALID", roles: "project", label: "Soumettre à la conformité" },
   validate: { from: ["EN_VALID"], to: "VALIDE", roles: "compliance", label: "Valider" },
   block: { from: ["EN_VALID"], to: "BLOQUE", roles: "compliance", label: "Bloquer" },
@@ -63,7 +65,7 @@ export const TRANSITIONS = {
   ordre_ko: { from: ["ORDRE"], to: "REFUS_ORDRE", roles: "project", label: "Autorisation refusée" },
   signed: { from: ["SIGNATURE"], to: "SIGNE", roles: "project", label: "Convention signée" },
   done: { from: ["SIGNE"], to: "TERMINE", roles: "project", label: "Prestation réalisée" },
-  abandon: { from: ["ATT_EXPERTS", "ATT_IND", "ACCORD", "BLOQUE", "VALIDE", "REFUS_ORDRE"], to: "DECLINE", roles: "project", label: "Abandonner le dossier" },
+  abandon: { from: ["ATT_EXPERTS", "ACCORD", "BLOQUE", "VALIDE", "REFUS_ORDRE"], to: "DECLINE", roles: "project", label: "Abandonner le dossier" },
 } as const satisfies Record<string, { from: ProjectStatus[]; to: ProjectStatus; roles: "project" | "compliance"; label: string }>;
 
 export type TransitionKey = keyof typeof TRANSITIONS;
@@ -76,3 +78,10 @@ export function fmvCheck(typeId: string, feeCents: number | null, units: number 
   const [min, max] = t.fmv;
   return { perUnit, min, max, unit: t.unit, verdict: perUnit < min ? "below" : perUnit > max ? "above" : "ok" } as const;
 }
+
+export const MATERIAL_KINDS = { diaporama: "Diaporama", article: "Article / texte", video: "Vidéo", programme: "Programme", autre: "Autre" } as const;
+export const MATERIAL_STATUS = { submitted: "En relecture", approved: "Approuvé", changes: "Modifications demandées" } as const;
+export const REVIEW_ROLES: OrgRole[] = ["ADMIN", "RELECTURE", "CONFORMITE"];
+
+/** Seuil d'alerte de cumul annuel de rémunérations d'un même expert par une même organisation (€ HT). */
+export const CUMUL_ALERT_EUR = 10000;
