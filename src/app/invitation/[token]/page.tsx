@@ -14,7 +14,7 @@ export default async function Page({ params }: { params: Promise<{ token: string
 
   return (
     <>
-      <SiteHeader />
+      <SiteHeader variant="public" />
       <main className="narrow">
         <div className="card form">
           {!valid ? (
