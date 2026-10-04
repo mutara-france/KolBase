@@ -35,7 +35,10 @@ export default async function Page() {
     <>
       <SiteHeader />
       <main className="narrow stack">
-        <h1>Mes inscriptions</h1>
+        <div className="actions spread">
+          <h1>Mes inscriptions</h1>
+          <a className="btn ghost small" href="/inscriptions/calendrier">Exporter vers mon agenda (.ics)</a>
+        </div>
         <p className="muted">Les événements auxquels vous assistez. Les avantages que vous acceptez sont conventionnés et déclarés par l&apos;organisateur.</p>
         {regs.length === 0 && <p className="muted">Aucune inscription. <Link href="/evenements">Voir l&apos;agenda</Link></p>}
         {upcoming.length > 0 && <h2>À venir</h2>}
