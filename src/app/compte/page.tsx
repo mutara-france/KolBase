@@ -4,6 +4,10 @@ import Link from "next/link";
 import { ExpertProfileForm } from "@/components/OrgForms";
 import { requireUser } from "@/lib/auth";
 import { INTERVENTION_TYPES } from "@/lib/orgs";
+import { db } from "@/lib/db";
+import { KolVisibilityForm, PublicationForm, StructureForm } from "@/components/ProfileForms";
+import { kolVisibility } from "@/lib/visibility";
+import { removePublication, removeStructure } from "@/lib/profile-actions";
 
 export const metadata = { title: "Mon compte — Kolbase" };
 
@@ -11,6 +15,12 @@ export default async function Page({ searchParams }: { searchParams: Promise<{ a
   const { annuaire } = await searchParams;
   const user = await requireUser();
   const p = user.practitioner;
+  const [pubs, structs] = p
+    ? await Promise.all([
+        db.publication.findMany({ where: { practitionerId: p.id }, orderBy: [{ year: "desc" }, { createdAt: "desc" }] }),
+        db.practitionerStructure.findMany({ where: { practitionerId: p.id } }),
+      ])
+    : [[], []];
   return (
     <>
       <SiteHeader />
@@ -27,10 +37,49 @@ export default async function Page({ searchParams }: { searchParams: Promise<{ a
         )}
         {p && <ListingForm listed={p.listed} />}
         {p?.listed && (
+          <div className="actions" style={{ marginTop: 0 }}>
+            <Link className="btn secondary" href={`/experts/${p.id}`}>Voir ma fiche publique</Link>
+          </div>
+        )}
+        {p?.listed && (
           <ExpertProfileForm
             types={INTERVENTION_TYPES}
             p={{ bio: p.bio, hospital: p.hospital, subspecialty: p.subspecialty, orcid: p.orcid, languages: p.languages, interventionTypes: p.interventionTypes, dayRateCents: p.dayRateCents }}
           />
+        )}
+        {p?.listed && <KolVisibilityForm v={kolVisibility(p.visibility)} />}
+        {p && (
+          <section className="card stack">
+            <h2>Publications ({pubs.length})</h2>
+            {pubs.length > 0 && (
+              <ul className="pub-list">
+                {pubs.map((x) => (
+                  <li key={x.id} className="flex-between">
+                    <span><strong>{x.title}</strong><br /><span className="text-xs">{[x.journal, x.year].filter(Boolean).join(" · ")}</span></span>
+                    <form action={removePublication}><input type="hidden" name="id" value={x.id} /><button className="link danger">Retirer</button></form>
+                  </li>
+                ))}
+              </ul>
+            )}
+            <PublicationForm />
+          </section>
+        )}
+        {p && (
+          <section className="card stack">
+            <h2>Structures juridiques ({structs.length})</h2>
+            <p className="muted">Sociétés d&apos;exercice, associations, fonctions déclarées. La structure de facturation figure sur vos conventions.</p>
+            {structs.length > 0 && (
+              <ul className="pub-list">
+                {structs.map((x) => (
+                  <li key={x.id} className="flex-between">
+                    <span><strong>{x.name}</strong><br /><span className="text-xs">{x.legalForm}{x.siren ? ` · SIREN ${x.siren}` : ""}{x.role ? ` · ${x.role}` : ""}{x.isPayee ? " · facturation" : ""}</span></span>
+                    <form action={removeStructure}><input type="hidden" name="id" value={x.id} /><button className="link danger">Retirer</button></form>
+                  </li>
+                ))}
+              </ul>
+            )}
+            <StructureForm />
+          </section>
         )}
         <ProfileForm
           user={{ firstName: user.firstName, lastName: user.lastName, email: user.email, phone: user.phone, locale: user.locale }}
