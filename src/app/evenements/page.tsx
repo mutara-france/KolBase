@@ -1,38 +1,27 @@
-import Link from "next/link";
 import { SiteHeader } from "@/components/SiteHeader";
-import { db } from "@/lib/db";
-import { eventTypeLabel, formatDateTime, FORMAT_LABEL } from "@/lib/events";
+import { EventCard } from "@/components/PublicCards";
+import { publicEvents } from "@/lib/public-data";
 
 export const metadata = { title: "Agenda des événements — Kolbase" };
 export const dynamic = "force-dynamic";
 
 export default async function Page() {
-  const events = await db.event.findMany({
-    where: { publishedAt: { not: null }, startsAt: { gte: new Date() } },
-    include: { organization: { select: { name: true } }, benefits: { select: { id: true } } },
-    orderBy: { startsAt: "asc" },
-    take: 100,
-  });
+  const events = await publicEvents(100);
   return (
     <>
       <SiteHeader variant="public" />
-      <main className="stack">
-        <div>
-          <h1>Agenda</h1>
-          <p className="muted">Congrès, formations et rencontres organisés par les acteurs du secteur dentaire. L&apos;inscription se fait avec votre compte Kolbase.</p>
-        </div>
-        {events.length === 0 && <p className="muted">Aucun événement à venir pour le moment.</p>}
-        <div className="grid">
-          {events.map((e) => (
-            <Link key={e.id} href={`/evenements/${e.id}`} className="card tile">
-              <span className="tag">{eventTypeLabel(e.typeId)}</span>
-              <strong>{e.title}</strong>
-              <span className="muted">{formatDateTime(e.startsAt)}</span>
-              <span className="muted">{e.format === "DISTANCIEL" ? FORMAT_LABEL.DISTANCIEL : [e.city, FORMAT_LABEL[e.format]].filter(Boolean).join(" · ")}</span>
-              <span className="muted">Organisé par {e.organization.name}</span>
-            </Link>
-          ))}
-        </div>
+      <main className="landing">
+        <section className="public-section">
+          <div className="section-head">
+            <div>
+              <div className="eyebrow mb-1">Ouvert à tous</div>
+              <h1 className="section-h2">Agenda</h1>
+              <p className="text-sm mt-1">Symposiums, webinaires, formations et tables rondes — l&apos;inscription se fait avec votre compte Kolbase.</p>
+            </div>
+          </div>
+          {events.length === 0 && <p className="muted">Aucun événement à venir pour le moment.</p>}
+          <div className="grid-3">{events.map((ev) => <EventCard key={ev.id} ev={ev} />)}</div>
+        </section>
       </main>
     </>
   );
