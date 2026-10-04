@@ -44,6 +44,9 @@ export default async function Page({ params }: { params: Promise<{ linkId: strin
             {type && <dd>{type.fmv[0].toLocaleString("fr-FR")} à {type.fmv[1].toLocaleString("fr-FR")} € HT par {type.unit}</dd>}
           </dl>
         </section>
+        {link.status !== "ATT_EXPERTS" && link.status !== "DECLINE" && !abandoned && (
+          <a className="btn ghost" href={`/sollicitations/${link.id}/convention`} target="_blank" rel="noreferrer">Projet de convention (PDF)</a>
+        )}
         {p.description && <section className="card"><h2>Objet</h2><p>{p.description}</p></section>}
         {link.status === "ATT_EXPERTS" && !abandoned && (
           <section className="card highlight"><h2>Votre réponse</h2><RespondForm linkId={link.id} /></section>
