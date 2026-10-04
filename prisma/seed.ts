@@ -22,7 +22,7 @@ const at = (days: number, hour = 9) => {
 const MAIL = "demo.kolbase.local";
 
 // ─── Organisations ─────────────────────────────────────────────────────────
-const ORGS: { id: string; name: string; kind: OrgKind; sector: string; hq: string; areas: string[]; about: string; policy: string }[] = [
+const ORGS: { id: string; name: string; kind: OrgKind; sector: string; hq: string; areas: string[]; about: string; policy: string; cats?: string[]; coverage?: string }[] = [
   { id: "demo-org-dentalys", name: "Dentalys Implants", kind: "INDUSTRIEL", sector: "Dispositifs médicaux", hq: "Lyon, France",
     areas: ["Implantologie", "Chirurgie orale", "Prothèse, CFAO"],
     about: "Fabricant fictif d'implants et de solutions de chirurgie guidée. Organisation de démonstration.",
@@ -42,7 +42,20 @@ const ORGS: { id: string; name: string; kind: OrgKind; sector: string; hq: strin
   { id: "demo-org-mediane", name: "Agence Médiane Événements", kind: "PRESTATAIRE", sector: "Logistique événementielle", hq: "Marseille, France",
     areas: ["Congrès", "Hospitalités"],
     about: "Agence fictive mandatée pour la logistique d'événements scientifiques. Organisation de démonstration.",
-    policy: "Agit uniquement sur mandat écrit d'une organisation." },
+    policy: "Agit uniquement sur mandat écrit d'une organisation.", cats: ["evenementiel", "audiovisuel"], coverage: "France entière" },
+  // Prestataires référencés (annuaire des prestataires, demandes de devis).
+  { id: "demo-sup-belleville", name: "Traiteur Belleville", kind: "PRESTATAIRE", sector: "Restauration", hq: "Lyon, France", areas: [], cats: ["restauration"], coverage: "Auvergne-Rhône-Alpes",
+    about: "Pauses, cocktails et déjeuners assis, formules adaptées aux contraintes de coût raisonnable. Prestataire fictif.", policy: "" },
+  { id: "demo-sup-tablesdusud", name: "Les Tables du Sud", kind: "PRESTATAIRE", sector: "Restauration", hq: "Marseille, France", areas: [], cats: ["restauration"], coverage: "PACA, Occitanie",
+    about: "Cocktails dînatoires et buffets, service en salle ou sur site. Prestataire fictif.", policy: "" },
+  { id: "demo-sup-confluence", name: "Espace Confluence", kind: "PRESTATAIRE", sector: "Lieu de réception", hq: "Lyon, France", areas: [], cats: ["salle"], coverage: "Lyon et Rhône",
+    about: "Amphithéâtre de 200 places, trois salles d'atelier, régie intégrée. Prestataire fictif.", policy: "" },
+  { id: "demo-sup-rivegauche", name: "Hôtel Rive Gauche", kind: "PRESTATAIRE", sector: "Hébergement", hq: "Lyon, France", areas: [], cats: ["hebergement"], coverage: "Lyon centre",
+    about: "Blocs de chambres pour congressistes, tarif garanti hors salon. Prestataire fictif.", policy: "" },
+  { id: "demo-sup-praxis", name: "Studio Praxis", kind: "PRESTATAIRE", sector: "Communication", hq: "Bordeaux, France", areas: [], cats: ["communication", "impression"], coverage: "France entière",
+    about: "Conception de supports pédagogiques et campagnes d'inscription, relecture réglementaire incluse. Prestataire fictif.", policy: "" },
+  { id: "demo-sup-navette", name: "Navette Pro", kind: "PRESTATAIRE", sector: "Transport", hq: "Paris, France", areas: [], cats: ["transport"], coverage: "France entière",
+    about: "Navettes gare–lieu d'événement et transferts de groupes. Prestataire fictif.", policy: "" },
 ];
 
 // ─── Membres d'organisations ───────────────────────────────────────────────
@@ -58,6 +71,7 @@ const STAFF: { id: string; first: string; last: string; org: string; roles: OrgR
   { id: "demo-u-anne", first: "Anne", last: "Chevalier", org: "demo-org-academie", roles: ["ADMIN", "CUMUL"] },
   { id: "demo-u-karim", first: "Karim", last: "Benali", org: "demo-org-mediane", roles: ["ADMIN"] },
   { id: "demo-u-karim", first: "Karim", last: "Benali", org: "demo-org-dentalys", roles: ["PRESTATAIRE"] },
+  { id: "demo-u-ludovic", first: "Ludovic", last: "Perrin", org: "demo-sup-belleville", roles: ["ADMIN"] },
 ];
 
 // ─── Praticiens (experts référencés et participants) ───────────────────────
@@ -113,8 +127,9 @@ async function main() {
     await db.organization.upsert({
       where: { id: o.id },
       update: {},
-      create: { id: o.id, name: o.name, kind: o.kind, sector: o.sector, headquarters: o.hq, areas: o.areas, about: o.about, policy: o.policy, listed: true, contactEmail: `contact@${MAIL}` },
+      create: { id: o.id, name: o.name, kind: o.kind, sector: o.sector, headquarters: o.hq, areas: o.areas, about: o.about, policy: o.policy || null, listed: true, contactEmail: `contact@${MAIL}` },
     });
+    if (o.cats) await db.organization.updateMany({ where: { id: o.id, supplierCategories: { isEmpty: true } }, data: { supplierCategories: o.cats, coverage: o.coverage } });
   }
 
   for (const s of STAFF) {
@@ -379,6 +394,54 @@ async function main() {
     }
   }
 
+  // ─── Appels à intervenants ───────────────────────────────────────────────
+  const SPEAKER_CALLS: { event: string; slots: number; deadline: number; min: number; max: number; profile: string; apps: [string, string, string?, string?][] }[] = [
+    { event: "demo-ev-live-surgery", slots: 2, deadline: 40, min: 1500, max: 3000, profile: "Implantologistes pratiquant la mise en charge immédiate, à l'aise avec la chirurgie retransmise et les échanges avec la salle.",
+      apps: [["demo-p-moreau", "Je peux réaliser et commenter deux cas de mise en charge immédiate, dont un cas complet maxillaire."], ["demo-p-durand", "Je propose de commenter la séquence chirurgicale et la gestion des tissus autour des implants immédiats."]] },
+    { event: "demo-ev-journee-cdra", slots: 3, deadline: 30, min: 800, max: 1500, profile: "Parodontologues et implantologistes pour la table ronde sur la péri-implantite et deux communications courtes.",
+      apps: [["demo-p-nguyen", "Conférence plénière sur la prévalence de la péri-implantite en cabinet libéral.", "retained", "demo-prj-cdra-paro"], ["demo-p-blanc", "Communication sur les implants courts en secteur postérieur, résultats de notre essai multicentrique."], ["demo-p-lemoine", "Participation à la table ronde : prévention et maintenance parodontale autour des implants."]] },
+  ];
+  for (const c of SPEAKER_CALLS) {
+    await db.event.updateMany({
+      where: { id: c.event, speakerSlots: null },
+      data: { speakerCallOpen: true, speakerSlots: c.slots, speakerDeadline: at(c.deadline, 21), speakerBudgetMinCents: c.min * 100, speakerBudgetMaxCents: c.max * 100, speakerProfile: c.profile },
+    });
+    for (const [pid, message, status, projectId] of c.apps) {
+      await db.speakerApplication.upsert({
+        where: { eventId_practitionerId: { eventId: c.event, practitionerId: pid } },
+        update: {},
+        create: { eventId: c.event, practitionerId: pid, message, status: status ?? "pending", projectId, createdAt: at(-Math.floor(2 + Math.random() * 6)) },
+      });
+    }
+  }
+
+  // ─── Demandes de devis aux prestataires ──────────────────────────────────
+  const RFQS: { id: string; org: string; event: string; category: string; needs: string; deadline: number; status: string; suppliers: string[]; quotes: [string, number, string, string, string?][] }[] = [
+    { id: "demo-rfq-cocktail", org: "demo-org-dentalys", event: "demo-ev-soiree-implanto", category: "restauration", deadline: 6, status: "sent",
+      needs: "Pause café d'accueil et cocktail dînatoire à l'issue de la session, 60 personnes, contraintes de coût raisonnable (45 € TTC par personne maximum).",
+      suppliers: ["demo-sup-belleville", "demo-sup-tablesdusud"],
+      quotes: [["demo-sup-belleville", 2580, "Confirmation sous 48 h", "Cocktail 12 pièces, boissons sans alcool et vin, service compris."], ["demo-sup-tablesdusud", 2940, "Confirmation sous 5 jours", "Buffet dînatoire, déplacement depuis Marseille inclus."]] },
+    { id: "demo-rfq-captation", org: "demo-org-dentalys", event: "demo-ev-live-surgery", category: "audiovisuel", deadline: 14, status: "sent",
+      needs: "Captation et retransmission en direct de la chirurgie vers la salle (2 caméras, régie, son), enregistrement pour diffusion ultérieure.",
+      suppliers: ["demo-org-mediane"], quotes: [] },
+    { id: "demo-rfq-hebergement", org: "demo-org-cdra", event: "demo-ev-journee-cdra", category: "hebergement", deadline: -5, status: "awarded",
+      needs: "Bloc de 40 chambres la veille de la journée, petit-déjeuner inclus, à moins de 15 minutes du palais des congrès.",
+      suppliers: ["demo-sup-rivegauche"], quotes: [["demo-sup-rivegauche", 5200, "Bloc confirmé", "40 chambres à 130 € TTC, petit-déjeuner inclus.", "retained"]] },
+  ];
+  for (const r of RFQS) {
+    const ev = await db.event.findUnique({ where: { id: r.event } });
+    await db.rfq.upsert({
+      where: { id: r.id },
+      update: {},
+      create: {
+        id: r.id, organizationId: r.org, eventId: r.event, category: r.category, needs: r.needs, deadline: at(r.deadline, 18), status: r.status,
+        sentAt: at(-8), city: ev?.city, headcount: ev?.capacity, createdAt: at(-9),
+        suppliers: { create: r.suppliers.map((supplierId) => ({ supplierId })) },
+        quotes: { create: r.quotes.map(([supplierId, eur, delay, note, status]) => ({ supplierId, amountCents: eur * 100, delay, note, status: status ?? "submitted", createdAt: at(-3) })) },
+      },
+    });
+  }
+
   // ─── Comptes réels rattachés aux organisations de démo ───────────────────
   const admins = (process.env.DEMO_ADMIN_EMAILS ?? "").split(",").map((e) => e.trim().toLowerCase()).filter(Boolean);
   for (const email of admins) {
@@ -394,7 +457,7 @@ async function main() {
     console.log(`${email} est administrateur des ${ORGS.length} organisations de démo.`);
   }
 
-  console.log(`Données de démo OK : ${ORGS.length} organisations, ${STAFF.length} rôles, ${PRACS.length} praticiens, ${EVENTS.length} événements, ${REGS.length} inscriptions, ${PROJECTS.length} dossiers, ${CALLS.length} opportunités.`);
+  console.log(`Données de démo OK : ${ORGS.length} organisations, ${STAFF.length} rôles, ${PRACS.length} praticiens, ${EVENTS.length} événements, ${REGS.length} inscriptions, ${PROJECTS.length} dossiers, ${CALLS.length} opportunités, ${SPEAKER_CALLS.length} appels à intervenants, ${RFQS.length} demandes de devis.`);
   if (!passwordHash) console.log("DEMO_PASSWORD non défini : les comptes de démo n'ont pas de mot de passe.");
 }
 

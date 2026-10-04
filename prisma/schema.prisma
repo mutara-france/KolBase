@@ -76,6 +76,7 @@ model PractitionerProfile {
   publications  Publication[]
   projectLinks  ProjectExpert[]
   applications  Application[]
+  speakerApplications SpeakerApplication[]
 }
 
 // Publication scientifique déclarée par le praticien.
@@ -130,6 +131,9 @@ model Organization {
   listed       Boolean  @default(false)
   visibility   Json     @default("{}")
   complianceSettings Json @default("{}")
+  // Prestataires référencés : catégories de prestation et zone couverte.
+  supplierCategories String[] @default([])
+  coverage           String?
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
 
@@ -141,6 +145,9 @@ model Organization {
   mandatesGiven    Mandate[] @relation("mandator")
   mandatesReceived Mandate[] @relation("agency")
   invitations      Invitation[]
+  rfqs             Rfq[]         @relation("rfqRequester")
+  rfqInvites       RfqSupplier[]
+  quotes           Quote[]
 }
 
 // Invitation d'un membre par lien (jeton à usage unique, stocké haché).
@@ -351,11 +358,79 @@ model Event {
   speakerCallOpen  Boolean      @default(false)
   speakerDeadline  DateTime?
   speakerSlots     Int?
+  speakerBudgetMinCents Int?
+  speakerBudgetMaxCents Int?
+  speakerProfile   String?
   createdAt        DateTime     @default(now())
   updatedAt        DateTime     @updatedAt
 
   benefits      EventBenefit[]
   registrations Registration[]
+  speakerApplications SpeakerApplication[]
+  rfqs          Rfq[]
+}
+
+// Candidature d'un expert à un appel à intervenants (rattaché à un événement).
+model SpeakerApplication {
+  id             String              @id @default(cuid())
+  eventId        String
+  event          Event               @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  practitionerId String
+  practitioner   PractitionerProfile @relation(fields: [practitionerId], references: [id])
+  message        String?
+  status         String              @default("pending") // pending | retained | rejected
+  projectId      String?
+  createdAt      DateTime            @default(now())
+
+  @@unique([eventId, practitionerId])
+}
+
+// Demande de devis adressée à des prestataires référencés.
+model Rfq {
+  id             String       @id @default(cuid())
+  organizationId String
+  organization   Organization @relation("rfqRequester", fields: [organizationId], references: [id])
+  eventId        String?
+  event          Event?       @relation(fields: [eventId], references: [id])
+  category       String
+  city           String?
+  headcount      Int?
+  needs          String
+  deadline       DateTime?
+  status         String       @default("draft") // draft | sent | awarded | cancelled
+  sentAt         DateTime?
+  createdById    String?
+  createdAt      DateTime     @default(now())
+
+  suppliers RfqSupplier[]
+  quotes    Quote[]
+}
+
+model RfqSupplier {
+  rfqId      String
+  rfq        Rfq          @relation(fields: [rfqId], references: [id], onDelete: Cascade)
+  supplierId String
+  supplier   Organization @relation(fields: [supplierId], references: [id])
+  declined   Boolean      @default(false)
+
+  @@id([rfqId, supplierId])
+}
+
+model Quote {
+  id          String       @id @default(cuid())
+  rfqId       String
+  rfq         Rfq          @relation(fields: [rfqId], references: [id], onDelete: Cascade)
+  supplierId  String
+  supplier    Organization @relation(fields: [supplierId], references: [id])
+  amountCents Int
+  delay       String?
+  note        String?
+  status      String       @default("submitted") // submitted | retained | rejected
+  authorId    String?
+  createdAt   DateTime     @default(now())
+  updatedAt   DateTime     @updatedAt
+
+  @@unique([rfqId, supplierId])
 }
 
 // Prestation d'hospitalité proposée par l'événement (café, cocktail, nuitée…), valorisée.
