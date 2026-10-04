@@ -387,3 +387,4 @@ body:has(.sidebar) .site-footer { max-width: none; width: auto; padding: 24px 32
 .review.approved { background: var(--ok-bg); color: var(--ok); }
 .review.changes { background: var(--danger-bg); color: var(--danger); }
 .sub-form { border: 1px dashed var(--line); border-radius: 11px; padding: 14px; margin-top: 8px; }
+.tabs .count { margin-left: 6px; }
