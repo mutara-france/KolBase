@@ -54,7 +54,7 @@ export default async function Page({ params, searchParams }: { params: Promise<{
             <h2>{rs[0].event.title}</h2>
             <p className="muted">{formatDate(rs[0].event.startsAt)} · {rs.length} bénéficiaire{rs.length > 1 ? "s" : ""} · {formatEUR(sum(rs))}</p>
             <table className="table">
-              <thead><tr><th>Bénéficiaire</th><th>Profession</th><th>Prestations</th><th>Valeur</th><th>Déclaration</th></tr></thead>
+              <thead><tr><th>Bénéficiaire</th><th>Profession</th><th>Prestations</th><th>Valeur</th><th>Convention</th><th>Déclaration</th></tr></thead>
               <tbody>
                 {rs.map((r) => (
                   <tr key={r.id}>
@@ -62,6 +62,7 @@ export default async function Page({ params, searchParams }: { params: Promise<{
                     <td>{r.profession}</td>
                     <td>{r.benefits.map((b) => b.benefit.label).join(", ")}</td>
                     <td>{formatEUR(r.benefits.reduce((s, b) => s + b.valueCents, 0))}</td>
+                    <td><a href={`/organisations/${id}/hospitalites/convention/${r.id}`} target="_blank" rel="noreferrer">PDF</a></td>
                     <td>
                       <form action={markDeclared} className="inline">
                         <input type="hidden" name="orgId" value={id} />
