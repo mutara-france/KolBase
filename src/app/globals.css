@@ -102,3 +102,12 @@ form.inline input { font: inherit; font-size: 13px; padding: 4px 8px; border: 1p
 .applications li p { margin: 4px 0; font-size: 15px; color: var(--ink); white-space: pre-wrap; }
 .applications .actions { margin-top: 4px; align-items: center; }
 form.inline.wrap { flex-wrap: wrap; }
+.btn.small { padding: 6px 12px; font-size: 13px; align-self: flex-start; }
+body { min-height: 100vh; display: flex; flex-direction: column; }
+.page { flex: 1; }
+.site-footer { border-top: 1px solid var(--line); padding: 24px 20px; text-align: center; color: var(--muted); font-size: 14px; }
+.site-footer nav { display: flex; flex-wrap: wrap; justify-content: center; gap: 8px 20px; margin-bottom: 8px; }
+.site-footer a { color: var(--muted); text-decoration: none; }
+.site-footer a:hover { color: var(--brand); }
+.site-footer p { font-size: 13px; margin: 0; }
+.legal p, .legal li { font-size: 15px; }
