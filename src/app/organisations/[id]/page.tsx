@@ -21,6 +21,9 @@ export default async function Page({ params }: { params: Promise<{ id: string }>
   const now = new Date();
   const base = `/organisations/${id}`;
 
+  const reviewQueue = can.review || roles.includes("ADMIN") || can.compliance
+    ? await db.materialVersion.findMany({ where: { status: "submitted", material: { project: { organizationId: id } } }, include: { material: { include: { project: { select: { id: true, title: true } } } } } })
+    : [];
   const [projects, events, calls, hosp] = await Promise.all([
     can.view ? db.project.findMany({ where: { organizationId: id }, include: { experts: true }, orderBy: { updatedAt: "desc" } }) : Promise.resolve([]),
     can.events || can.compliance ? db.event.findMany({ where: { organizationId: id }, include: { _count: { select: { registrations: true } } }, orderBy: { startsAt: "asc" } }) : Promise.resolve([]),
@@ -40,6 +43,7 @@ export default async function Page({ params }: { params: Promise<{ id: string }>
   const dossier = (p: (typeof projects)[number]) => `${base}/dossiers/${p.id}`;
   if (can.project) {
     for (const p of projects) {
+      if (p.status === "ATT_IND") todos.push({ href: dossier(p), title: `Proposition d'expert à examiner : ${p.title}`, icon: "Inbox", tone: "warn" });
       if (p.status === "ACCORD") todos.push({ href: dossier(p), title: `Soumettre à la conformité : ${p.title}`, detail: "Accord de principe obtenu", icon: "ShieldCheck" });
       if (p.status === "BLOQUE") todos.push({ href: dossier(p), title: `Reprendre le dossier : ${p.title}`, detail: p.complianceNote ?? "Bloqué par la conformité", icon: "AlertTriangle", tone: "danger" });
       if (p.status === "VALIDE") todos.push({ href: dossier(p), title: `Choisir le régime : ${p.title}`, detail: "Déclaration simple ou autorisation de l'Ordre", icon: "CircleDot" });
@@ -59,9 +63,8 @@ export default async function Page({ params }: { params: Promise<{ id: string }>
     }
     for (const [, e] of byEvent) if (e.past) todos.push({ href: `${base}/hospitalites`, title: `Déclarer les hospitalités : ${e.title}`, detail: `${e.n} bénéficiaire${e.n > 1 ? "s" : ""}`, icon: "FileSignature", tone: "danger" });
   }
-  if (can.review && !can.compliance) {
-    for (const p of projects) if (p.status === "EN_VALID") todos.push({ href: dossier(p), title: `À relire : ${p.title}`, icon: "CircleDot" });
-  }
+  for (const v of reviewQueue)
+    todos.push({ href: `${base}/dossiers/${v.material.project.id}`, title: `Support à relire : ${v.material.title} (v${v.version})`, detail: v.material.project.title, icon: "CircleDot" });
   if (can.events) {
     for (const e of events) {
       if (!e.publishedAt && e.startsAt >= now) todos.push({ href: `${base}/evenements/${e.id}`, title: `Brouillon à publier : ${e.title}`, detail: formatDate(e.startsAt), icon: "CalendarClock", tone: "warn" });
