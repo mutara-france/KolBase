@@ -1,6 +1,6 @@
 import "server-only";
 import { db } from "@/lib/db";
-import { CUMUL_ALERT_EUR } from "@/lib/projects";
+import { complianceSettings } from "@/lib/compliance";
 import { formatEUR } from "@/lib/events";
 
 export type Conflict = { kind: "concurrent" | "beneficiaire" | "structure" | "cumul"; who: string; detail: string; severity: "warn" | "danger" | "info" };
@@ -12,10 +12,14 @@ const ENGAGED = { notIn: ["ATT_EXPERTS", "DECLINE"] as ("ATT_EXPERTS" | "DECLINE
 export async function detectConflicts(projectId: string): Promise<Conflict[]> {
   const project = await db.project.findUnique({
     where: { id: projectId },
-    include: { experts: { where: { status: { not: "DECLINE" } }, include: { practitioner: { include: { user: true, structures: true } } } } },
+    include: {
+      organization: { select: { complianceSettings: true } },
+      experts: { where: { status: { not: "DECLINE" } }, include: { practitioner: { include: { user: true, structures: true } } } },
+    },
   });
   if (!project) return [];
   const out: Conflict[] = [];
+  const CUMUL_ALERT_EUR = complianceSettings(project.organization.complianceSettings).cumulAlert;
   const yearAgo = new Date(Date.now() - 365 * 864e5);
 
   for (const e of project.experts) {
