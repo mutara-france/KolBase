@@ -21,6 +21,7 @@ export async function SiteHeader() {
             {user.practitioner?.listed && (
               <Link href="/sollicitations" className="navlink">Sollicitations{pending > 0 && <span className="count">{pending}</span>}</Link>
             )}
+            {user.practitioner?.listed && <Link href="/opportunites" className="navlink">Opportunités</Link>}
             {(user.memberships.length > 0 || user.practitioner?.listed) && <Link href="/annuaire" className="navlink">Annuaire</Link>}
             {user.memberships.length > 0 && <Link href="/organisations" className="navlink">Organisations</Link>}
             <Link href="/compte" className="btn ghost">
