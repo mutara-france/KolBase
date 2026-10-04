@@ -55,6 +55,9 @@ export default async function Page({ params }: { params: Promise<{ id: string }>
     for (const c of calls) if (c.applications.length) todos.push({ href: `${base}/opportunites/${c.id}`, title: `${c.applications.length} candidature${c.applications.length > 1 ? "s" : ""} à examiner`, detail: c.title, icon: "UserRound" });
   }
   if (can.compliance) {
+    for (const p of projects)
+      if ((p.status === "SIGNE" || p.status === "TERMINE") && !p.declared)
+        todos.push({ href: `${base}/conformite?onglet=transparence`, title: `Publier sur Transparence Santé : ${p.title}`, detail: "Convention signée", icon: "FileSignature", tone: "warn" });
     for (const p of projects) if (p.status === "EN_VALID") todos.push({ href: dossier(p), title: `Valider : ${p.title}`, detail: `Soumis le ${formatDate(p.updatedAt)}`, icon: "ShieldCheck", tone: "warn" });
     const byEvent = new Map<string, { title: string; n: number; past: boolean }>();
     for (const r of hosp) {
