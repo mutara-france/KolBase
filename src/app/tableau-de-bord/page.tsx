@@ -30,6 +30,11 @@ export default async function Page() {
     db.practitionerStructure.count({ where: { practitionerId: p.id, isPayee: true } }),
   ]);
 
+  const changes = await db.materialVersion.findMany({
+    where: { status: "changes", submittedById: user.id, material: { versions: { none: { status: { in: ["submitted", "approved"] } } } } },
+    include: { material: { include: { project: { select: { id: true, title: true } } } } },
+  });
+  const linkOf = (projectId: string) => links.find((l) => l.projectId === projectId)?.id;
   const pending = links.filter((l) => l.status === "ATT_EXPERTS" && l.project.status !== "DECLINE");
   const active = links.filter((l) => !["ATT_EXPERTS", "DECLINE", "TERMINE"].includes(l.status));
   const toSign = links.filter((l) => l.status === "SIGNATURE");
@@ -39,6 +44,7 @@ export default async function Page() {
 
   const todos: TodoItem[] = [
     ...pending.map((l) => ({ href: `/sollicitations/${l.id}`, title: `Répondre à ${l.project.organization.name}`, detail: `${l.project.title} · reçue le ${formatDate(l.createdAt)}`, icon: "Inbox" as const })),
+    ...changes.filter((c) => linkOf(c.material.project.id)).map((c) => ({ href: `/sollicitations/${linkOf(c.material.project.id)}`, title: `Modifier le support : ${c.material.title}`, detail: c.reviewComment ?? c.material.project.title, icon: "AlertTriangle" as const, tone: "danger" as const })),
     ...toSign.map((l) => ({ href: `/sollicitations/${l.id}`, title: "Convention à signer", detail: `${l.project.title} · ${l.project.organization.name}`, icon: "FileSignature" as const, tone: "warn" as const })),
     ...regs.filter((r) => r.event.startsAt <= in30).map((r) => ({ href: `/evenements/${r.eventId}`, title: `Bientôt : ${r.event.title}`, detail: formatDateTime(r.event.startsAt), icon: "CalendarClock" as const, tone: "ok" as const })),
   ];
