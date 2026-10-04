@@ -54,6 +54,21 @@ export default async function Page({ params }: { params: Promise<{ id: string }>
             <ul className="plain">{event.benefits.map((b) => <li key={b.id}>{b.label} <span className="muted">— {formatEUR(b.valueCents)} par personne</span></li>)}</ul>
           )}
         </section>
+        {event.speakerCallOpen && !past && (!event.speakerDeadline || event.speakerDeadline >= new Date()) && (
+          <section className="card">
+            <h2>Appel à intervenants</h2>
+            <p className="muted">
+              L&apos;organisateur recherche {event.speakerSlots ? `${event.speakerSlots} intervenant${event.speakerSlots > 1 ? "s" : ""}` : "des intervenants"}
+              {event.speakerDeadline ? ` (candidatures jusqu'au ${formatDateTime(event.speakerDeadline).split(" à")[0]})` : ""}.
+            </p>
+            {event.speakerProfile && <p>{event.speakerProfile}</p>}
+            {user?.practitioner?.listed ? (
+              <Link className="btn ghost" href="/interventions?onglet=appels">Candidater depuis Mes interventions</Link>
+            ) : (
+              <p className="hint">Réservé aux experts référencés.</p>
+            )}
+          </section>
+        )}
         <section className="card highlight">
           <h2>Inscription</h2>
           {reg ? (
