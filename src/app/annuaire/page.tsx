@@ -43,7 +43,7 @@ export default async function Page({ searchParams }: { searchParams: Promise<{ q
         <p className="muted">{experts.length} expert{experts.length > 1 ? "s" : ""} référencé{experts.length > 1 ? "s" : ""}</p>
         <div className="grid">
           {experts.map((e) => (
-            <Link key={e.id} href={`/annuaire/${e.id}`} className="card tile">
+            <Link key={e.id} href={`/experts/${e.id}`} className="card tile">
               <span className="tile-head">
                 <Avatar name={`${e.user.firstName} ${e.user.lastName}`} size={44} />
                 <span>
