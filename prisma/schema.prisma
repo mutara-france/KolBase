@@ -225,6 +225,7 @@ model Project {
   complianceNote  String?
   ordreRef        String?
   createdById     String?
+  budgetCents     Int?
   createdAt       DateTime      @default(now())
   updatedAt       DateTime      @updatedAt
 
@@ -233,6 +234,36 @@ model Project {
   messages  Message[]
   expenses  Expense[]
   events    Event[]
+  materials Material[]
+}
+
+// Support (diaporama, article, vidéo…) soumis à relecture médico-réglementaire.
+model Material {
+  id        String   @id @default(cuid())
+  projectId String
+  project   Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  title     String
+  kind      String   // diaporama, article, video, autre
+  createdAt DateTime @default(now())
+
+  versions MaterialVersion[]
+}
+
+model MaterialVersion {
+  id            String    @id @default(cuid())
+  materialId    String
+  material      Material  @relation(fields: [materialId], references: [id], onDelete: Cascade)
+  version       Int
+  url           String?
+  notes         String?
+  status        String    @default("submitted") // submitted | approved | changes
+  submittedById String
+  reviewerId    String?
+  reviewComment String?
+  reviewedAt    DateTime?
+  createdAt     DateTime  @default(now())
+
+  @@unique([materialId, version])
 }
 
 model ProjectExpert {

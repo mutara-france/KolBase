@@ -267,6 +267,14 @@ async function main() {
       desc: "Webinaire de 75 minutes.",
       experts: [{ p: "demo-p-petit", status: "TERMINE", fee: 900, units: 1 }],
       steps: [["demo-u-thomas", "ATT_EXPERTS", "project.create", 90], ["demo-u-petit", "ACCORD", "solicitation.accept", 88], ["demo-u-thomas", "EN_VALID", "project.submit", 85], ["demo-u-lea", "VALIDE", "project.validate", 84], ["demo-u-thomas", "SIGNATURE", "project.declaration", 83], ["demo-u-thomas", "SIGNE", "project.signed", 80], ["demo-u-thomas", "TERMINE", "project.done", 10]] },
+    { id: "demo-prj-cdra-paro", org: "demo-org-cdra", title: "Conférence péri-implantite — journée du Collège", type: "pleniere", area: "Parodontologie", status: "SIGNE",
+      desc: "Conférence plénière lors de la journée scientifique du Collège.",
+      experts: [{ p: "demo-p-nguyen", status: "SIGNE", fee: 1500, units: 1 }],
+      steps: [["demo-u-pierre", "ATT_EXPERTS", "project.create", 50], ["demo-u-nguyen", "ACCORD", "solicitation.accept", 48], ["demo-u-pierre", "EN_VALID", "project.submit", 45], ["demo-u-pierre", "VALIDE", "project.validate", 44], ["demo-u-pierre", "SIGNATURE", "project.declaration", 43], ["demo-u-pierre", "SIGNE", "project.signed", 40]] },
+    { id: "demo-prj-proposition", org: "demo-org-dentalys", title: "Webinaire : esthétique et implants antérieurs", type: "webinaire", area: "Esthétique", status: "ATT_IND",
+      desc: "Je propose un webinaire de 60 minutes sur la gestion esthétique des implants antérieurs, à partir de cas cliniques documentés, à destination des omnipraticiens.",
+      experts: [{ p: "demo-p-fontaine", status: "ACCORD", fee: 1200, units: 1, msgs: [["demo-u-fontaine", "Je propose un webinaire de 60 minutes sur la gestion esthétique des implants antérieurs, à partir de cas cliniques documentés."]] }],
+      steps: [["demo-u-fontaine", "ATT_IND", "project.propose", 2]] },
   ];
   for (const p of PROJECTS) {
     const created = at(-(p.steps[0]?.[3] ?? 0));
@@ -275,7 +283,7 @@ async function main() {
       update: {},
       create: {
         id: p.id, organizationId: p.org, title: p.title, typeId: p.type, therapeuticArea: p.area, status: p.status, description: p.desc,
-        complianceNote: p.note, ordreRef: p.ordre, origin: "Sollicitation directe", createdById: p.steps[0]?.[0], createdAt: created,
+        complianceNote: p.note, ordreRef: p.ordre, origin: p.status === "ATT_IND" ? "Proposition de l'expert" : "Sollicitation directe", createdById: p.steps[0]?.[0], createdAt: created,
       },
     });
     for (const [i, e] of p.experts.entries()) {
@@ -296,6 +304,7 @@ async function main() {
     let prev: ProjectStatus | null = null;
     for (const [k, [actor, to, action, daysAgo, note]] of p.steps.entries()) {
       const isExpert = action.startsWith("solicitation");
+      if (action === "project.propose") prev = null;
       await db.auditLog.upsert({
         where: { id: `${p.id}-h${k}` },
         update: {},
@@ -308,6 +317,35 @@ async function main() {
       prev = to;
     }
   }
+
+  // ─── Budget, dépenses et supports en relecture ───────────────────────────
+  await db.project.updateMany({ where: { id: "demo-prj-symposium", budgetCents: null }, data: { budgetCents: 600000 } });
+  await db.project.updateMany({ where: { id: "demo-prj-board", budgetCents: null }, data: { budgetCents: 900000 } });
+  const EXPENSES: [string, string, string, number, number, string][] = [
+    ["demo-exp-1", "demo-prj-symposium", "Location de la salle de symposium", 180000, -12, "payee"],
+    ["demo-exp-2", "demo-prj-symposium", "Captation vidéo", 95000, -5, "engagee"],
+    ["demo-exp-3", "demo-prj-board", "Déjeuner de travail du board", 42000, 20, "engagee"],
+    ["demo-exp-4", "demo-prj-board", "Déplacements des experts", 61000, 20, "engagee"],
+  ];
+  for (const [id, projectId, label, amountCents, days, status] of EXPENSES)
+    await db.expense.upsert({ where: { id }, update: {}, create: { id, projectId, label, amountCents, date: at(days), status } });
+  await db.material.upsert({
+    where: { id: "demo-mat-symposium" }, update: {},
+    create: {
+      id: "demo-mat-symposium", projectId: "demo-prj-symposium", title: "Diaporama — chirurgie guidée en pratique", kind: "diaporama", createdAt: at(-8),
+      versions: { create: [
+        { version: 1, url: "https://example.org/demo/diaporama-v1", notes: "45 diapositives, 3 cas cliniques.", status: "changes", submittedById: "demo-u-martin", reviewerId: "demo-u-nadia", reviewComment: "Retirer le nom commercial du guide chirurgical (diapo 12) et ajouter la déclaration de liens d'intérêts en ouverture.", reviewedAt: at(-6), createdAt: at(-8) },
+        { version: 2, url: "https://example.org/demo/diaporama-v2", notes: "Nom commercial retiré, diapositive de liens d'intérêts ajoutée.", status: "submitted", submittedById: "demo-u-martin", createdAt: at(-1) },
+      ] },
+    },
+  });
+  await db.material.upsert({
+    where: { id: "demo-mat-dpc" }, update: {},
+    create: {
+      id: "demo-mat-dpc", projectId: "demo-prj-formation", title: "Programme de la formation DPC", kind: "programme", createdAt: at(-30),
+      versions: { create: [{ version: 1, notes: "Jour 1 : principes et instrumentation. Jour 2 : travaux pratiques sur simulateur.", status: "approved", submittedById: "demo-u-anne", reviewerId: "demo-u-anne", reviewedAt: at(-29), createdAt: at(-30) }] },
+    },
+  });
 
   // ─── Opportunités et candidatures ────────────────────────────────────────
   const CALLS = [
