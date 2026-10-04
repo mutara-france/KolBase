@@ -8,6 +8,8 @@ import { db } from "@/lib/db";
 import { getCurrentUser } from "@/lib/auth";
 import { ORG_KIND_LABEL } from "@/lib/orgs";
 import { canSee, companyVisibility, type Viewer } from "@/lib/visibility";
+import { ProposeForm } from "@/components/DossierForms";
+import { COLLAB_TYPES } from "@/lib/projects";
 
 export const metadata = { title: "Organisation — Kolbase" };
 
@@ -46,6 +48,9 @@ export default async function Page({ params }: { params: Promise<{ id: string }>
             </div>
             {isMember && <Link className="btn ghost" href={`/organisations/${o.id}`}>Gérer l&apos;organisation</Link>}
           </section>
+          {!isMember && user?.practitioner?.listed && (
+            <ProposeForm orgId={o.id} orgName={o.name} types={COLLAB_TYPES} defaultFee={user.practitioner.dayRateCents != null ? String(user.practitioner.dayRateCents / 100) : ""} />
+          )}
           <div className="stats-row">
             <div className="stat-card"><div className="stat-value">{o.openCalls.length}</div><div className="stat-label">Appels ouverts</div></div>
             <div className="stat-card"><div className="stat-value tone-electric">{o.events.length}</div><div className="stat-label">Événements à venir</div></div>
