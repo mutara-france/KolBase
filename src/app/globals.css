@@ -343,3 +343,26 @@ body:has(.sidebar) .site-footer { max-width: none; width: auto; padding: 24px 32
 .vis-chip span { display: inline-block; padding: 6px 12px; border-radius: 20px; border: 1px solid var(--line); background: #fff; font-size: 12px; font-weight: 500; color: var(--ink-soft); cursor: pointer; transition: 0.15s; }
 .vis-chip input:checked + span { background: var(--electric-soft); border-color: var(--electric); color: var(--electric); font-weight: 600; }
 .vis-chip input:focus-visible + span { box-shadow: 0 0 0 3px rgba(41, 82, 255, 0.2); }
+
+/* ─── Tableaux de bord ──────────────────────────────────────── */
+.dash-grid { align-items: start; }
+.todo-list { list-style: none; padding: 0; margin: 0; display: flex; flex-direction: column; gap: 8px; }
+.todo-row { display: flex; align-items: center; gap: 12px; padding: 11px 12px; border: 1px solid var(--line); border-radius: 11px; color: var(--ink); text-decoration: none !important; transition: 0.15s; }
+.todo-row:hover { border-color: var(--electric); background: var(--bg-subtle); }
+.todo-row strong { display: block; font-size: 13.5px; font-weight: 600; }
+.todo-row .text-xs { display: block; }
+.todo-row > svg { color: var(--ink-soft); flex: none; }
+.todo-icon { width: 32px; height: 32px; border-radius: 9px; display: inline-flex; align-items: center; justify-content: center; flex: none; background: var(--electric-soft); color: var(--electric); }
+.tone-warn .todo-icon { background: var(--warn-bg); color: var(--warn); }
+.tone-danger .todo-icon { background: var(--danger-bg); color: var(--danger); }
+.tone-ok .todo-icon { background: var(--ok-bg); color: var(--ok); }
+.todo-empty { display: flex; align-items: center; gap: 8px; color: var(--ok); font-size: 13.5px; margin: 0; }
+.mini-list { list-style: none; padding: 0; margin: 0; }
+.mini-list li { padding: 9px 0; border-bottom: 1px solid var(--line); display: flex; flex-direction: column; gap: 2px; font-size: 13.5px; }
+.mini-list li.flex-between { flex-direction: row; }
+.mini-list li:last-child { border-bottom: 0; }
+.mini-list a { color: var(--ink); }
+.shortcuts { display: grid; grid-template-columns: repeat(auto-fill, minmax(170px, 1fr)); gap: 8px; }
+.shortcut { display: flex; align-items: center; gap: 8px; padding: 10px 12px; border: 1px solid var(--line); border-radius: 10px; font-size: 13px; font-weight: 500; color: var(--ink); text-decoration: none !important; }
+.shortcut:hover { border-color: var(--electric); color: var(--electric); }
+.shortcut svg { color: var(--electric); }
