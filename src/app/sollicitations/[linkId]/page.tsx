@@ -7,6 +7,7 @@ import { db } from "@/lib/db";
 import { requireUser } from "@/lib/auth";
 import { formatEUR } from "@/lib/events";
 import { collabType } from "@/lib/projects";
+import { MaterialsPanel } from "@/components/DossierSections";
 
 export const metadata = { title: "Sollicitation — Kolbase" };
 
@@ -31,7 +32,7 @@ export default async function Page({ params }: { params: Promise<{ linkId: strin
       <main className="narrow stack">
         <p className="muted"><Link href="/sollicitations">Mes sollicitations</Link></p>
         <div>
-          <StatusPill status={abandoned ? "DECLINE" : link.status} />
+          <StatusPill status={abandoned ? "DECLINE" : p.status === "ATT_IND" ? "ATT_IND" : link.status} />
           <h1>{p.title}</h1>
           <p className="muted">{p.organization.name} · {type?.label ?? p.typeId}{p.therapeuticArea ? ` · ${p.therapeuticArea}` : ""}</p>
         </div>
@@ -52,6 +53,9 @@ export default async function Page({ params }: { params: Promise<{ linkId: strin
           <section className="card highlight"><h2>Votre réponse</h2><RespondForm linkId={link.id} /></section>
         )}
         {abandoned && <p className="notice error">Ce dossier a été abandonné par l&apos;organisation.</p>}
+        {!["ATT_EXPERTS", "DECLINE"].includes(link.status) && !abandoned && p.status !== "ATT_IND" && (
+          <MaterialsPanel orgId={p.organizationId} projectId={p.id} canSubmit canReview={false} />
+        )}
         <section className="card">
           <h2>Échanges avec {p.organization.name}</h2>
           <Thread messages={link.messages} meId={user.id} />
