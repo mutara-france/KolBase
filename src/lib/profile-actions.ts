@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { db } from "@/lib/db";
 import { audit, requireUser } from "@/lib/auth";
 import { requireMembership } from "@/lib/orgs";
+import { fetchOrcidWorks, normTitle, ORCID_RE } from "@/lib/orcid";
 import { COMPANY_VIS_FIELDS, KOL_VIS_FIELDS, companyVisibility, kolVisibility } from "@/lib/visibility";
 
 export type ActionState = { error?: string; ok?: string } | undefined;
@@ -49,6 +50,32 @@ export async function addPublication(_: ActionState, form: FormData): Promise<Ac
   });
   revalidatePath("/compte");
   return { ok: "Publication ajoutée." };
+}
+
+/** Importe les publications du profil ORCID public (sans doublon : DOI ou titre identique). */
+export async function importOrcid(_: ActionState, form: FormData): Promise<ActionState> {
+  const user = await requireUser();
+  const p = user.practitioner;
+  if (!p) return { error: "Réservé aux praticiens." };
+  const orcid = (str(form, "orcid") || p.orcid || "").toUpperCase().replace(/^HTTPS?:\/\/ORCID\.ORG\//i, "");
+  if (!ORCID_RE.test(orcid)) return { error: "Identifiant ORCID invalide (format 0000-0000-0000-0000)." };
+  let works;
+  try {
+    works = await fetchOrcidWorks(orcid);
+  } catch (e) {
+    return { error: e instanceof Error ? e.message : "ORCID indisponible." };
+  }
+  const existing = await db.publication.findMany({ where: { practitionerId: p.id }, select: { title: true, doi: true } });
+  const dois = new Set(existing.map((x) => x.doi?.toLowerCase()).filter(Boolean));
+  const titles = new Set(existing.map((x) => normTitle(x.title)));
+  const fresh = works.filter((w) => !(w.doi && dois.has(w.doi.toLowerCase())) && !titles.has(normTitle(w.title)));
+  if (fresh.length) {
+    await db.publication.createMany({ data: fresh.map((w) => ({ practitionerId: p.id, title: w.title, journal: w.journal, year: w.year, doi: w.doi, keywords: [], source: "orcid" })) });
+  }
+  await db.practitionerProfile.update({ where: { id: p.id }, data: { orcid, orcidSyncedAt: new Date() } });
+  await audit(user.id, "orcid.import", "PractitionerProfile", p.id, { found: works.length, imported: fresh.length });
+  revalidatePath("/compte");
+  return { ok: works.length === 0 ? "Aucune publication publique sur ce profil ORCID." : `${fresh.length} publication${fresh.length > 1 ? "s" : ""} importée${fresh.length > 1 ? "s" : ""} (${works.length - fresh.length} déjà présente${works.length - fresh.length > 1 ? "s" : ""}).` };
 }
 
 export async function removePublication(form: FormData) {
