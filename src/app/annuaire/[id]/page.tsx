@@ -2,6 +2,7 @@ import { notFound } from "next/navigation";
 import { SiteHeader } from "@/components/SiteHeader";
 import { db } from "@/lib/db";
 import Link from "next/link";
+import { Avatar } from "@/components/Avatar";
 import { requireDirectoryAccess } from "@/lib/orgs";
 import { PROJECT_ROLES } from "@/lib/projects";
 
@@ -22,7 +23,9 @@ export default async function Page({ params }: { params: Promise<{ id: string }>
     <>
       <SiteHeader />
       <main className="narrow stack">
-        <div>
+        <div className="tile-head">
+          <Avatar name={`${e.user.firstName} ${e.user.lastName}`} size={64} />
+          <div>
           <h1>Dr {e.user.firstName} {e.user.lastName}</h1>
           <p className="muted">{[e.profession, e.specialty, e.subspecialty].filter(Boolean).join(" · ")}</p>
           {projectOrg && (
@@ -30,6 +33,7 @@ export default async function Page({ params }: { params: Promise<{ id: string }>
               Solliciter{viewer.memberships.length > 1 ? ` au nom de ${projectOrg.organization.name}` : ""}
             </Link>
           )}
+          </div>
         </div>
         <section className="card">
           <dl className="facts">
