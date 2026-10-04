@@ -40,7 +40,7 @@ export async function signUp(_: FormState, form: FormData): Promise<FormState> {
   await createSession(user.id);
   const next = str(form, "next");
   if (next.startsWith("/") && !next.startsWith("//")) redirect(next);
-  redirect(profession ? "/compte" : "/organisations/nouvelle");
+  redirect(profession ? "/tableau-de-bord" : "/organisations/nouvelle");
 }
 
 export async function signIn(_: FormState, form: FormData): Promise<FormState> {
@@ -52,7 +52,7 @@ export async function signIn(_: FormState, form: FormData): Promise<FormState> {
   await audit(user.id, "user.signin", "User", user.id);
   await createSession(user.id);
   const next = str(form, "next");
-  redirect(next.startsWith("/") && !next.startsWith("//") ? next : "/compte");
+  redirect(next.startsWith("/") && !next.startsWith("//") ? next : "/tableau-de-bord");
 }
 
 export async function signOut() {

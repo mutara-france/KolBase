@@ -54,6 +54,7 @@ export async function updateOrganization(_: FormState, form: FormData): Promise<
   });
   await audit(user.id, "org.update", "Organization", orgId);
   revalidatePath(`/organisations/${orgId}`);
+  revalidatePath(`/organisations/${orgId}/membres`);
   return { ok: "Organisation mise à jour." };
 }
 
@@ -75,6 +76,7 @@ export async function createInvitation(_: InviteState, form: FormData): Promise<
   });
   await audit(user.id, "org.invite", "Invitation", inv.id, { role });
   revalidatePath(`/organisations/${orgId}`);
+  revalidatePath(`/organisations/${orgId}/membres`);
   const base = process.env.APP_URL ?? "";
   return { ok: `Lien valable ${INVITE_DAYS} jours, à usage unique. Copiez-le maintenant : il ne sera plus affiché.`, link: `${base}/invitation/${token}` };
 }
@@ -86,6 +88,7 @@ export async function revokeInvitation(form: FormData) {
   await db.invitation.updateMany({ where: { id, organizationId: orgId, acceptedAt: null }, data: { revokedAt: new Date() } });
   await audit(user.id, "org.invite_revoke", "Invitation", id);
   revalidatePath(`/organisations/${orgId}`);
+  revalidatePath(`/organisations/${orgId}/membres`);
 }
 
 export async function removeMembership(form: FormData) {
@@ -102,6 +105,7 @@ export async function removeMembership(form: FormData) {
   await db.membership.delete({ where: { id } });
   await audit(user.id, "org.member_remove", "Membership", id, { userId: m.userId, role: m.role });
   revalidatePath(`/organisations/${orgId}`);
+  revalidatePath(`/organisations/${orgId}/membres`);
 }
 
 export async function acceptInvitation(form: FormData) {

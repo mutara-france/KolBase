@@ -30,6 +30,7 @@ export async function updateOrgVisibility(_: ActionState, form: FormData): Promi
   await db.organization.update({ where: { id: orgId }, data: { visibility, listed: form.get("listed") === "1" } });
   await audit(user.id, "org.visibility", "Organization", orgId, visibility);
   revalidatePath(`/organisations/${orgId}`);
+  revalidatePath(`/organisations/${orgId}/membres`);
   return { ok: "Visibilité de la page publique enregistrée." };
 }
 
