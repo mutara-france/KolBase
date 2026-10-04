@@ -324,3 +324,22 @@ body:has(.sidebar) .site-footer { max-width: none; width: auto; padding: 24px 32
 .mt-1 { margin-top: 4px; } .mt-2 { margin-top: 8px; } .mt-3 { margin-top: 12px; } .mt-4 { margin-top: 16px; } .mt-6 { margin-top: 24px; }
 .ml-2 { margin-left: 8px; }
 .pt-0 { padding-top: 0 !important; }
+
+/* ─── Profils et visibilité ─────────────────────────────────── */
+.back-link { display: inline-flex; align-items: center; gap: 6px; font-size: 13px; color: var(--ink-soft); margin-bottom: 14px; }
+.back-link:hover { color: var(--electric); text-decoration: none; }
+.profile-hero { display: flex; align-items: center; gap: 20px; flex-wrap: wrap; }
+.profile-name { font-size: 26px; margin: 4px 0; display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.section-title { display: flex; align-items: center; gap: 8px; font-family: var(--font-display); font-size: 15px; font-weight: 600; margin: 0 0 12px; }
+.hidden-note { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; font-size: 12.5px; color: var(--ink-soft); background: var(--bg-subtle); border: 1px dashed var(--line); border-radius: 10px; padding: 10px 12px; margin: 0; }
+.pub-list { list-style: none; padding: 0; margin: 0; display: flex; flex-direction: column; }
+.pub-list li { padding: 10px 0; border-bottom: 1px solid var(--line); display: flex; flex-direction: column; gap: 4px; font-size: 13.5px; }
+.pub-list li.flex-between { flex-direction: row; }
+.pub-list li:last-child { border-bottom: 0; }
+.vis-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; padding: 10px 0; border-bottom: 1px solid var(--line); font-size: 13.5px; }
+.vis-choices { display: flex; gap: 6px; flex-wrap: wrap; }
+.form label.vis-chip { flex-direction: row; flex: none; }
+.vis-chip input { position: absolute; opacity: 0; pointer-events: none; }
+.vis-chip span { display: inline-block; padding: 6px 12px; border-radius: 20px; border: 1px solid var(--line); background: #fff; font-size: 12px; font-weight: 500; color: var(--ink-soft); cursor: pointer; transition: 0.15s; }
+.vis-chip input:checked + span { background: var(--electric-soft); border-color: var(--electric); color: var(--electric); font-weight: 600; }
+.vis-chip input:focus-visible + span { box-shadow: 0 0 0 3px rgba(41, 82, 255, 0.2); }
