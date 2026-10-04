@@ -28,7 +28,7 @@ export default async function Page({ params }: { params: Promise<{ id: string }>
 
   return (
     <>
-      <SiteHeader />
+      <SiteHeader variant="public" />
       <main className="narrow stack">
         <div>
           <span className="tag">{eventTypeLabel(event.typeId)}</span>
