@@ -23,7 +23,7 @@ export function PublicNav({ loggedIn }: { loggedIn: boolean }) {
           <Link key={l.href} href={l.href} className={`nav-link${path === l.href || path.startsWith(l.href + "/") ? " on" : ""}`}>{l.label}</Link>
         ))}
         {loggedIn ? (
-          <Link href="/compte" className="btn ml-2">Mon espace</Link>
+          <Link href="/tableau-de-bord" className="btn ml-2">Mon espace</Link>
         ) : (
           <Link href="/connexion" className="btn ml-2"><LogIn size={15} /> Se connecter</Link>
         )}

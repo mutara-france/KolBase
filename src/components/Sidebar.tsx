@@ -4,11 +4,11 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useEffect } from "react";
 import {
-  BadgeCheck, Building2, CalendarDays, ClipboardList, FileText, Gift, Inbox, LogOut, Megaphone, Menu, Search, Settings, Ticket, Users,
+  BadgeCheck, Building2, LayoutDashboard, CalendarDays, ClipboardList, FileText, Gift, Inbox, LogOut, Megaphone, Menu, Search, Settings, Ticket, Users,
 } from "lucide-react";
 import { signOut } from "@/lib/auth-actions";
 
-const ICONS = { BadgeCheck, Building2, CalendarDays, ClipboardList, FileText, Gift, Inbox, Megaphone, Search, Settings, Ticket, Users };
+const ICONS = { BadgeCheck, Building2, LayoutDashboard, CalendarDays, ClipboardList, FileText, Gift, Inbox, Megaphone, Search, Settings, Ticket, Users };
 export type IconName = keyof typeof ICONS;
 export type NavItem = { href: string; label: string; icon: IconName; badge?: number; exact?: boolean };
 export type NavSection = { title: string; subtitle?: string; items: NavItem[] };
