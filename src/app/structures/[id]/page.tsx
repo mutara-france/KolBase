@@ -9,6 +9,7 @@ import { getCurrentUser } from "@/lib/auth";
 import { ORG_KIND_LABEL } from "@/lib/orgs";
 import { canSee, companyVisibility, type Viewer } from "@/lib/visibility";
 import { ProposeForm } from "@/components/DossierForms";
+import { FollowButton } from "@/components/FollowButton";
 import { COLLAB_TYPES } from "@/lib/projects";
 
 export const metadata = { title: "Organisation — Kolbase" };
@@ -46,7 +47,7 @@ export default async function Page({ params }: { params: Promise<{ id: string }>
               <h1 className="profile-name">{o.name}</h1>
               <p className="text-sm">{[o.sector, o.headquarters].filter(Boolean).join(" · ")}</p>
             </div>
-            {isMember && <Link className="btn ghost" href={`/organisations/${o.id}`}>Gérer l&apos;organisation</Link>}
+            {isMember ? <Link className="btn ghost" href={`/organisations/${o.id}`}>Gérer l&apos;organisation</Link> : <FollowButton type="organization" id={o.id} userId={user?.id ?? null} label="cette organisation" />}
           </section>
           {!isMember && user?.practitioner?.listed && (
             <ProposeForm orgId={o.id} orgName={o.name} types={COLLAB_TYPES} defaultFee={user.practitioner.dayRateCents != null ? String(user.practitioner.dayRateCents / 100) : ""} />
