@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { SiteHeader } from "@/components/SiteHeader";
+import { Avatar } from "@/components/Avatar";
 import { db } from "@/lib/db";
 import { requireDirectoryAccess } from "@/lib/orgs";
 import type { Prisma } from "@/generated/prisma/client";
@@ -43,8 +44,14 @@ export default async function Page({ searchParams }: { searchParams: Promise<{ q
         <div className="grid">
           {experts.map((e) => (
             <Link key={e.id} href={`/annuaire/${e.id}`} className="card tile">
-              <strong>Dr {e.user.firstName} {e.user.lastName}</strong>
-              <span className="muted">{[e.specialty || e.profession, e.city].filter(Boolean).join(" · ")}</span>
+              <span className="tile-head">
+                <Avatar name={`${e.user.firstName} ${e.user.lastName}`} size={44} />
+                <span>
+                  <strong>Dr {e.user.firstName} {e.user.lastName}</strong>
+                  <br />
+                  <span className="muted">{[e.specialty || e.profession, e.city].filter(Boolean).join(" · ")}</span>
+                </span>
+              </span>
               {e.interventionTypes.length > 0 && <span className="tags">{e.interventionTypes.slice(0, 3).map((t) => <span key={t} className="tag">{t}</span>)}</span>}
             </Link>
           ))}
