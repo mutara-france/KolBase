@@ -10,6 +10,7 @@ import { collabType, PROJECT_ROLES, PROJECT_VIEW_ROLES, STATUS_LABEL, TRANSITION
 import { advanceProject } from "@/lib/project-actions";
 import { BudgetPanel, ConflictsPanel, MaterialsPanel } from "@/components/DossierSections";
 import { REVIEW_ROLES } from "@/lib/projects";
+import { complianceSettings, remunerationRegime, REGIME_LABEL } from "@/lib/compliance";
 
 export const metadata = { title: "Dossier — Kolbase" };
 
@@ -58,6 +59,9 @@ export default async function Page({ params }: { params: Promise<{ id: string; p
     return (t.from as readonly string[]).includes(project.status) && (t.roles === "compliance" ? isCompliance : isProject);
   });
   const needsNote = (k: TransitionKey) => k === "block" || k === "validate" || k === "ordre";
+  const settings = complianceSettings(org.complianceSettings);
+  const regimes = project.experts.filter((e) => e.status !== "DECLINE").map((e) => remunerationRegime(settings, e.feeCents, e.days, type?.unit ?? ""));
+  const regime = regimes.find((r) => r.regime === "autorisation") ?? regimes[0];
   const total = project.experts.filter((e) => e.status !== "DECLINE").reduce((s, e) => s + (e.feeCents ?? 0), 0);
 
   return (
@@ -89,8 +93,15 @@ export default async function Page({ params }: { params: Promise<{ id: string; p
                 </form>
               ))}
             </div>
-            {project.status === "VALIDE" && (
-              <p className="hint">Selon le montant et la nature de l&apos;avantage, la convention relève d&apos;une déclaration ou d&apos;une demande d&apos;autorisation auprès de l&apos;Ordre. La conformité confirme le régime applicable.</p>
+            {project.status === "VALIDE" && regime && (
+              <p className="hint">
+                Régime recommandé : <span className={`pill ${regime.regime === "autorisation" ? "wait" : "ok"}`}>{REGIME_LABEL[regime.regime]}</span>{" "}
+                ({regime.reason}).{" "}
+                {regime.regime === "autorisation"
+                  ? `Demande d'autorisation à adresser au moins ${settings.authorizationDays} jours avant l'exécution.`
+                  : `Déclaration à effectuer au moins ${settings.declarationDays} jours avant l'exécution.`}{" "}
+                La conformité confirme le régime applicable.
+              </p>
             )}
           </section>
         )}
