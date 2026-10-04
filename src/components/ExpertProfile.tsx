@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { BadgeCheck, BookOpen, Building, Clock, EyeOff, Languages, Lock, MapPin, Send, Wallet } from "lucide-react";
 import { Avatar } from "@/components/Avatar";
+import { FollowButton } from "@/components/FollowButton";
 import { db } from "@/lib/db";
 import { collabType } from "@/lib/projects";
 import { canSee, kolVisibility, type Viewer, type VisLevel } from "@/lib/visibility";
@@ -16,7 +17,7 @@ function Hidden({ level, viewer, label }: { level: VisLevel; viewer: Viewer; lab
 }
 
 /** Fiche expert respectant les réglages de visibilité (reprise de « ProfilExpert » du prototype). */
-export async function ExpertProfile({ id, viewer, solicitHref }: { id: string; viewer: Viewer; solicitHref?: string | null }) {
+export async function ExpertProfile({ id, viewer, solicitHref, userId = null }: { id: string; viewer: Viewer; solicitHref?: string | null; userId?: string | null }) {
   const p = await db.practitionerProfile.findFirst({
     where: { id, ...(viewer === "proprietaire" ? {} : { listed: true }) },
     include: {
@@ -41,6 +42,7 @@ export async function ExpertProfile({ id, viewer, solicitHref }: { id: string; v
           <p className="text-sm">{[p.profession, p.specialty, p.subspecialty].filter(Boolean).join(" · ")}</p>
           <div className="tags mt-2">{p.interventionTypes.map((t) => <span key={t} className="tag">{t}</span>)}</div>
         </div>
+        {viewer !== "proprietaire" && <FollowButton type="practitioner" id={p.id} userId={userId} label="cet expert" />}
         {solicitHref && <Link className="btn" href={solicitHref}><Send size={15} /> Solliciter</Link>}
         {viewer === "proprietaire" && <Link className="btn ghost" href="/compte">Modifier mon profil</Link>}
       </section>

@@ -7,6 +7,7 @@ import { PublicNav } from "@/components/PublicNav";
 import { MenuToggle, Sidebar, type NavSection } from "@/components/Sidebar";
 import { COMPLIANCE_ROLES, EVENT_MANAGER_ROLES } from "@/lib/events";
 import { PROJECT_ROLES, PROJECT_VIEW_ROLES } from "@/lib/projects";
+import { unseenFollowCount } from "@/lib/follows";
 import type { OrgRole } from "@/generated/prisma/client";
 
 /**
@@ -71,15 +72,18 @@ export async function SiteHeader({ variant = "app" }: { variant?: "app" | "publi
         ...(o.kind === "PRESTATAIRE" ? [{ href: `${base}/devis`, label: "Demandes de devis", icon: "Receipt" as const, badge: rfqTodo.find((r) => r.supplierId === id)?._count ?? 0 }] : []),
         ...(has(COMPLIANCE_ROLES, o.roles) ? [{ href: `${base}/conformite`, label: "Conformité", icon: "ShieldCheck" as const }] : []),
         ...(has(COMPLIANCE_ROLES, o.roles) ? [{ href: `${base}/hospitalites`, label: "Hospitalités", icon: "Gift" as const }] : []),
+        ...(o.roles.includes("ADMIN") ? [{ href: `${base}/integrations`, label: "Intégrations", icon: "Plug" as const }] : []),
         { href: `${base}/membres`, label: "Membres et réglages", icon: "Users" as const },
       ],
     });
   }
 
+  const followCount = (await db.follow.count({ where: { userId: user.id } })) ? await unseenFollowCount(user.id, user.followsSeenAt) : 0;
   sections.push({
     title: "Explorer",
     items: [
       { href: "/evenements", label: "Agenda", icon: "CalendarDays" },
+      { href: "/suivis", label: "Mes suivis", icon: "Bell", badge: followCount },
       ...(orgs.size > 0 || p?.listed ? [{ href: "/annuaire", label: "Annuaire des experts", icon: "Search" as const }] : []),
     ],
   });
