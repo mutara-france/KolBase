@@ -35,6 +35,7 @@ export async function SiteHeader({ variant = "app" }: { variant?: "app" | "publi
         ...(p.listed
           ? [
               { href: "/sollicitations", label: "Sollicitations", icon: "Inbox" as const, badge: pending },
+              { href: "/interventions", label: "Mes interventions", icon: "Mic" as const },
               { href: "/opportunites", label: "Opportunités", icon: "Megaphone" as const },
             ]
           : []),
@@ -42,12 +43,19 @@ export async function SiteHeader({ variant = "app" }: { variant?: "app" | "publi
     });
   }
 
-  const orgs = new Map<string, { name: string; roles: OrgRole[] }>();
+  const orgs = new Map<string, { name: string; kind: string; roles: OrgRole[] }>();
   for (const m of user.memberships) {
-    const o = orgs.get(m.organizationId) ?? { name: m.organization.name, roles: [] };
+    const o = orgs.get(m.organizationId) ?? { name: m.organization.name, kind: m.organization.kind, roles: [] };
     o.roles.push(m.role);
     orgs.set(m.organizationId, o);
   }
+  const supplierIds = [...orgs].filter(([, o]) => o.kind === "PRESTATAIRE").map(([id]) => id);
+  const rfqTodo = await Promise.all(
+    supplierIds.map(async (supplierId) => ({
+      supplierId,
+      _count: await db.rfqSupplier.count({ where: { supplierId, declined: false, rfq: { status: "sent", quotes: { none: { supplierId } } } } }),
+    })),
+  );
   for (const [id, o] of orgs) {
     const base = `/organisations/${id}`;
     sections.push({
@@ -58,6 +66,9 @@ export async function SiteHeader({ variant = "app" }: { variant?: "app" | "publi
         ...(has(PROJECT_VIEW_ROLES, o.roles) ? [{ href: `${base}/dossiers`, label: "Dossiers", icon: "ClipboardList" as const }] : []),
         ...(has(PROJECT_ROLES, o.roles) ? [{ href: `${base}/opportunites`, label: "Opportunités", icon: "Megaphone" as const }] : []),
         ...(has(EVENT_MANAGER_ROLES, o.roles) ? [{ href: `${base}/evenements`, label: "Événements", icon: "CalendarDays" as const }] : []),
+        ...(has(EVENT_MANAGER_ROLES, o.roles) && o.kind !== "PRESTATAIRE" ? [{ href: `${base}/intervenants`, label: "Appels à intervenants", icon: "Mic" as const }] : []),
+        ...(has(EVENT_MANAGER_ROLES, o.roles) && o.kind !== "PRESTATAIRE" ? [{ href: `${base}/prestataires`, label: "Prestataires", icon: "Receipt" as const }] : []),
+        ...(o.kind === "PRESTATAIRE" ? [{ href: `${base}/devis`, label: "Demandes de devis", icon: "Receipt" as const, badge: rfqTodo.find((r) => r.supplierId === id)?._count ?? 0 }] : []),
         ...(has(COMPLIANCE_ROLES, o.roles) ? [{ href: `${base}/conformite`, label: "Conformité", icon: "ShieldCheck" as const }] : []),
         ...(has(COMPLIANCE_ROLES, o.roles) ? [{ href: `${base}/hospitalites`, label: "Hospitalités", icon: "Gift" as const }] : []),
         { href: `${base}/membres`, label: "Membres et réglages", icon: "Users" as const },
