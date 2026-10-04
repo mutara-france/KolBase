@@ -148,6 +148,22 @@ async function main() {
       },
     });
   }
+  const PUBS: [string, string, string, number, string[]][] = [
+    ["demo-p-durand", "Régénération osseuse guidée avant implantation : résultats à 5 ans", "Revue francophone d'implantologie (fictive)", 2024, ["ROG", "implantologie"]],
+    ["demo-p-durand", "Greffes d'apposition et implants courts : étude comparative", "Journal d'odontologie clinique (fictif)", 2022, ["greffe", "implants courts"]],
+    ["demo-p-nguyen", "Prévalence de la péri-implantite en cabinet libéral", "Revue de parodontologie (fictive)", 2025, ["péri-implantite", "épidémiologie"]],
+    ["demo-p-nguyen", "Chirurgie muco-gingivale autour des implants", "Cahiers de parodontologie (fictifs)", 2021, ["muco-gingival"]],
+    ["demo-p-blanc", "Implants courts en secteur postérieur maxillaire : essai multicentrique", "Journal européen de chirurgie orale (fictif)", 2025, ["implants courts", "sinus"]],
+    ["demo-p-fontaine", "Facettes céramiques sans préparation : suivi à 7 ans", "Revue d'esthétique dentaire (fictive)", 2023, ["facettes", "esthétique"]],
+    ["demo-p-martin", "Chirurgie guidée et flux numérique complet", "Implantologie pratique (fictive)", 2024, ["chirurgie guidée", "CFAO"]],
+  ];
+  for (const [i, [pid, title, journal, year, keywords]] of PUBS.entries()) {
+    await db.publication.upsert({ where: { id: `demo-pub-${i}` }, update: {}, create: { id: `demo-pub-${i}`, practitionerId: pid, title, journal, year, keywords } });
+  }
+  // Quelques réglages de visibilité variés pour illustrer les fiches publiques.
+  await db.practitionerProfile.updateMany({ where: { id: "demo-p-girard" }, data: { visibility: { tarif: "masque", contact: "industriels", projets: "agrege" } } });
+  await db.practitionerProfile.updateMany({ where: { id: "demo-p-moreau" }, data: { visibility: { tarif: "public", structures: "masque" } } });
+
   await db.practitionerStructure.upsert({
     where: { id: "demo-struct-durand" },
     update: {},

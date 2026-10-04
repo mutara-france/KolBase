@@ -73,8 +73,24 @@ model PractitionerProfile {
   updatedAt     DateTime @updatedAt
 
   structures    PractitionerStructure[]
+  publications  Publication[]
   projectLinks  ProjectExpert[]
   applications  Application[]
+}
+
+// Publication scientifique déclarée par le praticien.
+model Publication {
+  id             String              @id @default(cuid())
+  practitionerId String
+  practitioner   PractitionerProfile @relation(fields: [practitionerId], references: [id], onDelete: Cascade)
+  title          String
+  journal        String?
+  year           Int?
+  doi            String?
+  keywords       String[]
+  createdAt      DateTime            @default(now())
+
+  @@index([practitionerId])
 }
 
 // Structure d'exercice / de facturation du praticien (SELARL, SCM…).
