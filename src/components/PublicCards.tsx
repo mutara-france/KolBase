@@ -96,7 +96,7 @@ export type KolCardData = {
 };
 export function KolCard({ k }: { k: KolCardData }) {
   return (
-    <Link href={`/annuaire/${k.id}`} className="kol-card">
+    <Link href={`/experts/${k.id}`} className="kol-card">
       <div className="flex-between">
         <div className="eyebrow">KB-{k.id.slice(-4).toUpperCase()} · France</div>
         {k.verified && <span className="verif ok small"><BadgeCheck size={12} /> Vérifié</span>}
@@ -121,7 +121,7 @@ export function KolCard({ k }: { k: KolCardData }) {
 export type OrgCardData = { id: string; name: string; kind: string; sector: string | null; about: string | null; hq: string | null; areas: string[]; openCalls: number; collaborations: number };
 export function OrgCard({ o }: { o: OrgCardData }) {
   return (
-    <Link href={`/structures#${o.id}`} className="kol-card" id={o.id}>
+    <Link href={`/structures/${o.id}`} className="kol-card">
       <div className="flex-between">
         <Avatar name={o.name} size={44} square />
         <span className="sector-tag">{o.kind}</span>
