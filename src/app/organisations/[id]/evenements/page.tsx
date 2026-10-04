@@ -21,7 +21,10 @@ export default async function Page({ params }: { params: Promise<{ id: string }>
         <p className="muted"><Link href={`/organisations/${id}`}>{org.name}</Link> / Événements</p>
         <div className="actions spread">
           <h1>Événements</h1>
-          <Link className="btn" href={`/organisations/${id}/evenements/nouveau`}>Nouvel événement</Link>
+          <div className="actions">
+            <a className="btn ghost" href={`/organisations/${id}/evenements/calendrier`}>Exporter vers un agenda (.ics)</a>
+            <Link className="btn" href={`/organisations/${id}/evenements/nouveau`}>Nouvel événement</Link>
+          </div>
         </div>
         {events.length === 0 ? (
           <p className="muted">Aucun événement pour l&apos;instant.</p>
