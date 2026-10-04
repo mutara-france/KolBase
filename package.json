@@ -7,7 +7,7 @@
   },
   "scripts": {
     "dev": "next dev",
-    "build": "prisma generate && next build",
+    "build": "prisma generate && mkdir -p public && prisma migrate diff --from-empty --to-schema prisma/schema.prisma --script > public/__init.sql && (prisma migrate diff --from-config-datasource --to-schema prisma/schema.prisma --script > public/__drift.sql || echo \"-- drift check failed\" > public/__drift.sql) && next build",
     "start": "next start -p ${PORT:-3000}",
     "db:migrate": "prisma migrate deploy",
     "db:migrate:dev": "prisma migrate dev",
