@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { SiteHeader } from "@/components/SiteHeader";
+import { Avatar } from "@/components/Avatar";
 import { requireUser } from "@/lib/auth";
 import { ORG_KIND_LABEL, ROLE_LABEL } from "@/lib/orgs";
 
@@ -21,8 +22,10 @@ export default async function Page() {
         {byOrg.size === 0 && <p className="muted">Vous n&apos;êtes membre d&apos;aucune organisation. Créez-en une, ou demandez un lien d&apos;invitation à un administrateur.</p>}
         {[...byOrg].map(([id, o]) => (
           <Link key={id} href={`/organisations/${id}`} className="card tile">
-            <strong>{o.name}</strong>
-            <span className="muted">{ORG_KIND_LABEL[o.kind]} · {o.roles.join(", ")}</span>
+            <span className="tile-head">
+              <Avatar name={o.name} size={40} square />
+              <span><strong>{o.name}</strong><br /><span className="muted">{ORG_KIND_LABEL[o.kind]} · {o.roles.join(", ")}</span></span>
+            </span>
           </Link>
         ))}
         <Link href="/organisations/nouvelle" className="btn">Créer une organisation</Link>
