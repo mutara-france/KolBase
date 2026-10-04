@@ -6,6 +6,8 @@ import { removeMembership, revokeInvitation } from "@/lib/org-actions";
 import Link from "next/link";
 import { COMPLIANCE_ROLES, EVENT_MANAGER_ROLES } from "@/lib/events";
 import { PROJECT_ROLES, PROJECT_VIEW_ROLES } from "@/lib/projects";
+import { OrgVisibilityForm } from "@/components/ProfileForms";
+import { companyVisibility } from "@/lib/visibility";
 
 export const metadata = { title: "Organisation — Kolbase" };
 
@@ -37,6 +39,7 @@ export default async function Page({ params }: { params: Promise<{ id: string }>
           {roles.some((r) => EVENT_MANAGER_ROLES.includes(r)) && <Link className="btn" href={`/organisations/${id}/evenements`}>Événements</Link>}
           {roles.some((r) => COMPLIANCE_ROLES.includes(r)) && <Link className="btn ghost" href={`/organisations/${id}/hospitalites`}>Hospitalités</Link>}
           <Link className="btn ghost" href="/annuaire">Annuaire des experts</Link>
+          <Link className="btn ghost" href={`/structures/${id}`}>Voir la page publique</Link>
         </div>
 
         <section className="card">
@@ -94,6 +97,7 @@ export default async function Page({ params }: { params: Promise<{ id: string }>
                 </table>
               </section>
             )}
+            <OrgVisibilityForm orgId={id} v={companyVisibility(org.visibility)} listed={org.listed} />
             <EditOrgForm org={{ id: org.id, name: org.name, sector: org.sector, headquarters: org.headquarters, contactEmail: org.contactEmail, about: org.about, policy: org.policy, areas: org.areas }} />
           </>
         )}
