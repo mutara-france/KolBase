@@ -49,7 +49,7 @@ export function SignUpForm({ next }: { next?: string }) {
       <label>Mot de passe<input name="password" type="password" autoComplete="new-password" minLength={10} required />
         <span className="hint">10 caractères minimum, avec au moins une lettre et un chiffre.</span>
       </label>
-      <label className="check"><input type="checkbox" name="cgu" required /> J&apos;accepte les conditions d&apos;utilisation et la politique de confidentialité.</label>
+      <label className="check"><input type="checkbox" name="cgu" required /> J&apos;accepte les <Link href="/cgu" target="_blank">conditions d&apos;utilisation</Link> et la <Link href="/confidentialite" target="_blank">politique de confidentialité</Link>.</label>
       <button className="btn" disabled={pending}>{pending ? "Création…" : "Créer mon compte"}</button>
       <p className="muted">Déjà inscrit ? <Link href="/connexion">Se connecter</Link></p>
     </form>
