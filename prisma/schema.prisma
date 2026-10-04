@@ -21,6 +21,7 @@ model User {
   phone        String?
   locale       String    @default("fr")
   notifyPrefs  Json      @default("{}")
+  followsSeenAt DateTime?
   createdAt    DateTime  @default(now())
   updatedAt    DateTime  @updatedAt
 
@@ -32,6 +33,22 @@ model User {
   sessions      Session[]
   invitationsSent     Invitation[] @relation("invitedBy")
   invitationsAccepted Invitation[] @relation("acceptedBy")
+  follows             Follow[]
+}
+
+// Suivi d'un expert ou d'une organisation : alimente le fil « Mes suivis ».
+model Follow {
+  id             String               @id @default(cuid())
+  userId         String
+  user           User                 @relation(fields: [userId], references: [id], onDelete: Cascade)
+  practitionerId String?
+  practitioner   PractitionerProfile? @relation(fields: [practitionerId], references: [id], onDelete: Cascade)
+  organizationId String?
+  organization   Organization?        @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  createdAt      DateTime             @default(now())
+
+  @@unique([userId, practitionerId])
+  @@unique([userId, organizationId])
 }
 
 // Session de connexion : seul le hash du jeton est stocké.
@@ -77,6 +94,8 @@ model PractitionerProfile {
   projectLinks  ProjectExpert[]
   applications  Application[]
   speakerApplications SpeakerApplication[]
+  followers     Follow[]
+  orcidSyncedAt DateTime?
 }
 
 // Publication scientifique déclarée par le praticien.
@@ -89,6 +108,7 @@ model Publication {
   year           Int?
   doi            String?
   keywords       String[]
+  source         String?             // orcid si importée
   createdAt      DateTime            @default(now())
 
   @@index([practitionerId])
@@ -148,6 +168,7 @@ model Organization {
   rfqs             Rfq[]         @relation("rfqRequester")
   rfqInvites       RfqSupplier[]
   quotes           Quote[]
+  followers        Follow[]
 }
 
 // Invitation d'un membre par lien (jeton à usage unique, stocké haché).

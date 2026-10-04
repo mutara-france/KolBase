@@ -442,6 +442,17 @@ async function main() {
     });
   }
 
+  // ─── Suivis (fil « Mes suivis ») ─────────────────────────────────────────
+  const FOLLOWS: [string, string, "p" | "o"][] = [
+    ["demo-u-claire", "demo-p-durand", "p"], ["demo-u-claire", "demo-p-nguyen", "p"], ["demo-u-claire", "demo-p-blanc", "p"],
+    ["demo-u-julien", "demo-p-martin", "p"], ["demo-u-thomas", "demo-p-petit", "p"],
+    ["demo-u-fontaine", "demo-org-dentalys", "o"], ["demo-u-fontaine", "demo-org-cdra", "o"], ["demo-u-nguyen", "demo-org-cdra", "o"], ["demo-u-durand", "demo-org-dentalys", "o"],
+  ];
+  for (const [userId, target, kind] of FOLLOWS) {
+    const exists = await db.follow.findFirst({ where: { userId, ...(kind === "p" ? { practitionerId: target } : { organizationId: target }) } });
+    if (!exists) await db.follow.create({ data: { userId, ...(kind === "p" ? { practitionerId: target } : { organizationId: target }), createdAt: at(-30) } });
+  }
+
   // ─── Comptes réels rattachés aux organisations de démo ───────────────────
   const admins = (process.env.DEMO_ADMIN_EMAILS ?? "").split(",").map((e) => e.trim().toLowerCase()).filter(Boolean);
   for (const email of admins) {
