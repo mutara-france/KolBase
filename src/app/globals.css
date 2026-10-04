@@ -366,3 +366,24 @@ body:has(.sidebar) .site-footer { max-width: none; width: auto; padding: 24px 32
 .shortcut { display: flex; align-items: center; gap: 8px; padding: 10px 12px; border: 1px solid var(--line); border-radius: 10px; font-size: 13px; font-weight: 500; color: var(--ink); text-decoration: none !important; }
 .shortcut:hover { border-color: var(--electric); color: var(--electric); }
 .shortcut svg { color: var(--electric); }
+
+/* ─── Dossiers : conflits, budget, supports ─────────────────── */
+.conflict-list { list-style: none; padding: 0; margin: 0; display: flex; flex-direction: column; gap: 8px; }
+.conflict { display: flex; gap: 10px; align-items: flex-start; padding: 10px 12px; border-radius: 10px; font-size: 13.5px; line-height: 1.5; }
+.conflict svg { flex: none; margin-top: 2px; }
+.conflict.warn { background: var(--warn-bg); color: var(--warn); }
+.conflict.danger { background: var(--danger-bg); color: var(--danger); }
+.conflict.info { background: var(--electric-soft); color: var(--electric); }
+.conflict strong { color: var(--ink); }
+.gauge-track { height: 8px; border-radius: 6px; background: var(--bg-subtle); overflow: hidden; border: 1px solid var(--line); }
+.gauge-fill { height: 100%; background: var(--electric); border-radius: 6px; }
+.gauge-fill.over { background: var(--danger); }
+.tone-danger { color: var(--danger); }
+.material { border: 1px solid var(--line); border-radius: 11px; padding: 14px; }
+.version-list { list-style: none; padding: 0 0 0 12px; margin: 10px 0 6px; border-left: 2px solid var(--line); display: flex; flex-direction: column; gap: 10px; }
+.version-list li { display: flex; flex-direction: column; gap: 3px; }
+.version-list a { display: inline-flex; align-items: center; gap: 4px; }
+.review { font-size: 12.5px; margin: 2px 0 0; padding: 6px 10px; border-radius: 8px; }
+.review.approved { background: var(--ok-bg); color: var(--ok); }
+.review.changes { background: var(--danger-bg); color: var(--danger); }
+.sub-form { border: 1px dashed var(--line); border-radius: 11px; padding: 14px; margin-top: 8px; }
