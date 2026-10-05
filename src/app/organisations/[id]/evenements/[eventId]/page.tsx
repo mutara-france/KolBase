@@ -3,17 +3,19 @@ import { notFound } from "next/navigation";
 import { SiteHeader } from "@/components/SiteHeader";
 import { db } from "@/lib/db";
 import { requireMembership } from "@/lib/orgs";
-import { EVENT_MANAGER_ROLES, eventTypeLabel, formatDate, formatDateTime, formatEUR, FORMAT_LABEL } from "@/lib/events";
-import { setEventFlag } from "@/lib/event-actions";
+import { EVENT_MANAGER_ROLES, EVENT_ORGANIZER_ROLES, eventScope, eventTypeLabel, formatDate, formatDateTime, formatEUR, FORMAT_LABEL } from "@/lib/events";
+import { setEventAgency, setEventFlag } from "@/lib/event-actions";
 
 export const metadata = { title: "Événement — Kolbase" };
 
 export default async function Page({ params }: { params: Promise<{ id: string; eventId: string }> }) {
   const { id, eventId } = await params;
-  const { org } = await requireMembership(id, EVENT_MANAGER_ROLES);
+  const { org, roles, user } = await requireMembership(id, EVENT_MANAGER_ROLES);
+  const isOrganizer = roles.some((r) => EVENT_ORGANIZER_ROLES.includes(r));
   const event = await db.event.findFirst({
-    where: { id: eventId, organizationId: id },
+    where: { id: eventId, organizationId: id, ...eventScope(user, roles) },
     include: {
+      agency: { select: { name: true } },
       benefits: true,
       registrations: { include: { user: true, benefits: { include: { benefit: true } } }, orderBy: { createdAt: "asc" } },
     },
@@ -21,6 +23,22 @@ export default async function Page({ params }: { params: Promise<{ id: string; e
   if (!event) notFound();
   const totalCents = event.registrations.reduce((s, r) => s + r.benefits.reduce((x, b) => x + b.valueCents, 0), 0);
   const withBenefits = event.registrations.filter((r) => r.benefits.length > 0).length;
+
+  const agencies = isOrganizer ? await db.mandate.findMany({ where: { mandatorId: id }, include: { agency: { select: { id: true, name: true } } } }) : [];
+  const AgencyForm = () =>
+    agencies.length === 0 ? null : (
+      <form action={setEventAgency} className="inline wrap">
+        <input type="hidden" name="orgId" value={id} />
+        <input type="hidden" name="eventId" value={eventId} />
+        <label className="muted">Agence mandatée
+          <select name="agencyId" defaultValue={event.agencyId ?? ""}>
+            <option value="">— aucune (géré en interne) —</option>
+            {agencies.map((m) => <option key={m.agency.id} value={m.agency.id}>{m.agency.name}</option>)}
+          </select>
+        </label>
+        <button className="btn ghost small">Confier</button>
+      </form>
+    );
 
   const Flag = ({ flag, label, ghost }: { flag: string; label: string; ghost?: boolean }) => (
     <form action={setEventFlag}>
@@ -48,6 +66,11 @@ export default async function Page({ params }: { params: Promise<{ id: string; e
           {event.publishedAt ? <Flag flag="unpublish" label="Retirer de l'agenda" ghost /> : <Flag flag="publish" label="Publier dans l'agenda" />}
           {event.registrationOpen ? <Flag flag="close" label="Fermer les inscriptions" ghost /> : <Flag flag="open" label="Rouvrir les inscriptions" ghost />}
         </div>
+        {isOrganizer ? (
+          <AgencyForm />
+        ) : (
+          <p className="notice ok">Événement confié à {event.agency?.name ?? "votre agence"} par {org.name}.</p>
+        )}
         <div className="stats">
           <div className="card stat"><span className="muted">Inscrits</span><strong>{event.registrations.length}{event.capacity ? ` / ${event.capacity}` : ""}</strong></div>
           <div className="card stat"><span className="muted">Avec hospitalités</span><strong>{withBenefits}</strong></div>
