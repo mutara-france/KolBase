@@ -5,8 +5,8 @@ import { Avatar } from "@/components/Avatar";
 import { Logo } from "@/components/Logo";
 import { PublicNav } from "@/components/PublicNav";
 import { MenuToggle, Sidebar, type NavSection } from "@/components/Sidebar";
-import { COMPLIANCE_ROLES, EVENT_MANAGER_ROLES } from "@/lib/events";
-import { PROJECT_ROLES, PROJECT_VIEW_ROLES } from "@/lib/projects";
+import { COMPLIANCE_ROLES, EVENT_MANAGER_ROLES, EVENT_ORGANIZER_ROLES } from "@/lib/events";
+import { PROJECT_VIEW_ROLES, REVIEW_ROLES, SOURCING_ROLES } from "@/lib/projects";
 import { unseenFollowCount } from "@/lib/follows";
 import type { OrgRole } from "@/generated/prisma/client";
 
@@ -64,27 +64,39 @@ export async function SiteHeader({ variant = "app" }: { variant?: "app" | "publi
       subtitle: o.name,
       items: [
         { href: base, label: "Tableau de bord", icon: "LayoutDashboard", exact: true },
-        ...(has(PROJECT_VIEW_ROLES, o.roles) ? [{ href: `${base}/dossiers`, label: "Dossiers", icon: "ClipboardList" as const }] : []),
-        ...(has(PROJECT_ROLES, o.roles) ? [{ href: `${base}/opportunites`, label: "Opportunités", icon: "Megaphone" as const }] : []),
-        ...(has(EVENT_MANAGER_ROLES, o.roles) ? [{ href: `${base}/evenements`, label: "Événements", icon: "CalendarDays" as const }] : []),
-        ...(has(EVENT_MANAGER_ROLES, o.roles) && o.kind !== "PRESTATAIRE" ? [{ href: `${base}/intervenants`, label: "Appels à intervenants", icon: "Mic" as const }] : []),
-        ...(has(EVENT_MANAGER_ROLES, o.roles) && o.kind !== "PRESTATAIRE" ? [{ href: `${base}/prestataires`, label: "Prestataires", icon: "Receipt" as const }] : []),
-        ...(o.kind === "PRESTATAIRE" ? [{ href: `${base}/devis`, label: "Demandes de devis", icon: "Receipt" as const, badge: rfqTodo.find((r) => r.supplierId === id)?._count ?? 0 }] : []),
-        ...(has(COMPLIANCE_ROLES, o.roles) ? [{ href: `${base}/conformite`, label: "Conformité", icon: "ShieldCheck" as const }] : []),
-        ...(has(COMPLIANCE_ROLES, o.roles) ? [{ href: `${base}/hospitalites`, label: "Hospitalités", icon: "Gift" as const }] : []),
-        ...(o.roles.includes("ADMIN") ? [{ href: `${base}/integrations`, label: "Intégrations", icon: "Plug" as const }] : []),
-        { href: `${base}/membres`, label: "Membres et réglages", icon: "Users" as const },
+        ...(o.kind === "PRESTATAIRE"
+          ? [
+              { href: `${base}/devis`, label: "Demandes de devis", icon: "Receipt" as const, badge: rfqTodo.find((r) => r.supplierId === id)?._count ?? 0 },
+              ...(o.roles.includes("ADMIN") ? [{ href: `${base}/membres`, label: "Membres et réglages", icon: "Users" as const }] : []),
+            ]
+          : orgItems(base, o.roles)),
       ],
     });
   }
+  function orgItems(base: string, roles: OrgRole[]): NavSection["items"] {
+    const o = { roles };
+    return [
+        ...(has(PROJECT_VIEW_ROLES, o.roles) ? [{ href: `${base}/dossiers`, label: "Dossiers", icon: "ClipboardList" as const }] : []),
+        ...(has(SOURCING_ROLES, o.roles) ? [{ href: `${base}/opportunites`, label: "Opportunités", icon: "Megaphone" as const }] : []),
+        ...(has(EVENT_MANAGER_ROLES, o.roles) ? [{ href: `${base}/evenements`, label: has(EVENT_ORGANIZER_ROLES, o.roles) ? "Événements" : "Événements confiés", icon: "CalendarDays" as const }] : []),
+        ...(has(EVENT_ORGANIZER_ROLES, o.roles) ? [{ href: `${base}/intervenants`, label: "Appels à intervenants", icon: "Mic" as const }] : []),
+        ...(has(EVENT_MANAGER_ROLES, o.roles) ? [{ href: `${base}/prestataires`, label: "Prestataires", icon: "Receipt" as const }] : []),
+        ...(has(REVIEW_ROLES, o.roles) ? [{ href: `${base}/relecture`, label: "Revue documentaire", icon: "FlaskConical" as const }] : []),
+        ...(has(COMPLIANCE_ROLES, o.roles) ? [{ href: `${base}/conformite`, label: "Conformité", icon: "ShieldCheck" as const }] : []),
+        ...(has(COMPLIANCE_ROLES, o.roles) ? [{ href: `${base}/hospitalites`, label: "Hospitalités", icon: "Gift" as const }] : []),
+        ...(has(["ADMIN", "EDUCATION", "CUMUL", "CONFORMITE"], o.roles) ? [{ href: `${base}/integrations`, label: "Intégrations", icon: "Plug" as const }] : []),
+        ...(o.roles.every((r) => r === "PRESTATAIRE") ? [] : [{ href: `${base}/membres`, label: "Membres et réglages", icon: "Users" as const }]),
+    ];
+  }
 
+  const sourcing = user.memberships.some((m) => SOURCING_ROLES.includes(m.role) && m.organization.kind !== "PRESTATAIRE");
   const followCount = (await db.follow.count({ where: { userId: user.id } })) ? await unseenFollowCount(user.id, user.followsSeenAt) : 0;
   sections.push({
     title: "Explorer",
     items: [
       { href: "/evenements", label: "Agenda", icon: "CalendarDays" },
-      { href: "/suivis", label: "Mes suivis", icon: "Bell", badge: followCount },
-      ...(orgs.size > 0 || p?.listed ? [{ href: "/annuaire", label: "Annuaire des experts", icon: "Search" as const }] : []),
+      ...(sourcing || p?.listed ? [{ href: "/suivis", label: "Mes suivis", icon: "Bell" as const, badge: followCount }] : []),
+      ...(sourcing ? [{ href: "/annuaire", label: "Annuaire des experts", icon: "Search" as const }] : [{ href: "/experts", label: "Experts", icon: "Search" as const }]),
     ],
   });
   sections.push({
