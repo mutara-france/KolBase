@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { CalendarDays, ClipboardList, ExternalLink, Gift, Megaphone, Mic, Receipt, Search, Users } from "lucide-react";
+import { CalendarDays, ClipboardList, ExternalLink, FlaskConical, Gift, Megaphone, Mic, Receipt, Search, ShieldCheck, Users } from "lucide-react";
 import { SiteHeader } from "@/components/SiteHeader";
 import { Avatar } from "@/components/Avatar";
 import { StatCard } from "@/components/PublicCards";
@@ -7,8 +7,8 @@ import { StatusPill } from "@/components/ProjectBits";
 import { TodoList, type TodoItem } from "@/components/Todo";
 import { db } from "@/lib/db";
 import { ORG_KIND_LABEL, ROLE_LABEL, requireMembership } from "@/lib/orgs";
-import { COMPLIANCE_ROLES, EVENT_MANAGER_ROLES, formatDate, formatDateTime, formatEUR } from "@/lib/events";
-import { PROJECT_ROLES, PROJECT_VIEW_ROLES } from "@/lib/projects";
+import { COMPLIANCE_ROLES, EVENT_MANAGER_ROLES, EVENT_ORGANIZER_ROLES, eventScope, formatDate, formatDateTime, formatEUR } from "@/lib/events";
+import { PROJECT_ROLES, PROJECT_VIEW_ROLES, REVIEW_ROLES, SOURCING_ROLES } from "@/lib/projects";
 
 export const metadata = { title: "Tableau de bord — Kolbase" };
 
@@ -16,18 +16,26 @@ const DAY = 864e5;
 
 export default async function Page({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
-  const { org, roles } = await requireMembership(id);
-  const can = { project: roles.some((r) => PROJECT_ROLES.includes(r)), view: roles.some((r) => PROJECT_VIEW_ROLES.includes(r)), events: roles.some((r) => EVENT_MANAGER_ROLES.includes(r)), compliance: roles.some((r) => COMPLIANCE_ROLES.includes(r)), review: roles.includes("RELECTURE") };
+  const { org, roles, user } = await requireMembership(id);
+  // Organisation prestataire : uniquement ses demandes de devis (pas de dossiers, d'événements ni de conformité).
+  const has = (list: typeof roles) => org.kind !== "PRESTATAIRE" && roles.some((r) => list.includes(r));
+  const can = {
+    sourcing: has(SOURCING_ROLES), project: has(PROJECT_ROLES), view: has(PROJECT_VIEW_ROLES),
+    events: has(EVENT_MANAGER_ROLES), organizer: has(EVENT_ORGANIZER_ROLES), compliance: has(COMPLIANCE_ROLES), review: has(REVIEW_ROLES),
+  };
+  const evScope = eventScope(user, roles);
+  // Prestataire mandaté par une autre organisation : accès limité aux événements confiés.
+  const isExternal = roles.every((r) => r === "PRESTATAIRE");
   const now = new Date();
   const base = `/organisations/${id}`;
 
-  const reviewQueue = can.review || roles.includes("ADMIN") || can.compliance
+  const reviewQueue = can.review
     ? await db.materialVersion.findMany({ where: { status: "submitted", material: { project: { organizationId: id } } }, include: { material: { include: { project: { select: { id: true, title: true } } } } } })
     : [];
   const [projects, events, calls, hosp] = await Promise.all([
     can.view ? db.project.findMany({ where: { organizationId: id }, include: { experts: true }, orderBy: { updatedAt: "desc" } }) : Promise.resolve([]),
-    can.events || can.compliance ? db.event.findMany({ where: { organizationId: id }, include: { _count: { select: { registrations: true } } }, orderBy: { startsAt: "asc" } }) : Promise.resolve([]),
-    can.project ? db.openCall.findMany({ where: { organizationId: id, status: "open" }, include: { applications: { where: { status: "pending" }, select: { id: true } } } }) : Promise.resolve([]),
+    can.events || can.compliance ? db.event.findMany({ where: { organizationId: id, ...(can.compliance ? {} : evScope) }, include: { _count: { select: { registrations: true } } }, orderBy: { startsAt: "asc" } }) : Promise.resolve([]),
+    can.sourcing ? db.openCall.findMany({ where: { organizationId: id, status: "open" }, include: { applications: { where: { status: "pending" }, select: { id: true } } } }) : Promise.resolve([]),
     can.compliance
       ? db.registration.findMany({ where: { event: { organizationId: id }, profession: { not: null }, declared: false, benefits: { some: {} } }, include: { event: true, benefits: true } })
       : Promise.resolve([]),
@@ -67,7 +75,7 @@ export default async function Page({ params }: { params: Promise<{ id: string }>
     for (const [, e] of byEvent) if (e.past) todos.push({ href: `${base}/hospitalites`, title: `Déclarer les hospitalités : ${e.title}`, detail: `${e.n} bénéficiaire${e.n > 1 ? "s" : ""}`, icon: "FileSignature", tone: "danger" });
   }
   for (const v of reviewQueue)
-    todos.push({ href: `${base}/dossiers/${v.material.project.id}`, title: `Support à relire : ${v.material.title} (v${v.version})`, detail: v.material.project.title, icon: "CircleDot" });
+    todos.push({ href: `${base}/relecture`, title: `Support à relire : ${v.material.title} (v${v.version})`, detail: v.material.project.title, icon: "CircleDot" });
   if (can.events) {
     for (const e of events) {
       if (!e.publishedAt && e.startsAt >= now) todos.push({ href: `${base}/evenements/${e.id}`, title: `Brouillon à publier : ${e.title}`, detail: formatDate(e.startsAt), icon: "CalendarClock", tone: "warn" });
@@ -77,7 +85,7 @@ export default async function Page({ params }: { params: Promise<{ id: string }>
     }
   }
 
-  if (can.events && org.kind !== "PRESTATAIRE") {
+  if (can.organizer && org.kind !== "PRESTATAIRE") {
     const [speakerApps, rfqs] = await Promise.all([
       db.speakerApplication.groupBy({ by: ["eventId"], where: { status: "pending", event: { organizationId: id } }, _count: true }),
       db.rfq.findMany({ where: { organizationId: id, status: { in: ["draft", "sent"] } }, include: { event: { select: { title: true } }, _count: { select: { quotes: true, suppliers: true } } } }),
@@ -98,16 +106,19 @@ export default async function Page({ params }: { params: Promise<{ id: string }>
 
   const shortcuts = [
     can.view && { href: `${base}/dossiers`, label: "Dossiers", icon: ClipboardList },
-    can.project && { href: `${base}/dossiers/nouveau`, label: "Nouveau dossier", icon: ClipboardList },
-    can.project && { href: `${base}/opportunites`, label: "Opportunités", icon: Megaphone },
-    can.events && { href: `${base}/evenements/nouveau`, label: "Nouvel événement", icon: CalendarDays },
-    can.events && org.kind !== "PRESTATAIRE" && { href: `${base}/intervenants`, label: "Appels à intervenants", icon: Mic },
+    can.sourcing && { href: `${base}/dossiers/nouveau`, label: "Nouveau dossier", icon: ClipboardList },
+    can.sourcing && { href: `${base}/opportunites`, label: "Opportunités", icon: Megaphone },
+    can.organizer && { href: `${base}/evenements/nouveau`, label: "Nouvel événement", icon: CalendarDays },
+    can.events && !can.organizer && { href: `${base}/evenements`, label: "Événements confiés", icon: CalendarDays },
+    can.organizer && org.kind !== "PRESTATAIRE" && { href: `${base}/intervenants`, label: "Appels à intervenants", icon: Mic },
     can.events && org.kind !== "PRESTATAIRE" && { href: `${base}/prestataires`, label: "Prestataires et devis", icon: Receipt },
     org.kind === "PRESTATAIRE" && { href: `${base}/devis`, label: "Demandes de devis", icon: Receipt },
+    can.review && { href: `${base}/relecture`, label: "Revue documentaire", icon: FlaskConical },
+    can.compliance && { href: `${base}/conformite`, label: "Espace conformité", icon: ShieldCheck },
     can.compliance && { href: `${base}/hospitalites`, label: "Hospitalités", icon: Gift },
-    { href: "/annuaire", label: "Annuaire des experts", icon: Search },
-    { href: `${base}/membres`, label: "Membres et réglages", icon: Users },
-    { href: `/structures/${id}`, label: "Page publique", icon: ExternalLink },
+    can.sourcing && { href: "/annuaire", label: "Annuaire des experts", icon: Search },
+    !isExternal && { href: `${base}/membres`, label: "Membres et réglages", icon: Users },
+    org.kind !== "PRESTATAIRE" && { href: `/structures/${id}`, label: "Page publique", icon: ExternalLink },
   ].filter(Boolean) as { href: string; label: string; icon: typeof Users }[];
 
   return (
@@ -126,7 +137,7 @@ export default async function Page({ params }: { params: Promise<{ id: string }>
           {can.view && <StatCard label="Dossiers en cours" value={active.length} hint={`${engaged.length} expert${engaged.length > 1 ? "s" : ""} engagé${engaged.length > 1 ? "s" : ""}`} />}
           {can.view && <StatCard label="Engagement en cours (HT)" value={formatEUR(engaged.reduce((s, e) => s + (e.feeCents ?? 0), 0))} />}
           {can.events && <StatCard label="Événements à venir" value={upcoming.length} hint={`${upcoming.reduce((s, e) => s + e._count.registrations, 0)} inscrits`} electric />}
-          {can.project && <StatCard label="Candidatures à traiter" value={pendingApps} hint={`${calls.length} appel${calls.length > 1 ? "s" : ""} ouvert${calls.length > 1 ? "s" : ""}`} />}
+          {can.sourcing && <StatCard label="Candidatures à traiter" value={pendingApps} hint={`${calls.length} appel${calls.length > 1 ? "s" : ""} ouvert${calls.length > 1 ? "s" : ""}`} />}
           {can.compliance && <StatCard label="À valider" value={projects.filter((p) => p.status === "EN_VALID").length} />}
           {can.compliance && <StatCard label="Hospitalités à déclarer" value={hosp.length} hint={formatEUR(hospValue)} />}
         </div>
@@ -158,7 +169,7 @@ export default async function Page({ params }: { params: Promise<{ id: string }>
                 <h2 className="section-title">Prochains événements</h2>
                 <ul className="mini-list">
                   {upcoming.slice(0, 4).map((e) => (
-                    <li key={e.id}><Link href={`${base}/evenements/${e.id}`}><strong>{e.title}</strong></Link><span className="text-xs">{formatDateTime(e.startsAt)} · {e._count.registrations} inscrit{e._count.registrations > 1 ? "s" : ""}{e.publishedAt ? "" : " · brouillon"}</span></li>
+                    <li key={e.id}><Link href={can.events ? `${base}/evenements/${e.id}` : `/evenements/${e.id}`}><strong>{e.title}</strong></Link><span className="text-xs">{formatDateTime(e.startsAt)} · {e._count.registrations} inscrit{e._count.registrations > 1 ? "s" : ""}{e.publishedAt ? "" : " · brouillon"}</span></li>
                   ))}
                 </ul>
               </section>
