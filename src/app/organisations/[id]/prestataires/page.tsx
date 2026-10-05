@@ -5,7 +5,7 @@ import { Avatar } from "@/components/Avatar";
 import { NewRfqForm, SupplierLine } from "@/components/RfqForms";
 import { db } from "@/lib/db";
 import { requireMembership } from "@/lib/orgs";
-import { EVENT_MANAGER_ROLES, formatDate, formatEUR } from "@/lib/events";
+import { EVENT_MANAGER_ROLES, eventScope, formatDate, formatEUR } from "@/lib/events";
 import { QUOTE_STATUS, RFQ_STATUS, rfqDisplayStatus, SUPPLIER_CATEGORIES, supplierCategoryLabel } from "@/lib/suppliers";
 import { awardQuote, cancelRfq, sendRfq } from "@/lib/rfq-actions";
 
@@ -15,16 +15,18 @@ export default async function Page({ params, searchParams }: { params: Promise<{
   const { id } = await params;
   const { evenement, cat } = await searchParams;
   const onglet = (await searchParams).onglet ?? (evenement ? "nouvelle" : "demandes");
-  const { org } = await requireMembership(id, EVENT_MANAGER_ROLES);
+  const { org, user, roles } = await requireMembership(id, EVENT_MANAGER_ROLES);
+  const scope = eventScope(user, roles);
+  const scoped = Object.keys(scope).length > 0;
 
   const [rfqs, suppliersRaw, events] = await Promise.all([
     db.rfq.findMany({
-      where: { organizationId: id },
+      where: { organizationId: id, ...(scoped ? { event: scope } : {}) },
       include: { event: true, suppliers: { include: { supplier: true } }, quotes: { include: { supplier: true }, orderBy: { amountCents: "asc" } } },
       orderBy: { createdAt: "desc" },
     }),
     db.organization.findMany({ where: { kind: "PRESTATAIRE", listed: true, NOT: { supplierCategories: { isEmpty: true } } }, orderBy: { name: "asc" } }),
-    db.event.findMany({ where: { organizationId: id, startsAt: { gte: new Date() } }, orderBy: { startsAt: "asc" } }),
+    db.event.findMany({ where: { organizationId: id, ...scope, startsAt: { gte: new Date() } }, orderBy: { startsAt: "asc" } }),
   ]);
   const suppliers = suppliersRaw.map((s) => ({ id: s.id, name: s.name, categories: s.supplierCategories, city: s.headquarters, coverage: s.coverage, about: s.about, since: s.createdAt.getFullYear() }));
   const awarded = rfqs.filter((r) => r.status === "awarded");
