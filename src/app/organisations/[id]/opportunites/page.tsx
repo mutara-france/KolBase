@@ -4,13 +4,13 @@ import { NewCallForm } from "@/components/OpportunityForms";
 import { db } from "@/lib/db";
 import { requireMembership } from "@/lib/orgs";
 import { formatDate } from "@/lib/events";
-import { COLLAB_TYPES, collabType, PROJECT_ROLES } from "@/lib/projects";
+import { COLLAB_TYPES, collabType, SOURCING_ROLES } from "@/lib/projects";
 
 export const metadata = { title: "Opportunités — Kolbase" };
 
 export default async function Page({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
-  const { org } = await requireMembership(id, PROJECT_ROLES);
+  const { org } = await requireMembership(id, SOURCING_ROLES);
   const calls = await db.openCall.findMany({
     where: { organizationId: id },
     include: { applications: { select: { status: true } } },
