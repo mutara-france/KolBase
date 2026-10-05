@@ -159,7 +159,7 @@ model Organization {
 
   members       Membership[]
   projects      Project[]
-  events        Event[]
+  events        Event[]       @relation("orgEvents")
   openCalls     OpenCall[]
   // Mandats : une organisation peut mandater un prestataire.
   mandatesGiven    Mandate[] @relation("mandator")
@@ -169,6 +169,7 @@ model Organization {
   rfqInvites       RfqSupplier[]
   quotes           Quote[]
   followers        Follow[]
+  agencyEvents     Event[]       @relation("agencyEvents")
 }
 
 // Invitation d'un membre par lien (jeton à usage unique, stocké haché).
@@ -361,7 +362,7 @@ enum EventFormat {
 model Event {
   id               String       @id @default(cuid())
   organizationId   String
-  organization     Organization @relation(fields: [organizationId], references: [id])
+  organization     Organization @relation("orgEvents", fields: [organizationId], references: [id])
   projectId        String?
   project          Project?     @relation(fields: [projectId], references: [id])
   title            String
@@ -382,6 +383,9 @@ model Event {
   speakerBudgetMinCents Int?
   speakerBudgetMaxCents Int?
   speakerProfile   String?
+  // Agence prestataire mandatée : ses membres (rôle Prestataire) ne voient que les événements confiés.
+  agencyId         String?
+  agency           Organization? @relation("agencyEvents", fields: [agencyId], references: [id])
   createdAt        DateTime     @default(now())
   updatedAt        DateTime     @updatedAt
 

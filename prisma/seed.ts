@@ -394,6 +394,9 @@ async function main() {
     }
   }
 
+  // Événement confié à l'agence mandatée (son membre « Prestataire » n'accède qu'à celui-ci).
+  await db.event.updateMany({ where: { id: "demo-ev-soiree-implanto", agencyId: null }, data: { agencyId: "demo-org-mediane" } });
+
   // ─── Appels à intervenants ───────────────────────────────────────────────
   const SPEAKER_CALLS: { event: string; slots: number; deadline: number; min: number; max: number; profile: string; apps: [string, string, string?, string?][] }[] = [
     { event: "demo-ev-live-surgery", slots: 2, deadline: 40, min: 1500, max: 3000, profile: "Implantologistes pratiquant la mise en charge immédiate, à l'aise avec la chirurgie retransmise et les échanges avec la salle.",
