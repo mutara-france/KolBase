@@ -5,8 +5,8 @@ import { Avatar } from "@/components/Avatar";
 import { OpenSpeakerCallForm, RetainSpeakerForm } from "@/components/SpeakerForms";
 import { db } from "@/lib/db";
 import { requireMembership } from "@/lib/orgs";
-import { EVENT_MANAGER_ROLES, eventTypeLabel, formatDate, formatDateTime, formatEUR, TZ } from "@/lib/events";
-import { PROJECT_ROLES, PROJECT_VIEW_ROLES } from "@/lib/projects";
+import { EVENT_ORGANIZER_ROLES, eventTypeLabel, formatDate, formatDateTime, formatEUR, TZ } from "@/lib/events";
+import { PROJECT_VIEW_ROLES } from "@/lib/projects";
 import { SPEAKER_STATUS } from "@/lib/suppliers";
 import { rejectSpeaker, setSpeakerCallOpen } from "@/lib/speaker-actions";
 
@@ -17,8 +17,8 @@ const eur = (c: number | null) => (c != null ? String(c / 100) : "");
 
 export default async function Page({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
-  const { org, roles } = await requireMembership(id, [...EVENT_MANAGER_ROLES, ...PROJECT_ROLES]);
-  const canManage = roles.some((r) => EVENT_MANAGER_ROLES.includes(r));
+  const { org, roles } = await requireMembership(id, EVENT_ORGANIZER_ROLES);
+  const canManage = true;
   const canSeeProjects = roles.some((r) => PROJECT_VIEW_ROLES.includes(r));
   const now = new Date();
 
