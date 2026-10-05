@@ -1,12 +1,12 @@
 import { db } from "@/lib/db";
 import { requireMembership } from "@/lib/orgs";
-import { EVENT_MANAGER_ROLES, formatDate, toCSV } from "@/lib/events";
+import { EVENT_MANAGER_ROLES, eventScope, formatDate, toCSV } from "@/lib/events";
 
 export async function GET(_: Request, { params }: { params: Promise<{ id: string; eventId: string }> }) {
   const { id, eventId } = await params;
-  await requireMembership(id, EVENT_MANAGER_ROLES);
+  const { user, roles } = await requireMembership(id, EVENT_MANAGER_ROLES);
   const event = await db.event.findFirst({
-    where: { id: eventId, organizationId: id },
+    where: { id: eventId, organizationId: id, ...eventScope(user, roles) },
     include: { registrations: { include: { user: true, benefits: { include: { benefit: true } } }, orderBy: { createdAt: "asc" } } },
   });
   if (!event) return new Response("Introuvable", { status: 404 });
