@@ -12,7 +12,7 @@ const STATUS = { actif: { label: "Actif", tone: "ok" }, export: { label: "Par ex
 
 export default async function Page({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
-  const { org, roles } = await requireMembership(id);
+  const { org, roles } = await requireMembership(id, ["ADMIN", "EDUCATION", "CUMUL", "CONFORMITE"]);
   const isCompliance = roles.some((r) => COMPLIANCE_ROLES.includes(r));
   const orcidExperts = await db.practitionerProfile.count({ where: { listed: true, orcidSyncedAt: { not: null } } });
 
