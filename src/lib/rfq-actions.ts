@@ -5,7 +5,7 @@ import { revalidatePath } from "next/cache";
 import { db } from "@/lib/db";
 import { audit } from "@/lib/auth";
 import { requireMembership } from "@/lib/orgs";
-import { EVENT_MANAGER_ROLES, parseParisDateTime } from "@/lib/events";
+import { EVENT_MANAGER_ROLES, eventScope, parseParisDateTime } from "@/lib/events";
 import { SUPPLIER_CATEGORIES } from "@/lib/suppliers";
 
 export type ActionState = { error?: string; ok?: string } | undefined;
@@ -18,13 +18,21 @@ const eurToCents = (v: string) => {
 
 // ─── Côté organisation ──────────────────────────────────────────────────────
 
+/** Un prestataire mandaté n'agit que sur les demandes liées aux événements qui lui sont confiés. */
+function rfqScope(user: Parameters<typeof eventScope>[0], roles: Parameters<typeof eventScope>[1]) {
+  const scope = eventScope(user, roles);
+  return Object.keys(scope).length ? { event: scope } : {};
+}
+
 export async function createRfq(_: ActionState, form: FormData): Promise<ActionState> {
   const orgId = str(form, "orgId");
-  const { user } = await requireMembership(orgId, EVENT_MANAGER_ROLES);
+  const { user, roles } = await requireMembership(orgId, EVENT_MANAGER_ROLES);
+  const scope = eventScope(user, roles);
   const category = str(form, "category");
   if (!SUPPLIER_CATEGORIES.some((c) => c.id === category)) return { error: "Type de prestation invalide." };
   const eventId = str(form, "eventId") || null;
-  const event = eventId ? await db.event.findFirst({ where: { id: eventId, organizationId: orgId } }) : null;
+  if (!eventId && Object.keys(scope).length) return { error: "Choisissez l'événement qui vous est confié." };
+  const event = eventId ? await db.event.findFirst({ where: { id: eventId, organizationId: orgId, ...scope } }) : null;
   if (eventId && !event) return { error: "Événement introuvable." };
   const supplierIds = [...new Set(form.getAll("supplierIds").map(String))];
   if (supplierIds.length === 0) return { error: "Sélectionnez au moins un prestataire." };
@@ -51,18 +59,18 @@ export async function createRfq(_: ActionState, form: FormData): Promise<ActionS
 
 export async function sendRfq(form: FormData) {
   const orgId = str(form, "orgId");
-  const { user } = await requireMembership(orgId, EVENT_MANAGER_ROLES);
+  const { user, roles } = await requireMembership(orgId, EVENT_MANAGER_ROLES);
   const rfqId = str(form, "rfqId");
-  await db.rfq.updateMany({ where: { id: rfqId, organizationId: orgId, status: "draft" }, data: { status: "sent", sentAt: new Date() } });
+  await db.rfq.updateMany({ where: { id: rfqId, organizationId: orgId, ...rfqScope(user, roles), status: "draft" }, data: { status: "sent", sentAt: new Date() } });
   await audit(user.id, "rfq.send", "Rfq", rfqId);
   revalidatePath(`/organisations/${orgId}/prestataires`);
 }
 
 export async function cancelRfq(form: FormData) {
   const orgId = str(form, "orgId");
-  const { user } = await requireMembership(orgId, EVENT_MANAGER_ROLES);
+  const { user, roles } = await requireMembership(orgId, EVENT_MANAGER_ROLES);
   const rfqId = str(form, "rfqId");
-  await db.rfq.updateMany({ where: { id: rfqId, organizationId: orgId, status: { in: ["draft", "sent"] } }, data: { status: "cancelled" } });
+  await db.rfq.updateMany({ where: { id: rfqId, organizationId: orgId, ...rfqScope(user, roles), status: { in: ["draft", "sent"] } }, data: { status: "cancelled" } });
   await audit(user.id, "rfq.cancel", "Rfq", rfqId);
   revalidatePath(`/organisations/${orgId}/prestataires`);
 }
@@ -70,8 +78,8 @@ export async function cancelRfq(form: FormData) {
 /** Retenir un devis : les autres propositions passent en « non retenu ». */
 export async function awardQuote(form: FormData) {
   const orgId = str(form, "orgId");
-  const { user } = await requireMembership(orgId, EVENT_MANAGER_ROLES);
-  const quote = await db.quote.findFirst({ where: { id: str(form, "quoteId"), rfq: { organizationId: orgId, status: "sent" } } });
+  const { user, roles } = await requireMembership(orgId, EVENT_MANAGER_ROLES);
+  const quote = await db.quote.findFirst({ where: { id: str(form, "quoteId"), rfq: { organizationId: orgId, ...rfqScope(user, roles), status: "sent" } } });
   if (!quote) return;
   await db.$transaction([
     db.quote.update({ where: { id: quote.id }, data: { status: "retained" } }),

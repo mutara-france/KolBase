@@ -1,3 +1,4 @@
+import { SOURCING_ROLES } from "@/lib/projects";
 import "server-only";
 import { createHash } from "node:crypto";
 import { notFound, redirect } from "next/navigation";
@@ -34,16 +35,19 @@ export async function requireMembership(orgId: string, roles?: OrgRole[]) {
   const memberships = user.memberships.filter((m) => m.organizationId === orgId);
   if (memberships.length === 0) notFound();
   const userRoles = memberships.map((m) => m.role);
-  if (roles && !userRoles.some((r) => roles.includes(r))) redirect(`/organisations/${orgId}`);
   const org = await db.organization.findUnique({ where: { id: orgId } });
   if (!org) notFound();
+  if (roles && !userRoles.some((r) => roles.includes(r))) redirect(`/organisations/${orgId}`);
+  // Une organisation prestataire n'a que son tableau de bord, ses demandes de devis et ses membres :
+  // les espaces réservés à des rôles (dossiers, événements, conformité…) concernent les organisations clientes.
+  if (roles && org.kind === "PRESTATAIRE") redirect(`/organisations/${orgId}`);
   return { user, org, roles: userRoles, isAdmin: userRoles.includes("ADMIN") };
 }
 
-/** L'annuaire est réservé aux membres d'une organisation et aux experts référencés. */
+/** L'annuaire (sourcing) est réservé aux équipes Éducation, Cumul et aux administrateurs. Les autres voient l'annuaire public. */
 export async function requireDirectoryAccess() {
   const user = await requireUser();
-  if (user.memberships.length === 0 && !user.practitioner?.listed) redirect("/compte?annuaire=1");
+  if (!user.memberships.some((m) => SOURCING_ROLES.includes(m.role) && m.organization.kind !== "PRESTATAIRE")) redirect("/experts");
   return user;
 }
 

@@ -5,7 +5,7 @@ import { revalidatePath } from "next/cache";
 import { db } from "@/lib/db";
 import { audit, requireUser } from "@/lib/auth";
 import { requireMembership } from "@/lib/orgs";
-import { BENEFIT_CATALOG, COMPLIANCE_ROLES, EVENT_MANAGER_ROLES, EVENT_TYPES, parseParisDateTime } from "@/lib/events";
+import { BENEFIT_CATALOG, COMPLIANCE_ROLES, EVENT_MANAGER_ROLES, EVENT_ORGANIZER_ROLES, eventScope, EVENT_TYPES, parseParisDateTime } from "@/lib/events";
 import { EventFormat } from "@/generated/prisma/enums";
 
 export type ActionState = { error?: string; ok?: string } | undefined;
@@ -19,7 +19,7 @@ const eurToCents = (v: string) => {
 
 export async function createEvent(_: ActionState, form: FormData): Promise<ActionState> {
   const orgId = str(form, "orgId");
-  const { user } = await requireMembership(orgId, EVENT_MANAGER_ROLES);
+  const { user } = await requireMembership(orgId, EVENT_ORGANIZER_ROLES);
 
   const title = str(form, "title");
   const typeId = str(form, "typeId");
@@ -65,7 +65,7 @@ export async function createEvent(_: ActionState, form: FormData): Promise<Actio
 export async function setEventFlag(form: FormData) {
   const orgId = str(form, "orgId");
   const eventId = str(form, "eventId");
-  const { user } = await requireMembership(orgId, EVENT_MANAGER_ROLES);
+  const { user, roles } = await requireMembership(orgId, EVENT_MANAGER_ROLES);
   const flag = str(form, "flag");
   const data =
     flag === "publish" ? { publishedAt: new Date() } :
@@ -73,10 +73,22 @@ export async function setEventFlag(form: FormData) {
     flag === "open" ? { registrationOpen: true } :
     flag === "close" ? { registrationOpen: false } : null;
   if (!data) return;
-  await db.event.updateMany({ where: { id: eventId, organizationId: orgId }, data });
+  await db.event.updateMany({ where: { id: eventId, organizationId: orgId, ...eventScope(user, roles) }, data });
   await audit(user.id, `event.${flag}`, "Event", eventId);
   revalidatePath(`/organisations/${orgId}/evenements/${eventId}`);
   revalidatePath("/evenements");
+}
+
+/** Confier l'événement à une agence mandatée (ses membres « Prestataire » n'accèdent qu'aux événements confiés). */
+export async function setEventAgency(form: FormData) {
+  const orgId = str(form, "orgId");
+  const eventId = str(form, "eventId");
+  const { user } = await requireMembership(orgId, EVENT_ORGANIZER_ROLES);
+  const agencyId = str(form, "agencyId") || null;
+  if (agencyId && !(await db.mandate.findFirst({ where: { mandatorId: orgId, agencyId } }))) return;
+  await db.event.updateMany({ where: { id: eventId, organizationId: orgId }, data: { agencyId } });
+  await audit(user.id, "event.agency", "Event", eventId, { agencyId });
+  revalidatePath(`/organisations/${orgId}/evenements/${eventId}`);
 }
 
 /** Inscription nominative d'un utilisateur connecté, avec les avantages qu'il accepte. */

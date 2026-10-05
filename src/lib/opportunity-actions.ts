@@ -6,7 +6,7 @@ import { db } from "@/lib/db";
 import { audit, requireUser } from "@/lib/auth";
 import { requireMembership } from "@/lib/orgs";
 import { parseParisDateTime } from "@/lib/events";
-import { collabType, PROJECT_ROLES } from "@/lib/projects";
+import { collabType, SOURCING_ROLES } from "@/lib/projects";
 
 export type ActionState = { error?: string; ok?: string } | undefined;
 
@@ -18,7 +18,7 @@ const eurToCents = (v: string) => {
 
 export async function createOpenCall(_: ActionState, form: FormData): Promise<ActionState> {
   const orgId = str(form, "orgId");
-  const { user } = await requireMembership(orgId, PROJECT_ROLES);
+  const { user } = await requireMembership(orgId, SOURCING_ROLES);
   const title = str(form, "title");
   const typeId = str(form, "typeId");
   if (!title) return { error: "Le titre est obligatoire." };
@@ -49,7 +49,7 @@ export async function createOpenCall(_: ActionState, form: FormData): Promise<Ac
 export async function setOpenCallStatus(form: FormData) {
   const orgId = str(form, "orgId");
   const callId = str(form, "callId");
-  const { user } = await requireMembership(orgId, PROJECT_ROLES);
+  const { user } = await requireMembership(orgId, SOURCING_ROLES);
   const status = str(form, "status") === "closed" ? "closed" : "open";
   await db.openCall.updateMany({ where: { id: callId, organizationId: orgId }, data: { status } });
   await audit(user.id, `opencall.${status}`, "OpenCall", callId);
@@ -87,7 +87,7 @@ export async function withdrawApplication(form: FormData) {
 
 export async function rejectApplication(form: FormData) {
   const orgId = str(form, "orgId");
-  const { user } = await requireMembership(orgId, PROJECT_ROLES);
+  const { user } = await requireMembership(orgId, SOURCING_ROLES);
   const appId = str(form, "applicationId");
   const app = await db.application.findFirst({ where: { id: appId, openCall: { organizationId: orgId }, status: "pending" } });
   if (!app) return;
@@ -99,7 +99,7 @@ export async function rejectApplication(form: FormData) {
 /** Retenir un candidat : ouvre un dossier en accord de principe avec cet expert. */
 export async function retainApplication(_: ActionState, form: FormData): Promise<ActionState> {
   const orgId = str(form, "orgId");
-  const { user } = await requireMembership(orgId, PROJECT_ROLES);
+  const { user } = await requireMembership(orgId, SOURCING_ROLES);
   const appId = str(form, "applicationId");
   const app = await db.application.findFirst({
     where: { id: appId, openCall: { organizationId: orgId } },

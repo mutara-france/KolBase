@@ -23,6 +23,7 @@ async function loadProjectForOrg(orgId: string, projectId: string) {
 const refresh = (orgId: string, projectId: string) => {
   revalidatePath(`/organisations/${orgId}/dossiers/${projectId}`);
   revalidatePath(`/organisations/${orgId}`);
+  revalidatePath(`/organisations/${orgId}/relecture`);
 };
 
 // ─── Budget et dépenses ────────────────────────────────────────────────────

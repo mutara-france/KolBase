@@ -48,8 +48,16 @@ export const STATUS_TONE: Record<ProjectStatus, "wait" | "ok" | "bad" | "done"> 
 /** Étapes affichées dans la frise du dossier. */
 export const PIPELINE: ProjectStatus[] = ["ATT_EXPERTS", "ACCORD", "EN_VALID", "VALIDE", "SIGNATURE", "SIGNE", "TERMINE"];
 
-export const PROJECT_ROLES: OrgRole[] = ["ADMIN", "EDUCATION", "CUMUL", "PRESTATAIRE"];
-export const PROJECT_VIEW_ROLES: OrgRole[] = [...PROJECT_ROLES, "CONFORMITE", "RELECTURE"];
+/**
+ * Rôles (repris du prototype) :
+ * - sourcing (annuaire, sollicitations, opportunités) : Éducation, Cumul, Admin ;
+ * - pilotage des dossiers : sourcing + Événements ;
+ * - lecture des dossiers : pilotage + Conformité ;
+ * - la Relecture ne voit que les supports à relire ; le Prestataire mandaté, que les événements confiés.
+ */
+export const SOURCING_ROLES: OrgRole[] = ["ADMIN", "EDUCATION", "CUMUL"];
+export const PROJECT_ROLES: OrgRole[] = ["ADMIN", "EDUCATION", "EVENEMENTS", "CUMUL"];
+export const PROJECT_VIEW_ROLES: OrgRole[] = [...PROJECT_ROLES, "CONFORMITE"];
 
 /** Transitions possibles : qui peut faire quoi, depuis quel statut. */
 export const TRANSITIONS = {

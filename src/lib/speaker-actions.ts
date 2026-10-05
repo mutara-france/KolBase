@@ -5,8 +5,8 @@ import { revalidatePath } from "next/cache";
 import { db } from "@/lib/db";
 import { audit, requireUser } from "@/lib/auth";
 import { requireMembership } from "@/lib/orgs";
-import { EVENT_MANAGER_ROLES, parseParisDateTime } from "@/lib/events";
-import { collabType, PROJECT_ROLES, PROJECT_VIEW_ROLES } from "@/lib/projects";
+import { EVENT_ORGANIZER_ROLES, parseParisDateTime } from "@/lib/events";
+import { collabType, PROJECT_VIEW_ROLES } from "@/lib/projects";
 
 export type ActionState = { error?: string; ok?: string } | undefined;
 
@@ -15,12 +15,12 @@ const eurToCents = (v: string) => {
   const n = Number(v.replace(/\s/g, "").replace(",", "."));
   return v && Number.isFinite(n) && n >= 0 ? Math.round(n * 100) : null;
 };
-const SPEAKER_ROLES = [...new Set([...EVENT_MANAGER_ROLES, ...PROJECT_ROLES])];
+const SPEAKER_ROLES = EVENT_ORGANIZER_ROLES;
 
 /** Ouvre (ou met à jour) l'appel à intervenants d'un événement de l'organisation. */
 export async function openSpeakerCall(_: ActionState, form: FormData): Promise<ActionState> {
   const orgId = str(form, "orgId");
-  const { user } = await requireMembership(orgId, EVENT_MANAGER_ROLES);
+  const { user } = await requireMembership(orgId, EVENT_ORGANIZER_ROLES);
   const eventId = str(form, "eventId");
   const event = await db.event.findFirst({ where: { id: eventId, organizationId: orgId } });
   if (!event) return { error: "Choisissez un événement." };
@@ -44,7 +44,7 @@ export async function openSpeakerCall(_: ActionState, form: FormData): Promise<A
 
 export async function setSpeakerCallOpen(form: FormData) {
   const orgId = str(form, "orgId");
-  const { user } = await requireMembership(orgId, EVENT_MANAGER_ROLES);
+  const { user } = await requireMembership(orgId, EVENT_ORGANIZER_ROLES);
   const eventId = str(form, "eventId");
   const open = str(form, "open") === "1";
   await db.event.updateMany({ where: { id: eventId, organizationId: orgId }, data: { speakerCallOpen: open } });

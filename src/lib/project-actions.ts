@@ -6,7 +6,7 @@ import { db } from "@/lib/db";
 import { audit, requireUser } from "@/lib/auth";
 import { requireMembership } from "@/lib/orgs";
 import { COMPLIANCE_ROLES } from "@/lib/events";
-import { collabType, PROJECT_ROLES, PROJECT_VIEW_ROLES, TRANSITIONS, type TransitionKey } from "@/lib/projects";
+import { collabType, PROJECT_ROLES, SOURCING_ROLES, PROJECT_VIEW_ROLES, TRANSITIONS, type TransitionKey } from "@/lib/projects";
 import type { ProjectStatus } from "@/generated/prisma/client";
 
 export type ActionState = { error?: string; ok?: string } | undefined;
@@ -19,7 +19,7 @@ const eurToCents = (v: string) => {
 
 export async function createProject(_: ActionState, form: FormData): Promise<ActionState> {
   const orgId = str(form, "orgId");
-  const { user } = await requireMembership(orgId, PROJECT_ROLES);
+  const { user } = await requireMembership(orgId, SOURCING_ROLES);
   const title = str(form, "title");
   const typeId = str(form, "typeId");
   if (!title) return { error: "Le titre est obligatoire." };

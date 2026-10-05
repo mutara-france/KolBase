@@ -24,7 +24,23 @@ export const BENEFIT_CATALOG = [
 
 export const FORMAT_LABEL = { PRESENTIEL: "Présentiel", DISTANCIEL: "Visioconférence", HYBRIDE: "Hybride" } as const;
 
-export const EVENT_MANAGER_ROLES: OrgRole[] = ["ADMIN", "EVENEMENTS", "CUMUL", "PRESTATAIRE"];
+/** Organisateurs internes : tous les événements de l'organisation. */
+export const EVENT_ORGANIZER_ROLES: OrgRole[] = ["ADMIN", "EVENEMENTS", "CUMUL"];
+/** Accès aux événements : organisateurs + prestataire mandaté (limité aux événements confiés, voir eventScope). */
+export const EVENT_MANAGER_ROLES: OrgRole[] = [...EVENT_ORGANIZER_ROLES, "PRESTATAIRE"];
+
+/**
+ * Filtre Prisma des événements visibles : tout pour un organisateur interne,
+ * seulement les événements confiés à son agence pour un prestataire mandaté.
+ */
+export function eventScope(
+  user: { memberships: { organizationId: string; organization: { kind: string } }[] },
+  roles: OrgRole[],
+): { agencyId?: { in: string[] } } {
+  if (roles.some((r) => EVENT_ORGANIZER_ROLES.includes(r))) return {};
+  const agencies = [...new Set(user.memberships.filter((m) => m.organization.kind === "PRESTATAIRE").map((m) => m.organizationId))];
+  return { agencyId: { in: agencies } };
+}
 export const COMPLIANCE_ROLES: OrgRole[] = ["ADMIN", "CONFORMITE"];
 
 /**
