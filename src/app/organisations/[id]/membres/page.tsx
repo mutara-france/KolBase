@@ -4,6 +4,7 @@ import { db } from "@/lib/db";
 import { ORG_KIND_LABEL, ROLE_LABEL, requireMembership } from "@/lib/orgs";
 import { removeMembership, revokeInvitation } from "@/lib/org-actions";
 import Link from "next/link";
+import { redirect } from "next/navigation";
 import { OrgVisibilityForm } from "@/components/ProfileForms";
 import { companyVisibility } from "@/lib/visibility";
 
@@ -14,6 +15,8 @@ const fmt = (d: Date) => d.toLocaleDateString("fr-FR", { day: "numeric", month: 
 export default async function Page({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
   const { org, roles, isAdmin, user } = await requireMembership(id);
+  // Un prestataire mandaté (externe) ne voit pas l'équipe ni les réglages de l'organisation.
+  if (roles.every((r) => r === "PRESTATAIRE")) redirect(`/organisations/${id}`);
   const [members, invitations] = await Promise.all([
     db.membership.findMany({ where: { organizationId: id }, include: { user: true }, orderBy: { createdAt: "asc" } }),
     isAdmin
