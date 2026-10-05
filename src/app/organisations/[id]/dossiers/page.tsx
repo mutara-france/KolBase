@@ -4,14 +4,14 @@ import { StatusPill } from "@/components/ProjectBits";
 import { db } from "@/lib/db";
 import { requireMembership } from "@/lib/orgs";
 import { formatDate } from "@/lib/events";
-import { collabType, PROJECT_ROLES, PROJECT_VIEW_ROLES } from "@/lib/projects";
+import { collabType, PROJECT_VIEW_ROLES, SOURCING_ROLES } from "@/lib/projects";
 
 export const metadata = { title: "Dossiers — Kolbase" };
 
 export default async function Page({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
   const { org, roles } = await requireMembership(id, PROJECT_VIEW_ROLES);
-  const canCreate = roles.some((r) => PROJECT_ROLES.includes(r));
+  const canCreate = roles.some((r) => SOURCING_ROLES.includes(r));
   const projects = await db.project.findMany({
     where: { organizationId: id },
     include: { experts: { include: { practitioner: { include: { user: { select: { lastName: true } } } } } } },
