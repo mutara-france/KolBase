@@ -5,7 +5,7 @@ import { RetainForm } from "@/components/OpportunityForms";
 import { db } from "@/lib/db";
 import { requireMembership } from "@/lib/orgs";
 import { formatDate, formatEUR } from "@/lib/events";
-import { collabType, PROJECT_ROLES } from "@/lib/projects";
+import { collabType, SOURCING_ROLES } from "@/lib/projects";
 import { rejectApplication, setOpenCallStatus } from "@/lib/opportunity-actions";
 
 export const metadata = { title: "Opportunité — Kolbase" };
@@ -14,7 +14,7 @@ const APP_STATUS: Record<string, string> = { pending: "À traiter", retained: "R
 
 export default async function Page({ params }: { params: Promise<{ id: string; callId: string }> }) {
   const { id, callId } = await params;
-  const { org } = await requireMembership(id, PROJECT_ROLES);
+  const { org } = await requireMembership(id, SOURCING_ROLES);
   const call = await db.openCall.findFirst({
     where: { id: callId, organizationId: id },
     include: {
