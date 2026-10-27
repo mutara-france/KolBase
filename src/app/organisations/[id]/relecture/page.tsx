@@ -6,7 +6,7 @@ import { db } from "@/lib/db";
 import { requireMembership } from "@/lib/orgs";
 import { collabType, PROJECT_VIEW_ROLES, REVIEW_ROLES } from "@/lib/projects";
 
-export const metadata = { title: "Revue documentaire — Kolbase" };
+export const metadata = { title: "Revue documentaire — KolBase" };
 
 /** Espace de la relecture médico-réglementaire (MLR) : les supports à relire, sans le reste du dossier (budget, honoraires, conflits). */
 export default async function Page({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: Promise<{ onglet?: string }> }) {

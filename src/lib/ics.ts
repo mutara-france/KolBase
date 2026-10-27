@@ -20,7 +20,7 @@ function fold(line: string) {
 
 export function toIcs(name: string, events: IcsEvent[]) {
   const now = stamp(new Date());
-  const lines = ["BEGIN:VCALENDAR", "VERSION:2.0", "PRODID:-//Kolbase//Agenda//FR", "CALSCALE:GREGORIAN", "METHOD:PUBLISH", `X-WR-CALNAME:${esc(name)}`, "X-WR-TIMEZONE:Europe/Paris"];
+  const lines = ["BEGIN:VCALENDAR", "VERSION:2.0", "PRODID:-//KolBase//Agenda//FR", "CALSCALE:GREGORIAN", "METHOD:PUBLISH", `X-WR-CALNAME:${esc(name)}`, "X-WR-TIMEZONE:Europe/Paris"];
   for (const e of events) {
     const end = new Date(e.start.getTime() + (e.minutes ?? 60) * 60000);
     lines.push(

@@ -9,7 +9,7 @@ import { formatEUR } from "@/lib/events";
 import { collabType } from "@/lib/projects";
 import { MaterialsPanel } from "@/components/DossierSections";
 
-export const metadata = { title: "Sollicitation — Kolbase" };
+export const metadata = { title: "Sollicitation — KolBase" };
 
 export default async function Page({ params }: { params: Promise<{ linkId: string }> }) {
   const { linkId } = await params;

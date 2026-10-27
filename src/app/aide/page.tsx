@@ -3,7 +3,7 @@ import { SiteHeader } from "@/components/SiteHeader";
 import { StatCard } from "@/components/PublicCards";
 import { publicCounts } from "@/lib/public-data";
 
-export const metadata = { title: "Aide — Kolbase" };
+export const metadata = { title: "Aide — KolBase" };
 export const dynamic = "force-dynamic";
 
 const FAQ: [string, string][] = [
@@ -12,7 +12,7 @@ const FAQ: [string, string][] = [
   ["Que deviennent les avantages acceptés à un événement ?", "Chaque prestation acceptée (repas, nuitée, transport…) est valorisée, fait l'objet d'une convention d'hospitalité et est publiée sur Transparence Santé."],
   ["Comment une organisation sollicite-t-elle un expert ?", "Depuis l'annuaire ou une opportunité : elle ouvre un dossier, propose des honoraires vérifiés face aux références de juste contrepartie, puis le dossier suit le circuit de conformité."],
   ["Mes données sont-elles publiques ?", "Seuls les experts référencés apparaissent sur le site public, avec des informations limitées. Coordonnées et tarifs sont réservés aux membres connectés."],
-  ["Combien coûte Kolbase ?", "Le référencement est gratuit pour les praticiens et les organisations."],
+  ["Combien coûte KolBase ?", "Le référencement est gratuit pour les praticiens et les organisations."],
 ];
 
 export default async function Page() {
@@ -23,7 +23,7 @@ export default async function Page() {
       <main className="landing">
         <section className="public-section">
           <div className="eyebrow mb-1">Aide</div>
-          <h1 className="section-h2">Bien démarrer sur Kolbase</h1>
+          <h1 className="section-h2">Bien démarrer sur KolBase</h1>
           <div className="stats-row mt-4">
             <StatCard label="Experts référencés" value={n.experts} />
             <StatCard label="Événements à venir" value={n.events} electric />

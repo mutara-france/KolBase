@@ -1,6 +1,6 @@
 import { LegalPage } from "@/components/LegalPage";
 
-export const metadata = { title: "Politique de confidentialité — Kolbase" };
+export const metadata = { title: "Politique de confidentialité — KolBase" };
 
 export default function Page() {
   return (
@@ -8,7 +8,7 @@ export default function Page() {
       title="Politique de confidentialité"
       updated="octobre 2026"
       sections={[
-        ["Responsable de traitement", <p key="r">Mutara France, éditeur de Kolbase — [coordonnées et contact du délégué à la protection des données à compléter].</p>],
+        ["Responsable de traitement", <p key="r">Mutara France, éditeur de KolBase — [coordonnées et contact du délégué à la protection des données à compléter].</p>],
         ["Données traitées", <ul key="d" className="plain">
           <li>Compte : nom, prénom, e-mail, téléphone, mot de passe (stocké sous forme chiffrée irréversible).</li>
           <li>Profil professionnel : profession, n° RPPS, lieu d&apos;exercice, spécialité, présentation, tarifs indicatifs.</li>

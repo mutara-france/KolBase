@@ -1,118 +1,215 @@
 import Link from "next/link";
-import { ArrowRight, Building2, LogIn } from "lucide-react";
+import { ArrowRight, Plus } from "lucide-react";
 import { SiteHeader } from "@/components/SiteHeader";
 import { Avatar } from "@/components/Avatar";
-import { CallCard, EventCard, KolCard, OrgCard, StatCard } from "@/components/PublicCards";
-import { publicCalls, publicCounts, publicEvents, publicExperts, publicOrgs } from "@/lib/public-data";
+import { HomeSearch } from "@/components/HomeSearch";
+import { CallCard, EventCard, KolCard } from "@/components/PublicCards";
+import { INTERVENTION_TYPES, ORG_KIND_LABEL } from "@/lib/orgs";
+import { TZ } from "@/lib/events";
+import { specialtyVisual } from "@/lib/specialties";
+import { publicCalls, publicCounts, publicEvents, publicExperts, publicOrgAgenda, publicOrgs, publicSpecialties } from "@/lib/public-data";
 
 export const dynamic = "force-dynamic";
 
-/** Page d'accueil — reproduction de « PublicAccueil » du prototype. */
+/** Accueil — portail : recherche d'abord, puis le réseau (spécialités, agenda, praticiens, organisations, appels). */
 export default async function Home() {
-  const [events, experts, faces, orgs, calls, n] = await Promise.all([
-    publicEvents(3), publicExperts(3), publicExperts(7), publicOrgs(3), publicCalls(2), publicCounts(),
+  const [events, experts, orgs, calls, n, specialties] = await Promise.all([
+    publicEvents(3), publicExperts(4), publicOrgs(), publicCalls(2), publicCounts(), publicSpecialties(),
   ]);
+  // Les prestataires (agences, logistique) ne sont pas mis en avant sur l'accueil.
+  const ranked = orgs
+    .filter((o) => o.kind !== ORG_KIND_LABEL.PRESTATAIRE)
+    .sort((a, b) => b.collaborations + b.openCalls - (a.collaborations + a.openCalls));
+  const featured = ranked[0];
+  const others = ranked.slice(1, 4);
+  const agenda = featured ? await publicOrgAgenda(featured.id) : null;
+  const nextDate = agenda?.next?.startsAt.toLocaleDateString("fr-FR", { timeZone: TZ, day: "2-digit", month: "2-digit" });
 
   return (
     <>
       <SiteHeader variant="public" />
-      <main className="landing">
-        <section className="hero">
-          <div className="hero-glow" />
-          <div className="hero-content">
-            <div>
-              <div className="eyebrow mb-3">Mise en relation praticiens et organisations · Chirurgie dentaire</div>
-              <h1 className="hero-title">Trouvez le bon praticien. Montez la collaboration. Le reste suit.</h1>
-              <p className="hero-sub">
-                Kolbase met en relation les chirurgiens-dentistes et les organisations du secteur — industriels, sociétés savantes,
-                organismes de formation, associations. Chercher, proposer, candidater, contractualiser : tout part d&apos;une rencontre,
-                et la paperasse réglementaire suit toute seule.
-              </p>
-              <div className="actions mt-6">
-                <Link href="/experts" className="btn">Parcourir les experts <ArrowRight size={15} /></Link>
-                <Link href="/evenements" className="btn secondary">Voir les événements <ArrowRight size={15} /></Link>
+      <main className="landing home">
+        <section className="home-hero" aria-labelledby="home-titre">
+          <div className="home-wrap home-hero-inner">
+            <div className="home-hero-text">
+              <p className="home-pill">Le réseau scientifique de la chirurgie dentaire</p>
+              <h1 id="home-titre" className="home-title">Trouvez le bon praticien. Montez la collaboration. <em>Le reste suit.</em></h1>
+              <p className="home-lede">Experts référencés, événements ouverts, appels en cours : tout le réseau au même endroit.</p>
+            </div>
+            <div className="home-hero-art" aria-hidden>
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img src="/visuels/implant.webp" alt="" />
+            </div>
+          </div>
+        </section>
+
+        <section className="home-search" aria-label="Recherche">
+          <div className="home-wrap">
+            <HomeSearch counts={n} interventionTypes={INTERVENTION_TYPES} />
+          </div>
+        </section>
+
+        {ranked.length > 0 && (
+          <section className="home-trust" aria-labelledby="home-confiance">
+            <div className="home-wrap">
+              <h2 id="home-confiance">Ils publient sur KolBase</h2>
+              <ul className="trust-list">
+                {ranked.slice(0, 5).map((o) => (
+                  <li key={o.id}><Link href={`/structures/${o.id}`}><Avatar name={o.name} size={36} square />{o.name}</Link></li>
+                ))}
+              </ul>
+            </div>
+          </section>
+        )}
+
+        {specialties.length > 0 && (
+          <section className="home-section" aria-labelledby="home-specialites">
+            <div className="home-wrap">
+              <div className="home-head">
+                <div>
+                  <span className="kicker">Spécialités</span>
+                  <h2 id="home-specialites">Explorer par spécialité</h2>
+                </div>
+                <Link href="/experts" className="home-more">Les {n.experts} experts <ArrowRight size={16} /></Link>
               </div>
-              <div className="face-pile">
-                {faces.map((k) => <Avatar key={k.id} name={k.name} size={34} ring />)}
-                <span className="text-xs ml-2">{n.experts} praticiens, {n.verified} identités vérifiées</span>
+              <div className="spec-grid">
+                {specialties.slice(0, 9).map((s) => {
+                  const img = specialtyVisual(s.name);
+                  return (
+                    <Link key={s.name} href={`/experts?specialite=${encodeURIComponent(s.name)}`} className="spec-tile">
+                      <span><strong>{s.name}</strong><small>{s.count} praticien{s.count > 1 ? "s" : ""}</small></span>
+                      {/* eslint-disable-next-line @next/next/no-img-element */}
+                      {img && <img src={img} alt="" aria-hidden />}
+                    </Link>
+                  );
+                })}
+                <Link href="/experts" className="spec-tile all">
+                  <span><strong>Toutes les spécialités</strong><small>{n.verified} identités vérifiées</small></span>
+                  <span className="spec-arrow" aria-hidden><ArrowRight size={18} /></span>
+                </Link>
               </div>
             </div>
-          </div>
-        </section>
+          </section>
+        )}
 
-        <section className="public-section pt-0">
-          <div className="section-head">
-            <div>
-              <div className="eyebrow mb-1">Ouvert à tous</div>
-              <h2 className="section-h2">Prochains événements</h2>
-              <p className="text-sm mt-1">Symposiums, webinaires, formations et tables rondes — l&apos;inscription est ouverte, que vous soyez référencé sur Kolbase ou non.</p>
+        <section className="home-section tinted" aria-labelledby="home-agenda">
+          <div className="home-wrap">
+            <div className="home-head">
+              <div>
+                <span className="kicker">Agenda</span>
+                <h2 id="home-agenda">Événements et formations à l&apos;affiche</h2>
+              </div>
+              <Link href="/evenements" className="home-more">Tous les événements <ArrowRight size={16} /></Link>
             </div>
-            <Link href="/evenements" className="btn ghost">Tout l&apos;agenda <ArrowRight size={14} /></Link>
-          </div>
-          <div className="grid-3">{events.map((ev) => <EventCard key={ev.id} ev={ev} compact />)}</div>
-        </section>
-
-        <section className="public-section pt-0">
-          <div className="stats-row">
-            <StatCard label="Experts référencés" value={n.experts} hint={`${n.verified} identités vérifiées`} />
-            <StatCard label="Industriels" value={n.industriels} />
-            <StatCard label="Événements à venir" value={n.events} electric />
-            <StatCard label="Appels ouverts" value={n.calls} />
-          </div>
-        </section>
-
-        <section className="public-section pt-0">
-          <div className="section-head">
-            <div>
-              <div className="eyebrow mb-1">Un réseau vérifié</div>
-              <h2 className="section-h2">Des profils, pas des lignes d&apos;annuaire</h2>
-            </div>
-            <Link href="/experts" className="btn ghost">Tout voir <ArrowRight size={14} /></Link>
-          </div>
-          <div className="grid-3">{experts.map((k) => <KolCard key={k.id} k={k} />)}</div>
-        </section>
-
-        <section className="public-section">
-          <div className="section-head">
-            <div>
-              <div className="eyebrow mb-1">Côté organisations</div>
-              <h2 className="section-h2">Industriels, sociétés savantes, associations</h2>
-            </div>
-            <Link href="/structures" className="btn ghost">Tout voir <ArrowRight size={14} /></Link>
-          </div>
-          <div className="grid-3">{orgs.map((o) => <OrgCard key={o.id} o={o} />)}</div>
-        </section>
-
-        <section className="public-section pt-0">
-          <div className="join-banner">
-            <div className="join-art"><Building2 size={26} /></div>
-            <div className="grow">
-              <div className="eyebrow mb-1">Votre organisation n&apos;est pas encore référencée ?</div>
-              <h2 className="join-title">Fabricants, sociétés savantes, associations, organismes de formation</h2>
-              <p className="text-sm">
-                Publiez vos appels, sollicitez les praticiens dont vous avez besoin, ouvrez vos événements aux inscriptions.
-                Le référencement est gratuit et vous restez maître de ce que votre page rend public.
-              </p>
-            </div>
-            <div className="join-actions">
-              <Link href="/inscription" className="btn"><Building2 size={15} /> Référencer mon organisation</Link>
-              <Link href="/aide" className="btn ghost">Comment ça marche</Link>
+            <div className="event-grid">
+              {events.map((ev) => <EventCard key={ev.id} ev={ev} />)}
+              <article className="publish-card">
+                <span className="plus" aria-hidden><Plus size={22} /></span>
+                <div>
+                  <h3>Vous organisez un congrès, une formation, un TP ?</h3>
+                  <p>Publiez-le sur KolBase et ouvrez les inscriptions aux praticiens, référencés ou non.</p>
+                </div>
+                <Link href="/inscription" className="btn" style={{ background: "var(--ink)" }}>Publier un événement</Link>
+              </article>
             </div>
           </div>
         </section>
 
-        <section className="public-section pt-0">
-          <div className="section-head">
-            <div>
-              <div className="eyebrow mb-1">Dans les deux sens</div>
-              <h2 className="section-h2">Opportunités ouvertes</h2>
+        {experts.length > 0 && (
+          <section className="home-section" aria-labelledby="home-praticiens">
+            <div className="home-wrap">
+              <div className="home-head">
+                <div>
+                  <span className="kicker">Réseau vérifié</span>
+                  <h2 id="home-praticiens">Des praticiens qui interviennent</h2>
+                </div>
+                <Link href="/experts" className="home-more">Les {n.experts} experts <ArrowRight size={16} /></Link>
+              </div>
+              <div className="event-grid">{experts.map((k) => <KolCard key={k.id} k={k} />)}</div>
             </div>
-            <Link href="/appels" className="btn ghost">Tout voir <ArrowRight size={14} /></Link>
-          </div>
-          <div className="grid-2">
-            {calls.map((c) => (
-              <CallCard key={c.id} c={c} action={<Link href={`/connexion?next=${encodeURIComponent(`/opportunites/${c.id}`)}`} className="btn secondary"><LogIn size={14} /> Se connecter pour candidater</Link>} />
-            ))}
+          </section>
+        )}
+
+        {featured && (
+          <section className="home-orgs" aria-labelledby="home-organisations">
+            <div className="home-wrap">
+              <div className="home-head">
+                <div>
+                  <span className="kicker">Organisations</span>
+                  <h2 id="home-organisations">Industriels, sociétés savantes, organismes de formation, associations</h2>
+                </div>
+                <Link href="/structures" className="btn white">Toutes les organisations</Link>
+              </div>
+              <div className="orgs-layout">
+                <article className="org-feature">
+                  <div className="org-feature-head">
+                    <Avatar name={featured.name} size={76} square />
+                    <div>
+                      <div className="eyebrow">À la une</div>
+                      <h3>{featured.name}</h3>
+                      <p className="text-sm">{[featured.kind, featured.sector, featured.hq].filter(Boolean).join(" · ")}</p>
+                    </div>
+                  </div>
+                  <dl className="org-stats">
+                    <div><dt>collaboration{featured.collaborations > 1 ? "s" : ""}</dt><dd>{featured.collaborations}</dd></div>
+                    <div><dt>appel{featured.openCalls > 1 ? "s" : ""} ouvert{featured.openCalls > 1 ? "s" : ""}</dt><dd>{featured.openCalls}</dd></div>
+                    <div><dt>événement{(agenda?.upcoming ?? 0) > 1 ? "s" : ""} à venir</dt><dd>{agenda?.upcoming ?? 0}</dd></div>
+                  </dl>
+                  <div className="flex-between">
+                    <p className="text-sm" style={{ margin: 0 }}>
+                      {agenda?.next ? <>Prochain rendez-vous : {agenda.next.title}{agenda.next.city ? `, ${agenda.next.city}` : ""}, le <span className="mono ink">{nextDate}</span></> : featured.about}
+                    </p>
+                    <Link href={`/structures/${featured.id}`} className="btn">Voir la fiche</Link>
+                  </div>
+                </article>
+                <div className="org-list">
+                  {others.map((o) => (
+                    <Link key={o.id} href={`/structures/${o.id}`} className="org-row">
+                      <Avatar name={o.name} size={56} square />
+                      <span style={{ minWidth: 0 }}><strong>{o.name}</strong><small>{[o.kind, o.hq].filter(Boolean).join(" · ")}</small></span>
+                      <span className="go" aria-hidden><ArrowRight size={18} /></span>
+                    </Link>
+                  ))}
+                  <Link href="/inscription" className="org-join">Référencer mon organisation, c&apos;est gratuit <ArrowRight size={18} /></Link>
+                </div>
+              </div>
+            </div>
+          </section>
+        )}
+
+        {calls.length > 0 && (
+          <section className="home-section" aria-labelledby="home-appels">
+            <div className="home-wrap">
+              <div className="home-head">
+                <div>
+                  <span className="kicker">Opportunités</span>
+                  <h2 id="home-appels">Appels ouverts aux praticiens</h2>
+                </div>
+                <Link href="/appels" className="home-more">Toutes les opportunités <ArrowRight size={16} /></Link>
+              </div>
+              <div className="grid-2">
+                {calls.map((c) => (
+                  <CallCard key={c.id} c={c} action={<Link href={`/connexion?next=${encodeURIComponent(`/opportunites/${c.id}`)}`} className="btn">Candidater</Link>} />
+                ))}
+              </div>
+            </div>
+          </section>
+        )}
+
+        <section className="home-section" style={{ paddingTop: 0 }} aria-label="Rejoindre KolBase">
+          <div className="home-wrap join-grid">
+            <div className="join-card">
+              <span className="eyebrow">Praticiens</span>
+              <h2>Rendez votre expertise visible.</h2>
+              <p>Référencez-vous, choisissez ce qui est public, recevez des sollicitations.</p>
+              <Link href="/inscription" className="btn lg">Se référencer</Link>
+            </div>
+            <div className="join-card aurore">
+              <span className="eyebrow">Organisations</span>
+              <h2>Trouvez vos intervenants.</h2>
+              <p>Publiez des appels, sollicitez des praticiens, ouvrez vos événements. Le référencement est gratuit.</p>
+              <Link href="/inscription" className="btn lg white">Référencer mon organisation</Link>
+            </div>
           </div>
         </section>
       </main>

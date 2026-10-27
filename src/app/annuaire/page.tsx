@@ -5,7 +5,7 @@ import { db } from "@/lib/db";
 import { requireDirectoryAccess } from "@/lib/orgs";
 import type { Prisma } from "@/generated/prisma/client";
 
-export const metadata = { title: "Annuaire des experts — Kolbase" };
+export const metadata = { title: "Annuaire des experts — KolBase" };
 
 export default async function Page({ searchParams }: { searchParams: Promise<{ q?: string; ville?: string }> }) {
   await requireDirectoryAccess();

@@ -58,7 +58,7 @@ export function InviteForm({ orgId, roles }: { orgId: string; roles: Opt[] }) {
   return (
     <form action={action} className="card form">
       <h2>Inviter un membre</h2>
-      <p className="muted">Kolbase génère un lien d&apos;invitation à transmettre vous-même à la personne.</p>
+      <p className="muted">KolBase génère un lien d&apos;invitation à transmettre vous-même à la personne.</p>
       <Notice state={state} />
       {state?.link && (
         <div className="copy">

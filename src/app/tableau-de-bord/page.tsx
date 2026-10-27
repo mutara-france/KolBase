@@ -8,7 +8,7 @@ import { requireUser } from "@/lib/auth";
 import { formatDate, formatDateTime } from "@/lib/events";
 import { collabType } from "@/lib/projects";
 
-export const metadata = { title: "Tableau de bord — Kolbase" };
+export const metadata = { title: "Tableau de bord — KolBase" };
 
 export default async function Page() {
   const user = await requireUser();

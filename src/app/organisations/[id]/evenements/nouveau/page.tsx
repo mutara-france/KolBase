@@ -4,7 +4,7 @@ import { NewEventForm } from "@/components/EventForms";
 import { requireMembership } from "@/lib/orgs";
 import { BENEFIT_CATALOG, EVENT_ORGANIZER_ROLES, EVENT_TYPES, FORMAT_LABEL } from "@/lib/events";
 
-export const metadata = { title: "Nouvel événement — Kolbase" };
+export const metadata = { title: "Nouvel événement — KolBase" };
 
 export default async function Page({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;

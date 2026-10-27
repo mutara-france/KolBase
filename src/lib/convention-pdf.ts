@@ -78,8 +78,8 @@ const dateFr = (d: Date) => d.toLocaleDateString("fr-FR", { timeZone: "Europe/Pa
 async function setup(title: string, footer: string) {
   const doc = await PDFDocument.create();
   doc.setTitle(title);
-  doc.setProducer("Kolbase");
-  doc.setCreator("Kolbase");
+  doc.setProducer("KolBase");
+  doc.setCreator("KolBase");
   const font = await doc.embedFont(StandardFonts.Helvetica);
   const bold = await doc.embedFont(StandardFonts.HelveticaBold);
   return { doc, w: new Writer(doc, font, bold, footer) };
@@ -103,7 +103,7 @@ export type CollabConventionInput = {
 };
 
 export async function buildCollaborationConvention(i: CollabConventionInput) {
-  const { doc, w } = await setup(`Convention - ${i.project.title}`, `Kolbase - Convention ${i.ref} - document généré, à faire valider par le service juridique avant signature.`);
+  const { doc, w } = await setup(`Convention - ${i.project.title}`, `KolBase - Convention ${i.ref} - document généré, à faire valider par le service juridique avant signature.`);
   header(w, "Convention de collaboration", i.ref, i.statusLabel);
 
   w.heading("Entre les soussignés");
@@ -162,7 +162,7 @@ export type HospitalityConventionInput = {
 };
 
 export async function buildHospitalityConvention(i: HospitalityConventionInput) {
-  const { doc, w } = await setup(`Convention d'hospitalité - ${i.event.title}`, `Kolbase - Convention d'hospitalité ${i.ref}`);
+  const { doc, w } = await setup(`Convention d'hospitalité - ${i.event.title}`, `KolBase - Convention d'hospitalité ${i.ref}`);
   header(w, "Convention d'hospitalité", i.ref, i.declared ? `Déclarée${i.declarationRef ? ` (${i.declarationRef})` : ""}` : "À déclarer");
 
   w.heading("Parties");
@@ -185,7 +185,7 @@ export async function buildHospitalityConvention(i: HospitalityConventionInput) 
   w.heading("Engagements");
   w.text("L'hospitalité offerte est d'un niveau raisonnable, strictement limitée à l'objet scientifique ou professionnel de la manifestation, et ne s'étend pas aux personnes accompagnant le bénéficiaire.");
   w.text("Conformément aux articles L.1453-1 et suivants du Code de la santé publique, la présente convention est déclarée à l'instance ordinale compétente et rendue publique sur la base Transparence Santé.");
-  w.text("Le bénéficiaire a accepté chacun de ces avantages individuellement lors de son inscription sur Kolbase.", { color: MUTED });
+  w.text("Le bénéficiaire a accepté chacun de ces avantages individuellement lors de son inscription sur KolBase.", { color: MUTED });
 
   w.heading("Signatures");
   w.signatures(`Pour ${i.org.name}`, `${b.firstName} ${b.lastName}`);

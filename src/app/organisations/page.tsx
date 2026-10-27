@@ -4,7 +4,7 @@ import { Avatar } from "@/components/Avatar";
 import { requireUser } from "@/lib/auth";
 import { ORG_KIND_LABEL, ROLE_LABEL } from "@/lib/orgs";
 
-export const metadata = { title: "Mes organisations — Kolbase" };
+export const metadata = { title: "Mes organisations — KolBase" };
 
 export default async function Page() {
   const user = await requireUser();

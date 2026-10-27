@@ -11,7 +11,7 @@ import { registerRows } from "@/lib/compliance-data";
 import { markProjectPublished } from "@/lib/compliance-actions";
 import { detectConflicts } from "@/lib/conflicts";
 
-export const metadata = { title: "Conformité — Kolbase" };
+export const metadata = { title: "Conformité — KolBase" };
 
 const TABS = [
   ["a-valider", "À valider"],

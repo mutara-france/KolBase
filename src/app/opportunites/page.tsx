@@ -6,7 +6,7 @@ import { requireUser } from "@/lib/auth";
 import { formatDate, formatEUR } from "@/lib/events";
 import { COLLAB_TYPES, collabType } from "@/lib/projects";
 
-export const metadata = { title: "Opportunités — Kolbase" };
+export const metadata = { title: "Opportunités — KolBase" };
 
 export default async function Page({ searchParams }: { searchParams: Promise<{ type?: string; q?: string }> }) {
   const user = await requireUser();

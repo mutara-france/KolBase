@@ -14,7 +14,7 @@ export async function GET() {
   ]);
   const seen = new Set<string>();
   const items = [...talks.map((t) => ({ e: t.event, talk: true })), ...regs.map((r) => ({ e: r.event, talk: false }))].filter(({ e }) => !seen.has(e.id) && !!seen.add(e.id));
-  return icsResponse("kolbase-mon-agenda.ics", toIcs("Kolbase — mon agenda", items.map(({ e, talk }) => ({
+  return icsResponse("kolbase-mon-agenda.ics", toIcs("KolBase — mon agenda", items.map(({ e, talk }) => ({
     uid: `${e.id}-${user.id}`, start: e.startsAt, minutes: e.durationMinutes, title: `${talk ? "Intervention : " : ""}${e.title}`, location: eventLocation(e),
     description: `Organisé par ${e.organization.name}.`, url: `${appUrl()}/evenements/${e.id}`,
   }))));

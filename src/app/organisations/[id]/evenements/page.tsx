@@ -4,7 +4,7 @@ import { db } from "@/lib/db";
 import { requireMembership } from "@/lib/orgs";
 import { EVENT_MANAGER_ROLES, EVENT_ORGANIZER_ROLES, eventScope, eventTypeLabel, formatDate } from "@/lib/events";
 
-export const metadata = { title: "Événements — Kolbase" };
+export const metadata = { title: "Événements — KolBase" };
 
 export default async function Page({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;

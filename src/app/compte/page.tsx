@@ -9,7 +9,7 @@ import { KolVisibilityForm, OrcidImportForm, PublicationForm, StructureForm } fr
 import { kolVisibility } from "@/lib/visibility";
 import { removePublication, removeStructure } from "@/lib/profile-actions";
 
-export const metadata = { title: "Mon compte — Kolbase" };
+export const metadata = { title: "Mon compte — KolBase" };
 
 export default async function Page({ searchParams }: { searchParams: Promise<{ annuaire?: string }> }) {
   const { annuaire } = await searchParams;

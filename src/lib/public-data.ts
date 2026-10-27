@@ -50,12 +50,31 @@ export async function publicCalls(take?: number): Promise<CallCardData[]> {
 
 export async function publicCounts() {
   const now = new Date();
-  const [experts, verified, industriels, events, calls] = await Promise.all([
+  const [experts, verified, industriels, organizations, events, calls] = await Promise.all([
     db.practitionerProfile.count({ where: { listed: true } }),
     db.practitionerProfile.count({ where: { listed: true, rppsVerified: true } }),
     db.organization.count({ where: { listed: true, kind: "INDUSTRIEL" } }),
+    db.organization.count({ where: { listed: true } }),
     db.event.count({ where: { publishedAt: { not: null }, startsAt: { gte: now } } }),
     db.openCall.count({ where: { status: "open", OR: [{ deadline: null }, { deadline: { gte: now } }] } }),
   ]);
-  return { experts, verified, industriels, events, calls };
+  return { experts, verified, industriels, organizations, events, calls };
+}
+
+/** Spécialités des experts référencés, de la plus représentée à la moins représentée. */
+export async function publicSpecialties(): Promise<{ name: string; count: number }[]> {
+  const rows = await db.practitionerProfile.groupBy({ by: ["specialty"], where: { listed: true, specialty: { not: null } }, _count: { _all: true } });
+  return rows
+    .map((r) => ({ name: r.specialty as string, count: r._count._all }))
+    .sort((a, b) => b.count - a.count || a.name.localeCompare(b.name, "fr"));
+}
+
+/** Prochain événement publié d'une organisation et nombre d'événements à venir. */
+export async function publicOrgAgenda(organizationId: string) {
+  const where = { organizationId, publishedAt: { not: null }, startsAt: { gte: new Date() } };
+  const [next, upcoming] = await Promise.all([
+    db.event.findFirst({ where, orderBy: { startsAt: "asc" }, select: { id: true, title: true, startsAt: true, city: true } }),
+    db.event.count({ where }),
+  ]);
+  return { next, upcoming };
 }

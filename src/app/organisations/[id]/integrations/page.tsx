@@ -5,7 +5,7 @@ import { db } from "@/lib/db";
 import { requireMembership } from "@/lib/orgs";
 import { COMPLIANCE_ROLES } from "@/lib/events";
 
-export const metadata = { title: "Intégrations — Kolbase" };
+export const metadata = { title: "Intégrations — KolBase" };
 
 type Integration = { name: string; icon: typeof Link2; status: "actif" | "export" | "a-configurer"; detail: string; scope: string; action?: { href: string; label: string; download?: boolean } };
 const STATUS = { actif: { label: "Actif", tone: "ok" }, export: { label: "Par export", tone: "electric" }, "a-configurer": { label: "À configurer", tone: "done" } } as const;
@@ -30,7 +30,7 @@ export default async function Page({ params }: { params: Promise<{ id: string }>
     },
     {
       name: "Transparence Santé", icon: FileSpreadsheet, status: "export",
-      detail: "Kolbase prépare les fichiers de déclaration (conventions, rémunérations, hospitalités). Le dépôt se fait ensuite sur la plateforme publique Transparence Santé.",
+      detail: "KolBase prépare les fichiers de déclaration (conventions, rémunérations, hospitalités). Le dépôt se fait ensuite sur la plateforme publique Transparence Santé.",
       scope: "Registre des conventions et hospitalités",
       action: isCompliance ? { href: `/organisations/${id}/conformite?onglet=transparence`, label: "Ouvrir l'espace conformité" } : undefined,
     },
@@ -52,7 +52,7 @@ export default async function Page({ params }: { params: Promise<{ id: string }>
       <main className="stack">
         <p className="muted"><Link href={`/organisations/${id}`}>{org.name}</Link> / Intégrations</p>
         <h1>Intégrations</h1>
-        <p className="muted">Kolbase s&apos;interface avec les outils déjà en place plutôt que de les remplacer.</p>
+        <p className="muted">KolBase s&apos;interface avec les outils déjà en place plutôt que de les remplacer.</p>
         <div className="grid-2">
           {items.map((i) => (
             <section key={i.name} className="card stack-sm">

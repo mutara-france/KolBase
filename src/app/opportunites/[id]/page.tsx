@@ -8,7 +8,7 @@ import { formatDate, formatEUR } from "@/lib/events";
 import { collabType } from "@/lib/projects";
 import { withdrawApplication } from "@/lib/opportunity-actions";
 
-export const metadata = { title: "Opportunité — Kolbase" };
+export const metadata = { title: "Opportunité — KolBase" };
 
 const APP_STATUS: Record<string, string> = {
   pending: "Votre candidature est en cours d'examen.",

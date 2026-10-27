@@ -10,7 +10,7 @@ import { ORG_KIND_LABEL, ROLE_LABEL, requireMembership } from "@/lib/orgs";
 import { COMPLIANCE_ROLES, EVENT_MANAGER_ROLES, EVENT_ORGANIZER_ROLES, eventScope, formatDate, formatDateTime, formatEUR } from "@/lib/events";
 import { PROJECT_ROLES, PROJECT_VIEW_ROLES, REVIEW_ROLES, SOURCING_ROLES } from "@/lib/projects";
 
-export const metadata = { title: "Tableau de bord — Kolbase" };
+export const metadata = { title: "Tableau de bord — KolBase" };
 
 const DAY = 864e5;
 

@@ -7,7 +7,7 @@ import { getCurrentUser } from "@/lib/auth";
 import { SOURCING_ROLES } from "@/lib/projects";
 import type { Viewer } from "@/lib/visibility";
 
-export const metadata = { title: "Profil expert — Kolbase" };
+export const metadata = { title: "Profil expert — KolBase" };
 
 export default async function Page({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;

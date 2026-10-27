@@ -10,7 +10,7 @@ import { followFeed, seenSince } from "@/lib/follows";
 import { toggleFollow } from "@/lib/follow-actions";
 import { ORG_KIND_LABEL } from "@/lib/orgs";
 
-export const metadata = { title: "Mes suivis — Kolbase" };
+export const metadata = { title: "Mes suivis — KolBase" };
 
 export default async function Page() {
   const user = await requireUser();

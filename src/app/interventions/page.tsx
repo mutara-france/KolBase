@@ -9,7 +9,7 @@ import { eventTypeLabel, formatDate, formatDateTime, formatEUR } from "@/lib/eve
 import { SPEAKER_STATUS } from "@/lib/suppliers";
 import { withdrawSpeaker } from "@/lib/speaker-actions";
 
-export const metadata = { title: "Mes interventions — Kolbase" };
+export const metadata = { title: "Mes interventions — KolBase" };
 
 export default async function Page({ searchParams }: { searchParams: Promise<{ onglet?: string }> }) {
   const user = await requireUser();
