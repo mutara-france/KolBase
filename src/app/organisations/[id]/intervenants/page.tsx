@@ -1,6 +1,8 @@
 import Link from "next/link";
 import { Lock, Megaphone, Unlock } from "lucide-react";
 import { SiteHeader } from "@/components/SiteHeader";
+import { SectionNav } from "@/components/SectionNav";
+import { orgTabs } from "@/lib/org-overview";
 import { Avatar } from "@/components/Avatar";
 import { OpenSpeakerCallForm, RetainSpeakerForm } from "@/components/SpeakerForms";
 import { db } from "@/lib/db";
@@ -34,11 +36,12 @@ export default async function Page({ params }: { params: Promise<{ id: string }>
     orderBy: { startsAt: "asc" },
   });
 
+  const sectionTabs = await orgTabs("evenements", id);
   return (
     <>
       <SiteHeader />
       <main className="stack">
-        <p className="muted"><Link href={`/organisations/${id}`}>{org.name}</Link> / Appels à intervenants</p>
+        <SectionNav tabs={sectionTabs} active="intervenants" label="Rubrique Événements" />
         <h1>Appels à intervenants</h1>
         <p className="muted">
           Annoncez la session avant d&apos;avoir bouclé le programme. Les experts référencés se déclarent, vous arbitrez, et le dossier de

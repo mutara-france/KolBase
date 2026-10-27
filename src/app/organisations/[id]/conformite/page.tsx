@@ -1,5 +1,7 @@
 import Link from "next/link";
 import { SiteHeader } from "@/components/SiteHeader";
+import { SectionNav } from "@/components/SectionNav";
+import { orgTabs } from "@/lib/org-overview";
 import { FmvBadge, StatusPill } from "@/components/ProjectBits";
 import { ComplianceSettingsForm } from "@/components/ComplianceForms";
 import { db } from "@/lib/db";
@@ -55,11 +57,12 @@ export default async function Page({ params, searchParams }: { params: Promise<{
     transparence: toPublish.filter((p) => !p.declared).length,
   };
 
+  const sectionTabs = await orgTabs("conformite", id);
   return (
     <>
       <SiteHeader />
       <main className="stack">
-        <p className="muted"><Link href={`/organisations/${id}`}>{org.name}</Link> / Conformité</p>
+        <SectionNav tabs={sectionTabs} active="conformite" label="Rubrique Conformité" />
         <h1>Espace conformité</h1>
         <p className="muted">
           Validation des dossiers, régime applicable (déclaration ou autorisation), registre des conventions et suivi des publications

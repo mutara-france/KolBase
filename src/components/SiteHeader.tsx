@@ -1,134 +1,96 @@
-import Link from "next/link";
+import { cookies } from "next/headers";
 import { getCurrentUser } from "@/lib/auth";
 import { db } from "@/lib/db";
-import { Avatar } from "@/components/Avatar";
-import { Logo } from "@/components/Logo";
+import { avatarColor, initialsOf } from "@/components/Avatar";
+import { AppShell } from "@/components/AppShell";
 import { PublicNav } from "@/components/PublicNav";
-import { MenuToggle, Sidebar, type NavSection } from "@/components/Sidebar";
-import { COMPLIANCE_ROLES, EVENT_MANAGER_ROLES, EVENT_ORGANIZER_ROLES } from "@/lib/events";
-import { PROJECT_VIEW_ROLES, REVIEW_ROLES, SOURCING_ROLES } from "@/lib/projects";
+import { ORG_KIND_LABEL, ROLE_LABEL } from "@/lib/orgs";
+import { countFor, orgMenuLinks, orgNavItems, type ShellItem, type ShellSpace } from "@/lib/nav";
+import { orgOverview } from "@/lib/org-overview";
+import { SOURCING_ROLES } from "@/lib/projects";
 import { unseenFollowCount } from "@/lib/follows";
-import type { OrgRole } from "@/generated/prisma/client";
+import type { OrgKind, OrgRole } from "@/generated/prisma/client";
 
 /**
  * En-tête du site.
  * - « public » : navigation publique (accueil, agenda, pages légales…).
- * - « app » (défaut) : coque applicative avec barre latérale par rôle, si l'utilisateur est connecté.
+ * - « app » (défaut) : coque de l'espace connecté — un espace par rôle (praticien, chaque organisation),
+ *   cinq rubriques au plus, réglages et déconnexion dans le menu du compte.
+ * `section` force la rubrique active quand le chemin ne suffit pas (pages partagées entre deux rubriques).
  */
-export async function SiteHeader({ variant = "app" }: { variant?: "app" | "public" }) {
+export async function SiteHeader({ variant = "app", section }: { variant?: "app" | "public"; section?: string }) {
   const user = await getCurrentUser();
 
   if (!user || variant === "public") return <PublicNav loggedIn={!!user} />;
 
+  const fullName = `${user.firstName} ${user.lastName}`;
   const p = user.practitioner;
-  const pending = p
-    ? await db.projectExpert.count({ where: { practitionerId: p.id, status: "ATT_EXPERTS", project: { status: { not: "DECLINE" } } } })
-    : 0;
-  const has = (roles: OrgRole[], mine: OrgRole[]) => mine.some((r) => roles.includes(r));
+  const spaces: ShellSpace[] = [];
 
-  const sections: NavSection[] = [];
   if (p) {
-    sections.push({
-      title: p.listed ? "Mon activité d'expert" : "Mon espace",
-      items: [
-        { href: "/tableau-de-bord", label: "Tableau de bord", icon: "LayoutDashboard" },
-        { href: "/inscriptions", label: "Mes inscriptions", icon: "Ticket" },
-        ...(p.listed
-          ? [
-              { href: "/sollicitations", label: "Sollicitations", icon: "Inbox" as const, badge: pending },
-              { href: "/interventions", label: "Mes interventions", icon: "Mic" as const },
-              { href: "/opportunites", label: "Opportunités", icon: "Megaphone" as const },
-            ]
-          : []),
-      ],
+    const pending = p.listed
+      ? await db.projectExpert.count({ where: { practitionerId: p.id, status: "ATT_EXPERTS", project: { status: { not: "DECLINE" } } } })
+      : 0;
+    const items: ShellItem[] = [
+      { key: "accueil", href: "/tableau-de-bord", label: "Accueil", icon: "House" },
+      ...(p.listed
+        ? ([
+            { key: "sollicitations", href: "/sollicitations", label: "Sollicitations", icon: "Send", badge: pending },
+            { key: "opportunites", href: "/opportunites", label: "Opportunités", icon: "Megaphone", match: ["/interventions"] },
+          ] satisfies ShellItem[])
+        : []),
+      { key: "agenda", href: "/inscriptions", label: "Agenda", icon: "CalendarDays", match: p.listed ? ["/interventions"] : [] },
+      { key: "profil", href: "/compte", label: "Mon profil", short: "Profil", icon: "UserRound" },
+    ];
+    spaces.push({
+      key: "praticien",
+      title: "Espace praticien",
+      subtitle: [p.specialty || p.profession, p.city].filter(Boolean).join(" · ") || (p.listed ? "Expert référencé" : "Praticien"),
+      chip: p.listed ? "Expert référencé" : "Praticien",
+      initials: initialsOf(fullName),
+      color: avatarColor(fullName),
+      square: false,
+      home: "/tableau-de-bord",
+      items,
+      links: p.listed ? [{ href: `/experts/${p.id}`, label: "Voir ma fiche publique", icon: "ExternalLink" }] : [],
     });
   }
 
-  const orgs = new Map<string, { name: string; kind: string; roles: OrgRole[] }>();
+  const orgs = new Map<string, { name: string; kind: OrgKind; roles: OrgRole[] }>();
   for (const m of user.memberships) {
     const o = orgs.get(m.organizationId) ?? { name: m.organization.name, kind: m.organization.kind, roles: [] };
     o.roles.push(m.role);
     orgs.set(m.organizationId, o);
   }
-  const supplierIds = [...orgs].filter(([, o]) => o.kind === "PRESTATAIRE").map(([id]) => id);
-  const rfqTodo = await Promise.all(
-    supplierIds.map(async (supplierId) => ({
-      supplierId,
-      _count: await db.rfqSupplier.count({ where: { supplierId, declined: false, rfq: { status: "sent", quotes: { none: { supplierId } } } } }),
-    })),
-  );
   for (const [id, o] of orgs) {
-    const base = `/organisations/${id}`;
-    sections.push({
-      title: "Organisation",
-      subtitle: o.name,
-      items: [
-        { href: base, label: "Tableau de bord", icon: "LayoutDashboard", exact: true },
-        ...(o.kind === "PRESTATAIRE"
-          ? [
-              { href: `${base}/devis`, label: "Demandes de devis", icon: "Receipt" as const, badge: rfqTodo.find((r) => r.supplierId === id)?._count ?? 0 },
-              ...(o.roles.includes("ADMIN") ? [{ href: `${base}/membres`, label: "Membres et réglages", icon: "Users" as const }] : []),
-            ]
-          : orgItems(base, o.roles)),
-      ],
+    const overview = await orgOverview(id);
+    const hrefs = (overview?.todos ?? []).map((t) => t.href);
+    spaces.push({
+      key: id,
+      title: o.name,
+      subtitle: `${ORG_KIND_LABEL[o.kind]} · ${o.roles.map((r) => ROLE_LABEL[r]).join(", ")}`,
+      chip: o.name,
+      initials: initialsOf(o.name),
+      color: avatarColor(o.name),
+      square: true,
+      home: `/organisations/${id}`,
+      items: orgNavItems(id, o.roles, o.kind).map((i) => (i.key === "accueil" ? i : { ...i, badge: countFor(i, hrefs) })),
+      links: orgMenuLinks(id, o.roles, o.kind),
     });
-  }
-  function orgItems(base: string, roles: OrgRole[]): NavSection["items"] {
-    const o = { roles };
-    return [
-        ...(has(PROJECT_VIEW_ROLES, o.roles) ? [{ href: `${base}/dossiers`, label: "Dossiers", icon: "ClipboardList" as const }] : []),
-        ...(has(SOURCING_ROLES, o.roles) ? [{ href: `${base}/opportunites`, label: "Opportunités", icon: "Megaphone" as const }] : []),
-        ...(has(EVENT_MANAGER_ROLES, o.roles) ? [{ href: `${base}/evenements`, label: has(EVENT_ORGANIZER_ROLES, o.roles) ? "Événements" : "Événements confiés", icon: "CalendarDays" as const }] : []),
-        ...(has(EVENT_ORGANIZER_ROLES, o.roles) ? [{ href: `${base}/intervenants`, label: "Appels à intervenants", icon: "Mic" as const }] : []),
-        ...(has(EVENT_MANAGER_ROLES, o.roles) ? [{ href: `${base}/prestataires`, label: "Prestataires", icon: "Receipt" as const }] : []),
-        ...(has(REVIEW_ROLES, o.roles) ? [{ href: `${base}/relecture`, label: "Revue documentaire", icon: "FlaskConical" as const }] : []),
-        ...(has(COMPLIANCE_ROLES, o.roles) ? [{ href: `${base}/conformite`, label: "Conformité", icon: "ShieldCheck" as const }] : []),
-        ...(has(COMPLIANCE_ROLES, o.roles) ? [{ href: `${base}/hospitalites`, label: "Hospitalités", icon: "Gift" as const }] : []),
-        ...(has(["ADMIN", "EDUCATION", "CUMUL", "CONFORMITE"], o.roles) ? [{ href: `${base}/integrations`, label: "Intégrations", icon: "Plug" as const }] : []),
-        ...(o.roles.every((r) => r === "PRESTATAIRE") ? [] : [{ href: `${base}/membres`, label: "Membres et réglages", icon: "Users" as const }]),
-    ];
   }
 
   const sourcing = user.memberships.some((m) => SOURCING_ROLES.includes(m.role) && m.organization.kind !== "PRESTATAIRE");
-  const followCount = (await db.follow.count({ where: { userId: user.id } })) ? await unseenFollowCount(user.id, user.followsSeenAt) : 0;
-  sections.push({
-    title: "Explorer",
-    items: [
-      { href: "/evenements", label: "Agenda", icon: "CalendarDays" },
-      ...(sourcing || p?.listed ? [{ href: "/suivis", label: "Mes suivis", icon: "Bell" as const, badge: followCount }] : []),
-      ...(sourcing ? [{ href: "/annuaire", label: "Annuaire des experts", icon: "Search" as const }] : [{ href: "/experts", label: "Experts", icon: "Search" as const }]),
-    ],
-  });
-  sections.push({
-    title: "Réglages",
-    items: [
-      { href: "/compte", label: "Mon compte", icon: "Settings" },
-      { href: "/organisations", label: "Mes organisations", icon: "Users", exact: true },
-    ],
-  });
-
-  const fullName = `${user.firstName} ${user.lastName}`;
-  const role = p ? (p.listed ? "Praticien · expert référencé" : "Praticien") : orgs.size > 0 ? [...orgs.values()][0].name : "Compte";
+  const showBell = sourcing || !!p?.listed;
+  const followCount = showBell && (await db.follow.count({ where: { userId: user.id } })) ? await unseenFollowCount(user.id, user.followsSeenAt) : 0;
+  const initialSpace = (await cookies()).get("kb_espace")?.value;
 
   return (
-    <>
-      <header className="top-bar">
-        <div className="top-actions">
-          <MenuToggle />
-          <Logo />
-        </div>
-        <div className="top-actions">
-          <Link href="/compte" className="session-chip" title="Mon compte">
-            <Avatar name={fullName} size={30} square />
-            <span className="session-text">
-              <span className="session-name">{p ? "Dr " : ""}{fullName}</span>
-              <br />
-              <span className="session-role">{role}</span>
-            </span>
-          </Link>
-        </div>
-      </header>
-      <Sidebar sections={sections} />
-    </>
+    <AppShell
+      user={{ name: `${p ? "Dr " : ""}${fullName}`, initials: initialsOf(fullName), color: avatarColor(fullName) }}
+      spaces={spaces}
+      initialSpace={initialSpace ? decodeURIComponent(initialSpace) : undefined}
+      activeKey={section}
+      bell={showBell ? { count: followCount } : null}
+    />
   );
 }

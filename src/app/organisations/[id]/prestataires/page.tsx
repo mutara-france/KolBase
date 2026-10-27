@@ -1,6 +1,8 @@
 import Link from "next/link";
 import { Check, Info, Receipt, Send, X } from "lucide-react";
 import { SiteHeader } from "@/components/SiteHeader";
+import { SectionNav } from "@/components/SectionNav";
+import { orgTabs } from "@/lib/org-overview";
 import { Avatar } from "@/components/Avatar";
 import { NewRfqForm, SupplierLine } from "@/components/RfqForms";
 import { db } from "@/lib/db";
@@ -34,11 +36,12 @@ export default async function Page({ params, searchParams }: { params: Promise<{
   const list = cat ? suppliers.filter((s) => s.categories.includes(cat)) : suppliers;
   const tabs = [["demandes", `Demandes de devis (${rfqs.length})`], ["nouvelle", "Nouvelle demande"], ["annuaire", `Annuaire (${suppliers.length})`]] as const;
 
+  const sectionTabs = await orgTabs("evenements", id);
   return (
     <>
       <SiteHeader />
       <main className="stack">
-        <p className="muted"><Link href={`/organisations/${id}`}>{org.name}</Link> / Prestataires</p>
+        <SectionNav tabs={sectionTabs} active="prestataires" label="Rubrique Événements" />
         <h1>Prestataires et devis</h1>
         <div className="stats">
           <div className="card stat"><span className="muted">Demandes en cours</span><strong>{rfqs.filter((r) => r.status === "draft" || r.status === "sent").length}</strong></div>

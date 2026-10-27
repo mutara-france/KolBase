@@ -1,5 +1,7 @@
 import Link from "next/link";
 import { SiteHeader } from "@/components/SiteHeader";
+import { SectionNav } from "@/components/SectionNav";
+import { orgTabs } from "@/lib/org-overview";
 import { NewCallForm } from "@/components/OpportunityForms";
 import { db } from "@/lib/db";
 import { requireMembership } from "@/lib/orgs";
@@ -16,12 +18,13 @@ export default async function Page({ params }: { params: Promise<{ id: string }>
     include: { applications: { select: { status: true } } },
     orderBy: { createdAt: "desc" },
   });
+  const sectionTabs = await orgTabs("praticiens", id);
   return (
     <>
       <SiteHeader />
       <main className="stack">
-        <p className="muted"><Link href={`/organisations/${id}`}>{org.name}</Link> / Opportunités</p>
-        <h1>Opportunités</h1>
+        <SectionNav tabs={sectionTabs} active="appels" label="Rubrique Praticiens" />
+        <h1>Appels publiés</h1>
         {calls.length > 0 && (
           <section className="card">
             <table className="table">
@@ -40,7 +43,7 @@ export default async function Page({ params }: { params: Promise<{ id: string }>
             </table>
           </section>
         )}
-        <NewCallForm orgId={id} types={COLLAB_TYPES} />
+        <div id="nouvel-appel"><NewCallForm orgId={id} types={COLLAB_TYPES} /></div>
       </main>
     </>
   );

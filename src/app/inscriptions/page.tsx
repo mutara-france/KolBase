@@ -1,5 +1,7 @@
 import Link from "next/link";
 import { SiteHeader } from "@/components/SiteHeader";
+import { SectionNav } from "@/components/SectionNav";
+import { practitionerSectionTabs } from "@/lib/nav";
 import { db } from "@/lib/db";
 import { requireUser } from "@/lib/auth";
 import { formatDateTime, formatEUR } from "@/lib/events";
@@ -35,6 +37,7 @@ export default async function Page() {
     <>
       <SiteHeader />
       <main className="narrow stack">
+        {user.practitioner?.listed && <SectionNav tabs={practitionerSectionTabs("agenda")} active="inscriptions" label="Rubrique Agenda" />}
         <div className="actions spread">
           <h1>Mes inscriptions</h1>
           <a className="btn ghost small" href="/inscriptions/calendrier">Exporter vers mon agenda (.ics)</a>

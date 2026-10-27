@@ -1,5 +1,7 @@
 import Link from "next/link";
 import { SiteHeader } from "@/components/SiteHeader";
+import { SectionNav } from "@/components/SectionNav";
+import { orgTabs } from "@/lib/org-overview";
 import { db } from "@/lib/db";
 import { requireMembership } from "@/lib/orgs";
 import { EVENT_MANAGER_ROLES, EVENT_ORGANIZER_ROLES, eventScope, eventTypeLabel, formatDate } from "@/lib/events";
@@ -15,11 +17,12 @@ export default async function Page({ params }: { params: Promise<{ id: string }>
     include: { _count: { select: { registrations: true } } },
     orderBy: { startsAt: "desc" },
   });
+  const sectionTabs = await orgTabs("evenements", id);
   return (
     <>
       <SiteHeader />
       <main className="stack">
-        <p className="muted"><Link href={`/organisations/${id}`}>{org.name}</Link> / Événements</p>
+        <SectionNav tabs={sectionTabs} active="evenements" label="Rubrique Événements" />
         <div className="actions spread">
           <h1>{isOrganizer ? "Événements" : "Événements confiés"}</h1>
           <div className="actions">
