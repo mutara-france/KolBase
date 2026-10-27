@@ -31,7 +31,6 @@ export default async function Page({ params, searchParams }: { params: Promise<{
     <>
       <SiteHeader />
       <main className="stack">
-        <p className="muted"><Link href={`/organisations/${id}`}>{org.name}</Link> / Demandes de devis</p>
         <h1>Demandes de devis</h1>
         {!org.listed && <p className="notice warn">Votre organisation n&apos;apparaît pas dans l&apos;annuaire des prestataires. Complétez la fiche prestataire pour être consulté.</p>}
         <div className="stats">

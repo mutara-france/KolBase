@@ -1,180 +1,102 @@
-import Link from "next/link";
-import { CalendarDays, ClipboardList, ExternalLink, FlaskConical, Gift, Megaphone, Mic, Receipt, Search, ShieldCheck, Users } from "lucide-react";
+import { notFound } from "next/navigation";
 import { SiteHeader } from "@/components/SiteHeader";
-import { Avatar } from "@/components/Avatar";
-import { StatCard } from "@/components/PublicCards";
-import { StatusPill } from "@/components/ProjectBits";
-import { TodoList, type TodoItem } from "@/components/Todo";
-import { db } from "@/lib/db";
-import { ORG_KIND_LABEL, ROLE_LABEL, requireMembership } from "@/lib/orgs";
-import { COMPLIANCE_ROLES, EVENT_MANAGER_ROLES, EVENT_ORGANIZER_ROLES, eventScope, formatDate, formatDateTime, formatEUR } from "@/lib/events";
-import { PROJECT_ROLES, PROJECT_VIEW_ROLES, REVIEW_ROLES, SOURCING_ROLES } from "@/lib/projects";
+import { CreateMenu, DashHead, DashStats, Timeline, TodoGroups, todayLabel, type TimelineItem } from "@/components/Dashboard";
+import { requireMembership } from "@/lib/orgs";
+import { orgOverview } from "@/lib/org-overview";
+import { formatEUR } from "@/lib/events";
+import { supplierCategoryLabel } from "@/lib/suppliers";
 
-export const metadata = { title: "Tableau de bord — KolBase" };
+export const metadata = { title: "Accueil — KolBase" };
 
-const DAY = 864e5;
+const plural = (n: number, one: string, many: string) => `${n} ${n > 1 ? many : one}`;
 
+/** Accueil d'une organisation : ce qui attend une action, puis ce qui arrive. Le reste est dans les rubriques. */
 export default async function Page({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
-  const { org, roles, user } = await requireMembership(id);
-  // Organisation prestataire : uniquement ses demandes de devis (pas de dossiers, d'événements ni de conformité).
-  const has = (list: typeof roles) => org.kind !== "PRESTATAIRE" && roles.some((r) => list.includes(r));
-  const can = {
-    sourcing: has(SOURCING_ROLES), project: has(PROJECT_ROLES), view: has(PROJECT_VIEW_ROLES),
-    events: has(EVENT_MANAGER_ROLES), organizer: has(EVENT_ORGANIZER_ROLES), compliance: has(COMPLIANCE_ROLES), review: has(REVIEW_ROLES),
-  };
-  const evScope = eventScope(user, roles);
-  // Prestataire mandaté par une autre organisation : accès limité aux événements confiés.
-  const isExternal = roles.every((r) => r === "PRESTATAIRE");
+  const { user } = await requireMembership(id);
+  const o = await orgOverview(id);
+  if (!o) notFound();
+  const { org, can, todos, projects, events, calls, hosp, rfqs } = o;
   const now = new Date();
   const base = `/organisations/${id}`;
-
-  const reviewQueue = can.review
-    ? await db.materialVersion.findMany({ where: { status: "submitted", material: { project: { organizationId: id } } }, include: { material: { include: { project: { select: { id: true, title: true } } } } } })
-    : [];
-  const [projects, events, calls, hosp] = await Promise.all([
-    can.view ? db.project.findMany({ where: { organizationId: id }, include: { experts: true }, orderBy: { updatedAt: "desc" } }) : Promise.resolve([]),
-    can.events || can.compliance ? db.event.findMany({ where: { organizationId: id, ...(can.compliance ? {} : evScope) }, include: { _count: { select: { registrations: true } } }, orderBy: { startsAt: "asc" } }) : Promise.resolve([]),
-    can.sourcing ? db.openCall.findMany({ where: { organizationId: id, status: "open" }, include: { applications: { where: { status: "pending" }, select: { id: true } } } }) : Promise.resolve([]),
-    can.compliance
-      ? db.registration.findMany({ where: { event: { organizationId: id }, profession: { not: null }, declared: false, benefits: { some: {} } }, include: { event: true, benefits: true } })
-      : Promise.resolve([]),
-  ]);
 
   const active = projects.filter((p) => !["TERMINE", "DECLINE"].includes(p.status));
   const engaged = active.flatMap((p) => p.experts.filter((e) => !["ATT_EXPERTS", "DECLINE"].includes(e.status)));
   const upcoming = events.filter((e) => e.startsAt >= now);
-  const hospValue = hosp.reduce((s, r) => s + r.benefits.reduce((x, b) => x + b.valueCents, 0), 0);
   const pendingApps = calls.reduce((s, c) => s + c.applications.length, 0);
+  const hospValue = hosp.reduce((s, r) => s + r.benefits.reduce((x, b) => x + b.valueCents, 0), 0);
 
-  const todos: TodoItem[] = [];
-  const dossier = (p: (typeof projects)[number]) => `${base}/dossiers/${p.id}`;
-  if (can.project) {
-    for (const p of projects) {
-      if (p.status === "ATT_IND") todos.push({ href: dossier(p), title: `Proposition d'expert à examiner : ${p.title}`, icon: "Inbox", tone: "warn" });
-      if (p.status === "ACCORD") todos.push({ href: dossier(p), title: `Soumettre à la conformité : ${p.title}`, detail: "Accord de principe obtenu", icon: "ShieldCheck" });
-      if (p.status === "BLOQUE") todos.push({ href: dossier(p), title: `Reprendre le dossier : ${p.title}`, detail: p.complianceNote ?? "Bloqué par la conformité", icon: "AlertTriangle", tone: "danger" });
-      if (p.status === "VALIDE") todos.push({ href: dossier(p), title: `Choisir le régime : ${p.title}`, detail: "Déclaration simple ou autorisation de l'Ordre", icon: "CircleDot" });
-      if (p.status === "ORDRE") todos.push({ href: dossier(p), title: `Réponse de l'Ordre attendue : ${p.title}`, detail: p.ordreRef ?? undefined, icon: "CalendarClock", tone: "warn" });
-      if (p.status === "SIGNATURE") todos.push({ href: dossier(p), title: `Convention à faire signer : ${p.title}`, icon: "FileSignature", tone: "warn" });
-      if (p.status === "ATT_EXPERTS" && now.getTime() - p.updatedAt.getTime() > 5 * DAY)
-        todos.push({ href: dossier(p), title: `Relancer les experts : ${p.title}`, detail: `Sans réponse depuis le ${formatDate(p.updatedAt)}`, icon: "Inbox", tone: "warn" });
-    }
-    for (const c of calls) if (c.applications.length) todos.push({ href: `${base}/opportunites/${c.id}`, title: `${c.applications.length} candidature${c.applications.length > 1 ? "s" : ""} à examiner`, detail: c.title, icon: "UserRound" });
-  }
-  if (can.compliance) {
-    for (const p of projects)
-      if ((p.status === "SIGNE" || p.status === "TERMINE") && !p.declared)
-        todos.push({ href: `${base}/conformite?onglet=transparence`, title: `Publier sur Transparence Santé : ${p.title}`, detail: "Convention signée", icon: "FileSignature", tone: "warn" });
-    for (const p of projects) if (p.status === "EN_VALID") todos.push({ href: dossier(p), title: `Valider : ${p.title}`, detail: `Soumis le ${formatDate(p.updatedAt)}`, icon: "ShieldCheck", tone: "warn" });
-    const byEvent = new Map<string, { title: string; n: number; past: boolean }>();
-    for (const r of hosp) {
-      const e = byEvent.get(r.eventId) ?? { title: r.event.title, n: 0, past: r.event.startsAt < now };
-      e.n++; byEvent.set(r.eventId, e);
-    }
-    for (const [, e] of byEvent) if (e.past) todos.push({ href: `${base}/hospitalites`, title: `Déclarer les hospitalités : ${e.title}`, detail: `${e.n} bénéficiaire${e.n > 1 ? "s" : ""}`, icon: "FileSignature", tone: "danger" });
-  }
-  for (const v of reviewQueue)
-    todos.push({ href: `${base}/relecture`, title: `Support à relire : ${v.material.title} (v${v.version})`, detail: v.material.project.title, icon: "CircleDot" });
-  if (can.events) {
-    for (const e of events) {
-      if (!e.publishedAt && e.startsAt >= now) todos.push({ href: `${base}/evenements/${e.id}`, title: `Brouillon à publier : ${e.title}`, detail: formatDate(e.startsAt), icon: "CalendarClock", tone: "warn" });
-      const days = Math.ceil((e.startsAt.getTime() - now.getTime()) / DAY);
-      if (e.publishedAt && days >= 0 && days <= 14)
-        todos.push({ href: `${base}/evenements/${e.id}`, title: `J-${days} : ${e.title}`, detail: `${e._count.registrations} inscrit${e._count.registrations > 1 ? "s" : ""}${e.capacity ? ` sur ${e.capacity}` : ""}`, icon: "CalendarClock", tone: "ok" });
-    }
-  }
+  // Trois repères au plus, choisis selon les droits.
+  const stats = [
+    can.view && { href: `${base}/dossiers`, value: active.length, label: "Dossiers en cours", hint: plural(engaged.length, "expert engagé", "experts engagés") },
+    can.view && { href: `${base}/dossiers`, value: formatEUR(engaged.reduce((s, e) => s + (e.feeCents ?? 0), 0)), label: "Engagés (HT)", hint: "Sur les dossiers en cours" },
+    can.events && { href: `${base}/evenements`, value: upcoming.length, label: "Événements à venir", hint: plural(upcoming.reduce((s, e) => s + e._count.registrations, 0), "inscrit", "inscrits") },
+    can.sourcing && { href: `${base}/opportunites`, value: pendingApps, label: "Candidatures à traiter", hint: plural(calls.length, "appel ouvert", "appels ouverts") },
+    can.compliance && { href: `${base}/conformite`, value: projects.filter((p) => p.status === "EN_VALID").length, label: "Dossiers à valider" },
+    can.compliance && { href: `${base}/hospitalites`, value: hosp.length, label: "Hospitalités à déclarer", hint: formatEUR(hospValue) },
+  ]
+    .filter((s): s is Exclude<typeof s, false> => !!s)
+    .slice(0, 3);
 
-  if (can.organizer && org.kind !== "PRESTATAIRE") {
-    const [speakerApps, rfqs] = await Promise.all([
-      db.speakerApplication.groupBy({ by: ["eventId"], where: { status: "pending", event: { organizationId: id } }, _count: true }),
-      db.rfq.findMany({ where: { organizationId: id, status: { in: ["draft", "sent"] } }, include: { event: { select: { title: true } }, _count: { select: { quotes: true, suppliers: true } } } }),
-    ]);
-    const n = speakerApps.reduce((s, a) => s + a._count, 0);
-    if (n) todos.push({ href: `${base}/intervenants`, title: `${n} candidature${n > 1 ? "s" : ""} d'intervenant à examiner`, detail: `${speakerApps.length} appel${speakerApps.length > 1 ? "s" : ""}`, icon: "Mic", tone: "warn" });
-    for (const r of rfqs) {
-      const label = r.event?.title ?? "Demande de devis";
-      if (r.status === "draft") todos.push({ href: `${base}/prestataires`, title: `Demande de devis à envoyer : ${label}`, icon: "Receipt" });
-      else if (r._count.quotes > 0) todos.push({ href: `${base}/prestataires`, title: `Devis à comparer : ${label}`, detail: `${r._count.quotes} devis sur ${r._count.suppliers} prestataire${r._count.suppliers > 1 ? "s" : ""}`, icon: "Receipt", tone: "warn" });
-    }
-  }
-  if (org.kind === "PRESTATAIRE") {
-    const waiting = await db.rfqSupplier.findMany({ where: { supplierId: id, declined: false, rfq: { status: "sent", quotes: { none: { supplierId: id } } } }, include: { rfq: { include: { organization: { select: { name: true } }, event: { select: { title: true } } } } } });
-    for (const w of waiting)
-      todos.push({ href: `${base}/devis`, title: `Devis demandé par ${w.rfq.organization.name}`, detail: w.rfq.event?.title ?? w.rfq.needs.slice(0, 60), icon: "Receipt", tone: "warn" });
-  }
+  const timeline: TimelineItem[] = [
+    ...upcoming.map((e) => ({
+      date: e.startsAt,
+      title: e.title,
+      detail: [e.city ?? (e.format === "DISTANCIEL" ? "En ligne" : null), `${plural(e._count.registrations, "inscrit", "inscrits")}${e.capacity ? ` sur ${e.capacity}` : ""}`, e.publishedAt ? null : "brouillon"]
+        .filter(Boolean)
+        .join(" · "),
+      href: can.events ? `${base}/evenements/${e.id}` : `/evenements/${e.id}`,
+      strong: true,
+    })),
+    ...(can.organizer
+      ? rfqs
+          .filter((r) => r.status === "sent" && r.deadline && r.deadline >= now)
+          .map((r) => ({ date: r.deadline!, title: `Limite des devis : ${supplierCategoryLabel(r.category).toLowerCase()}`, detail: r.event?.title, href: `${base}/prestataires` }))
+      : []),
+    ...calls
+      .filter((c) => c.deadline && c.deadline >= now)
+      .map((c) => ({
+        date: c.deadline!,
+        title: `Clôture de l'appel : ${c.title}`,
+        detail: c.applications.length ? plural(c.applications.length, "candidature à examiner", "candidatures à examiner") : "Aucune candidature à examiner",
+        href: `${base}/opportunites/${c.id}`,
+      })),
+  ]
+    .sort((a, b) => a.date.getTime() - b.date.getTime())
+    .slice(0, 6);
 
-  const shortcuts = [
-    can.view && { href: `${base}/dossiers`, label: "Dossiers", icon: ClipboardList },
-    can.sourcing && { href: `${base}/dossiers/nouveau`, label: "Nouveau dossier", icon: ClipboardList },
-    can.sourcing && { href: `${base}/opportunites`, label: "Opportunités", icon: Megaphone },
-    can.organizer && { href: `${base}/evenements/nouveau`, label: "Nouvel événement", icon: CalendarDays },
-    can.events && !can.organizer && { href: `${base}/evenements`, label: "Événements confiés", icon: CalendarDays },
-    can.organizer && org.kind !== "PRESTATAIRE" && { href: `${base}/intervenants`, label: "Appels à intervenants", icon: Mic },
-    can.events && org.kind !== "PRESTATAIRE" && { href: `${base}/prestataires`, label: "Prestataires et devis", icon: Receipt },
-    org.kind === "PRESTATAIRE" && { href: `${base}/devis`, label: "Demandes de devis", icon: Receipt },
-    can.review && { href: `${base}/relecture`, label: "Revue documentaire", icon: FlaskConical },
-    can.compliance && { href: `${base}/conformite`, label: "Espace conformité", icon: ShieldCheck },
-    can.compliance && { href: `${base}/hospitalites`, label: "Hospitalités", icon: Gift },
-    can.sourcing && { href: "/annuaire", label: "Annuaire des experts", icon: Search },
-    !isExternal && { href: `${base}/membres`, label: "Membres et réglages", icon: Users },
-    org.kind !== "PRESTATAIRE" && { href: `/structures/${id}`, label: "Page publique", icon: ExternalLink },
-  ].filter(Boolean) as { href: string; label: string; icon: typeof Users }[];
+  const create = [
+    can.sourcing && { href: `${base}/dossiers/nouveau`, label: "Un dossier de collaboration" },
+    can.organizer && { href: `${base}/evenements/nouveau`, label: "Un événement" },
+    can.sourcing && { href: `${base}/opportunites#nouvel-appel`, label: "Un appel aux praticiens" },
+    can.organizer && { href: `${base}/intervenants`, label: "Un appel à intervenants" },
+  ].filter((c): c is Exclude<typeof c, false> => !!c);
+
+  const urgent = todos.filter((t) => t.tone === "danger").length;
+  const lede =
+    todos.length === 0
+      ? "Rien à traiter pour le moment."
+      : `${plural(todos.length, "action vous attend", "actions vous attendent")}${urgent ? `, dont ${plural(urgent, "urgente", "urgentes")}` : ""}.`;
 
   return (
     <>
       <SiteHeader />
-      <main className="stack">
-        <div className="tile-head">
-          <Avatar name={org.name} size={52} square />
-          <div>
-            <span className="eyebrow">{ORG_KIND_LABEL[org.kind]} · {roles.map((r) => ROLE_LABEL[r]).join(", ")}</span>
-            <h1>{org.name}</h1>
-          </div>
-        </div>
-
-        <div className="stats-row">
-          {can.view && <StatCard label="Dossiers en cours" value={active.length} hint={`${engaged.length} expert${engaged.length > 1 ? "s" : ""} engagé${engaged.length > 1 ? "s" : ""}`} />}
-          {can.view && <StatCard label="Engagement en cours (HT)" value={formatEUR(engaged.reduce((s, e) => s + (e.feeCents ?? 0), 0))} />}
-          {can.events && <StatCard label="Événements à venir" value={upcoming.length} hint={`${upcoming.reduce((s, e) => s + e._count.registrations, 0)} inscrits`} electric />}
-          {can.sourcing && <StatCard label="Candidatures à traiter" value={pendingApps} hint={`${calls.length} appel${calls.length > 1 ? "s" : ""} ouvert${calls.length > 1 ? "s" : ""}`} />}
-          {can.compliance && <StatCard label="À valider" value={projects.filter((p) => p.status === "EN_VALID").length} />}
-          {can.compliance && <StatCard label="Hospitalités à déclarer" value={hosp.length} hint={formatEUR(hospValue)} />}
-        </div>
-
-        <div className="grid-2 dash-grid">
-          <section className="card">
-            <h2 className="section-title">À faire ({todos.length})</h2>
-            <TodoList items={todos} />
+      <main className="stack dash">
+        <DashHead kicker={`${todayLabel()} · ${org.name}`} title={`Bonjour ${user.firstName}.`} lede={lede} action={<CreateMenu items={create} />} />
+        <DashStats stats={stats} />
+        <div className={`dash-layout${timeline.length ? "" : " single"}`}>
+          <section className="card dash-card" aria-labelledby="a-faire">
+            <h2 id="a-faire" className="dash-title">
+              À faire {todos.length > 0 && <span className="count-pill">{todos.length}</span>}
+            </h2>
+            <TodoGroups todos={todos} />
           </section>
-          <div className="stack">
-            <section className="card">
-              <h2 className="section-title">Raccourcis</h2>
-              <div className="shortcuts">
-                {shortcuts.map((s) => <Link key={s.href} href={s.href} className="shortcut"><s.icon size={16} /> {s.label}</Link>)}
-              </div>
+          {timeline.length > 0 && (
+            <section className="card dash-card" aria-labelledby="a-venir">
+              <h2 id="a-venir" className="dash-title">À venir</h2>
+              <Timeline items={timeline} />
             </section>
-            {can.view && projects.length > 0 && (
-              <section className="card">
-                <h2 className="section-title">Derniers dossiers</h2>
-                <ul className="mini-list">
-                  {projects.slice(0, 5).map((p) => (
-                    <li key={p.id} className="flex-between"><Link href={dossier(p)}><strong>{p.title}</strong></Link><StatusPill status={p.status} /></li>
-                  ))}
-                </ul>
-              </section>
-            )}
-            {(can.events || can.compliance) && upcoming.length > 0 && (
-              <section className="card">
-                <h2 className="section-title">Prochains événements</h2>
-                <ul className="mini-list">
-                  {upcoming.slice(0, 4).map((e) => (
-                    <li key={e.id}><Link href={can.events ? `${base}/evenements/${e.id}` : `/evenements/${e.id}`}><strong>{e.title}</strong></Link><span className="text-xs">{formatDateTime(e.startsAt)} · {e._count.registrations} inscrit{e._count.registrations > 1 ? "s" : ""}{e.publishedAt ? "" : " · brouillon"}</span></li>
-                  ))}
-                </ul>
-              </section>
-            )}
-          </div>
+          )}
         </div>
       </main>
     </>

@@ -1,5 +1,7 @@
 import Link from "next/link";
 import { SiteHeader } from "@/components/SiteHeader";
+import { SectionNav } from "@/components/SectionNav";
+import { orgTabs } from "@/lib/org-overview";
 import { StatusPill } from "@/components/ProjectBits";
 import { db } from "@/lib/db";
 import { requireMembership } from "@/lib/orgs";
@@ -17,11 +19,12 @@ export default async function Page({ params }: { params: Promise<{ id: string }>
     include: { experts: { include: { practitioner: { include: { user: { select: { lastName: true } } } } } } },
     orderBy: { updatedAt: "desc" },
   });
+  const sectionTabs = await orgTabs("dossiers", id);
   return (
     <>
       <SiteHeader />
       <main className="stack">
-        <p className="muted"><Link href={`/organisations/${id}`}>{org.name}</Link> / Dossiers</p>
+        <SectionNav tabs={sectionTabs} active="dossiers" label="Rubrique Dossiers" />
         <div className="actions spread">
           <h1>Dossiers de collaboration</h1>
           {canCreate && <Link className="btn" href={`/organisations/${id}/dossiers/nouveau`}>Nouveau dossier</Link>}

@@ -1,6 +1,8 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { SiteHeader } from "@/components/SiteHeader";
+import { SectionNav } from "@/components/SectionNav";
+import { practitionerSectionTabs } from "@/lib/nav";
 import { db } from "@/lib/db";
 import { requireUser } from "@/lib/auth";
 import { formatDate, formatEUR } from "@/lib/events";
@@ -34,8 +36,9 @@ export default async function Page({ searchParams }: { searchParams: Promise<{ t
     <>
       <SiteHeader />
       <main className="stack">
+        <SectionNav tabs={practitionerSectionTabs("opportunites")} active="appels" label="Rubrique Opportunités" />
         <div>
-          <h1>Opportunités</h1>
+          <h1>Appels ouverts</h1>
           <p className="muted">Appels ouverts publiés par les organisations. Candidatez à ceux qui correspondent à votre expertise.</p>
         </div>
         <form className="card form search">

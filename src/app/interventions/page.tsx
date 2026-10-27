@@ -2,6 +2,8 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 import { Check, Clock, Megaphone, Users, Wallet } from "lucide-react";
 import { SiteHeader } from "@/components/SiteHeader";
+import { SectionNav } from "@/components/SectionNav";
+import { practitionerSectionTabs } from "@/lib/nav";
 import { SpeakerApplyForm } from "@/components/SpeakerForms";
 import { db } from "@/lib/db";
 import { requireUser } from "@/lib/auth";
@@ -36,20 +38,21 @@ export default async function Page({ searchParams }: { searchParams: Promise<{ o
     orderBy: { startsAt: "asc" },
   });
   const { onglet = speaking.length ? "interventions" : "appels" } = await searchParams;
-  const tabs = [["interventions", `J'interviens (${speaking.length})`], ["appels", `Appels à intervenants (${calls.length})`], ["candidatures", `Mes candidatures (${mine.length})`]] as const;
+  const group = onglet === "interventions" ? "agenda" : "opportunites";
+  const active = onglet === "interventions" ? "interventions" : onglet === "candidatures" ? "candidatures" : "intervenants";
+  const heading = ({
+    interventions: ["Mes interventions", "Les événements où vous intervenez. Vos participations en tant que public sont dans Mes inscriptions."],
+    appels: ["Appels à intervenants", "Les organisateurs annoncent leurs sessions avant d'avoir bouclé le programme : proposez-vous."],
+    candidatures: ["Mes candidatures", "Vos candidatures aux appels à intervenants et leur suite."],
+  } as Record<string, [string, string]>)[onglet] ?? ["Appels à intervenants", ""];
 
   return (
     <>
-      <SiteHeader />
+      <SiteHeader section={group} />
       <main className="stack">
-        <h1>Mes interventions</h1>
-        <p className="muted">
-          Les événements où vous intervenez, et les appels ouverts auxquels vous pouvez vous porter candidat. Vos participations en tant que public sont
-          dans <Link href="/inscriptions">Mes inscriptions</Link>.
-        </p>
-        <nav className="tabs">
-          {tabs.map(([k, l]) => <Link key={k} href={`?onglet=${k}`} className={k === onglet ? "active" : ""}>{l}</Link>)}
-        </nav>
+        <SectionNav tabs={practitionerSectionTabs(group)} active={active} label={group === "agenda" ? "Rubrique Agenda" : "Rubrique Opportunités"} />
+        <h1>{heading[0]}</h1>
+        {heading[1] && <p className="muted">{heading[1]}</p>}
 
         {onglet === "interventions" && (
           <div className="grid-2">

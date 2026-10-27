@@ -1,6 +1,8 @@
 import Link from "next/link";
 import { FlaskConical } from "lucide-react";
 import { SiteHeader } from "@/components/SiteHeader";
+import { SectionNav } from "@/components/SectionNav";
+import { orgTabs } from "@/lib/org-overview";
 import { MaterialsPanel } from "@/components/DossierSections";
 import { db } from "@/lib/db";
 import { requireMembership } from "@/lib/orgs";
@@ -25,11 +27,12 @@ export default async function Page({ params, searchParams }: { params: Promise<{
   const shown = onglet === "a-relire" ? toReview : projects;
   const tabs = [["a-relire", `À relire (${toReview.reduce((s, p) => s + pending(p), 0)})`], ["tous", `Tous les supports (${projects.reduce((s, p) => s + p.materials.length, 0)})`]] as const;
 
+  const sectionTabs = await orgTabs("dossiers", id);
   return (
     <>
       <SiteHeader />
       <main className="stack">
-        <p className="muted"><Link href={`/organisations/${id}`}>{org.name}</Link> / Revue documentaire</p>
+        <SectionNav tabs={sectionTabs} active="relecture" label="Rubrique Dossiers" />
         <h1>Revue documentaire</h1>
         <p className="muted">Supports soumis par les experts et les équipes : approuvez-les ou demandez des modifications avant toute diffusion.</p>
         <nav className="tabs">

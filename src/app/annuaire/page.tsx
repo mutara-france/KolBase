@@ -1,5 +1,7 @@
 import Link from "next/link";
 import { SiteHeader } from "@/components/SiteHeader";
+import { SectionNav } from "@/components/SectionNav";
+import { currentSourcingOrg, orgTabs } from "@/lib/org-overview";
 import { Avatar } from "@/components/Avatar";
 import { db } from "@/lib/db";
 import { requireDirectoryAccess } from "@/lib/orgs";
@@ -28,10 +30,13 @@ export default async function Page({ searchParams }: { searchParams: Promise<{ q
     take: 100,
   });
 
+  const orgId = await currentSourcingOrg();
+  const sectionTabs = orgId ? await orgTabs("praticiens", orgId) : [];
   return (
     <>
       <SiteHeader />
       <main className="stack">
+        <SectionNav tabs={sectionTabs} active="rechercher" label="Rubrique Praticiens" />
         <h1>Annuaire des experts</h1>
         <form className="card form search">
           <div className="row">

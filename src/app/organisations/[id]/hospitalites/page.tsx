@@ -1,5 +1,7 @@
 import Link from "next/link";
 import { SiteHeader } from "@/components/SiteHeader";
+import { SectionNav } from "@/components/SectionNav";
+import { orgTabs } from "@/lib/org-overview";
 import { db } from "@/lib/db";
 import { requireMembership } from "@/lib/orgs";
 import { COMPLIANCE_ROLES, formatDate, formatEUR } from "@/lib/events";
@@ -28,11 +30,12 @@ export default async function Page({ params, searchParams }: { params: Promise<{
   const sum = (rs: typeof regs) => rs.reduce((s, r) => s + r.benefits.reduce((x, b) => x + b.valueCents, 0), 0);
   const tabs = [["a-declarer", "À déclarer"], ["declarees", "Déclarées"], ["toutes", "Toutes"]] as const;
 
+  const sectionTabs = await orgTabs("conformite", id);
   return (
     <>
       <SiteHeader />
       <main className="stack">
-        <p className="muted"><Link href={`/organisations/${id}`}>{org.name}</Link> / Hospitalités</p>
+        <SectionNav tabs={sectionTabs} active="hospitalites" label="Rubrique Conformité" />
         <div className="actions spread">
           <h1>Hospitalités</h1>
           <a className="btn ghost" href={`/organisations/${id}/hospitalites/export?statut=${statut}`}>Exporter (CSV)</a>
