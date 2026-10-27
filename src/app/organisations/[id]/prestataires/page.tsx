@@ -9,7 +9,7 @@ import { EVENT_MANAGER_ROLES, eventScope, formatDate, formatEUR } from "@/lib/ev
 import { QUOTE_STATUS, RFQ_STATUS, rfqDisplayStatus, SUPPLIER_CATEGORIES, supplierCategoryLabel } from "@/lib/suppliers";
 import { awardQuote, cancelRfq, sendRfq } from "@/lib/rfq-actions";
 
-export const metadata = { title: "Prestataires — Kolbase" };
+export const metadata = { title: "Prestataires — KolBase" };
 
 export default async function Page({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: Promise<{ onglet?: string; evenement?: string; cat?: string }> }) {
   const { id } = await params;
@@ -143,7 +143,7 @@ export default async function Page({ params, searchParams }: { params: Promise<{
             <div className="info-note">
               <Info size={15} />
               <span>
-                Les prestataires de cet annuaire peuvent rémunérer Kolbase pour leur référencement. Ils ne peuvent ni acheter un meilleur classement, ni être
+                Les prestataires de cet annuaire peuvent rémunérer KolBase pour leur référencement. Ils ne peuvent ni acheter un meilleur classement, ni être
                 présélectionnés à votre place : le choix des prestataires consultés vous appartient entièrement.
               </span>
             </div>

@@ -1,5 +1,5 @@
 // KolBase — modèle de données initial
-// Dérivé du prototype « Kolbase plateforme » (rôles, dossiers, événements, hospitalités).
+// Dérivé du prototype « KolBase plateforme » (rôles, dossiers, événements, hospitalités).
 
 generator client {
   provider = "prisma-client"

@@ -4,7 +4,7 @@ import { db } from "@/lib/db";
 import { requireUser } from "@/lib/auth";
 import { formatDateTime, formatEUR } from "@/lib/events";
 
-export const metadata = { title: "Mes inscriptions — Kolbase" };
+export const metadata = { title: "Mes inscriptions — KolBase" };
 
 export default async function Page() {
   const user = await requireUser();

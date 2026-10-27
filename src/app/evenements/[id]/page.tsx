@@ -8,7 +8,7 @@ import { getCurrentUser } from "@/lib/auth";
 import { eventTypeLabel, formatDateTime, formatEUR, FORMAT_LABEL, isHcp } from "@/lib/events";
 import { cancelRegistration } from "@/lib/event-actions";
 
-export const metadata = { title: "Événement — Kolbase" };
+export const metadata = { title: "Événement — KolBase" };
 
 export default async function Page({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;

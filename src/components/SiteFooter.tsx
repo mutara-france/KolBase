@@ -6,20 +6,20 @@ export function SiteFooter() {
     <footer className="site-footer">
       <div className="footer-inner">
         <div>
-          <Logo />
-          <p className="text-xs mt-2" style={{ maxWidth: 340 }}>
-            Plateforme de mise en relation entre praticiens et organisations du secteur dentaire.
+          <Logo tone="light" height={26} />
+          <p className="text-xs mt-2" style={{ maxWidth: 360 }}>
+            La plateforme qui met en relation les chirurgiens-dentistes et les organisations du secteur.
           </p>
         </div>
-        <div className="footer-links">
+        <nav className="footer-links" aria-label="Informations légales">
           <Link href="/mentions-legales" className="footer-link">Mentions légales</Link>
           <Link href="/confidentialite" className="footer-link">Confidentialité</Link>
           <Link href="/cgu" className="footer-link">Conditions d&apos;utilisation</Link>
           <Link href="/aide" className="footer-link">Aide</Link>
-        </div>
+        </nav>
       </div>
       <div className="footer-bottom">
-        <span>© {new Date().getFullYear()} Kolbase. Tous droits réservés.</span>
+        <span>© {new Date().getFullYear()} KolBase. Tous droits réservés.</span>
         {process.env.SEED_DEMO === "1" && <span>Environnement de démonstration — données simulées</span>}
       </div>
     </footer>

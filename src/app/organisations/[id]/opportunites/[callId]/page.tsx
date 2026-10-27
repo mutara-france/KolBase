@@ -8,7 +8,7 @@ import { formatDate, formatEUR } from "@/lib/events";
 import { collabType, SOURCING_ROLES } from "@/lib/projects";
 import { rejectApplication, setOpenCallStatus } from "@/lib/opportunity-actions";
 
-export const metadata = { title: "Opportunité — Kolbase" };
+export const metadata = { title: "Opportunité — KolBase" };
 
 const APP_STATUS: Record<string, string> = { pending: "À traiter", retained: "Retenue", rejected: "Non retenue" };
 

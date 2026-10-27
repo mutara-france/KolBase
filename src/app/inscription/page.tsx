@@ -3,7 +3,7 @@ import { SiteHeader } from "@/components/SiteHeader";
 import { SignUpForm } from "@/components/AuthForms";
 import { getCurrentUser } from "@/lib/auth";
 
-export const metadata = { title: "Créer un compte — Kolbase" };
+export const metadata = { title: "Créer un compte — KolBase" };
 
 export default async function Page({ searchParams }: { searchParams: Promise<{ next?: string }> }) {
   if (await getCurrentUser()) redirect("/compte");

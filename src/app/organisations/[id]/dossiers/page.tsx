@@ -6,7 +6,7 @@ import { requireMembership } from "@/lib/orgs";
 import { formatDate } from "@/lib/events";
 import { collabType, PROJECT_VIEW_ROLES, SOURCING_ROLES } from "@/lib/projects";
 
-export const metadata = { title: "Dossiers — Kolbase" };
+export const metadata = { title: "Dossiers — KolBase" };
 
 export default async function Page({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;

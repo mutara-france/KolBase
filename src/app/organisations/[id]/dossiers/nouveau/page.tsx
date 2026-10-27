@@ -5,7 +5,7 @@ import { db } from "@/lib/db";
 import { requireMembership } from "@/lib/orgs";
 import { COLLAB_TYPES, SOURCING_ROLES } from "@/lib/projects";
 
-export const metadata = { title: "Nouveau dossier — Kolbase" };
+export const metadata = { title: "Nouveau dossier — KolBase" };
 
 export default async function Page({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: Promise<{ expert?: string }> }) {
   const { id } = await params;

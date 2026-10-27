@@ -10,7 +10,7 @@ import { PROJECT_VIEW_ROLES } from "@/lib/projects";
 import { SPEAKER_STATUS } from "@/lib/suppliers";
 import { rejectSpeaker, setSpeakerCallOpen } from "@/lib/speaker-actions";
 
-export const metadata = { title: "Appels à intervenants — Kolbase" };
+export const metadata = { title: "Appels à intervenants — KolBase" };
 
 const isoDate = (d: Date | null) => (d ? d.toLocaleDateString("sv-SE", { timeZone: TZ }) : "");
 const eur = (c: number | null) => (c != null ? String(c / 100) : "");

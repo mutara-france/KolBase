@@ -1,5 +1,5 @@
 /**
- * Données de démonstration Kolbase — entièrement fictives.
+ * Données de démonstration KolBase — entièrement fictives.
  * Idempotent : identifiants fixes « demo-… », relançable sans doublon.
  *
  * Variables facultatives :

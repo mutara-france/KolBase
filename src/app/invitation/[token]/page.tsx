@@ -4,7 +4,7 @@ import { getCurrentUser } from "@/lib/auth";
 import { findInvitation, ROLE_LABEL } from "@/lib/orgs";
 import { acceptInvitation } from "@/lib/org-actions";
 
-export const metadata = { title: "Invitation — Kolbase" };
+export const metadata = { title: "Invitation — KolBase" };
 
 export default async function Page({ params }: { params: Promise<{ token: string }> }) {
   const { token } = await params;

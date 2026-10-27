@@ -6,7 +6,7 @@ import { requireMembership } from "@/lib/orgs";
 import { EVENT_MANAGER_ROLES, EVENT_ORGANIZER_ROLES, eventScope, eventTypeLabel, formatDate, formatDateTime, formatEUR, FORMAT_LABEL } from "@/lib/events";
 import { setEventAgency, setEventFlag } from "@/lib/event-actions";
 
-export const metadata = { title: "Événement — Kolbase" };
+export const metadata = { title: "Événement — KolBase" };
 
 export default async function Page({ params }: { params: Promise<{ id: string; eventId: string }> }) {
   const { id, eventId } = await params;

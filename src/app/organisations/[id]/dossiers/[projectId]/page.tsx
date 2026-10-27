@@ -12,7 +12,7 @@ import { BudgetPanel, ConflictsPanel, MaterialsPanel } from "@/components/Dossie
 import { REVIEW_ROLES } from "@/lib/projects";
 import { complianceSettings, remunerationRegime, REGIME_LABEL } from "@/lib/compliance";
 
-export const metadata = { title: "Dossier — Kolbase" };
+export const metadata = { title: "Dossier — KolBase" };
 
 const ACTION_LABEL: Record<string, string> = {
   "project.create": "Dossier créé",

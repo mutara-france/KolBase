@@ -9,7 +9,7 @@ import { formatDate, formatEUR } from "@/lib/events";
 import { QUOTE_STATUS, SUPPLIER_CATEGORIES, supplierCategoryLabel } from "@/lib/suppliers";
 import { declineRfq } from "@/lib/rfq-actions";
 
-export const metadata = { title: "Demandes de devis — Kolbase" };
+export const metadata = { title: "Demandes de devis — KolBase" };
 
 export default async function Page({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: Promise<{ onglet?: string }> }) {
   const { id } = await params;

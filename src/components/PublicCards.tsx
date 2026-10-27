@@ -1,37 +1,22 @@
 import Link from "next/link";
-import { BadgeCheck, BookOpen, Calendar, ChevronRight, Clock, MapPin, Ticket, Users, Video } from "lucide-react";
+import { BadgeCheck, Calendar, ChevronRight, MapPin, Ticket, Video } from "lucide-react";
 import { Avatar } from "@/components/Avatar";
 import { eventTypeLabel, formatEUR, TZ } from "@/lib/events";
 import { collabType } from "@/lib/projects";
 
-/* Cartes publiques reprises du prototype (EventCard, PublicKolCard, PublicCompanyCard, OpenProjectCard, StatCard). */
+/* Cartes publiques — charte KolBase : vignettes sur fond Aurore, cartes blanches, une seule couleur d'action. */
 
 const hashCode = (s: string) => [...s].reduce((h, c) => (Math.imul(31, h) + c.charCodeAt(0)) | 0, 0);
-const HUES = [214, 232, 258, 276, 192, 168, 24, 340];
-const hueOf = (s: string) => HUES[Math.abs(hashCode(s)) % HUES.length];
 const MONTHS = ["janv.", "févr.", "mars", "avr.", "mai", "juin", "juil.", "août", "sept.", "oct.", "nov.", "déc."];
+const AURORE_FRAMES = ["20% 30%", "50% 50%", "80% 70%", "35% 60%", "65% 35%", "45% 80%"];
 
+/** Visuel de couverture : le dégradé Aurore de la marque, cadré différemment selon la graine. */
 export function AreaArt({ seed, height = 132, label }: { seed: string; height?: number; label?: string | null }) {
-  const hue = hueOf(seed);
-  const h2 = (hue + 40) % 360;
-  const n = Math.abs(hashCode(seed)) % 3;
-  const id = `g-${Math.abs(hashCode(seed))}`;
+  const frame = AURORE_FRAMES[Math.abs(hashCode(seed)) % AURORE_FRAMES.length];
   return (
     <div className="area-art" style={{ height }}>
-      <svg viewBox="0 0 400 160" preserveAspectRatio="none" width="100%" height="100%" aria-hidden>
-        <defs>
-          <linearGradient id={id} x1="0" y1="0" x2="1" y2="1">
-            <stop offset="0%" stopColor={`hsl(${hue} 74% 52%)`} />
-            <stop offset="100%" stopColor={`hsl(${h2} 68% 34%)`} />
-          </linearGradient>
-        </defs>
-        <rect width="400" height="160" fill={`url(#${id})`} />
-        <g fill="none" stroke="rgba(255,255,255,.28)" strokeWidth="1.4">
-          {n === 0 && [0, 1, 2, 3, 4, 5].map((i) => <circle key={i} cx={60 + i * 58} cy={80} r={18 + i * 9} />)}
-          {n === 1 && [0, 1, 2, 3, 4, 5, 6].map((i) => <path key={i} d={`M${-20 + i * 64} 170 Q ${20 + i * 64} 70 ${80 + i * 64} 170`} />)}
-          {n === 2 && [0, 1, 2, 3, 4, 5, 6, 7].map((i) => <line key={i} x1={i * 60 - 40} y1="170" x2={i * 60 + 60} y2="-10" />)}
-        </g>
-      </svg>
+      {/* eslint-disable-next-line @next/next/no-img-element */}
+      <img src="/visuels/fond-aurore.webp" alt="" aria-hidden style={{ objectPosition: frame }} />
       {label && <span className="area-art-label">{label}</span>}
     </div>
   );
@@ -52,41 +37,40 @@ export type EventCardData = {
   format: "PRESENTIEL" | "DISTANCIEL" | "HYBRIDE"; city: string | null; capacity: number | null; registrationOpen: boolean;
   organization: { name: string }; registrations: number;
 };
-const FORMAT = { PRESENTIEL: "Présentiel", DISTANCIEL: "Visioconférence", HYBRIDE: "Hybride" } as const;
+const FORMAT = { PRESENTIEL: "présentiel", DISTANCIEL: "visioconférence", HYBRIDE: "hybride" } as const;
 const dur = (m: number | null) => (m == null ? "" : m >= 60 ? ` · ${Math.floor(m / 60)} h${m % 60 ? String(m % 60).padStart(2, "0") : ""}` : ` · ${m} min`);
 
 export function EventCard({ ev, compact = false }: { ev: EventCardData; compact?: boolean }) {
   const full = ev.capacity != null && ev.registrations >= ev.capacity;
-  const status = !ev.registrationOpen ? "Inscriptions closes" : full ? "Complet" : "Inscriptions ouvertes";
-  const cls = status === "Inscriptions ouvertes" ? "st-ok" : full ? "st-warn" : "st-neutral";
   const parts = new Intl.DateTimeFormat("fr-FR", { timeZone: TZ, day: "2-digit", month: "numeric", year: "numeric", hour: "2-digit", minute: "2-digit" }).formatToParts(ev.startsAt);
   const get = (t: string) => parts.find((p) => p.type === t)?.value ?? "";
   const FormatIcon = ev.format === "DISTANCIEL" ? Video : MapPin;
   const href = `/evenements/${ev.id}`;
+  const left = ev.capacity != null ? Math.max(ev.capacity - ev.registrations, 0) : null;
   return (
-    <div className="event-card">
-      <Link href={href} className="event-cover">
-        <AreaArt seed={(ev.therapeuticArea ?? "") + ev.id} height={compact ? 96 : 128} label={ev.therapeuticArea} />
-        <span className="event-date-chip">
-          <span className="event-day">{get("day")}</span>
+    <article className="event-card">
+      <Link href={href} className="event-cover" aria-label={ev.title}>
+        <AreaArt seed={ev.id + (ev.therapeuticArea ?? "")} height={compact ? 112 : 128} />
+        <time className="event-date-chip" dateTime={ev.startsAt.toISOString()}>
           <span className="event-month">{MONTHS[Number(get("month")) - 1]}</span>
-        </span>
+          <span className="event-day">{get("day")}</span>
+          <span className="event-year">{get("year")}</span>
+        </time>
+        <span className="event-type">{eventTypeLabel(ev.typeId)}</span>
       </Link>
       <div className="event-body">
-        <div className="flex-between mb-1">
-          <span className="sector-tag">{eventTypeLabel(ev.typeId)}</span>
-          <span className={`pill ${cls}`}>{status}</span>
-        </div>
-        <h3 className="card-title">{ev.title}</h3>
-        <div className="meta-line"><Clock size={12} /> {get("day")}/{get("month").padStart(2, "0")}/{get("year")} à {get("hour")}:{get("minute")}{dur(ev.durationMinutes)}</div>
-        <div className="meta-line"><FormatIcon size={12} /> {FORMAT[ev.format]}{ev.city ? ` — ${ev.city}` : ""}</div>
-        <div className="meta-line"><Users size={12} /> {ev.registrations} inscrit{ev.registrations > 1 ? "s" : ""}{ev.capacity ? ` sur ${ev.capacity} places` : ""}</div>
+        <h3 className="card-title" style={{ marginBottom: 2 }}><Link href={href} className="ink">{ev.title}</Link></h3>
+        <div className="meta-line"><FormatIcon size={14} /> {[ev.city, FORMAT[ev.format]].filter(Boolean).join(" · ")} · {get("hour")}:{get("minute")}{dur(ev.durationMinutes)}</div>
+        {ev.therapeuticArea && <div className="meta-line">{ev.therapeuticArea}</div>}
+        <div className="event-org">{ev.organization.name}</div>
         <div className="event-foot">
-          <span className="flex-center gap-2"><Avatar name={ev.organization.name} size={26} square /><span className="text-xs">{ev.organization.name}</span></span>
+          <span>
+            {!ev.registrationOpen ? "Inscriptions closes" : full ? "Complet" : left != null ? <><span className="mono ink">{left}</span> place{left > 1 ? "s" : ""} restante{left > 1 ? "s" : ""}</> : "Inscriptions ouvertes"}
+          </span>
+          {ev.registrationOpen && !full && <Link href={href} className="btn small"><Ticket size={14} /> S&apos;inscrire</Link>}
         </div>
-        <div className="mt-3"><Link href={href} className="btn secondary small"><Ticket size={13} /> S&apos;inscrire</Link></div>
       </div>
-    </div>
+    </article>
   );
 }
 
@@ -97,23 +81,20 @@ export type KolCardData = {
 export function KolCard({ k }: { k: KolCardData }) {
   return (
     <Link href={`/experts/${k.id}`} className="kol-card">
-      <div className="flex-between">
-        <div className="eyebrow">KB-{k.id.slice(-4).toUpperCase()} · France</div>
-        {k.verified && <span className="verif ok small"><BadgeCheck size={12} /> Vérifié</span>}
+      <div className="kol-head">
+        <Avatar name={k.name} size={60} />
+        {k.verified && <span className="verif ok small"><BadgeCheck size={13} /> Identité vérifiée</span>}
       </div>
-      <div className="flex-start gap-3 mt-2 mb-2">
-        <Avatar name={k.name} size={48} />
-        <div>
-          <h3 className="card-title">{k.name}</h3>
-          <p className="text-sm">{[k.specialty || k.profession, k.subspecialty].filter(Boolean).join(" · ")}</p>
-        </div>
+      <h3 className="kol-name">{k.name}</h3>
+      <p className="text-sm">{[k.specialty || k.profession, k.subspecialty].filter(Boolean).join(" · ")}</p>
+      <div className="meta-line mt-1"><MapPin size={13} /> {[k.city, k.hospital].filter(Boolean).join(" — ") || "France"}</div>
+      <div className="tags mt-3 mb-3">{k.types.slice(0, 3).map((t) => <span key={t} className="tag tag-sm">{t}</span>)}</div>
+      <div className="kol-foot">
+        <span className="text-xs">
+          {k.collaborations > 0 ? <><span className="mono ink">{k.collaborations}</span> collaboration{k.collaborations > 1 ? "s" : ""}</> : "Nouveau sur KolBase"}
+        </span>
+        <span className="card-cta">Voir le profil <ChevronRight size={15} /></span>
       </div>
-      <div className="meta-line"><MapPin size={12} /> {[k.city, k.hospital].filter(Boolean).join(" — ") || "France"}</div>
-      <div className="meta-line"><BookOpen size={12} /> {k.types.length} type{k.types.length > 1 ? "s" : ""} d&apos;intervention</div>
-      <div className="tags mt-2 mb-3">{k.types.slice(0, 3).map((t) => <span key={t} className="tag tag-sm">{t}</span>)}</div>
-      <div className="hairline mb-2" />
-      <div className="text-xs">{k.collaborations} collaboration{k.collaborations > 1 ? "s" : ""} · {k.organizations} organisation{k.organizations > 1 ? "s" : ""}</div>
-      <div className="card-cta">Voir le profil <ChevronRight size={14} /></div>
     </Link>
   );
 }
@@ -122,18 +103,21 @@ export type OrgCardData = { id: string; name: string; kind: string; sector: stri
 export function OrgCard({ o }: { o: OrgCardData }) {
   return (
     <Link href={`/structures/${o.id}`} className="kol-card">
-      <div className="flex-between">
-        <Avatar name={o.name} size={44} square />
+      <div className="kol-head">
+        <Avatar name={o.name} size={56} square />
         <span className="sector-tag">{o.kind}</span>
       </div>
-      <h3 className="card-title mt-2">{o.name}</h3>
-      {o.sector && <p className="text-xs mb-1">{o.sector}</p>}
-      {o.about && <p className="text-sm mb-2">{o.about}</p>}
-      {o.hq && <div className="meta-line"><MapPin size={12} /> {o.hq}</div>}
-      <div className="tags mt-2 mb-3">{o.areas.slice(0, 4).map((a) => <span key={a} className="tag tag-sm">{a}</span>)}</div>
-      <div className="hairline mb-2" />
-      <div className="text-xs">{o.openCalls} appel{o.openCalls > 1 ? "s" : ""} ouvert{o.openCalls > 1 ? "s" : ""} · {o.collaborations} collaboration{o.collaborations > 1 ? "s" : ""}</div>
-      <div className="card-cta">Voir le profil <ChevronRight size={14} /></div>
+      <h3 className="kol-name">{o.name}</h3>
+      {o.sector && <p className="text-sm">{o.sector}</p>}
+      {o.hq && <div className="meta-line mt-1"><MapPin size={13} /> {o.hq}</div>}
+      {o.about && <p className="text-sm mt-2">{o.about}</p>}
+      <div className="tags mt-3 mb-3">{o.areas.slice(0, 4).map((a) => <span key={a} className="tag tag-sm">{a}</span>)}</div>
+      <div className="kol-foot">
+        <span className="text-xs">
+          <span className="mono ink">{o.openCalls}</span> appel{o.openCalls > 1 ? "s" : ""} ouvert{o.openCalls > 1 ? "s" : ""} · <span className="mono ink">{o.collaborations}</span> collaboration{o.collaborations > 1 ? "s" : ""}
+        </span>
+        <span className="card-cta">Voir la fiche <ChevronRight size={15} /></span>
+      </div>
     </Link>
   );
 }
@@ -141,22 +125,26 @@ export function OrgCard({ o }: { o: OrgCardData }) {
 export type CallCardData = { id: string; title: string; specialty: string | null; typeId: string; poster: string; deadline: Date | null; description: string | null; budgetMinCents: number | null; budgetMaxCents: number | null; open: boolean };
 export function CallCard({ c, action }: { c: CallCardData; action?: React.ReactNode }) {
   const date = c.deadline?.toLocaleDateString("fr-FR", { timeZone: TZ, day: "2-digit", month: "2-digit", year: "numeric" });
+  const budget = c.budgetMinCents != null || c.budgetMaxCents != null
+    ? [c.budgetMinCents, c.budgetMaxCents].filter((x) => x != null).map((x) => formatEUR(x!)).join(" – ")
+    : null;
   return (
-    <div className="dossier-card">
-      <div className="dossier-top">
-        <div>
-          {c.specialty && <span className="sector-tag">{c.specialty}</span>}
-          <h3 className="card-title mt-1">{c.title}</h3>
+    <article className="dossier-card">
+      <div className="flex-center gap-3 mb-3">
+        <Avatar name={c.poster} size={40} square />
+        <div className="grow" style={{ minWidth: 0 }}>
+          <div className="ink" style={{ fontWeight: 600 }}>{c.poster}</div>
+          <div className="text-xs">{[c.specialty, collabType(c.typeId)?.label ?? c.typeId].filter(Boolean).join(" · ")}</div>
         </div>
-        <span className={`pill ${c.open ? "st-electric" : "st-neutral"}`}>{c.open ? "Ouverte" : "Clôturée"}</span>
+        {!c.open && <span className="pill st-neutral">Clôturé</span>}
       </div>
-      <p className="text-sm mb-1">Publié par <strong className="ink">{c.poster}</strong> · {collabType(c.typeId)?.label ?? c.typeId}</p>
-      {date && <p className="text-sm mb-2 flex-center gap-1"><Calendar size={12} /> Candidatures jusqu&apos;au {date}</p>}
+      <h3 className="card-title" style={{ fontSize: 21 }}>{c.title}</h3>
       {c.description && <p className="text-sm mb-3">{c.description}</p>}
-      {(c.budgetMinCents != null || c.budgetMaxCents != null) && (
-        <p className="mono text-xs mb-3">{[c.budgetMinCents, c.budgetMaxCents].filter((x) => x != null).map((x) => formatEUR(x!)).join(" – ")}</p>
-      )}
+      <div className="tags mb-1">
+        {budget && <span className="tag mono">{budget}</span>}
+        {date && <span className="tag"><Calendar size={12} style={{ verticalAlign: "-2px", marginRight: 4 }} />Jusqu&apos;au {date}</span>}
+      </div>
       {action && <div className="mt-3">{action}</div>}
-    </div>
+    </article>
   );
 }

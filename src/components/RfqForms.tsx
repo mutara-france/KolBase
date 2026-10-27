@@ -37,7 +37,7 @@ export function NewRfqForm({ orgId, categories, suppliers, events, defaultEventI
   return (
     <form action={action} className="card form">
       <h2>Nouvelle demande de devis</h2>
-      <p className="muted">Consultez en une fois les prestataires référencés. Ils répondent directement sur Kolbase, depuis leur espace prestataire.</p>
+      <p className="muted">Consultez en une fois les prestataires référencés. Ils répondent directement sur KolBase, depuis leur espace prestataire.</p>
       <Notice state={state} />
       <input type="hidden" name="orgId" value={orgId} />
       <input type="hidden" name="category" value={category} />

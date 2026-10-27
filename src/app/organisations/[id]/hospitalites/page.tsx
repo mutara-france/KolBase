@@ -5,7 +5,7 @@ import { requireMembership } from "@/lib/orgs";
 import { COMPLIANCE_ROLES, formatDate, formatEUR } from "@/lib/events";
 import { markDeclared } from "@/lib/event-actions";
 
-export const metadata = { title: "Hospitalités — Kolbase" };
+export const metadata = { title: "Hospitalités — KolBase" };
 
 export default async function Page({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: Promise<{ statut?: string }> }) {
   const { id } = await params;

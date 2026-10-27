@@ -8,7 +8,7 @@ import { redirect } from "next/navigation";
 import { OrgVisibilityForm } from "@/components/ProfileForms";
 import { companyVisibility } from "@/lib/visibility";
 
-export const metadata = { title: "Membres et réglages — Kolbase" };
+export const metadata = { title: "Membres et réglages — KolBase" };
 
 const fmt = (d: Date) => d.toLocaleDateString("fr-FR", { day: "numeric", month: "short", year: "numeric" });
 

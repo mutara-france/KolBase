@@ -12,7 +12,7 @@ import { ProposeForm } from "@/components/DossierForms";
 import { FollowButton } from "@/components/FollowButton";
 import { COLLAB_TYPES } from "@/lib/projects";
 
-export const metadata = { title: "Organisation — Kolbase" };
+export const metadata = { title: "Organisation — KolBase" };
 
 export default async function Page({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;

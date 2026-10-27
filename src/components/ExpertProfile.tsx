@@ -54,7 +54,7 @@ export async function ExpertProfile({ id, viewer, solicitHref, userId = null }: 
       <div className="stats-row">
         {canSee(v.historique, viewer) ? (
           <>
-            <div className="stat-card"><div className="stat-value">{p.projectLinks.length}</div><div className="stat-label">Collaborations via Kolbase</div></div>
+            <div className="stat-card"><div className="stat-value">{p.projectLinks.length}</div><div className="stat-label">Collaborations via KolBase</div></div>
             <div className="stat-card"><div className="stat-value">{orgs.length}</div><div className="stat-label">Organisations partenaires</div></div>
             <div className="stat-card"><div className="stat-value tone-electric">{p.responseDays ? `${p.responseDays} j` : "—"}</div><div className="stat-label">Délai de réponse moyen</div></div>
           </>
@@ -106,7 +106,7 @@ export async function ExpertProfile({ id, viewer, solicitHref, userId = null }: 
       {v.projets !== "masque" || viewer === "proprietaire" ? (
         <section className="card">
           <h2 className="section-title"><Clock size={15} /> Collaborations</h2>
-          {p.projectLinks.length === 0 ? <p className="muted">Aucune collaboration conclue via Kolbase pour l&apos;instant.</p>
+          {p.projectLinks.length === 0 ? <p className="muted">Aucune collaboration conclue via KolBase pour l&apos;instant.</p>
             : v.projets === "agrege" && viewer !== "proprietaire" ? (
               <p>{p.projectLinks.length} collaboration{p.projectLinks.length > 1 ? "s" : ""} avec {orgs.length} organisation{orgs.length > 1 ? "s" : ""}.</p>
             ) : (

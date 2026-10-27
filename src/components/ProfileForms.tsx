@@ -29,7 +29,7 @@ export function KolVisibilityForm({ v }: { v: KolVisibility }) {
       <p className="muted">Choisissez, information par information, qui peut la voir sur votre fiche publique.</p>
       <Notice state={state} />
       {KOL_VIS_FIELDS.map((f) => <VisRow key={f.key} name={f.key} label={f.label} desc={f.desc} value={v[f.key]} levels={VISIBILITY_LEVELS} />)}
-      <VisRow name="projets" label="Collaborations" desc="Organisations et dossiers menés via Kolbase." value={v.projets} levels={PROJECT_VISIBILITY_LEVELS} />
+      <VisRow name="projets" label="Collaborations" desc="Organisations et dossiers menés via KolBase." value={v.projets} levels={PROJECT_VISIBILITY_LEVELS} />
       <button className="btn" disabled={pending}>{pending ? "Enregistrement…" : "Enregistrer la visibilité"}</button>
     </form>
   );
