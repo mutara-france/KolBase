@@ -10,7 +10,7 @@ import { collabType, PROJECT_ROLES, PROJECT_VIEW_ROLES, STATUS_LABEL, TRANSITION
 import { advanceProject } from "@/lib/project-actions";
 import { BudgetPanel, ConflictsPanel, MaterialsPanel } from "@/components/DossierSections";
 import { REVIEW_ROLES } from "@/lib/projects";
-import { complianceSettings, remunerationRegime, REGIME_LABEL } from "@/lib/compliance";
+import { complianceSettings, projectRegime, REGIME_LABEL } from "@/lib/compliance";
 
 export const metadata = { title: "Dossier — KolBase" };
 
@@ -54,14 +54,15 @@ export default async function Page({ params }: { params: Promise<{ id: string; p
   const type = collabType(project.typeId);
   const isProject = roles.some((r) => PROJECT_ROLES.includes(r));
   const isCompliance = roles.some((r) => COMPLIANCE_ROLES.includes(r));
+  const settings = complianceSettings(org.complianceSettings);
+  const regime = projectRegime(settings, type?.unit ?? "", project.experts);
   const available = (Object.keys(TRANSITIONS) as TransitionKey[]).filter((k) => {
     const t = TRANSITIONS[k];
+    // Au-delà d'un seuil, la déclaration simple n'est pas possible : seule la demande d'autorisation est proposée.
+    if (k === "declaration" && regime?.regime === "autorisation") return false;
     return (t.from as readonly string[]).includes(project.status) && (t.roles === "compliance" ? isCompliance : isProject);
   });
   const needsNote = (k: TransitionKey) => k === "block" || k === "validate" || k === "ordre";
-  const settings = complianceSettings(org.complianceSettings);
-  const regimes = project.experts.filter((e) => e.status !== "DECLINE").map((e) => remunerationRegime(settings, e.feeCents, e.days, type?.unit ?? ""));
-  const regime = regimes.find((r) => r.regime === "autorisation") ?? regimes[0];
   const total = project.experts.filter((e) => e.status !== "DECLINE").reduce((s, e) => s + (e.feeCents ?? 0), 0);
 
   return (
@@ -95,12 +96,12 @@ export default async function Page({ params }: { params: Promise<{ id: string; p
             </div>
             {project.status === "VALIDE" && regime && (
               <p className="hint">
-                Régime recommandé : <span className={`pill ${regime.regime === "autorisation" ? "wait" : "ok"}`}>{REGIME_LABEL[regime.regime]}</span>{" "}
+                Régime : <span className={`pill ${regime.regime === "autorisation" ? "wait" : "ok"}`}>{REGIME_LABEL[regime.regime]}</span>{" "}
                 ({regime.reason}).{" "}
                 {regime.regime === "autorisation"
-                  ? `Demande d'autorisation à adresser au moins ${settings.authorizationDays} jours avant l'exécution.`
-                  : `Déclaration à effectuer au moins ${settings.declarationDays} jours avant l'exécution.`}{" "}
-                La conformité confirme le régime applicable.
+                  ? `Demande d'autorisation à adresser au moins ${settings.authorizationDays} jours avant l'exécution ; la déclaration simple n'est pas possible.`
+                  : `Déclaration à effectuer au moins ${settings.declarationDays} jours ouvrables avant l'exécution.`}{" "}
+                Si la convention prévoit aussi une hospitalité au-delà des seuils, demandez l&apos;autorisation.
               </p>
             )}
           </section>

@@ -82,7 +82,7 @@ export default async function Page({ params, searchParams }: { params: Promise<{
             <h2>Autorisations</h2>
             <p className="muted">
               Dossiers validés dont le montant dépasse un seuil d&apos;autorisation, et demandes en cours auprès de l&apos;Ordre. La demande doit être
-              adressée au moins {s.authorizationDays} jours avant l&apos;exécution ; sous les seuils, une déclaration {s.declarationDays} jours avant suffit.
+              adressée au moins {s.authorizationDays} jours avant l&apos;exécution ; sous les seuils, une déclaration {s.declarationDays} jours ouvrables avant suffit.
             </p>
             {authorizations.length === 0 ? <p className="muted">Aucune autorisation en cours.</p> : (
               <table className="table">
