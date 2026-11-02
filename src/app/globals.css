@@ -830,3 +830,10 @@ body:has(.sidebar) .site-footer { padding: 24px 32px; }
   .row-figures { grid-column: 2; grid-row: 1 / span 2; }
 }
 .quote-lines > .link { align-self: flex-start; display: inline-flex; align-items: center; gap: 4px; margin-top: 2px; }
+.call-kinds { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 12px; }
+.call-kind { display: flex; gap: 12px; align-items: flex-start; padding: 14px 16px; border: 1px solid var(--line); border-radius: 16px; background: #fff; color: var(--ink); text-decoration: none !important; }
+.call-kind > span:last-child { display: flex; flex-direction: column; gap: 3px; }
+.call-kind.current { border-color: var(--outremer); background: linear-gradient(180deg, var(--tint), #fff 80%); }
+.call-kind:not(.current) { opacity: 0.85; }
+.call-kind:not(.current):hover { opacity: 1; border-color: var(--outremer); }
+.call-kind-icon { flex: none; display: grid; place-items: center; width: 34px; height: 34px; border-radius: 10px; background: var(--tint); color: var(--outremer); }

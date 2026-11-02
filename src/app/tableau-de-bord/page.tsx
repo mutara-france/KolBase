@@ -2,7 +2,7 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 import { SiteHeader } from "@/components/SiteHeader";
 import { Avatar } from "@/components/Avatar";
-import { DashHead, MoreLink, Timeline, todayLabel, type TimelineItem } from "@/components/Dashboard";
+import { DashHead, MoreLink, Timeline, type TimelineItem } from "@/components/Dashboard";
 import { TodoList, type TodoItem } from "@/components/Todo";
 import { db } from "@/lib/db";
 import { requireUser } from "@/lib/auth";
@@ -108,7 +108,7 @@ export default async function Page() {
     <>
       <SiteHeader />
       <main className="stack dash">
-        <DashHead kicker={todayLabel(locale)} title={t("Bonjour {name}.", { name: `${drPrefix(p.profession) || `${user.firstName} `}${user.lastName}` })} lede={lede} />
+        <DashHead title={t("Bonjour {name}.", { name: `${drPrefix(p.profession) || `${user.firstName} `}${user.lastName}` })} lede={lede} />
 
         {!p.listed && (
           <section className="card highlight flex-between">

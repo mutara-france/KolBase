@@ -113,10 +113,10 @@ export default async function Page({ params }: { params: Promise<{ id: string }>
             <p className="muted">{t("L'événement est complet.")}</p>
           ) : !user ? (
             <>
-              <p className="muted">{t("L'inscription est nominative : connectez-vous pour vous inscrire et choisir les prestations que vous acceptez.")}</p>
+              <p className="notice ok">{t("Inscription réservée aux membres KolBase : elle est nominative, car les hospitalités acceptées sont rattachées à votre nom. Créez votre compte en une minute, vous reviendrez ici pour vous inscrire.")}</p>
               <div className="actions">
-                <Link className="btn" href={`/connexion?next=${back}`}>{t("Se connecter")}</Link>
-                <Link className="btn ghost" href={`/inscription?next=${back}`}>{t("Créer un compte")}</Link>
+                <Link className="btn" href={`/inscription?next=${back}`}>{t("Créer mon compte et m'inscrire")}</Link>
+                <Link className="btn ghost" href={`/connexion?next=${back}`}>{t("J'ai déjà un compte")}</Link>
               </div>
             </>
           ) : (

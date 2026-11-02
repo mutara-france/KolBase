@@ -33,6 +33,11 @@ export default async function Page({ searchParams }: { searchParams: Promise<{ o
     orderBy: { event: { startsAt: "asc" } },
   });
   const speaking = mine.filter((a) => a.status === "retained");
+  const collabApps = await db.application.findMany({
+    where: { practitionerId: p.id },
+    include: { openCall: { include: { organization: true } } },
+    orderBy: { createdAt: "desc" },
+  });
   const links = await db.projectExpert.findMany({ where: { practitionerId: p.id, projectId: { in: speaking.map((a) => a.projectId).filter((x): x is string => !!x) } } });
   const linkOf = (projectId: string | null) => links.find((l) => l.projectId === projectId)?.id;
   const calls = await db.event.findMany({
@@ -50,8 +55,8 @@ export default async function Page({ searchParams }: { searchParams: Promise<{ o
   const active = onglet === "interventions" ? "interventions" : onglet === "candidatures" ? "candidatures" : "intervenants";
   const heading = (({
     interventions: ["Mes interventions", "Les événements où vous intervenez. Vos participations en tant que public sont dans Mes inscriptions."],
-    appels: ["Appels à intervenants", "Les organisateurs annoncent leurs sessions avant d'avoir bouclé le programme : proposez-vous."],
-    candidatures: ["Mes candidatures", "Vos candidatures aux appels à intervenants et leur suite."],
+    appels: ["Appels à intervenants", "Prendre la parole lors d'un événement : les organisateurs annoncent leurs sessions avant d'avoir bouclé le programme. Pour une collaboration rémunérée hors événement, voyez les appels à experts."],
+    candidatures: ["Mes candidatures", "Vos candidatures aux appels à experts et aux appels à intervenants, et leur suite."],
   } as Record<string, [string, string]>)[onglet] ?? ["Appels à intervenants", ""]).map((s) => (s ? t(s) : s));
 
   return (
@@ -108,6 +113,24 @@ export default async function Page({ searchParams }: { searchParams: Promise<{ o
 
         {onglet === "candidatures" && (
           <section className="card">
+            <h2 className="section-title">{t("Appels à experts")}</h2>
+            {collabApps.length === 0 && <p className="muted">{t("Aucune candidature.")}</p>}
+            <ul className="applications">
+              {collabApps.map((a) => (
+                <li key={a.id}>
+                  <div className="actions spread">
+                    <strong><Link href={`/opportunites/${a.openCallId}`}>{a.openCall.title}</Link></strong>
+                    <span className={`pill ${a.status === "retained" ? "ok" : ["rejected", "declined"].includes(a.status) ? "done" : "wait"}`}>{t(a.status === "pending" ? "En attente" : SPEAKER_STATUS[a.status])}</span>
+                  </div>
+                  <span className="muted">{a.openCall.organization.name} · {t("envoyée le {date}", { date: fmtDate(locale, a.createdAt) })}</span>
+                </li>
+              ))}
+            </ul>
+          </section>
+        )}
+        {onglet === "candidatures" && (
+          <section className="card">
+            <h2 className="section-title">{t("Appels à intervenants")}</h2>
             {mine.length === 0 && <p className="muted">{t("Aucune candidature.")}</p>}
             <ul className="applications">
               {mine.map((a) => (

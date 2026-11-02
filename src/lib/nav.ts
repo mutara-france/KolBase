@@ -80,7 +80,7 @@ export function orgSectionTabs(section: OrgSectionKey, orgId: string, roles: Org
     section === "praticiens"
       ? [
           has(roles, SOURCING_ROLES) && { key: "rechercher", href: "/annuaire", label: "Rechercher" },
-          has(roles, SOURCING_ROLES) && { key: "appels", href: `${base}/opportunites`, label: "Appels publiés" },
+          has(roles, SOURCING_ROLES) && { key: "appels", href: `${base}/opportunites`, label: "Appels à experts" },
         ]
       : section === "dossiers"
         ? [has(roles, PROJECT_VIEW_ROLES) && { key: "dossiers", href: `${base}/dossiers`, label: "Dossiers" }]
@@ -107,7 +107,7 @@ export function orgSectionTabs(section: OrgSectionKey, orgId: string, roles: Org
 export function practitionerSectionTabs(section: PractitionerSectionKey): SectionTab[] {
   return section === "opportunites"
     ? [
-        { key: "appels", href: "/opportunites", label: "Appels ouverts" },
+        { key: "appels", href: "/opportunites", label: "Appels à experts" },
         { key: "intervenants", href: "/interventions?onglet=appels", label: "Appels à intervenants" },
         { key: "candidatures", href: "/interventions?onglet=candidatures", label: "Mes candidatures" },
       ]

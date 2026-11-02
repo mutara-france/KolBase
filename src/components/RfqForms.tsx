@@ -3,7 +3,6 @@
 import { useActionState, useState } from "react";
 import { Check, Plus, Send } from "lucide-react";
 import { createRfq, postRfqMessage, submitQuote, updateSupplierProfile } from "@/lib/rfq-actions";
-import { createMandate } from "@/lib/event-actions";
 import { Notice } from "@/components/AuthForms";
 import { VAT_OPTIONS } from "@/lib/quotes";
 import { Avatar } from "@/components/Avatar";
@@ -191,26 +190,6 @@ export function SupplierProfileForm({ orgId, categories, current, canEdit }: { o
   );
 }
 
-/** Mandater une agence prestataire référencée. */
-export function MandateForm({ orgId, agencies }: { orgId: string; agencies: { id: string; name: string; detail: string }[] }) {
-  const [state, action, pending] = useActionState(createMandate, undefined);
-  return (
-    <form action={action} className="card form">
-      <h2>Mandater une agence</h2>
-      <p className="muted">Une agence mandatée gère les événements que vous lui confiez. Son équipe y accède avec son propre compte KolBase, sans invitation, et ne voit que ces événements ; l&apos;accès cesse à la fin du mandat.</p>
-      <Notice state={state} />
-      <input type="hidden" name="orgId" value={orgId} />
-      <label>Agence
-        <select name="agencyId" required defaultValue="">
-          <option value="" disabled>Choisir une agence référencée…</option>
-          {agencies.map((a) => <option key={a.id} value={a.id}>{a.name}{a.detail ? ` — ${a.detail}` : ""}</option>)}
-        </select>
-      </label>
-      <label>Périmètre (facultatif)<input name="scope" placeholder="Logistique des soirées scientifiques 2027…" /></label>
-      <button className="btn" disabled={pending || agencies.length === 0}>{pending ? "…" : "Mandater"}</button>
-    </form>
-  );
-}
 
 /** Question ou réponse dans le fil privé d'une demande de devis (demandeur ↔ prestataire). */
 export function RfqMessageForm({ orgId, rfqId, supplierId, placeholder }: { orgId: string; rfqId: string; supplierId: string; placeholder: string }) {

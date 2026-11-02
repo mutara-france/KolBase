@@ -246,6 +246,19 @@ async function supplierTeam(supplierId: string) {
   return ms.map((m) => m.user);
 }
 
+/** Événement confié à une agence : son équipe est prévenue et y accède aussitôt. */
+export function notifyEventConfided(eventId: string) {
+  later(async () => {
+    const e = await db.event.findUnique({ where: { id: eventId }, include: { organization: { select: { name: true } } } });
+    if (!e?.agencyId) return;
+    await send(await supplierTeam(e.agencyId), {
+      subject: `${e.organization.name} vous confie « ${e.title} »`,
+      text: `Bonjour,\n\n${e.organization.name} confie à votre agence l'organisation de l'événement « ${e.title} » (${e.startsAt.toLocaleDateString("fr-FR", { timeZone: "Europe/Paris" })}). Vous y accédez avec votre compte KolBase : inscrits, prestataires et devis.`,
+      cta: { label: "Ouvrir l'événement", href: `/organisations/${e.organizationId}/evenements/${e.id}` },
+    });
+  });
+}
+
 /** Décision sur une demande de devis : le prestataire retenu et les autres sont prévenus. */
 export function notifyAward(rfqId: string) {
   later(async () => {

@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { CallKinds } from "@/components/CallKinds";
 import { Lock, Megaphone, Unlock } from "lucide-react";
 import { SiteHeader } from "@/components/SiteHeader";
 import { SectionNav } from "@/components/SectionNav";
@@ -43,10 +44,7 @@ export default async function Page({ params }: { params: Promise<{ id: string }>
       <main className="stack">
         <SectionNav tabs={sectionTabs} active="intervenants" label="Rubrique Événements" />
         <h1>Appels à intervenants</h1>
-        <p className="muted">
-          Annoncez la session avant d&apos;avoir bouclé le programme. Les experts référencés se déclarent, vous arbitrez, et le dossier de
-          collaboration s&apos;ouvre au moment où vous retenez quelqu&apos;un.
-        </p>
+        <CallKinds orgId={id} current="intervenants" />
         {canManage && (
           <OpenSpeakerCallForm
             orgId={id}

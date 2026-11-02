@@ -419,7 +419,7 @@ const linkIn = (mail) => mail?.text.match(/https?:\/\/\S+/g)?.find((u) => !u.end
   await db.end();
 }
 
-// ── Mandats d'agence ───────────────────────────────────────────────────────
+// ── Agences : confier un événement en une seule action ─────────────────────
 {
   const agent = await session();
   await login(agent.page, "karim.benali@demo.kolbase.local");
@@ -428,23 +428,23 @@ const linkIn = (mail) => mail?.text.match(/https?:\/\/\S+/g)?.find((u) => !u.end
   const { ctx, page } = await session();
   await login(page, "claire.morel@demo.kolbase.local");
   await page.goto(`${BASE}/organisations/demo-org-dentalys/prestataires?onglet=agences`);
-  check("Mandats : agence existante listée", (await text(page)).includes("Agence Médiane Événements"));
-  const belleville = await page.locator('select[name="agencyId"] option', { hasText: "Traiteur Belleville" }).getAttribute("value");
-  await page.selectOption('select[name="agencyId"]', belleville);
-  await page.click('button:has-text("Mandater")');
-  await page.waitForTimeout(1200);
-  check("Mandats : nouvelle agence mandatée", (await text(page)).includes("Traiteur Belleville est mandatée"));
-  // Le mandat suffit : l'équipe de l'agence accède à l'espace du client, sans invitation.
-  const lud = await session();
-  await login(lud.page, "ludovic.perrin@demo.kolbase.local");
-  const r = await lud.page.goto(`${BASE}/organisations/demo-org-dentalys/evenements`);
-  check("Mandat : accès de l'équipe de l'agence sans invitation", r?.status() === 200 && (await text(lud.page)).includes("Événements confiés"), String(r?.status()));
-  await lud.ctx.close();
-  await page.goto(`${BASE}/organisations/demo-org-dentalys/prestataires?onglet=agences`);
+  check("Agences : agence mandatée listée, sans formulaire séparé", (await text(page)).includes("Agence Médiane Événements") && (await page.locator('button:has-text("Mandater")').count()) === 0);
   await page.locator('section.card:has-text("Agence Médiane") button:has-text("Mettre fin au mandat")').click();
   await page.waitForTimeout(1200);
   await agent.page.goto(`${BASE}/organisations/demo-org-dentalys/evenements`);
-  check("Fin de mandat : l'agence ne voit plus l'événement", !(await text(agent.page)).includes("Soirée"));
+  check("Fin de mandat : l'agence n'a plus accès", !(await text(agent.page)).includes("Soirée"));
+  // Confier un événement à une agence non mandatée : le mandat est créé au passage, l'agence est prévenue.
+  await page.goto(`${BASE}/organisations/demo-org-dentalys/evenements/demo-ev-live-surgery`);
+  const opt = page.locator('select[name="agencyId"] option', { hasText: "Agence Médiane" });
+  check("Événement : agence proposée avec « nouveau mandat »", (await opt.innerText()).includes("nouveau mandat"));
+  await page.selectOption('select[name="agencyId"]', await opt.getAttribute("value"));
+  await page.click('button:has-text("Confier l\'événement")');
+  await page.waitForTimeout(1500);
+  check("Événement confié en une action", (await text(page)).includes("Confié à Agence Médiane Événements"));
+  check("E-mail à l'agence : événement confié", !!(await waitMail("karim.benali@demo.kolbase.local", "vous confie « Live surgery")));
+  await agent.page.goto(`${BASE}/organisations/demo-org-dentalys/evenements`);
+  const at = await text(agent.page);
+  check("Agence : accès au seul événement confié, sans invitation", at.includes("Live surgery") && !at.includes("Soirée"));
   await ctx.close();
   await agent.ctx.close();
 }
@@ -1055,6 +1055,37 @@ async function submitNewOrg(page, siren) {
   if ((await f.count()) === 0) await sup.page.locator('section.card:has-text("Live surgery") button:has-text("Réviser mon devis")').click();
   check("Devis : exemple adapté à la catégorie, une seule façon de chiffrer", (await f.locator('input[name="line_label"]').first().getAttribute("placeholder")) === "Captation 2 caméras et régie" && (await f.locator('input[name="amount"]').count()) === 0);
   await sup.ctx.close();
+}
+
+// ── Clarté : données utiles, appels expliqués, inscription, organisations d'aperçu ─
+{
+  const { ctx, page } = await session();
+  await login(page, "claire.morel@demo.kolbase.local");
+  await page.goto(`${BASE}/organisations/demo-org-dentalys`);
+  check("Accueil : plus de date du jour", (await page.locator(".dash-kicker").count()) === 0);
+  await page.goto(`${BASE}/organisations/demo-org-dentalys/opportunites`);
+  const kinds = await page.locator(".call-kinds").innerText();
+  check("Appels : les deux sortes expliquées côte à côte", kinds.includes("Appel à experts") && kinds.includes("Appel à intervenants") && kinds.includes("collaboration rémunérée"));
+  await ctx.close();
+  const anon = await session();
+  await anon.page.goto(`${BASE}/evenements/demo-ev-soiree-implanto`);
+  check("Événement : inscription réservée aux membres, création de compte proposée", (await text(anon.page)).includes("Inscription réservée aux membres KolBase") && (await anon.page.locator('a:has-text("Créer mon compte et m\'inscrire")').getAttribute("href")).startsWith("/inscription?next="));
+  const pub = await anon.page.goto(`${BASE}/structures/apercu-straumann`);
+  check("Aperçu : organisation réelle invisible du public", pub?.status() === 404, String(pub?.status()));
+  await anon.page.goto(`${BASE}/structures`);
+  check("Aperçu : absente de l'annuaire public", !(await text(anon.page)).includes("Straumann"));
+  await anon.ctx.close();
+  const ap = await session();
+  await login(ap.page, "apercu.organisations@demo.kolbase.local");
+  const r = await ap.page.goto(`${BASE}/structures/apercu-straumann`);
+  check("Aperçu : fiche visible du compte d'aperçu", r?.status() === 200 && (await text(ap.page)).includes("Straumann Group"), String(r?.status()));
+  await ap.ctx.close();
+  const exp = await session();
+  await login(exp.page, "olivier.girard@demo.kolbase.local");
+  await exp.page.goto(`${BASE}/interventions?onglet=candidatures`);
+  const ct = await text(exp.page);
+  check("Praticien : candidatures des deux sortes d'appels réunies", ct.includes("Appels à experts") && ct.includes("Appels à intervenants"));
+  await exp.ctx.close();
 }
 
 // ── 4. Limitation des tentatives ───────────────────────────────────────────

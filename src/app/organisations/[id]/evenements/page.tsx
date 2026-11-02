@@ -63,7 +63,7 @@ export default async function Page({ params }: { params: Promise<{ id: string }>
         <div className="actions spread">
           <h1>{isOrganizer ? "Événements" : "Événements confiés"}</h1>
           <div className="actions">
-            <a className="btn ghost" href={`/organisations/${id}/evenements/calendrier`}>Exporter vers un agenda (.ics)</a>
+            <a className="link" href={`/organisations/${id}/evenements/calendrier`}>Ajouter à mon agenda (.ics)</a>
             {isOrganizer && <Link className="btn" href={`/organisations/${id}/evenements/nouveau`}>Nouvel événement</Link>}
           </div>
         </div>

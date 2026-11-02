@@ -9,11 +9,11 @@ import { getT } from "@/lib/i18n/server";
 
 export const todayLabel = (locale: Locale = "fr") => new Date().toLocaleDateString(intlLocale(locale), { timeZone: TZ, weekday: "long", day: "numeric", month: "long" });
 
-export function DashHead({ kicker, title, lede, action }: { kicker: string; title: string; lede?: string; action?: React.ReactNode }) {
+export function DashHead({ kicker, title, lede, action }: { kicker?: string; title: string; lede?: string; action?: React.ReactNode }) {
   return (
     <div className="dash-head">
       <div>
-        <p className="dash-kicker">{kicker}</p>
+        {kicker && <p className="dash-kicker">{kicker}</p>}
         <h1>{title}</h1>
         {lede && <p className="dash-lede">{lede}</p>}
       </div>

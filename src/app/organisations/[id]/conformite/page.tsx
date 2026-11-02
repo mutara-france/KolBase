@@ -67,12 +67,6 @@ export default async function Page({ params, searchParams }: { params: Promise<{
       <main className="stack">
         <SectionNav tabs={sectionTabs} active={onglet} label="Rubrique Conformité" />
         <h1>{TABS.find(([k]) => k === onglet)?.[1] ?? "Espace conformité"}</h1>
-        {onglet === "a-valider" && (
-          <p className="muted">
-            Validation des dossiers et régime applicable (déclaration ou autorisation). Viennent ensuite la relecture des supports, les autorisations,
-            les hospitalités, le registre des conventions et les publications Transparence Santé.
-          </p>
-        )}
 
         {onglet === "a-valider" && <ToValidate />}
         {onglet === "autorisations" && (

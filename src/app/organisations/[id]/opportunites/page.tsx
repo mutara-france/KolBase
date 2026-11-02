@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { CallKinds } from "@/components/CallKinds";
 import { SiteHeader } from "@/components/SiteHeader";
 import { SectionNav } from "@/components/SectionNav";
 import { orgTabs } from "@/lib/org-overview";
@@ -24,7 +25,8 @@ export default async function Page({ params }: { params: Promise<{ id: string }>
       <SiteHeader />
       <main className="stack">
         <SectionNav tabs={sectionTabs} active="appels" label="Rubrique Praticiens" />
-        <h1>Appels publiés</h1>
+        <h1>Appels à experts</h1>
+        <CallKinds orgId={id} current="experts" />
         {calls.length > 0 && (
           <section className="card">
             <table className="table" tabIndex={0}>

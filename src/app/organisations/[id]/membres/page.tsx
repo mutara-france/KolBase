@@ -55,7 +55,6 @@ export default async function Page({ params, searchParams }: { params: Promise<{
         <div>
           <p className="muted"><Link href={`/organisations/${id}`}>{org.name}</Link> / Membres et réglages</p>
           <h1>Membres et réglages</h1>
-          <p className="muted">{ORG_KIND_LABEL[org.kind]} · vos rôles : {roles.map((r) => roleLabel(r, org.kind)).join(", ")}</p>
         </div>
         <nav className="tabs" aria-label="Membres et réglages">
           {tabs.map(([k, l]) => <Link key={k} href={`?onglet=${k}`} className={k === onglet ? "active" : ""}>{l}</Link>)}

@@ -159,7 +159,7 @@ export default async function Page({ params }: { params: Promise<{ id: string; p
 
         <header className="page-hero">
           <div className="hero-top">
-            <span className="eyebrow-sm">{type?.label ?? project.typeId}{project.therapeuticArea ? ` · ${project.therapeuticArea}` : ""}{project.origin ? ` · ${project.origin}` : ""}</span>
+            <span className="eyebrow-sm">{type?.label ?? project.typeId}{project.therapeuticArea ? ` · ${project.therapeuticArea}` : ""}</span>
             <StatusPill status={project.status} />
           </div>
           <h1>{project.title}</h1>

@@ -543,6 +543,43 @@ async function main() {
     if (!exists) await db.follow.create({ data: { userId, ...(kind === "p" ? { practitionerId: target } : { organizationId: target }), createdAt: at(-30) } });
   }
 
+  // ─── Aperçu : organisations réelles, décrites à partir d'informations publiques ───────────
+  // Non référencées (invisibles du public) et sans logo : elles ne sont publiées qu'avec l'accord de l'entreprise,
+  // d'un clic dans « Membres et réglages › Organisation ». Visibles par le compte d'aperçu et les DEMO_ADMIN_EMAILS.
+  const PREVIEW_ORGS = [
+    { id: "apercu-straumann", name: "Straumann Group", sector: "Implantologie et dentisterie esthétique", hq: "Bâle, Suisse",
+      areas: ["Implantologie", "Biomatériaux", "Prothèse, CFAO", "Orthodontie"],
+      about: "Groupe suisse fondé en 1954 et basé à Bâle. Il conçoit, fabrique et distribue des implants dentaires, des instruments, des biomatériaux, des prothèses CFAO, des solutions numériques et des aligneurs orthodontiques." },
+    { id: "apercu-septodont", name: "Septodont", sector: "Anesthésie et consommables dentaires", hq: "Saint-Maur-des-Fossés, France",
+      areas: ["Anesthésie", "Endodontie", "Odontologie restauratrice"],
+      about: "Entreprise familiale française fondée en 1932, basée à Saint-Maur-des-Fossés. Spécialiste de la prise en charge de la douleur dentaire (anesthésiques, aiguilles, systèmes d'injection), elle produit aussi des matériaux de restauration et d'endodontie, distribués dans plus de 150 pays." },
+    { id: "apercu-megadental", name: "Mega Dental", sector: "Distribution de fournitures dentaires", hq: "France",
+      areas: ["Consommables", "Équipement", "Omnipratique"],
+      about: "Distributeur français de fournitures et de matériel dentaires pour les cabinets : consommables, petit équipement et matériel d'omnipratique." },
+  ];
+  await upsertUser("demo-u-apercu", "Aperçu", "Organisations", passwordHash);
+  const previewAdmins = ["demo-u-apercu"];
+  for (const email of (process.env.DEMO_ADMIN_EMAILS ?? "").split(",").map((e) => e.trim().toLowerCase()).filter(Boolean)) {
+    const u = await db.user.findUnique({ where: { email }, select: { id: true } });
+    if (u) previewAdmins.push(u.id);
+  }
+  for (const o of PREVIEW_ORGS) {
+    await db.organization.upsert({
+      where: { id: o.id },
+      update: {},
+      create: {
+        id: o.id, name: o.name, kind: "INDUSTRIEL", sector: o.sector, headquarters: o.hq, areas: o.areas, about: o.about, listed: false,
+        verification: "VERIFIED", verifiedAt: new Date(), verificationNote: "Aperçu : organisation réelle décrite à partir d'informations publiques, non référencée sans son accord.",
+      },
+    });
+    for (const userId of previewAdmins)
+      await db.membership.upsert({
+        where: { userId_organizationId_role: { userId, organizationId: o.id, role: "ADMIN" } },
+        update: {},
+        create: { userId, organizationId: o.id, role: "ADMIN" },
+      });
+  }
+
   // ─── Comptes réels rattachés aux organisations de démo ───────────────────
   const admins = (process.env.DEMO_ADMIN_EMAILS ?? "").split(",").map((e) => e.trim().toLowerCase()).filter(Boolean);
   for (const email of admins) {

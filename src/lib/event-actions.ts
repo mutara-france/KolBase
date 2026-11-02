@@ -9,6 +9,7 @@ import { BENEFIT_CATALOG, COMPLIANCE_ROLES, EVENT_MANAGER_ROLES, EVENT_ORGANIZER
 import { EventFormat } from "@/generated/prisma/enums";
 import { eurToCents, intOrNull, str } from "@/lib/form";
 import { getT } from "@/lib/i18n/server";
+import { notifyEventConfided } from "@/lib/notifications";
 
 export type ActionState = { error?: string; ok?: string } | undefined;
 
@@ -94,16 +95,32 @@ export async function setEventFlag(form: FormData) {
 }
 
 /** Confier l'événement à une agence mandatée (ses membres « Prestataire » n'accèdent qu'aux événements confiés). */
+/**
+ * Confier l'événement à une agence, en une seule action : si l'agence n'est pas encore mandatée, le mandat est créé
+ * au passage (son équipe accède alors aux seuls événements confiés). L'agence est prévenue par e-mail.
+ */
 export async function setEventAgency(form: FormData) {
   const orgId = str(form, "orgId");
   const eventId = str(form, "eventId");
   const { user } = await requireMembership(orgId, EVENT_ORGANIZER_ROLES);
   const agencyId = str(form, "agencyId") || null;
-  if (agencyId && !(await db.mandate.findFirst({ where: { mandatorId: orgId, agencyId, OR: [{ endsAt: null }, { endsAt: { gt: new Date() } }] } }))) return;
-  const { count } = await db.event.updateMany({ where: { id: eventId, organizationId: orgId }, data: { agencyId } });
-  if (!count) return;
+  const event = await db.event.findFirst({ where: { id: eventId, organizationId: orgId } });
+  if (!event) return;
+  if (agencyId) {
+    const agency = await db.organization.findFirst({ where: { id: agencyId, kind: "PRESTATAIRE" } });
+    if (!agency) return;
+    const mandate = await db.mandate.findFirst({ where: { mandatorId: orgId, agencyId, ...activeMandate() } });
+    if (!mandate) {
+      if (!agency.listed) return;
+      const m = await db.mandate.create({ data: { mandatorId: orgId, agencyId, scope: "Événements confiés" } });
+      await audit(user.id, "mandate.create", "Mandate", m.id, { agencyId, eventId });
+    }
+  }
+  await db.event.update({ where: { id: eventId }, data: { agencyId } });
   await audit(user.id, "event.agency", "Event", eventId, { agencyId });
+  if (agencyId && agencyId !== event.agencyId) notifyEventConfided(eventId);
   revalidatePath(`/organisations/${orgId}/evenements/${eventId}`);
+  revalidatePath(`/organisations/${orgId}/prestataires`);
 }
 
 /** Inscription nominative d'un utilisateur connecté, avec les avantages qu'il accepte. */
@@ -187,19 +204,6 @@ export async function markDeclared(form: FormData) {
 /** Mandats en cours (non terminés) d'une organisation. */
 const activeMandate = (now = new Date()) => ({ OR: [{ endsAt: null }, { endsAt: { gt: now } }] });
 
-/** Mandater une agence prestataire référencée : on pourra ensuite lui confier des événements. */
-export async function createMandate(_: ActionState, form: FormData): Promise<ActionState> {
-  const orgId = str(form, "orgId");
-  const { user } = await requireMembership(orgId, EVENT_ORGANIZER_ROLES);
-  const agencyId = str(form, "agencyId");
-  const agency = await db.organization.findFirst({ where: { id: agencyId, kind: "PRESTATAIRE", listed: true } });
-  if (!agency) return { error: "Choisissez une agence référencée." };
-  if (await db.mandate.findFirst({ where: { mandatorId: orgId, agencyId, ...activeMandate() } })) return { error: `${agency.name} est déjà mandatée.` };
-  const m = await db.mandate.create({ data: { mandatorId: orgId, agencyId, scope: str(form, "scope") || null } });
-  await audit(user.id, "mandate.create", "Mandate", m.id, { agencyId });
-  revalidatePath(`/organisations/${orgId}/prestataires`);
-  return { ok: `${agency.name} est mandatée. Confiez-lui des événements depuis leur fiche : son équipe y accède aussitôt, sans invitation.` };
-}
 
 /** Fin de mandat : l'agence perd l'accès aux événements qui lui étaient confiés. */
 export async function endMandate(form: FormData) {
