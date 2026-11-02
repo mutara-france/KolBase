@@ -164,7 +164,7 @@ export default async function Page({ params }: { params: Promise<{ id: string; p
           </div>
           <h1>{project.title}</h1>
           {project.description && <p className="lead">{project.description}</p>}
-          <dl className="facts">
+          <dl className="hero-facts">
             <div>
               <dt><Users size={13} /> Experts</dt>
               <dd>{engaged.length} engagé{engaged.length > 1 ? "s" : ""}<small>{waiting.length ? `${waiting.length} réponse${waiting.length > 1 ? "s" : ""} attendue${waiting.length > 1 ? "s" : ""}` : `${live.length} sollicité${live.length > 1 ? "s" : ""}`}</small></dd>

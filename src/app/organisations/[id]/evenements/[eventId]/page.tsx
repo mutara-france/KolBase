@@ -101,7 +101,7 @@ export default async function Page({ params }: { params: Promise<{ id: string; e
           </div>
           <h1>{event.title}</h1>
           {event.description && <p className="lead">{event.description}</p>}
-          <dl className="facts">
+          <dl className="hero-facts">
             <div>
               <dt><CalendarDays size={13} /> Date</dt>
               <dd>{formatDate(event.startsAt)}<small>à {formatTime(event.startsAt)}{duration ? ` · ${duration}` : ""}</small></dd>

@@ -1,6 +1,8 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
+import { Building2, CalendarDays, Euro, Scale } from "lucide-react";
 import { SiteHeader } from "@/components/SiteHeader";
+import { PageHero } from "@/components/PageHero";
 import { Pipeline, StatusPill, Thread } from "@/components/ProjectBits";
 import { MessageForm, RespondForm } from "@/components/ProjectForms";
 import { db } from "@/lib/db";
@@ -38,44 +40,75 @@ export default async function Page({ params }: { params: Promise<{ linkId: strin
   const unit = type?.unit ?? "unité";
   const units = (link.days ?? 0) > 1 ? t(`${unit}s`) : t(unit);
 
+  const engaged = link.status !== "ATT_EXPERTS" && link.status !== "DECLINE" && !abandoned;
+  const lastMsg = link.messages.at(-1);
+  // Ce qu'on attend de l'expert, selon l'étape.
+  const next =
+    abandoned ? t("Ce dossier a été abandonné par l'organisation.")
+    : closed ? t("Le recrutement de ce dossier est clos : l'organisation doit vous solliciter de nouveau.")
+    : link.status === "ATT_EXPERTS" ? t("Donnez votre réponse : accord de principe, contre-proposition ou refus.")
+    : link.status === "DECLINE" ? t("Vous avez décliné cette sollicitation.")
+    : p.status === "SIGNATURE" && link.signature?.status !== "done" ? t("Signez la convention : électroniquement si une demande vous a été envoyée, sinon déposez-la signée dans Documents.")
+    : ["ATT_EXPERTS", "ACCORD", "EN_VALID", "BLOQUE", "VALIDE", "ORDRE"].includes(p.status) ? t("L'organisation prépare le dossier (validation, démarches). Vous pouvez relire le projet de convention et soumettre vos supports.")
+    : p.status === "SIGNE" ? t("Convention signée : la prestation peut avoir lieu.")
+    : p.status === "TERMINE" ? t("Prestation réalisée. Merci !")
+    : t("Échangez avec l'organisation si besoin.");
+
   return (
     <>
       <SiteHeader />
-      <main className="narrow stack">
+      <main className="stack">
         <p className="muted"><Link href="/sollicitations">{t("Mes sollicitations")}</Link></p>
-        <div>
-          <StatusPill status={abandoned || closed ? "DECLINE" : p.status === "ATT_IND" ? "ATT_IND" : link.status} />
-          <h1>{p.title}</h1>
-          <p className="muted">{p.organization.name} · {type ? t(type.label) : p.typeId}{p.therapeuticArea ? ` · ${t(p.therapeuticArea)}` : ""}</p>
+        <PageHero
+          eyebrow={`${p.organization.name} · ${type ? t(type.label) : p.typeId}${p.therapeuticArea ? ` · ${t(p.therapeuticArea)}` : ""}`}
+          status={<StatusPill status={abandoned || closed ? "DECLINE" : p.status === "ATT_IND" ? "ATT_IND" : link.status} />}
+          title={p.title}
+          lead={p.description}
+          facts={[
+            { icon: <CalendarDays size={13} />, label: t("Prestation"), value: `${link.days ?? "—"} ${units}` },
+            { icon: <Euro size={13} />, label: t("Honoraires proposés"), value: link.feeCents != null ? t("{amount} HT", { amount: fmtEur(locale, link.feeCents) }) : "—" },
+            ...(type ? [{ icon: <Scale size={13} />, label: t("Référence de marché"), value: t("{min} à {max} € HT", { min: num(type.fmv[0]), max: num(type.fmv[1]) }), sub: t("par {unit}", { unit: t(type.unit) }) }] : []),
+            { icon: <Building2 size={13} />, label: t("Organisation"), value: p.organization.name, sub: p.organization.sector ?? undefined },
+          ]}
+        >
+          {engaged && <Pipeline status={link.status} />}
+        </PageHero>
+
+        <div className="page-grid">
+          <div className="page-main">
+            {link.status === "ATT_EXPERTS" && !abandoned && !closed && (
+              <section className="card highlight"><h2>{t("Votre réponse")}</h2><RespondForm linkId={link.id} /></section>
+            )}
+            {engaged && <ExpertSignatureBlock linkId={link.id} signature={link.signature} email={user.email} />}
+            {engaged && p.status !== "ATT_IND" && <MaterialsPanel orgId={p.organizationId} projectId={p.id} canSubmit canReview={false} />}
+            {engaged && <DocumentsPanel projectId={p.id} linkId={link.id} canUpload openUpload={p.status === "SIGNATURE"} />}
+            <section className="card">
+              <div className="exchanges-head">
+                <h2 style={{ margin: 0 }}>{t("Échanges avec {org}", { org: p.organization.name })}</h2>
+                {lastMsg && lastMsg.authorId !== user.id && !abandoned && <span className="pill electric">{t("À vous de répondre")}</span>}
+              </div>
+              <Thread messages={link.messages} meId={user.id} />
+              {!abandoned && link.status !== "DECLINE" && <MessageForm linkId={link.id} />}
+            </section>
+          </div>
+          <aside className="page-aside">
+            <section className={`card next-step`}>
+              <span className="eyebrow-sm">{t("Prochaine étape")}</span>
+              <p className="next-hint">{next}</p>
+              {engaged && (
+                <div className="transitions-stack">
+                  <a className="btn ghost" href={`/sollicitations/${link.id}/convention`} target="_blank" rel="noreferrer">{t("Projet de convention (PDF)")}</a>
+                </div>
+              )}
+            </section>
+            <section className="card stack-sm">
+              <h2 className="section-title">{p.organization.name}</h2>
+              {p.organization.about && <p className="text-sm clamp-4">{p.organization.about}</p>}
+              {p.organization.policy && <p className="text-xs muted">{t("Politique de collaboration")} : {p.organization.policy}</p>}
+              <Link className="link" href={`/structures/${p.organizationId}`}>{t("Voir la page de l'organisation")}</Link>
+            </section>
+          </aside>
         </div>
-        {link.status !== "ATT_EXPERTS" && link.status !== "DECLINE" && <Pipeline status={link.status} />}
-        <section className="card">
-          <dl className="facts">
-            <dt>{t("Prestation")}</dt><dd>{link.days ?? "—"} {units}</dd>
-            <dt>{t("Honoraires proposés")}</dt><dd>{link.feeCents != null ? t("{amount} HT", { amount: fmtEur(locale, link.feeCents) }) : "—"}</dd>
-            {type && <dt>{t("Référence de marché")}</dt>}
-            {type && <dd>{t("{min} à {max} € HT par {unit}", { min: num(type.fmv[0]), max: num(type.fmv[1]), unit: t(type.unit) })}</dd>}
-          </dl>
-        </section>
-        {link.status !== "ATT_EXPERTS" && link.status !== "DECLINE" && !abandoned && (
-          <a className="btn ghost" href={`/sollicitations/${link.id}/convention`} target="_blank" rel="noreferrer">{t("Projet de convention (PDF)")}</a>
-        )}
-        {link.status !== "ATT_EXPERTS" && link.status !== "DECLINE" && !abandoned && <ExpertSignatureBlock linkId={link.id} signature={link.signature} email={user.email} />}
-        {p.description && <section className="card"><h2>{t("Objet")}</h2><p>{p.description}</p></section>}
-        {closed && <p className="notice warn">{t("Le recrutement de ce dossier est clos : l'organisation doit vous solliciter de nouveau.")}</p>}
-        {link.status === "ATT_EXPERTS" && !abandoned && !closed && (
-          <section className="card highlight"><h2>{t("Votre réponse")}</h2><RespondForm linkId={link.id} /></section>
-        )}
-        {abandoned && <p className="notice error">{t("Ce dossier a été abandonné par l'organisation.")}</p>}
-        {!["ATT_EXPERTS", "DECLINE"].includes(link.status) && !abandoned && p.status !== "ATT_IND" && (
-          <MaterialsPanel orgId={p.organizationId} projectId={p.id} canSubmit canReview={false} />
-        )}
-        {!["ATT_EXPERTS", "DECLINE"].includes(link.status) && !abandoned && <DocumentsPanel projectId={p.id} linkId={link.id} canUpload />}
-        <section className="card">
-          <h2>{t("Échanges avec {org}", { org: p.organization.name })}</h2>
-          <Thread messages={link.messages} meId={user.id} />
-          {!abandoned && link.status !== "DECLINE" && <MessageForm linkId={link.id} />}
-        </section>
       </main>
     </>
   );
