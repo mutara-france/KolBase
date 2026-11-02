@@ -1309,6 +1309,82 @@ async function submitNewOrg(page, siren) {
   await sup.ctx.close();
 }
 
+// ── Pointage à l'accueil, badge, émargement et bilan ───────────────────────
+{
+  const pgc = new pg.Client({ connectionString: process.env.DATABASE_URL });
+  await pgc.connect();
+  const orig = (await pgc.query(`select "startsAt" from "Event" where id='demo-ev-soiree-implanto'`)).rows[0].startsAt;
+  await pgc.query(`update "Event" set "startsAt" = now() + interval '3 hours' where id='demo-ev-soiree-implanto'`);
+  // Le participant affiche son badge.
+  const part = await session();
+  await login(part.page, "ines.lambert@demo.kolbase.local");
+  await part.page.goto(`${BASE}/inscriptions`);
+  await part.page.locator('a:has-text("Mon badge d\'accueil")').first().click();
+  await part.page.waitForURL(/\/badge$/);
+  check("Badge : QR code affiché", (await part.page.locator(".badge-qr svg").count()) === 1 && (await text(part.page)).includes("Présentez ce code"));
+  const code = (await pgc.query(`select "checkinCode" from "Registration" where "eventId"='demo-ev-soiree-implanto' and "userId"='demo-u-lambert'`)).rows[0].checkinCode;
+  check("Badge : code créé", typeof code === "string" && code.length >= 20);
+  await part.page.goto(`${BASE}/pointage/${code}`);
+  check("Badge scanné par son titulaire : renvoi vers le badge", part.page.url().endsWith("/badge"), part.page.url());
+  // Un visiteur anonyme qui scanne doit se connecter ; un autre organisateur ne voit rien.
+  const anon = await session();
+  await anon.page.goto(`${BASE}/pointage/${code}`);
+  check("Scan anonyme : connexion demandée", anon.page.url().includes("/connexion"), anon.page.url());
+  await anon.ctx.close();
+  const other = await session();
+  await login(other.page, "thomas.garnier@demo.kolbase.local");
+  const ro = await other.page.goto(`${BASE}/pointage/${code}`);
+  check("Scan par une autre organisation : introuvable", ro?.status() === 404);
+  await other.ctx.close();
+  // L'organisateur scanne le badge et confirme.
+  const { ctx, page } = await session();
+  await login(page, "julien.faure@demo.kolbase.local");
+  await page.goto(`${BASE}/pointage/${code}`);
+  let t = await text(page);
+  check("Scan : fiche du participant", t.includes("Inès Lambert") && t.includes("Cocktail"));
+  await page.click('button:has-text("Confirmer la présence")');
+  await page.waitForTimeout(1000);
+  check("Scan : présence enregistrée", (await text(page)).includes("Présent ·"));
+  // Liste de pointage : recherche et pointage manuel.
+  await page.goto(`${BASE}/organisations/demo-org-dentalys/evenements/demo-ev-soiree-implanto/pointage`);
+  t = await text(page);
+  const inscrits = Number(t.match(/sur (\d+) inscrits?/)?.[1] ?? 0);
+  check("Pointage : compteur", /1 présent\s+sur \d+ inscrits/.test(t) && inscrits >= 2, t.match(/\d+ présents? sur \d+ inscrits?/)?.[0]);
+  await page.fill('input[type="search"]', "rober");
+  check("Pointage : recherche", (await page.locator(".checkin-list li").count()) === 1);
+  await page.locator('.checkin-list li:has-text("Hugo Robert") button:has-text("Présent")').click();
+  await page.waitForTimeout(1000);
+  check("Pointage : pointage manuel", new RegExp(`2 présents\\s+sur ${inscrits} inscrits`).test(await text(page)));
+  const db1 = (await pgc.query(`select count(*)::int n from "Registration" where "eventId"='demo-ev-soiree-implanto' and "checkedInAt" is not null and "checkedInById"='demo-u-julien'`)).rows[0].n;
+  check("Pointage : enregistré avec son auteur", db1 === 2);
+  await page.fill('input[type="search"]', "");
+  await page.locator('.checkin-list li:has-text("Hugo Robert") button:has-text("Annuler")').click();
+  await page.waitForTimeout(1000);
+  check("Pointage : annulation", new RegExp(`1 présent\\s+sur ${inscrits} inscrits`).test(await text(page)));
+  const pdf = await ctx.request.get(`${BASE}/organisations/demo-org-dentalys/evenements/demo-ev-soiree-implanto/emargement`);
+  const body = await pdf.body();
+  const parsed = pdf.ok() ? await PDFDocument.load(body) : null;
+  check("Feuille d'émargement : PDF", pdf.ok() && body.subarray(0, 5).toString() === "%PDF-" && parsed?.getPageCount() === 1);
+  // Le pointage n'ouvre que la veille.
+  await page.goto(`${BASE}/organisations/demo-org-dentalys/evenements/demo-ev-live-surgery/pointage`);
+  check("Pointage : fermé avant la veille", (await text(page)).includes("Le pointage ouvrira le") && (await page.locator('.checkin-list button:has-text("Présent")').count()) === 0);
+  // Bilan d'un événement passé : présents, coût réel, absents à vérifier.
+  await page.goto(`${BASE}/organisations/demo-org-dentalys/evenements/demo-ev-passe`);
+  t = await text(page);
+  check("Bilan : présents et coût réel", t.includes("Bilan de l'événement") && /2 \/ 3/.test(t) && t.includes("67 % des inscrits"));
+  check("Bilan : absente avec hospitalité signalée", t.includes("1 inscrit absent au pointage"));
+  await ctx.close();
+  const comp = await session();
+  await login(comp.page, "sophie.bernard@demo.kolbase.local");
+  await comp.page.goto(`${BASE}/organisations/demo-org-dentalys/hospitalites`);
+  t = await text(comp.page);
+  check("Hospitalités : absente au pointage signalée", /GIRARD Olivier\s*Absent au pointage/.test(t), t.match(/GIRARD[^\n]*/)?.[0]);
+  await comp.ctx.close();
+  await part.ctx.close();
+  await pgc.query(`update "Event" set "startsAt" = $1 where id='demo-ev-soiree-implanto'`, [orig]);
+  await pgc.end();
+}
+
 // ── 4. Limitation des tentatives ───────────────────────────────────────────
 {
   const { ctx, page } = await session();

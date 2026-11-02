@@ -118,6 +118,7 @@ export default async function Page({ params }: { params: Promise<{ id: string }>
                       ? t("Vous n'avez accepté aucune prestation.")
                       : t("Prestations acceptées : {list} ({total}).", { list: reg.benefits.map((b) => t(b.benefit.label)).join(", "), total: fmtEur(locale, reg.benefits.reduce((s, b) => s + b.valueCents, 0)) })}
                   </p>
+                  {!past && event.format !== "DISTANCIEL" && <Link className="btn secondary" href={`/inscriptions/${reg.id}/badge`}>{t("Mon badge d'accueil")}</Link>}
                   {!reg.declared && !past && (
                     <form action={cancelRegistration}><input type="hidden" name="eventId" value={id} /><button className="btn ghost">{t("Annuler mon inscription")}</button></form>
                   )}

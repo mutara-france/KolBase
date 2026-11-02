@@ -25,6 +25,9 @@ export default async function Page({ params, searchParams }: { params: Promise<{
     include: { user: true, event: true, benefits: { include: { benefit: true } } },
     orderBy: [{ event: { startsAt: "desc" } }, { createdAt: "asc" }],
   });
+  // Événements pointés à l'accueil : un inscrit non pointé est signalé absent (avantage à vérifier avant déclaration).
+  const pointed = new Set((await db.registration.groupBy({ by: ["eventId"], where: { event: { organizationId: id, startsAt: { lt: new Date() } }, checkedInAt: { not: null } } })).map((g) => g.eventId));
+  const absent = (r: (typeof regs)[number]) => pointed.has(r.eventId) && !r.checkedInAt;
   const byEvent = new Map<string, typeof regs>();
   for (const r of regs) byEvent.set(r.eventId, [...(byEvent.get(r.eventId) ?? []), r]);
   const sum = (rs: typeof regs) => rs.reduce((s, r) => s + r.benefits.reduce((x, b) => x + b.valueCents, 0), 0);
@@ -56,12 +59,13 @@ export default async function Page({ params, searchParams }: { params: Promise<{
           <section key={eventId} className="card">
             <h2>{rs[0].event.title}</h2>
             <p className="muted">{formatDate(rs[0].event.startsAt)} · {rs.length} bénéficiaire{rs.length > 1 ? "s" : ""} · {formatEUR(sum(rs))}</p>
+            {rs.some(absent) && <p className="notice warn">{rs.filter(absent).length} bénéficiaire{rs.filter(absent).length > 1 ? "s" : ""} absent{rs.filter(absent).length > 1 ? "s" : ""} au pointage ({formatEUR(sum(rs.filter(absent)))}) : l&apos;avantage n&apos;a peut-être pas été consommé, vérifiez avant de déclarer.</p>}
             <table className="table" tabIndex={0}>
               <thead><tr><th>Bénéficiaire</th><th>Profession</th><th>Prestations</th><th>Valeur</th><th>Convention</th><th>Déclaration</th></tr></thead>
               <tbody>
                 {rs.map((r) => (
                   <tr key={r.id}>
-                    <td>{r.user.lastName.toUpperCase()} {r.user.firstName}</td>
+                    <td>{r.user.lastName.toUpperCase()} {r.user.firstName}{absent(r) && <> <span className="pill wait">Absent au pointage</span></>}</td>
                     <td>{r.profession}</td>
                     <td>{r.benefits.map((b) => b.benefit.label).join(", ")}</td>
                     <td>{formatEUR(r.benefits.reduce((s, b) => s + b.valueCents, 0))}</td>

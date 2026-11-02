@@ -702,4 +702,9 @@ export const PRATICIEN: Record<string, string> = {
   "Trop de signalements : réessayez plus tard.": "Too many reports: try again later.",
   "Élément introuvable.": "Item not found.",
   "Signalement envoyé à l'équipe conformité de l'organisation.": "Report sent to the organisation's compliance team.",
+  "Mon badge d'accueil": "My entry badge",
+  "QR code de votre badge": "Your badge QR code",
+  "Présence enregistrée à {time}": "Attendance recorded at {time}",
+  "Présentez ce code à l'accueil : l'organisateur le scanne pour enregistrer votre arrivée.": "Show this code at the entrance: the organiser scans it to record your arrival.",
+  "présence enregistrée": "attendance recorded",
 };

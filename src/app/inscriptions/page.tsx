@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { QrCode } from "lucide-react";
 import { SiteHeader } from "@/components/SiteHeader";
 import { SectionNav } from "@/components/SectionNav";
 import { practitionerSectionTabs } from "@/lib/nav";
@@ -29,15 +30,20 @@ export default async function Page() {
 
   const Row = ({ r }: { r: (typeof regs)[number] }) => {
     const total = r.benefits.reduce((s, b) => s + b.valueCents, 0);
+    const badge = r.event.startsAt >= now && r.event.format !== "DISTANCIEL";
     return (
-      <Link href={`/evenements/${r.eventId}`} className="card tile">
-        <strong>{r.event.title}</strong>
-        <span className="muted">{formatDateTime(r.event.startsAt)} · {r.event.organization.name}</span>
-        <span className="muted">
-          {total === 0 ? t("Aucune prestation acceptée") : `${r.benefits.map((b) => t(b.benefit.label)).join(", ")} · ${fmtEur(locale, total)}`}
-          {r.declared && ` · ${t("déclaré")}`}
-        </span>
-      </Link>
+      <div className="card tile reg-tile">
+        <Link href={`/evenements/${r.eventId}`} className="reg-tile-link">
+          <strong>{r.event.title}</strong>
+          <span className="muted">{formatDateTime(r.event.startsAt)} · {r.event.organization.name}</span>
+          <span className="muted">
+            {total === 0 ? t("Aucune prestation acceptée") : `${r.benefits.map((b) => t(b.benefit.label)).join(", ")} · ${fmtEur(locale, total)}`}
+            {r.declared && ` · ${t("déclaré")}`}
+            {r.checkedInAt && ` · ${t("présence enregistrée")}`}
+          </span>
+        </Link>
+        {badge && <Link className="btn small secondary" href={`/inscriptions/${r.id}/badge`}><QrCode size={14} /> {t("Mon badge d'accueil")}</Link>}
+      </div>
     );
   };
 

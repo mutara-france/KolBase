@@ -2,18 +2,19 @@ import { aiEnabled } from "@/lib/ai";
 import { ProgramForm } from "@/components/EventForms";
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { CalendarDays, Euro, Gift, MapPin, Truck, Users } from "lucide-react";
+import { CalendarDays, ClipboardCheck, Euro, FileDown, Gift, MapPin, QrCode, Truck, Users } from "lucide-react";
 import { SiteHeader } from "@/components/SiteHeader";
 import { StatusPill } from "@/components/ProjectBits";
 import { db } from "@/lib/db";
 import { requireMembership } from "@/lib/orgs";
-import { EVENT_MANAGER_ROLES, EVENT_ORGANIZER_ROLES, eventScope, eventTypeLabel, formatDate, formatEUR, formatTime, FORMAT_LABEL } from "@/lib/events";
+import { COMPLIANCE_ROLES, EVENT_MANAGER_ROLES, EVENT_ORGANIZER_ROLES, eventScope, eventTypeLabel, formatDate, formatEUR, formatTime, FORMAT_LABEL } from "@/lib/events";
 import { setEventAgency, setEventFlag } from "@/lib/event-actions";
 import { applyQuoteToBenefit } from "@/lib/rfq-actions";
 import { RFQ_STATUS, rfqDisplayStatus, SUPPLIER_CATEGORIES, supplierCategoryLabel } from "@/lib/suppliers";
 import { perParticipant, withVat } from "@/lib/quotes";
 import { complianceSettings } from "@/lib/compliance";
 import { drPrefix } from "@/lib/professions";
+import { checkinOpen } from "@/lib/checkin";
 
 export const metadata = { title: "Événement — KolBase" };
 
@@ -80,6 +81,17 @@ export default async function Page({ params }: { params: Promise<{ id: string; e
   const shortcutIds = event.format === "DISTANCIEL" ? ["audiovisuel", "communication"] : ["salle", "restauration", "hebergement", "transport", "audiovisuel"];
   const usefulCats = SUPPLIER_CATEGORIES.filter((c) => shortcutIds.includes(c.id) && !askedCats.has(c.id));
   const engagedTtc = rfqs.reduce((s, r) => { const k = r.quotes.find((q) => q.status === "retained"); return s + (k ? withVat(k.amountCents, k.vatBp) : 0); }, 0);
+  // Accueil et bilan : présence au pointage, coût réel, hospitalités à déclarer.
+  const now = new Date();
+  const isPast = event.startsAt < now;
+  const canPoint = !event.internal && checkinOpen(event.startsAt, now);
+  const present = event.registrations.filter((r) => r.checkedInAt);
+  const pointed = present.length > 0;
+  const hospOf = (rs: typeof event.registrations) => rs.reduce((s, r) => s + r.benefits.reduce((x, b) => x + b.valueCents, 0), 0);
+  const absentsWithBenefits = pointed ? event.registrations.filter((r) => !r.checkedInAt && r.benefits.length > 0) : [];
+  const hospConsumed = pointed ? hospOf(present) : totalCents;
+  const realCost = hospConsumed + engagedTtc;
+  const isCompliance = roles.some((r) => COMPLIANCE_ROLES.includes(r));
   const newRfq = (cat?: string) => `/organisations/${id}/prestataires?onglet=nouvelle&evenement=${eventId}${cat ? `&cat=${cat}` : ""}`;
   const status = event.internal
     ? { label: "Réunion interne", tone: "electric" }
@@ -137,6 +149,31 @@ export default async function Page({ params }: { params: Promise<{ id: string; e
         </header>
 
         {!isOrganizer && <p className="notice ok">Événement confié à {event.agency?.name ?? "votre agence"} par {org.name}.</p>}
+
+        {isPast && !event.internal && (
+          <section className="card stack-sm bilan" aria-labelledby="bilan">
+            <div className="card-head">
+              <div>
+                <h2 id="bilan"><ClipboardCheck size={18} /> Bilan de l&apos;événement</h2>
+                <p className="muted">{pointed ? "D'après le pointage à l'accueil et les devis retenus." : "Aucun participant pointé : la présence n'est pas connue, les chiffres portent sur les inscrits."}</p>
+              </div>
+              <a className="btn ghost small" href={`/organisations/${id}/evenements/${eventId}/emargement`}><FileDown size={14} /> Feuille d&apos;émargement</a>
+            </div>
+            <dl className="hero-facts">
+              <div><dt><Users size={13} /> Présents</dt><dd>{pointed ? `${present.length} / ${event.registrations.length}` : "—"}<small>{pointed && event.registrations.length ? `${Math.round((present.length / event.registrations.length) * 100)} % des inscrits` : `${event.registrations.length} inscrit${event.registrations.length > 1 ? "s" : ""}`}</small></dd></div>
+              <div><dt><Euro size={13} /> Coût réel</dt><dd>{formatEUR(realCost)}<small>hospitalités et prestataires, TTC</small></dd></div>
+              <div><dt><Euro size={13} /> Par {pointed ? "présent" : "inscrit"}</dt><dd>{(pointed ? present.length : event.registrations.length) ? formatEUR(Math.round(realCost / (pointed ? present.length : event.registrations.length))) : "—"}<small>{pointed ? "coût réel rapporté aux présents" : "coût réel rapporté aux inscrits"}</small></dd></div>
+              <div><dt><Gift size={13} /> Hospitalités</dt><dd>{formatEUR(hospConsumed)}<small>{pointed ? "consommées par les présents" : "acceptées par les inscrits"}</small></dd></div>
+            </dl>
+            {absentsWithBenefits.length > 0 && (
+              <p className="notice warn">
+                {absentsWithBenefits.length} inscrit{absentsWithBenefits.length > 1 ? "s" : ""} absent{absentsWithBenefits.length > 1 ? "s" : ""} au pointage avai{absentsWithBenefits.length > 1 ? "ent" : "t"} accepté des hospitalités ({formatEUR(hospOf(absentsWithBenefits))}) : vérifiez avant de les déclarer.
+                {isCompliance && <> <Link href={`/organisations/${id}/hospitalites`}>Hospitalités à déclarer</Link></>}
+              </p>
+            )}
+            <p className="hint"><Link href={`/organisations/${id}/evenements/${eventId}/pointage`}>Corriger le pointage</Link> si une arrivée n&apos;a pas été enregistrée.</p>
+          </section>
+        )}
 
         <div className="page-grid">
           <div className="page-main">
@@ -294,6 +331,17 @@ export default async function Page({ params }: { params: Promise<{ id: string; e
               )}
             </section>
 
+            {!event.internal && !isPast && (
+              <section className="card stack-sm">
+                <h2 className="section-title"><QrCode size={15} /> Accueil le jour J</h2>
+                <p className="muted text-sm">Chaque inscrit a un badge (QR code) dans « Mes inscriptions ». Scannez-le avec l&apos;appareil photo du téléphone, ou cherchez son nom dans la liste.</p>
+                <div className="transitions-stack">
+                  <Link className={canPoint ? "btn" : "btn ghost"} href={`/organisations/${id}/evenements/${eventId}/pointage`}>{canPoint ? "Ouvrir le pointage" : "Préparer le pointage"}</Link>
+                  <a className="btn ghost" href={`/organisations/${id}/evenements/${eventId}/emargement`}>Feuille d&apos;émargement (PDF)</a>
+                </div>
+              </section>
+            )}
+
             {isOrganizer && (
               <section className="card stack-sm">
                 <h2 className="section-title">Agence</h2>
@@ -337,7 +385,7 @@ export default async function Page({ params }: { params: Promise<{ id: string; e
                   <p className="muted">Aucune inscription pour l&apos;instant.</p>
                 ) : (
                   <table className="table" tabIndex={0}>
-                    <thead><tr><th>Nom</th><th>Profession</th><th>Structure</th><th>Prestations acceptées</th><th>Valeur</th><th>Inscrit le</th></tr></thead>
+                    <thead><tr><th>Nom</th><th>Profession</th><th>Structure</th><th>Prestations acceptées</th><th>Valeur</th><th>Inscrit le</th>{canPoint && <th>Présence</th>}</tr></thead>
                     <tbody>
                       {event.registrations.map((r) => (
                         <tr key={r.id}>
@@ -347,6 +395,7 @@ export default async function Page({ params }: { params: Promise<{ id: string; e
                           <td>{r.benefits.map((b) => b.benefit.label).join(", ") || "Aucune"}</td>
                           <td>{formatEUR(r.benefits.reduce((s, b) => s + b.valueCents, 0))}</td>
                           <td>{formatDate(r.createdAt)}</td>
+                          {canPoint && <td>{r.checkedInAt ? <span className="pill ok">{formatTime(r.checkedInAt)}</span> : isPast && pointed ? <span className="pill wait">Absent</span> : "—"}</td>}
                         </tr>
                       ))}
                     </tbody>
