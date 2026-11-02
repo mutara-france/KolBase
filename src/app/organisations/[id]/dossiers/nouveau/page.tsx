@@ -1,3 +1,4 @@
+import { aiEnabled } from "@/lib/ai";
 import Link from "next/link";
 import { SiteHeader } from "@/components/SiteHeader";
 import { NewProjectForm } from "@/components/ProjectForms";
@@ -40,6 +41,7 @@ export default async function Page({ params, searchParams }: { params: Promise<{
       <main className="narrow stack">
         <p className="muted"><Link href={`/organisations/${id}`}>{org.name}</Link> / <Link href={`/organisations/${id}/dossiers`}>Dossiers</Link></p>
         <NewProjectForm
+          ai={aiEnabled()}
           orgId={id}
           types={COLLAB_TYPES}
           preselected={expert && experts.some((e) => e.id === expert) ? [expert] : []}

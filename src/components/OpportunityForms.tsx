@@ -1,5 +1,6 @@
 "use client";
 
+import { AiDraft } from "@/components/AiDraft";
 import { useActionState, useState } from "react";
 import { applyToCall, createOpenCall, retainApplication } from "@/lib/opportunity-actions";
 import { Notice } from "@/components/AuthForms";
@@ -7,7 +8,7 @@ import { useT } from "@/components/I18nProvider";
 
 type CType = { id: string; label: string; category: string; unit: string; fmv: readonly number[] };
 
-export function NewCallForm({ orgId, types }: { orgId: string; types: readonly CType[] }) {
+export function NewCallForm({ orgId, types, ai = false }: { orgId: string; types: readonly CType[]; ai?: boolean }) {
   const [state, action, pending] = useActionState(createOpenCall, undefined);
   const [typeId, setTypeId] = useState(types[0].id);
   const type = types.find((t) => t.id === typeId)!;
@@ -29,7 +30,8 @@ export function NewCallForm({ orgId, types }: { orgId: string; types: readonly C
         </label>
         <label>Spécialité recherchée<input name="specialty" placeholder="Parodontologie…" /></label>
       </div>
-      <label>Description<textarea name="description" rows={4} placeholder="Contexte, profil recherché, dates, livrables…" /></label>
+      <label>Description<textarea name="description" rows={ai ? 6 : 4} placeholder="Contexte, profil recherché, dates, livrables…" /></label>
+      {ai && <AiDraft kind="appel" target="description" label="Rédiger l'appel avec l'IA" />}
       <div className="row">
         <label>Budget min (€ HT)<input name="budgetMin" inputMode="decimal" /></label>
         <label>Budget max (€ HT)<input name="budgetMax" inputMode="decimal" /></label>

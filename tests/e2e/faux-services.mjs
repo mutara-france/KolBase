@@ -80,7 +80,33 @@ export function startFakes() {
   orcid.listen(3997);
   smtp.listen(2525);
   const stopYousign = startFakeYousign();
-  return () => { siren.close(); orcid.close(); smtp.close(); s3.close(); stopYousign(); };
+  const stopAi = startFakeAnthropic();
+  return () => { siren.close(); orcid.close(); smtp.close(); s3.close(); stopYousign(); stopAi(); };
+}
+
+/** Requêtes reçues par le faux service d'IA (corps JSON), pour vérifier ce qui est transmis. */
+export const aiRequests = [];
+
+/** Faux service d'IA (API Messages, port 3994) : vérifie l'en-tête et le corps, renvoie un brouillon reconnaissable. */
+export function startFakeAnthropic(port = 3994) {
+  const server = http.createServer((req, res) => {
+    const c = [];
+    req.on("data", (x) => c.push(x));
+    req.on("end", () => {
+      if (req.method !== "POST" || new URL(req.url, "http://x").pathname !== "/v1/messages") return json(res, { error: { message: "not found" } }, 404);
+      if (req.headers["x-api-key"] !== "test" || !req.headers["anthropic-version"]) return json(res, { error: { message: "unauthorized" } }, 401);
+      const b = JSON.parse(Buffer.concat(c).toString() || "{}");
+      if (!b.model || !b.max_tokens || !Array.isArray(b.messages) || !b.system) return json(res, { error: { message: "invalid request" } }, 400);
+      aiRequests.push(b);
+      const prompt = String(b.messages[0]?.content ?? "");
+      const text = prompt.includes("programme scientifique")
+        ? "PROPOSITION IA\n18:00 – 18:15  Accueil des participants\n18:15 – 19:00  Cas cliniques — [intervenant à confirmer]\n19:00 – 19:30  Échanges avec la salle"
+        : `PROPOSITION IA — ${prompt.split("\n")[0].slice(0, 80)}`;
+      json(res, { id: "msg_test", type: "message", role: "assistant", model: b.model, content: [{ type: "text", text }], stop_reason: "end_turn" });
+    });
+  });
+  server.listen(port);
+  return () => server.close();
 }
 
 /**

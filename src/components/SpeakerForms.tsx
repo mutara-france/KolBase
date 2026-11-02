@@ -1,5 +1,6 @@
 "use client";
 
+import { AiDraft } from "@/components/AiDraft";
 import { useActionState, useState } from "react";
 import { Megaphone, Plus, Send } from "lucide-react";
 import { applyAsSpeaker, openSpeakerCall, retainSpeaker } from "@/lib/speaker-actions";
@@ -9,7 +10,7 @@ import { useT } from "@/components/I18nProvider";
 type EventOpt = { id: string; label: string; slots: number | null; deadline: string; min: string; max: string; profile: string };
 
 /** Ouvre un appel sur un événement à venir (ou met à jour ses paramètres). */
-export function OpenSpeakerCallForm({ orgId, events, startOpen = false }: { orgId: string; events: EventOpt[]; startOpen?: boolean }) {
+export function OpenSpeakerCallForm({ orgId, events, startOpen = false, ai = false }: { orgId: string; events: EventOpt[]; startOpen?: boolean; ai?: boolean }) {
   const [state, action, pending] = useActionState(openSpeakerCall, undefined);
   const [open, setOpen] = useState(startOpen);
   const [eventId, setEventId] = useState(events[0]?.id ?? "");
@@ -39,7 +40,8 @@ export function OpenSpeakerCallForm({ orgId, events, startOpen = false }: { orgI
         <label>Honoraires min. (€ HT)<input name="budgetMin" inputMode="decimal" defaultValue={ev?.min} /></label>
         <label>Honoraires max. (€ HT)<input name="budgetMax" inputMode="decimal" defaultValue={ev?.max} /></label>
       </div>
-      <label>Profil recherché<textarea name="profile" rows={3} defaultValue={ev?.profile} placeholder="Spécialité, expérience attendue, thème de la session…" /></label>
+      <label>Profil recherché<textarea name="profile" rows={ai ? 5 : 3} defaultValue={ev?.profile} placeholder="Spécialité, expérience attendue, thème de la session…" /></label>
+      {ai && <AiDraft kind="intervenants" target="profile" label="Rédiger le profil avec l'IA" />}
       <div className="actions">
         <button className="btn" disabled={pending}><Megaphone size={14} /> {pending ? "Publication…" : "Publier l'appel"}</button>
         <button type="button" className="btn ghost" onClick={() => setOpen(false)}>Annuler</button>

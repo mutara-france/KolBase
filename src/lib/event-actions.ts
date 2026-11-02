@@ -218,3 +218,18 @@ export async function endMandate(form: FormData) {
   await audit(user.id, "mandate.end", "Mandate", m.id, { agencyId: m.agencyId });
   revalidatePath(`/organisations/${orgId}/prestataires`);
 }
+
+/** Programme scientifique (déroulé horaire) : rédigé par l'organisateur ou son agence, affiché sur la page publique. */
+export async function saveEventProgram(_: ActionState, form: FormData): Promise<ActionState> {
+  const orgId = str(form, "orgId");
+  const eventId = str(form, "eventId");
+  const { user, roles } = await requireMembership(orgId, EVENT_MANAGER_ROLES);
+  const program = str(form, "program");
+  if (program.length > 8000) return { error: "Programme trop long (8 000 caractères au maximum)." };
+  const { count } = await db.event.updateMany({ where: { id: eventId, organizationId: orgId, ...eventScope(user, roles) }, data: { program: program || null } });
+  if (!count) return { error: "Événement introuvable." };
+  await audit(user.id, "event.program", "Event", eventId);
+  revalidatePath(`/organisations/${orgId}/evenements/${eventId}`);
+  revalidatePath(`/evenements/${eventId}`);
+  return { ok: program ? "Programme enregistré." : "Programme retiré." };
+}

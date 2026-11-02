@@ -1,3 +1,4 @@
+import { aiEnabled } from "@/lib/ai";
 import Link from "next/link";
 import { CallKinds } from "@/components/CallKinds";
 import { Lock, Megaphone, Unlock } from "lucide-react";
@@ -48,6 +49,7 @@ export default async function Page({ params }: { params: Promise<{ id: string }>
         {canManage && (
           <OpenSpeakerCallForm
             orgId={id}
+            ai={aiEnabled()}
             events={upcoming.map((e) => ({
               id: e.id,
               label: `${formatDate(e.startsAt)} — ${e.title}${e.speakerCallOpen ? " (appel ouvert)" : ""}`,

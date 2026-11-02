@@ -1,7 +1,8 @@
 "use client";
 
 import { useActionState, useState } from "react";
-import { createEvent, registerToEvent } from "@/lib/event-actions";
+import { createEvent, registerToEvent, saveEventProgram } from "@/lib/event-actions";
+import { AiDraft } from "@/components/AiDraft";
 import { Notice } from "@/components/AuthForms";
 import { useLocale, useT } from "@/components/I18nProvider";
 import { intlLocale, type Locale } from "@/lib/i18n";
@@ -106,6 +107,25 @@ export function RegisterForm({ eventId, benefits, hcp, defaultStructure }: { eve
         </div>
       )}
       <button className="btn" disabled={pending}>{pending ? t("Inscription…") : t("M'inscrire")}</button>
+    </form>
+  );
+}
+
+/** Programme de l'événement, avec l'assistant de rédaction si activé. */
+export function ProgramForm({ orgId, eventId, program, ai }: { orgId: string; eventId: string; program: string; ai: boolean }) {
+  const [state, action, pending] = useActionState(saveEventProgram, undefined);
+  return (
+    <form action={action} className="form">
+      <Notice state={state} />
+      <input type="hidden" name="orgId" value={orgId} />
+      <input type="hidden" name="eventId" value={eventId} />
+      <label>Déroulé
+        <textarea name="program" rows={program ? Math.min(16, program.split("\n").length + 2) : 6} defaultValue={program} placeholder={"18:30 – 18:45  Accueil des participants\n18:45 – 19:30  Session 1 — intervenant\n…"} />
+      </label>
+      <div className="actions">
+        {ai && <AiDraft kind="programme" target="program" label="Proposer un programme avec l'IA" />}
+        <button className="btn small" disabled={pending}>{pending ? "Enregistrement…" : "Enregistrer le programme"}</button>
+      </div>
     </form>
   );
 }

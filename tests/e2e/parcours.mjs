@@ -5,7 +5,7 @@ import { chromium } from "playwright";
 import pg from "pg";
 import { createHmac } from "node:crypto";
 import { PDFDocument } from "pdf-lib";
-import { mails, signatureRequests, startFakes } from "./faux-services.mjs";
+import { aiRequests, mails, signatureRequests, startFakes } from "./faux-services.mjs";
 
 const BASE = process.env.BASE ?? "http://localhost:3000";
 const PW = process.env.DEMO_PASSWORD;
@@ -1086,6 +1086,35 @@ async function submitNewOrg(page, siren) {
   const ct = await text(exp.page);
   check("Praticien : candidatures des deux sortes d'appels réunies", ct.includes("Appels à experts") && ct.includes("Appels à intervenants"));
   await exp.ctx.close();
+}
+
+// ── Assistant de rédaction (IA) ────────────────────────────────────────────
+{
+  const { ctx, page } = await session();
+  await login(page, "claire.morel@demo.kolbase.local");
+  await page.goto(`${BASE}/organisations/demo-org-dentalys/evenements/demo-ev-soiree-implanto`);
+  await page.click('button:has-text("Proposer un programme avec l\'IA")');
+  await page.waitForFunction(() => document.querySelector('textarea[name="program"]')?.value.startsWith("PROPOSITION IA"), null, { timeout: 15000 }).catch(() => {});
+  check("IA : programme proposé dans le champ", (await page.locator('textarea[name="program"]').inputValue()).startsWith("PROPOSITION IA"));
+  const req = aiRequests.at(-1);
+  const sent = JSON.stringify(req ?? {});
+  check("IA : contexte de l'événement transmis, sans adresse e-mail", sent.includes("Soirée implantologie") && !/[\w.-]+@[\w-]+\.[\w.]+/.test(sent));
+  await page.click('button:has-text("Enregistrer le programme")');
+  await page.waitForTimeout(1200);
+  const anon = await session();
+  await anon.page.goto(`${BASE}/evenements/demo-ev-soiree-implanto`);
+  check("Programme publié sur la page de l'événement", (await text(anon.page)).includes("Accueil des participants"));
+  await anon.ctx.close();
+  // Demande de devis : besoin rédigé à partir de l'événement et de la catégorie.
+  await page.goto(`${BASE}/organisations/demo-org-dentalys/prestataires?onglet=nouvelle&evenement=demo-ev-soiree-implanto&cat=salle`);
+  await page.click('button:has-text("Rédiger le besoin avec l\'IA")');
+  await page.waitForFunction(() => document.querySelector('textarea[name="needs"]')?.value.startsWith("PROPOSITION IA"), null, { timeout: 15000 }).catch(() => {});
+  check("IA : besoin de la demande de devis proposé", (await page.locator('textarea[name="needs"]').inputValue()).startsWith("PROPOSITION IA"));
+  check("IA : catégorie demandée transmise", JSON.stringify(aiRequests.at(-1) ?? {}).includes("Salle et lieu de réception"));
+  // Appel à experts et nouveau dossier : boutons présents.
+  await page.goto(`${BASE}/organisations/demo-org-dentalys/opportunites`);
+  check("IA : rédaction d'un appel à experts proposée", (await page.locator('button:has-text("Rédiger l\'appel avec l\'IA")').count()) === 1);
+  await ctx.close();
 }
 
 // ── 4. Limitation des tentatives ───────────────────────────────────────────

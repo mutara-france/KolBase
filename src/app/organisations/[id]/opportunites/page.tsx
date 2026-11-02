@@ -1,3 +1,4 @@
+import { aiEnabled } from "@/lib/ai";
 import Link from "next/link";
 import { CallKinds } from "@/components/CallKinds";
 import { SiteHeader } from "@/components/SiteHeader";
@@ -45,7 +46,7 @@ export default async function Page({ params }: { params: Promise<{ id: string }>
             </table>
           </section>
         )}
-        <div id="nouvel-appel"><NewCallForm orgId={id} types={COLLAB_TYPES} /></div>
+        <div id="nouvel-appel"><NewCallForm orgId={id} types={COLLAB_TYPES} ai={aiEnabled()} /></div>
       </main>
     </>
   );

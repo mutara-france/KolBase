@@ -74,6 +74,7 @@ export default async function Page({ params }: { params: Promise<{ id: string }>
         <div className="page-grid">
           <div className="page-main">
             {event.description && <section className="card"><h2>{t("Présentation")}</h2><p className="pre-line">{event.description}</p></section>}
+            {event.program && <section className="card"><h2>{t("Programme")}</h2><p className="program">{event.program}</p></section>}
             <section className="card">
               <h2>{t("Prestations proposées")}</h2>
               {event.benefits.length === 0 ? (
