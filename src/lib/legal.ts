@@ -16,6 +16,9 @@ export const LEGAL = {
   court: "tribunaux de Nanterre" as string | null,
   emailProvider: "LWS (Ligne Web Services, Paris)" as string | null,
   storageProvider: null as string | null, // hébergeur des documents, ex. « Scaleway SAS, Paris »
+  // Signature électronique des conventions (si YOUSIGN_API_KEY) : Yousign SAS, renommée Youtrust SAS en 2026
+  // (RCS Caen 794 513 986, source : youtrust.com/fr-fr/mentions, novembre 2026).
+  signatureProvider: "Youtrust SAS (anciennement Yousign), Caen" as string | null,
 };
 
 export const LEGAL_LABEL: Record<keyof typeof LEGAL, string> = {
@@ -31,6 +34,7 @@ export const LEGAL_LABEL: Record<keyof typeof LEGAL, string> = {
   court: "juridiction compétente",
   emailProvider: "prestataire d'e-mails",
   storageProvider: "hébergeur des documents",
+  signatureProvider: "prestataire de signature électronique",
 };
 
 /** Valeur, ou « [… à compléter] ». */

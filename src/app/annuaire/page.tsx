@@ -8,6 +8,7 @@ import { requireDirectoryAccess } from "@/lib/orgs";
 import type { Prisma } from "@/generated/prisma/client";
 import { matches } from "@/lib/search";
 import { canSee, kolVisibility } from "@/lib/visibility";
+import { country, practicesInFrance } from "@/lib/countries";
 
 export const metadata = { title: "Annuaire des experts — KolBase" };
 
@@ -39,8 +40,8 @@ export default async function Page({ searchParams }: { searchParams: Promise<{ q
       return { ...e, city: contact ? e.city : null, hospital: contact ? e.hospital : null };
     })
     .filter((e) =>
-      matches(q, e.user.firstName, e.user.lastName, e.specialty, e.subspecialty, e.bio, e.hospital, e.profession, ...e.interventionTypes)
-      && matches(ville, e.city),
+      matches(q, e.user.firstName, e.user.lastName, e.specialty, e.subspecialty, e.bio, e.hospital, e.profession, country(e.country).name, ...e.interventionTypes)
+      && matches(ville, e.city, country(e.country).name),
     )
     .slice(0, 100);
 
@@ -68,7 +69,7 @@ export default async function Page({ searchParams }: { searchParams: Promise<{ q
                 <span>
                   <strong>Dr {e.user.firstName} {e.user.lastName}</strong>
                   <br />
-                  <span className="muted">{[e.specialty || e.profession, e.city].filter(Boolean).join(" · ")}</span>
+                  <span className="muted">{[e.specialty || e.profession, e.city, practicesInFrance(e.country) ? null : country(e.country).name].filter(Boolean).join(" · ")}</span>
                 </span>
               </span>
               {e.interventionTypes.length > 0 && <span className="tags">{e.interventionTypes.slice(0, 3).map((t) => <span key={t} className="tag">{t}</span>)}</span>}

@@ -1,8 +1,10 @@
 "use client";
 
 import { useActionState, useState } from "react";
-import { createInvitation, createOrganization, submitSiren, updateOrganization, updateExpertProfile, type InviteState } from "@/lib/org-actions";
+import { createInvitation, createOrganization, removeOrgLogo, submitSiren, updateOrganization, updateExpertProfile, updateOrgLogo, type InviteState } from "@/lib/org-actions";
+import { Avatar } from "@/components/Avatar";
 import { Notice } from "@/components/AuthForms";
+import { useT } from "@/components/I18nProvider";
 
 type Opt = { value: string; label: string };
 
@@ -13,7 +15,7 @@ export function NewOrgForm({ kinds }: { kinds: Opt[] }) {
       <h1>Créer une organisation</h1>
       <p className="muted">Vous en serez l&apos;administrateur et pourrez ensuite inviter vos collègues.</p>
       <Notice state={state} />
-      <label>Nom de l&apos;organisation<input name="name" required /></label>
+      <label>Nom de l&apos;organisation<input name="name" maxLength={120} required /></label>
       <label>Type
         <select name="kind" defaultValue="INDUSTRIEL">{kinds.map((k) => <option key={k.value} value={k.value}>{k.label}</option>)}</select>
       </label>
@@ -39,7 +41,7 @@ export function EditOrgForm({ org }: { org: Org }) {
       <h2>Fiche de l&apos;organisation</h2>
       <Notice state={state} />
       <input type="hidden" name="orgId" value={org.id} />
-      <label>Nom<input name="name" defaultValue={org.name} required /></label>
+      <label>Nom<input name="name" maxLength={120} defaultValue={org.name} required /></label>
       <div className="row">
         <label>Secteur<input name="sector" defaultValue={org.sector ?? ""} /></label>
         <label>Siège<input name="headquarters" defaultValue={org.headquarters ?? ""} /></label>
@@ -87,32 +89,33 @@ type Expert = { bio: string | null; hospital: string | null; subspecialty: strin
 
 export function ExpertProfileForm({ p, types }: { p: Expert; types: string[] }) {
   const [state, action, pending] = useActionState(updateExpertProfile, undefined);
+  const t = useT();
   return (
     <form action={action} className="card form">
-      <h2>Profil expert</h2>
-      <p className="muted">Ces informations apparaissent dans l&apos;annuaire, consulté par les organisations.</p>
+      <h2>{t("Profil expert")}</h2>
+      <p className="muted">{t("Ces informations apparaissent dans l'annuaire, consulté par les organisations.")}</p>
       <Notice state={state} />
-      <label>Présentation<textarea name="bio" rows={4} defaultValue={p.bio ?? ""} placeholder="Parcours, domaines d'expertise, publications marquantes…" /></label>
+      <label>{t("Présentation")}<textarea name="bio" rows={4} defaultValue={p.bio ?? ""} placeholder={t("Parcours, domaines d'expertise, publications marquantes…")} /></label>
       <div className="row">
-        <label>Établissement / cabinet<input name="hospital" defaultValue={p.hospital ?? ""} /></label>
-        <label>Sur-spécialité<input name="subspecialty" defaultValue={p.subspecialty ?? ""} /></label>
+        <label>{t("Établissement / cabinet")}<input name="hospital" defaultValue={p.hospital ?? ""} /></label>
+        <label>{t("Sur-spécialité")}<input name="subspecialty" defaultValue={p.subspecialty ?? ""} /></label>
       </div>
       <div className="row">
-        <label>Langues<input name="languages" defaultValue={p.languages.join(", ")} placeholder="fr, en" /></label>
+        <label>{t("Langues")}<input name="languages" defaultValue={p.languages.join(", ")} placeholder="fr, en" /></label>
         <label>ORCID<input name="orcid" defaultValue={p.orcid ?? ""} placeholder="0000-0000-0000-0000" /></label>
       </div>
       <fieldset>
-        <legend>Types d&apos;intervention</legend>
+        <legend>{t("Types d'intervention")}</legend>
         <div className="checks">
-          {types.map((t) => (
-            <label key={t} className="check"><input type="checkbox" name="interventionTypes" value={t} defaultChecked={p.interventionTypes.includes(t)} /> {t}</label>
+          {types.map((type) => (
+            <label key={type} className="check"><input type="checkbox" name="interventionTypes" value={type} defaultChecked={p.interventionTypes.includes(type)} /> {t(type)}</label>
           ))}
         </div>
       </fieldset>
-      <label>Tarif journalier indicatif (€ HT)<input name="dayRate" inputMode="decimal" defaultValue={p.dayRateCents != null ? String(p.dayRateCents / 100) : ""} />
-        <span className="hint">Visible uniquement des organisations. Sert de base à la vérification de juste contrepartie.</span>
+      <label>{t("Tarif journalier indicatif (€ HT)")}<input name="dayRate" inputMode="decimal" defaultValue={p.dayRateCents != null ? String(p.dayRateCents / 100) : ""} />
+        <span className="hint">{t("Visible uniquement des organisations. Sert de base à la vérification de juste contrepartie.")}</span>
       </label>
-      <button className="btn" disabled={pending}>{pending ? "Enregistrement…" : "Enregistrer le profil expert"}</button>
+      <button className="btn" disabled={pending}>{pending ? t("Enregistrement…") : t("Enregistrer le profil expert")}</button>
     </form>
   );
 }
@@ -145,6 +148,36 @@ export function VerificationCard({ orgId, v, canEdit }: { orgId: string; v: Veri
             <label>SIREN ou SIRET<input name="siren" inputMode="numeric" defaultValue={v.siren ?? ""} placeholder="9 ou 14 chiffres" required /></label>
             <button className="btn secondary" disabled={pending} style={{ alignSelf: "end" }}>{pending ? "Contrôle…" : v.status === "VERIFIED" ? "Mettre à jour" : "Envoyer pour validation"}</button>
           </div>
+        </form>
+      )}
+    </section>
+  );
+}
+
+/** Logo de l'organisation : aperçu, envoi d'une nouvelle image, suppression. */
+export function LogoForm({ orgId, name, src, verified }: { orgId: string; name: string; src: string | null; verified: boolean }) {
+  const [state, action, pending] = useActionState(updateOrgLogo, undefined);
+  return (
+    <section className="card form">
+      <h2>Logo</h2>
+      <Notice state={state} />
+      <div className="actions" style={{ alignItems: "center" }}>
+        <Avatar name={name} size={64} square src={src} />
+        <p className="muted text-sm" style={{ margin: 0 }}>
+          PNG, JPEG ou WebP, 500 Ko au plus, de préférence carré sur fond clair. Il remplace le monogramme sur votre fiche, l&apos;annuaire des organisations et les appels publiés.
+          {!verified && " Il ne sera visible publiquement qu'après la validation de l'organisation."} Ne publiez que le logo de votre propre organisation.
+        </p>
+      </div>
+      <form action={action} className="inline wrap">
+        <input type="hidden" name="orgId" value={orgId} />
+        <label className="sr-only" htmlFor="logo-file">Fichier du logo</label>
+        <input id="logo-file" name="logo" type="file" accept="image/png,image/jpeg,image/webp" required />
+        <button className="btn secondary" disabled={pending}>{pending ? "Envoi…" : src ? "Remplacer" : "Ajouter le logo"}</button>
+      </form>
+      {src && (
+        <form action={removeOrgLogo}>
+          <input type="hidden" name="orgId" value={orgId} />
+          <button className="link danger">Retirer le logo</button>
         </form>
       )}
     </section>

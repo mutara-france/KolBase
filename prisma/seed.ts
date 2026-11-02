@@ -11,6 +11,7 @@ import "dotenv/config";
 import { PrismaPg } from "@prisma/adapter-pg";
 import { PrismaClient, type OrgKind, type OrgRole, type ProjectStatus, type EventFormat, type ExpenseStatus, type ApplicationStatus, type RfqStatus, type QuoteStatus } from "../src/generated/prisma/client";
 import { hashPassword } from "../src/lib/password";
+import { withLuhn } from "../src/lib/professions";
 
 const db = new PrismaClient({ adapter: new PrismaPg({ connectionString: process.env.DATABASE_URL }) });
 const DAY = 864e5;
@@ -78,6 +79,8 @@ const STAFF: { id: string; first: string; last: string; org: string; roles: OrgR
 type Prac = {
   id: string; first: string; last: string; profession: string; city: string; specialty?: string; sub?: string; hospital?: string;
   listed: boolean; bio?: string; langs?: string[]; types?: string[]; rate?: number; orcid?: string;
+  /** Hors France : pays d'exercice et identifiant professionnel fictif. */
+  country?: string; license?: string;
 };
 const PRACS: Prac[] = [
   { id: "demo-p-durand", first: "Hélène", last: "Durand", profession: "Chirurgien-dentiste", city: "Lyon", specialty: "Implantologie", sub: "Greffes osseuses", hospital: "Hospices Civils (fictif)", listed: true,
@@ -105,6 +108,8 @@ const PRACS: Prac[] = [
   { id: "demo-p-simon", first: "Emma", last: "Simon", profession: "Chirurgien-dentiste", city: "Montpellier", specialty: "Occlusodontie", listed: true,
     bio: "Troubles temporo-mandibulaires et occlusodontie ; formatrice DPC.", langs: ["fr", "es"], types: ["Formation / atelier pratique", "Conférence"], rate: 1400 },
   // Praticiens non référencés : participants aux événements uniquement.
+  { id: "demo-p-janssens", first: "Sophie", last: "Janssens", profession: "Chirurgien-dentiste", city: "Bruxelles", specialty: "Implantologie", sub: "Chirurgie guidée", listed: true, country: "BE", license: "39990000017",
+    bio: "Implantologiste à Bruxelles, conférencière en français, néerlandais et anglais. Praticienne fictive exerçant en Belgique (démonstration).", langs: ["fr", "nl", "en"], types: ["Conférence", "Formation / atelier pratique"], rate: 2400 },
   { id: "demo-p-lambert", first: "Inès", last: "Lambert", profession: "Chirurgien-dentiste", city: "Lyon", hospital: "Cabinet dentaire des Brotteaux", listed: false },
   { id: "demo-p-robert", first: "Hugo", last: "Robert", profession: "Chirurgien-dentiste", city: "Villeurbanne", listed: false },
   { id: "demo-p-dubois", first: "Manon", last: "Dubois", profession: "Assistant(e) dentaire", city: "Lyon", hospital: "Cabinet dentaire des Brotteaux", listed: false },
@@ -162,16 +167,17 @@ async function main() {
       where: { id: p.id },
       update: { rppsVerified: verified },
       create: {
-        id: p.id, userId: uid, profession: p.profession, city: p.city, specialty: p.specialty, subspecialty: p.sub, hospital: p.hospital,
+        id: p.id, userId: uid, profession: p.profession, city: p.city, country: p.country ?? "FR", licenseNumber: p.license ?? null, rppsCheckedAt: p.country && verified ? at(-60) : null, specialty: p.specialty, subspecialty: p.sub, hospital: p.hospital,
         languages: p.langs ?? ["fr"], interventionTypes: p.types ?? [], dayRateCents: p.rate ? p.rate * 100 : null, orcid: p.orcid,
         bio: p.bio, listed: p.listed, rppsVerified: verified, listedAt: p.listed ? at(-200 + Math.floor(Math.random() * 150)) : null, responseDays: p.listed ? 3 : null,
       },
     });
-    // RPPS fictifs (préfixe 999, hors plage réelle) : vérifiés pour la plupart, trois en attente de contrôle.
-    if (p.listed)
+    // RPPS fictifs (préfixe 999, hors plage réelle qui commence par 1, clé de Luhn valide) :
+    // vérifiés pour la plupart, trois en attente de contrôle.
+    if (p.listed && !p.country)
       await db.practitionerProfile.updateMany({
-        where: { id: p.id, rpps: null },
-        data: { rpps: `999${String(PRACS.indexOf(p) + 1).padStart(8, "0")}`, rppsCheckedAt: verified ? at(-60) : null },
+        where: { id: p.id, OR: [{ rpps: null }, { rpps: { startsWith: "999" } }] },
+        data: { rpps: withLuhn(`999${String(PRACS.indexOf(p) + 1).padStart(7, "0")}`), rppsCheckedAt: verified ? at(-60) : null },
       });
   }
   const PUBS: [string, string, string, number, string[]][] = [

@@ -3,6 +3,8 @@
 import { useActionState, useState } from "react";
 import { createEvent, registerToEvent } from "@/lib/event-actions";
 import { Notice } from "@/components/AuthForms";
+import { useLocale, useT } from "@/components/I18nProvider";
+import { intlLocale, type Locale } from "@/lib/i18n";
 
 type Opt = { value: string; label: string };
 type CatalogItem = { id: string; label: string; typical: number };
@@ -62,40 +64,41 @@ export function NewEventForm({ orgId, types, formats, catalog }: { orgId: string
 }
 
 type Benefit = { id: string; label: string; valueCents: number };
-const eur = (c: number) => (c / 100).toLocaleString("fr-FR", { style: "currency", currency: "EUR" });
+const eur = (c: number, locale: Locale) => (c / 100).toLocaleString(intlLocale(locale), { style: "currency", currency: "EUR" });
 
 export function RegisterForm({ eventId, benefits, hcp, defaultStructure }: { eventId: string; benefits: Benefit[]; hcp: boolean; defaultStructure: string }) {
   const [state, action, pending] = useActionState(registerToEvent, undefined);
   const [accepted, setAccepted] = useState<Record<string, boolean>>({});
+  const t = useT();
+  const locale = useLocale();
   const total = benefits.filter((b) => accepted[b.id]).reduce((s, b) => s + b.valueCents, 0);
-  if (state?.ok) return <p className="notice ok">{state.ok} Retrouvez-la dans « Mes inscriptions ».</p>;
+  if (state?.ok) return <p className="notice ok">{state.ok} {t("Retrouvez-la dans « Mes inscriptions ».")}</p>;
   return (
     <form action={action} className="form">
       <Notice state={state} />
       <input type="hidden" name="eventId" value={eventId} />
-      <label>Structure d&apos;exercice<input name="structure" defaultValue={defaultStructure} placeholder="Cabinet, hôpital…" /></label>
+      <label>{t("Structure d'exercice")}<input name="structure" defaultValue={defaultStructure} placeholder={t("Cabinet, hôpital…")} /></label>
       {benefits.length > 0 && (
         <fieldset>
-          <legend>Prestations proposées</legend>
-          <p className="hint">Cochez uniquement ce que vous acceptez. Vous pouvez participer sans rien accepter.</p>
+          <legend>{t("Prestations proposées")}</legend>
+          <p className="hint">{t("Cochez uniquement ce que vous acceptez. Vous pouvez participer sans rien accepter.")}</p>
           {benefits.map((b) => (
             <label key={b.id} className="check">
               <input type="checkbox" name={`accept_${b.id}`} checked={!!accepted[b.id]} onChange={(e) => setAccepted({ ...accepted, [b.id]: e.target.checked })} />
-              {b.label} — {eur(b.valueCents)}
+              {b.label} — {eur(b.valueCents, locale)}
             </label>
           ))}
-          {total > 0 && <p className="muted">Valeur totale acceptée : <strong>{eur(total)}</strong></p>}
+          {total > 0 && <p className="muted">{t("Valeur totale acceptée :")} <strong>{eur(total, locale)}</strong></p>}
         </fieldset>
       )}
       {hcp && total > 0 && (
         <div className="notice warn">
-          <strong>Information réglementaire.</strong> En tant que professionnel de santé, les prestations acceptées constituent un avantage
-          au sens du Code de la santé publique. Elles feront l&apos;objet d&apos;une convention d&apos;hospitalité et seront publiées à votre nom
-          sur la base Transparence Santé.
-          <label className="check"><input type="checkbox" name="ackHcp" required /> J&apos;ai compris et j&apos;accepte.</label>
+          <strong>{t("Information réglementaire.")}</strong>{" "}
+          {t("En tant que professionnel de santé, les prestations acceptées constituent un avantage au sens du Code de la santé publique. Elles feront l'objet d'une convention d'hospitalité et seront publiées à votre nom sur la base Transparence Santé.")}
+          <label className="check"><input type="checkbox" name="ackHcp" required /> {t("J'ai compris et j'accepte.")}</label>
         </div>
       )}
-      <button className="btn" disabled={pending}>{pending ? "Inscription…" : "M'inscrire"}</button>
+      <button className="btn" disabled={pending}>{pending ? t("Inscription…") : t("M'inscrire")}</button>
     </form>
   );
 }

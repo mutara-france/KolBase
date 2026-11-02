@@ -3,6 +3,8 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { Logo } from "@/components/Logo";
+import { LocaleSwitch } from "@/components/LocaleSwitch";
+import { useT } from "@/components/I18nProvider";
 
 const LINKS = [
   { href: "/experts", label: "Experts" },
@@ -14,21 +16,23 @@ const LINKS = [
 
 export function PublicNav({ loggedIn }: { loggedIn: boolean }) {
   const path = usePathname();
+  const t = useT();
   return (
     <header className="public-nav">
       <Logo />
-      <nav aria-label="Navigation principale">
+      <nav aria-label={t("Navigation principale")}>
         {LINKS.map((l) => (
-          <Link key={l.href} href={l.href} className={`nav-link${path === l.href || path.startsWith(l.href + "/") ? " on" : ""}`}>{l.label}</Link>
+          <Link key={l.href} href={l.href} className={`nav-link${path === l.href || path.startsWith(l.href + "/") ? " on" : ""}`}>{t(l.label)}</Link>
         ))}
       </nav>
       <div className="nav-actions">
+        <LocaleSwitch />
         {loggedIn ? (
-          <Link href="/tableau-de-bord" className="btn">Mon espace</Link>
+          <Link href="/tableau-de-bord" className="btn">{t("Mon espace")}</Link>
         ) : (
           <>
-            <Link href="/connexion" className="btn ghost">Se connecter</Link>
-            <Link href="/inscription" className="btn">Se référencer</Link>
+            <Link href="/connexion" className="btn ghost">{t("Se connecter")}</Link>
+            <Link href="/inscription" className="btn">{t("Se référencer")}</Link>
           </>
         )}
       </div>

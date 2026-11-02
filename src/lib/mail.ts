@@ -2,6 +2,7 @@ import "server-only";
 import nodemailer, { type Transporter } from "nodemailer";
 import { after } from "next/server";
 import { appUrl } from "@/lib/ics";
+import { makeT, type Locale } from "@/lib/i18n";
 
 /**
  * Envoi d'e-mails par SMTP (Brevo, Postmark, Resend, OVH… : tous fournissent un accès SMTP).
@@ -14,24 +15,25 @@ const transport = () => (g.kbMailer ??= process.env.SMTP_URL ? nodemailer.create
 export const mailEnabled = () => !!process.env.SMTP_URL;
 const FROM = () => process.env.MAIL_FROM ?? "KolBase <no-reply@kolbase.fr>";
 
-export type Mail = { to: string; subject: string; text: string; cta?: { label: string; href: string } };
+export type Mail = { to: string; subject: string; text: string; cta?: { label: string; href: string }; locale?: Locale };
 
 const esc = (s: string) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
 
 /** Habillage commun : texte brut, et HTML sobre aux couleurs de KolBase. */
 export function renderMail(m: Mail) {
   const link = m.cta ? (m.cta.href.startsWith("http") ? m.cta.href : `${appUrl()}${m.cta.href}`) : null;
-  const footer = "KolBase — praticiens × organisations du secteur dentaire.\nGérer vos notifications : " + `${appUrl()}/compte`;
+  const t = makeT(m.locale ?? "fr");
+  const footer = `${t("KolBase — praticiens × organisations du secteur dentaire.")}\n${t("Gérer vos notifications")} : ${appUrl()}/compte`;
   const text = [m.text, link ? `${m.cta!.label} : ${link}` : null, "—", footer].filter(Boolean).join("\n\n");
   const paragraphs = m.text.split(/\n{2,}/).map((p) => `<p style="margin:0 0 14px">${esc(p).replace(/\n/g, "<br>")}</p>`).join("");
   const button = link
     ? `<p style="margin:22px 0"><a href="${esc(link)}" style="background:#1a0099;color:#fff;padding:11px 18px;border-radius:999px;text-decoration:none;font-weight:600">${esc(m.cta!.label)}</a></p>`
     : "";
-  const html = `<!doctype html><html lang="fr"><body style="margin:0;background:#f5f4fb;font-family:Arial,sans-serif;color:#14123a">
+  const html = `<!doctype html><html lang="${m.locale ?? "fr"}"><body style="margin:0;background:#f5f4fb;font-family:Arial,sans-serif;color:#14123a">
 <div style="max-width:560px;margin:0 auto;padding:28px 20px">
 <p style="font-size:22px;font-weight:700;color:#0e0066;margin:0 0 20px">KolBase</p>
 <div style="background:#fff;border-radius:14px;padding:24px;font-size:15px;line-height:1.5">${paragraphs}${button}</div>
-<p style="font-size:12px;color:#6b6990;margin:16px 4px">KolBase — praticiens × organisations du secteur dentaire.<br><a href="${esc(appUrl())}/compte" style="color:#6b6990">Gérer vos notifications</a></p>
+<p style="font-size:12px;color:#6b6990;margin:16px 4px">${esc(t("KolBase — praticiens × organisations du secteur dentaire."))}<br><a href="${esc(appUrl())}/compte" style="color:#6b6990">${esc(t("Gérer vos notifications"))}</a></p>
 </div></body></html>`;
   return { text, html };
 }

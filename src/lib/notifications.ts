@@ -4,7 +4,8 @@ import { db } from "@/lib/db";
 import { sendMail, type Mail } from "@/lib/mail";
 import { platformAdminEmails } from "@/lib/platform";
 import { drPrefix } from "@/lib/professions";
-import { formatEUR, COMPLIANCE_ROLES, EVENT_ORGANIZER_ROLES } from "@/lib/events";
+import { COMPLIANCE_ROLES, EVENT_ORGANIZER_ROLES } from "@/lib/events";
+import { fmtEur, isLocale, makeT, type Locale, type T } from "@/lib/i18n";
 import { PROJECT_ROLES, SOURCING_ROLES, STATUS_LABEL } from "@/lib/projects";
 import type { OrgRole } from "@/generated/prisma/client";
 
@@ -14,7 +15,9 @@ import type { OrgRole } from "@/generated/prisma/client";
  * Les e-mails de service (mot de passe, confirmation d'adresse, invitation) partent toujours ; les autres
  * respectent la préférence « notifications par e-mail » du compte.
  */
-type Recipient = { id: string; email: string; notifyPrefs: unknown };
+type Recipient = { id: string; email: string; notifyPrefs: unknown; locale?: string };
+/** Contenu d'un e-mail, rédigé dans la langue du destinataire (t traduit, le français sert de clé). */
+type Compose = (t: T, locale: Locale) => Omit<Mail, "to" | "locale">;
 
 export const wantsEmail = (u: { notifyPrefs: unknown }) =>
   !(u.notifyPrefs && typeof u.notifyPrefs === "object" && (u.notifyPrefs as Record<string, unknown>).email === false);
@@ -29,16 +32,17 @@ function later(fn: () => Promise<void>) {
   });
 }
 
-async function send(recipients: Recipient[], mail: Omit<Mail, "to">, exceptUserId?: string | null) {
+async function send(recipients: Recipient[], mail: Omit<Mail, "to"> | Compose, exceptUserId?: string | null) {
   const seen = new Set<string>();
   for (const u of recipients) {
     if (u.id === exceptUserId || seen.has(u.id) || !wantsEmail(u)) continue;
     seen.add(u.id);
-    await sendMail({ ...mail, to: u.email });
+    const locale: Locale = isLocale(u.locale) ? u.locale : "fr";
+    await sendMail({ ...(typeof mail === "function" ? mail(makeT(locale), locale) : mail), to: u.email, locale });
   }
 }
 
-const userSelect = { id: true, email: true, notifyPrefs: true } as const;
+const userSelect = { id: true, email: true, notifyPrefs: true, locale: true } as const;
 
 /** Membres d'une organisation ayant l'un des rôles. */
 async function members(orgId: string, roles: OrgRole[]) {
@@ -67,14 +71,18 @@ export function notifySolicitations(projectId: string, kind: "sollicitation" | "
   later(async () => {
     const links = await db.projectExpert.findMany({ where: { projectId, status: "ATT_EXPERTS" }, include: linkInclude });
     for (const l of links) {
-      const fee = l.feeCents != null ? ` Honoraires proposés : ${formatEUR(l.feeCents)} HT.` : "";
-      await send([l.practitioner.user], {
-        subject: kind === "honoraires" ? `Candidature retenue : ${l.project.organization.name} vous propose des honoraires` : `Nouvelle sollicitation de ${l.project.organization.name}`,
-        text:
-          kind === "honoraires"
-            ? `Bonjour,\n\n${l.project.organization.name} a retenu votre candidature « ${l.project.title} ».${fee}\n\nAcceptez ou déclinez la proposition sur KolBase : le dossier n'avance qu'après votre réponse.`
-            : `Bonjour,\n\n${l.project.organization.name} vous sollicite pour « ${l.project.title} ».${fee}\n\nVous pouvez donner votre accord de principe, décliner ou poser vos questions sur KolBase.`,
-        cta: { label: "Répondre", href: `/sollicitations/${l.id}` },
+      const org = l.project.organization.name;
+      const title = l.project.title;
+      await send([l.practitioner.user], (t, locale) => {
+        const fee = l.feeCents != null ? ` ${t("Honoraires proposés : {montant} HT.", { montant: fmtEur(locale, l.feeCents) })}` : "";
+        return {
+          subject: kind === "honoraires" ? t("Candidature retenue : {org} vous propose des honoraires", { org }) : t("Nouvelle sollicitation de {org}", { org }),
+          text:
+            kind === "honoraires"
+              ? `${t("Bonjour,")}\n\n${t("{org} a retenu votre candidature « {titre} ».", { org, titre: title })}${fee}\n\n${t("Acceptez ou déclinez la proposition sur KolBase : le dossier n'avance qu'après votre réponse.")}`
+              : `${t("Bonjour,")}\n\n${t("{org} vous sollicite pour « {titre} ».", { org, titre: title })}${fee}\n\n${t("Vous pouvez donner votre accord de principe, décliner ou poser vos questions sur KolBase.")}`,
+          cta: { label: t("Répondre"), href: `/sollicitations/${l.id}` },
+        };
       });
     }
   });
@@ -92,11 +100,12 @@ export function notifyMessage(linkId: string, authorId: string) {
         cta: { label: "Lire le message", href: `/organisations/${l.project.organizationId}/dossiers/${l.projectId}` },
       }, authorId);
     } else {
-      await send([l.practitioner.user], {
-        subject: `Nouveau message de ${l.project.organization.name}`,
-        text: `Bonjour,\n\n${l.project.organization.name} vous a écrit à propos de « ${l.project.title} ».`,
-        cta: { label: "Lire le message", href: `/sollicitations/${l.id}` },
-      }, authorId);
+      const org = l.project.organization.name;
+      await send([l.practitioner.user], (t) => ({
+        subject: t("Nouveau message de {org}", { org }),
+        text: `${t("Bonjour,")}\n\n${t("{org} vous a écrit à propos de « {titre} ».", { org, titre: l.project.title })}`,
+        cta: { label: t("Lire le message"), href: `/sollicitations/${l.id}` },
+      }), authorId);
     }
   });
 }
@@ -106,11 +115,11 @@ export function notifyNotRetained(userId: string, title: string, orgName: string
   later(async () => {
     const u = await db.user.findUnique({ where: { id: userId }, select: userSelect });
     if (!u) return;
-    await send([u], {
-      subject: `Candidature non retenue : ${title}`,
-      text: `Bonjour,\n\n${orgName} n'a pas retenu votre candidature « ${title} ». Merci de votre intérêt ; d'autres opportunités vous attendent sur KolBase.`,
-      cta: { label: "Voir les opportunités", href: "/opportunites" },
-    });
+    await send([u], (t) => ({
+      subject: t("Candidature non retenue : {titre}", { titre: title }),
+      text: `${t("Bonjour,")}\n\n${t("{org} n'a pas retenu votre candidature « {titre} ». Merci de votre intérêt ; d'autres opportunités vous attendent sur KolBase.", { org: orgName, titre: title })}`,
+      cta: { label: t("Voir les opportunités"), href: "/opportunites" },
+    }));
   });
 }
 

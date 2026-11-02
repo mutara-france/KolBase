@@ -9,6 +9,7 @@ import { EVENT_ORGANIZER_ROLES, parseParisDateTime } from "@/lib/events";
 import { collabType, PROJECT_VIEW_ROLES } from "@/lib/projects";
 import { eurToCents, str } from "@/lib/form";
 import { notifyNotRetained, notifySolicitations, notifySpeakerApplication } from "@/lib/notifications";
+import { getT } from "@/lib/i18n/server";
 
 export type ActionState = { error?: string; ok?: string } | undefined;
 
@@ -42,9 +43,10 @@ export async function openSpeakerCall(_: ActionState, form: FormData): Promise<A
 
 export async function setSpeakerCallOpen(form: FormData) {
   const orgId = str(form, "orgId");
-  const { user } = await requireMembership(orgId, EVENT_ORGANIZER_ROLES);
+  const { user, org } = await requireMembership(orgId, EVENT_ORGANIZER_ROLES);
   const eventId = str(form, "eventId");
   const open = str(form, "open") === "1";
+  if (open && !isVerifiedOrg(org)) return;
   const { count } = await db.event.updateMany({ where: { id: eventId, organizationId: orgId }, data: { speakerCallOpen: open } });
   if (!count) return;
   await audit(user.id, open ? "speakercall.reopen" : "speakercall.close", "Event", eventId);
@@ -54,21 +56,22 @@ export async function setSpeakerCallOpen(form: FormData) {
 export async function applyAsSpeaker(_: ActionState, form: FormData): Promise<ActionState> {
   const user = await requireUser();
   const p = user.practitioner;
-  if (!p?.listed) return { error: "Référencez-vous comme expert pour candidater." };
+  const { t } = await getT();
+  if (!p?.listed) return { error: t("Référencez-vous comme expert pour candidater.") };
   const eventId = str(form, "eventId");
-  const event = await db.event.findUnique({ where: { id: eventId }, include: { speakerApplications: { where: { status: "retained" }, select: { id: true } } } });
-  if (!event || !event.speakerCallOpen || !event.publishedAt) return { error: "Cet appel n'est plus ouvert." };
-  if ((event.speakerDeadline && event.speakerDeadline < new Date()) || event.startsAt < new Date()) return { error: "La date limite est dépassée." };
-  if (event.speakerSlots && event.speakerApplications.length >= event.speakerSlots) return { error: "Toutes les places sont pourvues." };
+  const event = await db.event.findUnique({ where: { id: eventId }, include: { organization: true, speakerApplications: { where: { status: "retained" }, select: { id: true } } } });
+  if (!event || !event.speakerCallOpen || !event.publishedAt || !isVerifiedOrg(event.organization)) return { error: t("Cet appel n'est plus ouvert.") };
+  if ((event.speakerDeadline && event.speakerDeadline < new Date()) || event.startsAt < new Date()) return { error: t("La date limite est dépassée.") };
+  if (event.speakerSlots && event.speakerApplications.length >= event.speakerSlots) return { error: t("Toutes les places sont pourvues.") };
   const message = str(form, "message");
-  if (message.length < 20) return { error: "Décrivez ce que vous proposez de présenter (20 caractères minimum)." };
+  if (message.length < 20) return { error: t("Décrivez ce que vous proposez de présenter (20 caractères minimum).") };
   const existing = await db.speakerApplication.findUnique({ where: { eventId_practitionerId: { eventId, practitionerId: p.id } } });
-  if (existing) return { error: "Vous avez déjà candidaté." };
+  if (existing) return { error: t("Vous avez déjà candidaté.") };
   const app = await db.speakerApplication.create({ data: { eventId, practitionerId: p.id, message } });
   await audit(user.id, "speaker.apply", "SpeakerApplication", app.id, { eventId });
   notifySpeakerApplication(eventId, p.id);
   revalidatePath("/interventions");
-  return { ok: "Candidature envoyée." };
+  return { ok: t("Candidature envoyée.") };
 }
 
 export async function withdrawSpeaker(form: FormData) {
@@ -103,39 +106,50 @@ export async function rejectSpeaker(form: FormData) {
  */
 export async function retainSpeaker(_: ActionState, form: FormData): Promise<ActionState> {
   const orgId = str(form, "orgId");
-  const { user, roles } = await requireMembership(orgId, SPEAKER_ROLES);
+  const { user, org, roles } = await requireMembership(orgId, SPEAKER_ROLES);
+  if (!isVerifiedOrg(org)) return { error: ORG_NOT_VERIFIED };
   const app = await db.speakerApplication.findFirst({
     where: { id: str(form, "applicationId"), event: { organizationId: orgId } },
-    include: { event: { include: { speakerApplications: { where: { status: "retained" }, select: { id: true } } } }, practitioner: { include: { user: true } } },
+    include: { event: true, practitioner: { include: { user: true } } },
   });
   if (!app) return { error: "Candidature introuvable." };
   if (app.status !== "pending") return { error: "Cette candidature a déjà été traitée." };
   const ev = app.event;
-  if (ev.speakerSlots && ev.speakerApplications.length >= ev.speakerSlots) return { error: "Toutes les places sont déjà pourvues." };
   const fee = eurToCents(str(form, "fee"));
   if (fee === null) return { error: "Indiquez les honoraires convenus." };
   const typeId = collabType(ev.typeId) ? ev.typeId : "pleniere";
 
-  const project = await db.project.create({
-    data: {
-      organizationId: orgId,
-      title: `${ev.title} — intervention du Dr ${app.practitioner.user.lastName}`,
-      typeId,
-      therapeuticArea: ev.therapeuticArea,
-      description: ev.description,
-      origin: "Appel à intervenants",
-      status: "ATT_EXPERTS",
-      createdById: user.id,
-      experts: { create: { practitionerId: app.practitionerId, status: "ATT_EXPERTS", feeCents: fee, days: 1 } },
-    },
-    include: { experts: true },
-  });
-  if (app.message) {
-    await db.message.create({
-      data: { projectId: project.id, projectExpertId: project.experts[0].id, authorId: app.practitioner.userId, body: app.message, createdAt: app.createdAt },
+  // Verrou sur l'événement : deux validations simultanées ne dépassent ni les places ni ne doublent le dossier.
+  const result = await db.$transaction(async (tx) => {
+    await tx.$queryRaw`SELECT 1 FROM "Event" WHERE id = ${ev.id} FOR UPDATE`;
+    if (ev.speakerSlots && (await tx.speakerApplication.count({ where: { eventId: ev.id, status: "retained" } })) >= ev.speakerSlots) return "full" as const;
+    const { count } = await tx.speakerApplication.updateMany({ where: { id: app.id, status: "pending" }, data: { status: "retained" } });
+    if (count === 0) return "done" as const;
+    const created = await tx.project.create({
+      data: {
+        organizationId: orgId,
+        title: `${ev.title} — intervention du Dr ${app.practitioner.user.lastName}`,
+        typeId,
+        therapeuticArea: ev.therapeuticArea,
+        description: ev.description,
+        origin: "Appel à intervenants",
+        status: "ATT_EXPERTS",
+        createdById: user.id,
+        experts: { create: { practitionerId: app.practitionerId, status: "ATT_EXPERTS", feeCents: fee, days: 1 } },
+      },
+      include: { experts: true },
     });
-  }
-  await db.speakerApplication.update({ where: { id: app.id }, data: { status: "retained", projectId: project.id } });
+    if (app.message) {
+      await tx.message.create({
+        data: { projectId: created.id, projectExpertId: created.experts[0].id, authorId: app.practitioner.userId, body: app.message, createdAt: app.createdAt },
+      });
+    }
+    await tx.speakerApplication.update({ where: { id: app.id }, data: { projectId: created.id } });
+    return created;
+  });
+  if (result === "full") return { error: "Toutes les places sont déjà pourvues." };
+  if (result === "done") return { error: "Cette candidature a déjà été traitée." };
+  const project = result;
   await audit(user.id, "speaker.retain", "SpeakerApplication", app.id, { projectId: project.id });
   await audit(user.id, "project.create", "Project", project.id, { from: "speakercall", eventId: ev.id });
   notifySolicitations(project.id, "honoraires");

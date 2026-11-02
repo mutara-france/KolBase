@@ -5,12 +5,15 @@ import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import { db } from "@/lib/db";
 import { audit, requireUser } from "@/lib/auth";
-import { invitableRoles, requireMembership, SIREN_REQUIRED, sirenFields } from "@/lib/orgs";
+import { invitableRoles, isVerifiedOrg, requireMembership, SIREN_REQUIRED, sirenFields } from "@/lib/orgs";
+import { blockedFor, hit } from "@/lib/rate-limit";
+import { LOGO_MAX_BYTES, sniffLogo } from "@/lib/logos";
 import { parseSiren, sirenKeyOk } from "@/lib/siren";
 import type { FormState } from "@/lib/auth-actions";
 import { OrgKind, type OrgRole } from "@/generated/prisma/enums";
-import { eurToCents, str } from "@/lib/form";
+import { eurToCents, MAX_NAME, str } from "@/lib/form";
 import { notifyInvitation, notifyPlatformAdmins } from "@/lib/notifications";
+import { getT } from "@/lib/i18n/server";
 
 const sha256 = (v: string) => createHash("sha256").update(v).digest("hex");
 const INVITE_DAYS = 14;
@@ -19,7 +22,7 @@ export type InviteState = { error?: string; ok?: string; link?: string } | undef
 
 export async function createOrganization(_: FormState, form: FormData): Promise<FormState> {
   const user = await requireUser();
-  const name = str(form, "name");
+  const name = str(form, "name", MAX_NAME);
   const kind = str(form, "kind") as OrgKind;
   if (!name) return { error: "Indiquez le nom de l'organisation." };
   if (!Object.values(OrgKind).includes(kind)) return { error: "Type d'organisation invalide." };
@@ -50,7 +53,7 @@ export async function createOrganization(_: FormState, form: FormData): Promise<
 export async function updateOrganization(_: FormState, form: FormData): Promise<FormState> {
   const orgId = str(form, "orgId");
   const { user, org } = await requireMembership(orgId, ["ADMIN"], { allowSupplier: true });
-  const name = str(form, "name");
+  const name = str(form, "name", MAX_NAME);
   if (!name) return { error: "Le nom est obligatoire." };
   // Changer le nom d'une organisation validée relance la validation (usurpation d'un nom connu).
   const renamed = org.verification === "VERIFIED" && name !== org.name;
@@ -101,12 +104,18 @@ export async function createInvitation(_: InviteState, form: FormData): Promise<
   const { user, org } = await requireMembership(orgId, ["ADMIN"], { allowSupplier: true });
   const role = str(form, "role") as OrgRole;
   if (!invitableRoles(org.kind).includes(role)) return { error: "Rôle invalide." };
+  const email = str(form, "email", 254).toLowerCase();
+  // KolBase n'envoie d'e-mail d'invitation qu'au nom d'une organisation validée, et pas en rafale.
+  if (email && !isVerifiedOrg(org)) return { error: "L'envoi d'invitations par e-mail est possible une fois l'organisation validée par KolBase. Générez le lien sans e-mail et transmettez-le vous-même." };
+  const rateKey = `invite:${user.id}`;
+  if (email && blockedFor(rateKey, 30, 60 * 60 * 1000)) return { error: "Trop d'invitations envoyées en peu de temps : réessayez dans une heure." };
+  if (email) hit(rateKey);
   const token = randomBytes(24).toString("base64url");
   const inv = await db.invitation.create({
     data: {
       organizationId: orgId,
       role,
-      email: str(form, "email").toLowerCase() || null,
+      email: email || null,
       tokenHash: sha256(token),
       invitedById: user.id,
       expiresAt: new Date(Date.now() + INVITE_DAYS * 864e5),
@@ -116,7 +125,6 @@ export async function createInvitation(_: InviteState, form: FormData): Promise<
   revalidatePath(`/organisations/${orgId}`);
   revalidatePath(`/organisations/${orgId}/membres`);
   const link = `${process.env.APP_URL ?? ""}/invitation/${token}`;
-  const email = str(form, "email").toLowerCase();
   if (email) notifyInvitation(email, org.name, `${user.firstName} ${user.lastName}`, link);
   return {
     ok: `${email ? `Invitation envoyée à ${email}. ` : ""}Lien valable ${INVITE_DAYS} jours, à usage unique. Copiez-le maintenant : il ne sera plus affiché.`,
@@ -157,23 +165,31 @@ export async function acceptInvitation(form: FormData) {
   const token = str(form, "token");
   const inv = await db.invitation.findUnique({ where: { tokenHash: sha256(token) } });
   if (!inv || inv.acceptedAt || inv.revokedAt || inv.expiresAt < new Date()) redirect(`/invitation/${token}`);
-  await db.$transaction([
-    db.membership.upsert({
+  // Usage unique garanti même en cas d'acceptations simultanées : seule la première « consomme » le jeton.
+  const accepted = await db.$transaction(async (tx) => {
+    const { count } = await tx.invitation.updateMany({
+      where: { id: inv.id, acceptedAt: null, revokedAt: null, expiresAt: { gt: new Date() } },
+      data: { acceptedAt: new Date(), acceptedById: user.id },
+    });
+    if (count === 0) return false;
+    await tx.membership.upsert({
       where: { userId_organizationId_role: { userId: user.id, organizationId: inv.organizationId, role: inv.role } },
       update: {},
       create: { userId: user.id, organizationId: inv.organizationId, role: inv.role },
-    }),
-    db.invitation.update({ where: { id: inv.id }, data: { acceptedAt: new Date(), acceptedById: user.id } }),
-  ]);
+    });
+    return true;
+  });
+  if (!accepted) redirect(`/invitation/${token}`);
   await audit(user.id, "org.invite_accept", "Invitation", inv.id);
   redirect(`/organisations/${inv.organizationId}`);
 }
 
 export async function updateExpertProfile(_: FormState, form: FormData): Promise<FormState> {
   const user = await requireUser();
-  if (!user.practitioner) return { error: "Réservé aux praticiens." };
+  const { t } = await getT();
+  if (!user.practitioner) return { error: t("Réservé aux praticiens.") };
   const rateNum = eurToCents(str(form, "dayRate"));
-  if (str(form, "dayRate") && rateNum === null) return { error: "Tarif journalier invalide." };
+  if (str(form, "dayRate") && rateNum === null) return { error: t("Tarif journalier invalide.") };
   await db.practitionerProfile.update({
     where: { userId: user.id },
     data: {
@@ -190,5 +206,40 @@ export async function updateExpertProfile(_: FormState, form: FormData): Promise
   });
   await audit(user.id, "practitioner.update_expert", "PractitionerProfile", user.practitioner.id);
   revalidatePath("/compte");
-  return { ok: "Profil expert enregistré." };
+  return { ok: t("Profil expert enregistré.") };
+}
+
+/** Logo de l'organisation : PNG, JPEG ou WebP vérifié sur son contenu, 500 Ko au plus. */
+export async function updateOrgLogo(_: FormState, form: FormData): Promise<FormState> {
+  const orgId = str(form, "orgId");
+  const { user, org } = await requireMembership(orgId, ["ADMIN"], { allowSupplier: true });
+  const file = form.get("logo");
+  if (!(file instanceof File) || file.size === 0) return { error: "Choisissez une image." };
+  if (file.size > LOGO_MAX_BYTES) return { error: "Image trop lourde : 500 Ko au maximum." };
+  const bytes = new Uint8Array(await file.arrayBuffer());
+  const type = sniffLogo(bytes);
+  if (!type) return { error: "Format non reconnu : PNG, JPEG ou WebP uniquement." };
+  const now = new Date();
+  await db.$transaction([
+    db.organizationLogo.upsert({ where: { organizationId: orgId }, update: { data: bytes, contentType: type }, create: { organizationId: orgId, data: bytes, contentType: type } }),
+    db.organization.update({ where: { id: orgId }, data: { logoUpdatedAt: now } }),
+  ]);
+  await audit(user.id, "org.logo", "Organization", orgId, { type, size: bytes.byteLength });
+  // Un logo est une marque : l'équipe KolBase est prévenue pour pouvoir contrôler son usage.
+  if (org.verification === "VERIFIED") notifyPlatformAdmins(`Logo modifié : ${org.name}`, `${org.name} a publié un nouveau logo, visible sur le site public.`, "/admin");
+  revalidatePath(`/organisations/${orgId}/membres`);
+  revalidatePath(`/structures/${orgId}`);
+  return { ok: org.verification === "VERIFIED" ? "Logo enregistré." : "Logo enregistré. Il sera visible publiquement une fois l'organisation validée par KolBase." };
+}
+
+export async function removeOrgLogo(form: FormData) {
+  const orgId = str(form, "orgId");
+  const { user } = await requireMembership(orgId, ["ADMIN"], { allowSupplier: true });
+  await db.$transaction([
+    db.organizationLogo.deleteMany({ where: { organizationId: orgId } }),
+    db.organization.update({ where: { id: orgId }, data: { logoUpdatedAt: null } }),
+  ]);
+  await audit(user.id, "org.logo_remove", "Organization", orgId);
+  revalidatePath(`/organisations/${orgId}/membres`);
+  revalidatePath(`/structures/${orgId}`);
 }

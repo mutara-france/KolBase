@@ -4,6 +4,7 @@ import { useActionState, useState } from "react";
 import { Megaphone, Plus, Send } from "lucide-react";
 import { applyAsSpeaker, openSpeakerCall, retainSpeaker } from "@/lib/speaker-actions";
 import { Notice } from "@/components/AuthForms";
+import { useT } from "@/components/I18nProvider";
 
 type EventOpt = { id: string; label: string; slots: number | null; deadline: string; min: string; max: string; profile: string };
 
@@ -50,21 +51,22 @@ export function OpenSpeakerCallForm({ orgId, events, startOpen = false }: { orgI
 export function SpeakerApplyForm({ eventId }: { eventId: string }) {
   const [state, action, pending] = useActionState(applyAsSpeaker, undefined);
   const [open, setOpen] = useState(false);
-  if (state?.ok) return <p className="notice ok">{state.ok} L&apos;organisateur vous recontactera s&apos;il vous retient.</p>;
+  const t = useT();
+  if (state?.ok) return <p className="notice ok">{state.ok} {t("L'organisateur vous recontactera s'il vous retient.")}</p>;
   if (!open)
     return (
       <button type="button" className="btn" onClick={() => setOpen(true)}>
-        <Megaphone size={14} /> Proposer ma candidature
+        <Megaphone size={14} /> {t("Proposer ma candidature")}
       </button>
     );
   return (
     <form action={action} className="form">
       <Notice state={state} />
       <input type="hidden" name="eventId" value={eventId} />
-      <textarea name="message" rows={3} required minLength={20} placeholder="Ce que vous proposez de présenter, en quelques lignes…" aria-label="Votre proposition" />
+      <textarea name="message" rows={3} required minLength={20} placeholder={t("Ce que vous proposez de présenter, en quelques lignes…")} aria-label={t("Votre proposition")} />
       <div className="actions">
-        <button className="btn" disabled={pending}><Send size={13} /> {pending ? "Envoi…" : "Envoyer"}</button>
-        <button type="button" className="btn ghost" onClick={() => setOpen(false)}>Annuler</button>
+        <button className="btn" disabled={pending}><Send size={13} /> {pending ? t("Envoi…") : t("Envoyer")}</button>
+        <button type="button" className="btn ghost" onClick={() => setOpen(false)}>{t("Annuler")}</button>
       </div>
     </form>
   );

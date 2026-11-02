@@ -4,12 +4,16 @@ import { SiteHeader } from "@/components/SiteHeader";
 import { ApplyForm } from "@/components/OpportunityForms";
 import { db } from "@/lib/db";
 import { requireUser } from "@/lib/auth";
-import { formatDate, formatEUR } from "@/lib/events";
 import { collabType } from "@/lib/projects";
 import { withdrawApplication } from "@/lib/opportunity-actions";
 import type { ApplicationStatus } from "@/generated/prisma/client";
+import { fmtDate, fmtEur, intlLocale } from "@/lib/i18n";
+import { getT } from "@/lib/i18n/server";
 
-export const metadata = { title: "Opportunité — KolBase" };
+export async function generateMetadata() {
+  const { t } = await getT();
+  return { title: `${t("Opportunité")} — KolBase` };
+}
 
 const APP_STATUS: Record<ApplicationStatus, string> = {
   pending: "Votre candidature est en cours d'examen.",
@@ -30,41 +34,43 @@ export default async function Page({ params }: { params: Promise<{ id: string }>
   const mine = call.applications[0];
   const type = collabType(call.typeId);
   const closed = call.status !== "open" || (call.deadline != null && call.deadline < new Date());
+  const { t, locale } = await getT();
+  const num = (n: number) => n.toLocaleString(intlLocale(locale));
 
   return (
     <>
       <SiteHeader />
       <main className="narrow stack">
-        <p className="muted"><Link href="/opportunites">Opportunités</Link></p>
+        <p className="muted"><Link href="/opportunites">{t("Opportunités")}</Link></p>
         <div>
-          <span className="tag">{type?.label ?? call.typeId}</span>
+          <span className="tag">{type ? t(type.label) : call.typeId}</span>
           <h1>{call.title}</h1>
           <p className="muted">{call.organization.name}</p>
         </div>
         <section className="card">
           <dl className="facts">
-            {call.specialty && (<><dt>Spécialité</dt><dd>{call.specialty}</dd></>)}
+            {call.specialty && (<><dt>{t("Spécialité")}</dt><dd>{call.specialty}</dd></>)}
             {(call.budgetMinCents != null || call.budgetMaxCents != null) && (
-              <><dt>Budget</dt><dd>{[call.budgetMinCents, call.budgetMaxCents].filter((x) => x != null).map((x) => formatEUR(x!)).join(" – ")} HT</dd></>
+              <><dt>{t("Budget")}</dt><dd>{t("{amount} HT", { amount: [call.budgetMinCents, call.budgetMaxCents].filter((x) => x != null).map((x) => fmtEur(locale, x!)).join(" – ") })}</dd></>
             )}
-            {type && (<><dt>Référence de marché</dt><dd>{type.fmv[0].toLocaleString("fr-FR")} à {type.fmv[1].toLocaleString("fr-FR")} € HT par {type.unit}</dd></>)}
-            <dt>Date limite</dt><dd>{call.deadline ? formatDate(call.deadline) : "Aucune"}</dd>
+            {type && (<><dt>{t("Référence de marché")}</dt><dd>{t("{min} à {max} € HT par {unit}", { min: num(type.fmv[0]), max: num(type.fmv[1]), unit: t(type.unit) })}</dd></>)}
+            <dt>{t("Date limite")}</dt><dd>{call.deadline ? fmtDate(locale, call.deadline) : t("Aucune")}</dd>
           </dl>
         </section>
-        {call.description && <section className="card"><h2>Description</h2><p>{call.description}</p></section>}
-        {call.organization.policy && <section className="card"><h2>Politique de collaboration de {call.organization.name}</h2><p>{call.organization.policy}</p></section>}
+        {call.description && <section className="card"><h2>{t("Description")}</h2><p>{call.description}</p></section>}
+        {call.organization.policy && <section className="card"><h2>{t("Politique de collaboration de {org}", { org: call.organization.name })}</h2><p>{call.organization.policy}</p></section>}
         <section className="card highlight">
-          <h2>Candidature</h2>
+          <h2>{t("Candidature")}</h2>
           {mine ? (
             <>
-              <p className={`notice ${mine.status === "rejected" ? "error" : "ok"}`}>{APP_STATUS[mine.status]}</p>
+              <p className={`notice ${mine.status === "rejected" ? "error" : "ok"}`}>{t(APP_STATUS[mine.status])}</p>
               {mine.message && <p className="muted">« {mine.message} »</p>}
               {mine.status === "pending" && !closed && (
-                <form action={withdrawApplication}><input type="hidden" name="callId" value={id} /><button className="btn ghost">Retirer ma candidature</button></form>
+                <form action={withdrawApplication}><input type="hidden" name="callId" value={id} /><button className="btn ghost">{t("Retirer ma candidature")}</button></form>
               )}
             </>
           ) : closed ? (
-            <p className="muted">Cet appel est clôturé.</p>
+            <p className="muted">{t("Cet appel est clôturé.")}</p>
           ) : (
             <ApplyForm callId={id} />
           )}

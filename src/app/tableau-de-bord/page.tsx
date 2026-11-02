@@ -6,19 +6,24 @@ import { DashHead, MoreLink, Timeline, todayLabel, type TimelineItem } from "@/c
 import { TodoList, type TodoItem } from "@/components/Todo";
 import { db } from "@/lib/db";
 import { requireUser } from "@/lib/auth";
-import { formatDate, formatEUR } from "@/lib/events";
 import { collabType } from "@/lib/projects";
 import { drPrefix } from "@/lib/professions";
+import { fmtDate, fmtEur } from "@/lib/i18n";
+import { getT } from "@/lib/i18n/server";
 
-export const metadata = { title: "Accueil — KolBase" };
-
-const plural = (n: number, one: string, many: string) => `${n} ${n > 1 ? many : one}`;
+export async function generateMetadata() {
+  const { t } = await getT();
+  return { title: `${t("Accueil")} — KolBase` };
+}
 
 /** Accueil du praticien : les sollicitations à traiter d'abord, puis le profil, les opportunités et l'agenda. */
 export default async function Page() {
   const user = await requireUser();
   const p = user.practitioner;
   if (!p) redirect(user.memberships[0] ? `/organisations/${user.memberships[0].organizationId}` : "/compte");
+  const { t, locale } = await getT();
+  /** « 1 étape restante » / « 2 étapes restantes » : une clé par forme. */
+  const plural = (n: number, one: string, many: string) => t(n > 1 ? many : one, { n });
   const now = new Date();
 
   const [links, regs, calls, pubCount, structCount, apps] = await Promise.all([
@@ -63,18 +68,18 @@ export default async function Page() {
   const todos: TodoItem[] = [
     ...changes
       .filter((c) => linkOf(c.material.project.id))
-      .map((c) => ({ href: `/sollicitations/${linkOf(c.material.project.id)}`, title: `Modifier le support : ${c.material.title}`, detail: c.reviewComment ?? c.material.project.title, icon: "AlertTriangle" as const, tone: "danger" as const })),
-    ...toSign.map((l) => ({ href: `/sollicitations/${l.id}`, title: "Convention à signer", detail: `${l.project.title} · ${l.project.organization.name}`, icon: "FileSignature" as const, tone: "warn" as const })),
+      .map((c) => ({ href: `/sollicitations/${linkOf(c.material.project.id)}`, title: t("Modifier le support : {title}", { title: c.material.title }), detail: c.reviewComment ?? c.material.project.title, icon: "AlertTriangle" as const, tone: "danger" as const })),
+    ...toSign.map((l) => ({ href: `/sollicitations/${l.id}`, title: t("Convention à signer"), detail: `${l.project.title} · ${l.project.organization.name}`, icon: "FileSignature" as const, tone: "warn" as const })),
     ...(speakerCalls
-      ? [{ href: "/interventions?onglet=appels", title: `${plural(speakerCalls, "appel à intervenants ouvert", "appels à intervenants ouverts")}`, detail: "Proposez votre candidature", icon: "Mic" as const }]
+      ? [{ href: "/interventions?onglet=appels", title: plural(speakerCalls, "{n} appel à intervenants ouvert", "{n} appels à intervenants ouverts"), detail: t("Proposez votre candidature"), icon: "Mic" as const }]
       : []),
   ];
   const profileTodos: TodoItem[] = p.listed
     ? [
-        ...(!p.bio ? [{ href: "/compte", title: "Ajouter une présentation", detail: "Les organisations la lisent en premier.", icon: "UserRound" as const }] : []),
-        ...(!p.rpps ? [{ href: "/compte", title: "Renseigner votre n° RPPS", detail: "Nécessaire aux conventions et au badge « Identité vérifiée ».", icon: "ShieldCheck" as const }] : []),
-        ...(structCount === 0 ? [{ href: "/compte", title: "Déclarer votre structure de facturation", detail: "Elle figurera sur vos conventions.", icon: "FileSignature" as const }] : []),
-        ...(pubCount === 0 ? [{ href: "/compte", title: "Ajouter vos publications", detail: "Elles apparaissent sur votre fiche publique.", icon: "CircleDot" as const }] : []),
+        ...(!p.bio ? [{ href: "/compte", title: t("Ajouter une présentation"), detail: t("Les organisations la lisent en premier."), icon: "UserRound" as const }] : []),
+        ...(!p.rpps ? [{ href: "/compte", title: t("Renseigner votre n° RPPS"), detail: t("Nécessaire aux conventions et au badge « Identité vérifiée »."), icon: "ShieldCheck" as const }] : []),
+        ...(structCount === 0 ? [{ href: "/compte", title: t("Déclarer votre structure de facturation"), detail: t("Elle figurera sur vos conventions."), icon: "FileSignature" as const }] : []),
+        ...(pubCount === 0 ? [{ href: "/compte", title: t("Ajouter vos publications"), detail: t("Elles apparaissent sur votre fiche publique."), icon: "CircleDot" as const }] : []),
       ]
     : [];
 
@@ -82,60 +87,60 @@ export default async function Page() {
     ...apps.map((a) => ({
       date: a.event.startsAt,
       title: a.event.title,
-      detail: a.status === "retained" ? `Vous intervenez · ${a.event.organization.name}` : "Candidature d'intervenant · en attente de réponse",
+      detail: a.status === "retained" ? t("Vous intervenez · {org}", { org: a.event.organization.name }) : t("Candidature d'intervenant · en attente de réponse"),
       href: a.status === "retained" ? "/interventions?onglet=interventions" : "/interventions?onglet=candidatures",
       strong: a.status === "retained",
     })),
-    ...regs.map((r) => ({ date: r.event.startsAt, title: r.event.title, detail: `Inscrit · ${r.event.organization.name}`, href: `/evenements/${r.eventId}`, strong: true })),
+    ...regs.map((r) => ({ date: r.event.startsAt, title: r.event.title, detail: t("Inscrit · {org}", { org: r.event.organization.name }), href: `/evenements/${r.eventId}`, strong: true })),
   ]
     .sort((a, b) => a.date.getTime() - b.date.getTime())
     .slice(0, 5);
 
   const lede = pending.length
-    ? `${plural(pending.length, "sollicitation attend", "sollicitations attendent")} votre réponse.`
+    ? plural(pending.length, "{n} sollicitation attend votre réponse.", "{n} sollicitations attendent votre réponse.")
     : todos.length
       ? undefined
       : p.listed
-        ? "Rien à traiter pour le moment."
-        : "Vos inscriptions aux événements. Référencez-vous comme expert pour être sollicité.";
+        ? t("Rien à traiter pour le moment.")
+        : t("Vos inscriptions aux événements. Référencez-vous comme expert pour être sollicité.");
 
   return (
     <>
       <SiteHeader />
       <main className="stack dash">
-        <DashHead kicker={todayLabel()} title={`Bonjour ${drPrefix(p.profession) || `${user.firstName} `}${user.lastName}.`} lede={lede} />
+        <DashHead kicker={todayLabel(locale)} title={t("Bonjour {name}.", { name: `${drPrefix(p.profession) || `${user.firstName} `}${user.lastName}` })} lede={lede} />
 
         {!p.listed && (
           <section className="card highlight flex-between">
             <div>
-              <h2>Devenir expert référencé</h2>
-              <p className="muted">Recevez des sollicitations, candidatez aux opportunités et gérez vos conventions.</p>
+              <h2>{t("Devenir expert référencé")}</h2>
+              <p className="muted">{t("Recevez des sollicitations, candidatez aux opportunités et gérez vos conventions.")}</p>
             </div>
-            <Link className="btn" href="/compte">Me référencer</Link>
+            <Link className="btn" href="/compte">{t("Me référencer")}</Link>
           </section>
         )}
 
         <div className="dash-layout">
           <section className="card dash-card" aria-labelledby="a-faire">
-            <h2 id="a-faire" className="dash-title">À faire</h2>
+            <h2 id="a-faire" className="dash-title">{t("À faire")}</h2>
             {pending.map((l) => (
               <article key={l.id} className="solicit-card">
                 <div className="solicit-top">
                   <Avatar name={l.project.organization.name} size={40} square />
-                  <p>{l.project.organization.name} vous sollicite</p>
-                  <span className="pill new">À traiter</span>
+                  <p>{t("{org} vous sollicite", { org: l.project.organization.name })}</p>
+                  <span className="pill new">{t("À traiter")}</span>
                 </div>
                 <h3>{l.project.title}</h3>
                 <div className="solicit-foot">
                   <p className="text-sm">
-                    {collabType(l.project.typeId)?.label ?? "Collaboration"} · reçue le {formatDate(l.createdAt)}
+                    {t(collabType(l.project.typeId)?.label ?? "Collaboration")} · {t("reçue le {date}", { date: fmtDate(locale, l.createdAt) })}
                     {l.feeCents != null && (
                       <>
-                        {" "}· honoraires proposés <span className="mono ink">{formatEUR(l.feeCents)} HT</span>
+                        {" "}· {t("honoraires proposés")} <span className="mono ink">{t("{amount} HT", { amount: fmtEur(locale, l.feeCents) })}</span>
                       </>
                     )}
                   </p>
-                  <Link className="btn" href={`/sollicitations/${l.id}`}>Voir et répondre</Link>
+                  <Link className="btn" href={`/sollicitations/${l.id}`}>{t("Voir et répondre")}</Link>
                 </div>
               </article>
             ))}
@@ -143,8 +148,8 @@ export default async function Page() {
             {profileTodos.length > 0 && (
               <div className="profile-steps">
                 <div className="flex-between">
-                  <h3>Complétez votre profil</h3>
-                  <span className="text-xs">{plural(profileTodos.length, "étape restante", "étapes restantes")}</span>
+                  <h3>{t("Complétez votre profil")}</h3>
+                  <span className="text-xs">{plural(profileTodos.length, "{n} étape restante", "{n} étapes restantes")}</span>
                 </div>
                 <TodoList items={profileTodos} />
               </div>
@@ -154,25 +159,25 @@ export default async function Page() {
           <div className="stack dash-side">
             {p.listed && (
               <section className="card dash-card" aria-labelledby="pour-vous">
-                <h2 id="pour-vous" className="dash-title">Pour vous</h2>
+                <h2 id="pour-vous" className="dash-title">{t("Pour vous")}</h2>
                 {suggested.length === 0 ? (
-                  <p className="muted">Aucun appel ouvert pour le moment.</p>
+                  <p className="muted">{t("Aucun appel ouvert pour le moment.")}</p>
                 ) : (
                   suggested.map((c) => (
                     <Link key={c.id} href={`/opportunites/${c.id}`} className="suggest-card">
-                      <span className="suggest-kind">{c.specialty || collabType(c.typeId)?.label}</span>
+                      <span className="suggest-kind">{c.specialty || t(collabType(c.typeId)?.label ?? "")}</span>
                       <strong>{c.title}</strong>
-                      <span>{c.organization.name}{c.deadline ? ` · jusqu'au ${formatDate(c.deadline)}` : ""}</span>
+                      <span>{c.organization.name}{c.deadline ? ` · ${t("jusqu'au {date}", { date: fmtDate(locale, c.deadline) })}` : ""}</span>
                     </Link>
                   ))
                 )}
-                <MoreLink href="/opportunites">Toutes les opportunités</MoreLink>
+                <MoreLink href="/opportunites">{t("Toutes les opportunités")}</MoreLink>
               </section>
             )}
             <section className="card dash-card" aria-labelledby="mon-agenda">
-              <h2 id="mon-agenda" className="dash-title">Mon agenda</h2>
-              <Timeline items={agenda} empty="Aucun événement à venir." />
-              <MoreLink href="/evenements">Parcourir les événements</MoreLink>
+              <h2 id="mon-agenda" className="dash-title">{t("Mon agenda")}</h2>
+              <Timeline items={agenda} empty={t("Aucun événement à venir.")} />
+              <MoreLink href="/evenements">{t("Parcourir les événements")}</MoreLink>
             </section>
           </div>
         </div>

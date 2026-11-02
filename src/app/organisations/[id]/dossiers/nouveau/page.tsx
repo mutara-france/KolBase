@@ -2,7 +2,7 @@ import Link from "next/link";
 import { SiteHeader } from "@/components/SiteHeader";
 import { NewProjectForm } from "@/components/ProjectForms";
 import { db } from "@/lib/db";
-import { requireMembership } from "@/lib/orgs";
+import { isVerifiedOrg, ORG_NOT_VERIFIED, requireMembership } from "@/lib/orgs";
 import { COLLAB_TYPES, SOURCING_ROLES } from "@/lib/projects";
 import { canSee, kolVisibility } from "@/lib/visibility";
 
@@ -12,12 +12,28 @@ export default async function Page({ params, searchParams }: { params: Promise<{
   const { id } = await params;
   const { expert } = await searchParams;
   const { org } = await requireMembership(id, SOURCING_ROLES);
-  const experts = await db.practitionerProfile.findMany({
-    where: { listed: true },
-    include: { user: { select: { firstName: true, lastName: true } } },
-    orderBy: { user: { lastName: "asc" } },
-    take: 500,
-  });
+  if (!isVerifiedOrg(org)) {
+    return (
+      <>
+        <SiteHeader />
+        <main className="narrow stack">
+          <p className="muted"><Link href={`/organisations/${id}`}>{org.name}</Link> / <Link href={`/organisations/${id}/dossiers`}>Dossiers</Link></p>
+          <section className="card stack-sm">
+            <h1>Nouveau dossier</h1>
+            <p>{ORG_NOT_VERIFIED}</p>
+            <p><Link className="btn secondary" href={`/organisations/${id}/membres`}>Suivre la validation</Link></p>
+          </section>
+        </main>
+      </>
+    );
+  }
+  const include = { user: { select: { firstName: true, lastName: true } } } as const;
+  const [list, chosen] = await Promise.all([
+    db.practitionerProfile.findMany({ where: { listed: true }, include, orderBy: { user: { lastName: "asc" } }, take: 500 }),
+    // L'expert choisi depuis l'annuaire figure toujours dans la liste, même au-delà des 500 premiers.
+    expert ? db.practitionerProfile.findFirst({ where: { id: expert, listed: true }, include }) : null,
+  ]);
+  const experts = chosen && !list.some((e) => e.id === chosen.id) ? [chosen, ...list] : list;
   return (
     <>
       <SiteHeader />

@@ -75,8 +75,12 @@ export function parseParisDateTime(value: string): Date | null {
 }
 
 export const csvEscape = (v: unknown) => {
-  const s = v == null ? "" : String(v);
-  return /[";\n\r]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
+  let s = v == null ? "" : String(v);
+  // Injection de formule : un nom saisi « =HYPERLINK(…) » serait exécuté par Excel à l'ouverture.
+  // Les nombres (montants négatifs compris) restent tels quels ; tout autre texte commençant par
+  // = + - @ (ou une tabulation, un retour chariot) est neutralisé par une apostrophe.
+  if (typeof v !== "number" && /^[=+\-@\t\r]/.test(s)) s = `'${s}`;
+  return /[";\n\r\t]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
 };
 
 /** CSV séparé par « ; » avec BOM, lisible directement par Excel en français. */

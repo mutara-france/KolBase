@@ -11,7 +11,14 @@ export function avatarColor(name: string) {
   return COLORS[Math.abs(hashCode(name)) % COLORS.length];
 }
 
-export function Avatar({ name, size = 40, square = false, ring = false }: { name: string; size?: number; square?: boolean; ring?: boolean }) {
+export function Avatar({ name, size = 40, square = false, ring = false, src }: { name: string; size?: number; square?: boolean; ring?: boolean; src?: string | null }) {
+  // Logo d'organisation : image sur fond blanc, à la place du monogramme.
+  if (src)
+    return (
+      <span className={`avatar logo${square ? " square" : ""}${ring ? " ring" : ""}`} style={{ width: size, height: size }} aria-hidden>
+        <img src={src} alt="" width={size} height={size} loading="lazy" decoding="async" />
+      </span>
+    );
   return (
     <span
       className={`avatar${square ? " square" : ""}${ring ? " ring" : ""}`}

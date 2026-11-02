@@ -84,7 +84,7 @@ export default async function Page({ params }: { params: Promise<{ id: string; e
           {event.registrations.length === 0 ? (
             <p className="muted">Aucune inscription pour l&apos;instant.</p>
           ) : (
-            <table className="table">
+            <table className="table" tabIndex={0}>
               <thead><tr><th>Nom</th><th>Profession</th><th>Structure</th><th>Prestations acceptées</th><th>Valeur</th><th>Inscrit le</th></tr></thead>
               <tbody>
                 {event.registrations.map((r) => (

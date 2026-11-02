@@ -1,0 +1,20 @@
+/** E-mails adressés aux praticiens. */
+export const EMAILS: Record<string, string> = {
+  "KolBase — praticiens × organisations du secteur dentaire.": "KolBase — dentists × organisations in the dental sector.",
+  "Gérer vos notifications": "Manage your notifications",
+  "Bonjour,": "Hello,",
+  "Honoraires proposés : {montant} HT.": "Proposed fees: {montant} excl. VAT.",
+  "Candidature retenue : {org} vous propose des honoraires": "Application accepted: {org} is proposing fees",
+  "Nouvelle sollicitation de {org}": "New collaboration request from {org}",
+  "{org} a retenu votre candidature « {titre} ».": "{org} has accepted your application “{titre}”.",
+  "Acceptez ou déclinez la proposition sur KolBase : le dossier n'avance qu'après votre réponse.": "Accept or decline the proposal on KolBase: the file only moves forward once you reply.",
+  "{org} vous sollicite pour « {titre} ».": "{org} would like to work with you on “{titre}”.",
+  "Vous pouvez donner votre accord de principe, décliner ou poser vos questions sur KolBase.": "You can agree in principle, decline or ask your questions on KolBase.",
+  "Répondre": "Reply",
+  "Nouveau message de {org}": "New message from {org}",
+  "{org} vous a écrit à propos de « {titre} ».": "{org} has written to you about “{titre}”.",
+  "Lire le message": "Read the message",
+  "Candidature non retenue : {titre}": "Application not selected: {titre}",
+  "{org} n'a pas retenu votre candidature « {titre} ». Merci de votre intérêt ; d'autres opportunités vous attendent sur KolBase.": "{org} has not selected your application “{titre}”. Thank you for your interest; more opportunities are waiting for you on KolBase.",
+  "Voir les opportunités": "See opportunities",
+};

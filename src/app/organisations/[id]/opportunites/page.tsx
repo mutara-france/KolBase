@@ -27,7 +27,7 @@ export default async function Page({ params }: { params: Promise<{ id: string }>
         <h1>Appels publiés</h1>
         {calls.length > 0 && (
           <section className="card">
-            <table className="table">
+            <table className="table" tabIndex={0}>
               <thead><tr><th>Titre</th><th>Type</th><th>Date limite</th><th>Candidatures</th><th>Statut</th></tr></thead>
               <tbody>
                 {calls.map((c) => (

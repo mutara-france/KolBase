@@ -3,7 +3,9 @@
 // Usage : BASE=http://localhost:3000 DEMO_PASSWORD=… DATABASE_URL=… npm run test:e2e
 import { chromium } from "playwright";
 import pg from "pg";
-import { mails, startFakes } from "./faux-services.mjs";
+import { createHmac } from "node:crypto";
+import { PDFDocument } from "pdf-lib";
+import { mails, signatureRequests, startFakes } from "./faux-services.mjs";
 
 const BASE = process.env.BASE ?? "http://localhost:3000";
 const PW = process.env.DEMO_PASSWORD;
@@ -21,7 +23,7 @@ const check = (name, ok, detail = "") => { results.push({ name, ok, detail }); c
 const browser = await chromium.launch();
 
 async function session() {
-  const ctx = await browser.newContext();
+  const ctx = await browser.newContext({ locale: "fr-FR" });
   return { ctx, page: await ctx.newPage() };
 }
 async function login(page, email, password = PW, next = "") {
@@ -262,6 +264,85 @@ const linkIn = (mail) => mail?.text.match(/https?:\/\/\S+/g)?.find((u) => !u.end
   await ctx.close();
 }
 
+// ── Signature électronique (faux Yousign) : envoi, refus, nouvel envoi, webhook signé ─────
+{
+  const db = new pg.Client({ connectionString: process.env.DATABASE_URL });
+  await db.connect();
+  await db.query(`insert into "Project" (id, "organizationId", title, "typeId", status, "updatedAt") values ('e2e-prj-esign', 'demo-org-academie', 'Formation signée électroniquement', 'dpc', 'SIGNATURE', now()) on conflict do nothing`);
+  await db.query(`insert into "ProjectExpert" (id, "projectId", "practitionerId", status, "feeCents", days) values ('e2e-link-esign', 'e2e-prj-esign', 'demo-p-roux', 'SIGNATURE', 150000, 1) on conflict do nothing`);
+  const { ctx, page } = await session();
+  await login(page, "anne.chevalier@demo.kolbase.local");
+  const dossier = `${BASE}/organisations/demo-org-academie/dossiers/e2e-prj-esign`;
+  await page.goto(dossier);
+  const send = page.locator('button:has-text("signature électronique")');
+  check("Signature électronique : envoi proposé (YOUSIGN_* et faux Yousign du port 3995)", (await send.count()) === 1);
+  if ((await send.count()) === 1) {
+    await send.click();
+    await page.waitForSelector('.pill:has-text("En cours de signature")', { timeout: 20000 }).catch(() => {});
+    check("Signature électronique : convention envoyée", (await text(page)).includes("Yousign a écrit à chaque signataire"));
+    const first = [...signatureRequests.values()].find((r) => r.body.external_id === "e2e-link-esign");
+    const pages = first?.pdf ? (await PDFDocument.load(first.pdf)).getPageCount() : 0;
+    const [org, exp] = first?.signers ?? [];
+    check("Yousign : demande activée avec la convention et deux signataires",
+      first?.status === "ongoing" && pages > 0 && org?.info.email === "anne.chevalier@demo.kolbase.local" && exp?.info.email === "mathieu.roux@demo.kolbase.local" && org.signature_level === "electronic_signature");
+    check("Yousign : un champ de signature par signataire, côte à côte sur la dernière page",
+      org?.fields?.[0]?.page === pages && exp?.fields?.[0]?.page === pages && org.fields[0].x < exp.fields[0].x && org.fields[0].y === exp.fields[0].y, JSON.stringify([org?.fields, exp?.fields, pages]));
+
+    // Refus constaté par « Mettre à jour le statut » (sans webhook), puis nouvel envoi.
+    first.status = "declined";
+    first.decline_information = { reason: "Honoraires à revoir", signer_id: exp?.id };
+    await page.reload();
+    await page.click('button:has-text("Mettre à jour le statut")');
+    await page.waitForTimeout(1500);
+    await page.reload();
+    let t = await text(page);
+    check("Mise à jour du statut : refus et motif affichés", t.includes("Signature refusée") && t.includes("Honoraires à revoir"));
+    await page.click('button:has-text("Envoyer de nouveau en signature électronique")');
+    await page.waitForSelector('.pill:has-text("En cours de signature")', { timeout: 20000 }).catch(() => {});
+    const second = [...signatureRequests.values()].filter((r) => r.body.external_id === "e2e-link-esign").at(-1);
+    check("Nouvel envoi : nouvelle demande Yousign", !!second && second.id !== first.id && second.status === "ongoing");
+
+    const expert = await session();
+    await login(expert.page, "mathieu.roux@demo.kolbase.local");
+    await expert.page.goto(`${BASE}/sollicitations/e2e-link-esign`);
+    check("Expert : convention en attente de sa signature", (await text(expert.page)).includes("Convention en attente de votre signature"));
+
+    // Webhook : signature HMAC exigée, identifiants inconnus ignorés, traitement idempotent.
+    const hook = (body, sig) => fetch(`${BASE}/api/signature/webhook`, { method: "POST", headers: { "Content-Type": "application/json", "X-Yousign-Signature-256": sig }, body });
+    const hmac = (b) => `sha256=${createHmac("sha256", "test").update(b).digest("hex")}`;
+    const event = (id) => JSON.stringify({ event_id: `evt-${id}`, event_name: "signature_request.done", event_time: String(Math.floor(Date.now() / 1000)), sandbox: false, data: { signature_request: { id, status: "done", completed_at: new Date().toISOString() } } });
+    check("Webhook : signature invalide refusée", (await hook(event(second.id), "sha256=00")).status === 401);
+    const signed = (b) => hook(b, hmac(b));
+    const unknown = await signed(event("inconnu"));
+    check("Webhook : demande inconnue ignorée (200)", unknown.status === 200 && (await unknown.json()).ignored === true);
+    check("Webhook : ancienne demande remplacée ignorée", (await (await signed(event(first.id))).json()).ignored === true);
+    second.status = "done";
+    second.completed_at = new Date().toISOString();
+    const done = event(second.id);
+    const [r1, r2] = [await signed(done), await signed(done)];
+    check("Webhook : signature achevée acceptée (et rejouée sans erreur)", r1.status === 200 && r2.status === 200);
+    for (let i = 0; i < 20 && !(await text(page)).includes("Signée électroniquement"); i++) { await page.waitForTimeout(500); await page.reload(); }
+    t = await text(page);
+    check("Dossier : convention signée électroniquement", t.includes("Signée électroniquement") && t.includes("Signée par les deux parties"));
+    check("Documents : convention signée rangée une seule fois", (await page.locator('li:has-text("convention-signee-")').count()) === 1, String(await page.locator('li:has-text("convention-signee-")').count()));
+    check("Signature électronique : « Convention signée » devient possible", (await page.locator('button:has-text("Convention signée")').count()) === 1);
+    const dl = await page.request.get(`${BASE}/signatures/e2e-link-esign`);
+    const pdf = await dl.body();
+    check("Téléchargement de la convention signée (organisation)", dl.ok() && pdf.subarray(0, 5).toString() === "%PDF-" && pdf.includes("faux Yousign"), String(dl.status()));
+    await expert.page.reload();
+    check("Expert : convention signée affichée", (await text(expert.page)).includes("Convention signée électroniquement par les deux parties"));
+    check("Expert : téléchargement de sa convention signée", (await expert.page.request.get(`${BASE}/signatures/e2e-link-esign`)).ok());
+    await expert.ctx.close();
+    const other = await session();
+    await login(other.page, "julien.faure@demo.kolbase.local");
+    check("Convention signée : refusée à une autre organisation", (await other.page.request.get(`${BASE}/signatures/e2e-link-esign`)).status() === 404);
+    await other.ctx.close();
+  }
+  await db.query(`delete from "Project" where id = 'e2e-prj-esign'`);
+  await db.end();
+  await ctx.close();
+}
+
 // ── Conformité : au-delà des seuils, pas de déclaration simple ─────────────
 {
   const { ctx, page } = await session();
@@ -277,6 +358,63 @@ const linkIn = (mail) => mail?.text.match(/https?:\/\/\S+/g)?.find((u) => !u.end
   check("Dossier à 3 000 € validé : régime d'autorisation", t.includes("Autorisation") && t.includes("Demander l'autorisation à l'Ordre"));
   check("Dossier à 3 000 € : déclaration simple non proposée", !t.includes("Déclaration simple"));
   await s2.ctx.close();
+}
+
+// ── Praticiens exerçant hors de France ─────────────────────────────────────
+{
+  const db = new pg.Client({ connectionString: process.env.DATABASE_URL });
+  await db.connect();
+  // Une praticienne passe en exercice en Belgique : identifiant INAMI au lieu du RPPS.
+  const ines = await session();
+  await login(ines.page, "ines.lambert@demo.kolbase.local");
+  await ines.page.goto(`${BASE}/compte`);
+  const infos = 'form:has(h2:has-text("Informations personnelles"))';
+  await ines.page.selectOption(`${infos} select[name="country"]`, "BE");
+  check("Belgique : le RPPS laisse place au numéro INAMI", (await ines.page.locator(`${infos} input[name="licenseNumber"]`).count()) === 1 && (await ines.page.locator(`${infos} input[name="rpps"]`).count()) === 0);
+  await ines.page.fill(`${infos} input[name="licenseNumber"]`, "1234");
+  await ines.page.click(`${infos} button:has-text("Enregistrer")`);
+  await ines.page.waitForTimeout(1000);
+  check("INAMI mal formé refusé", (await text(ines.page)).includes("Numéro INAMI invalide"));
+  await ines.page.selectOption(`${infos} select[name="country"]`, "BE");
+  await ines.page.fill(`${infos} input[name="licenseNumber"]`, "3 12345 67 890");
+  await ines.page.click(`${infos} button:has-text("Enregistrer")`);
+  await ines.page.waitForTimeout(1200);
+  const row = (await db.query(`SELECT country, "licenseNumber", rpps FROM "PractitionerProfile" WHERE id = 'demo-p-lambert'`)).rows[0];
+  check("INAMI enregistré, pays d'exercice Belgique", row.country === "BE" && row.licenseNumber === "31234567890" && row.rpps === null, JSON.stringify(row));
+  await ines.page.click('button:has-text("Me référencer comme expert")');
+  await ines.page.waitForTimeout(1200);
+  check("Praticienne belge référencée avec son INAMI", (await text(ines.page)).includes("Vous êtes référencé comme expert"));
+  const admin = await session();
+  await login(admin.page, "anne.chevalier@demo.kolbase.local");
+  await admin.page.goto(`${BASE}/admin?onglet=praticiens`);
+  const card = admin.page.locator('section.card:has-text("Inès Lambert")');
+  check("Admin : INAMI et pays affichés, lien vers l'INAMI", (await card.innerText()).includes("Numéro INAMI") && (await card.innerText()).includes("Belgique") && (await card.locator('a[href*="inami.fgov.be"]').count()) === 1);
+  await card.locator('button:has-text("Valider")').click();
+  await admin.page.waitForTimeout(1200);
+  await ines.page.goto(`${BASE}/experts?q=Belgique`);
+  check("Fiche publique : pays d'exercice et identité vérifiée", (await ines.page.locator('a.kol-card:has-text("Inès Lambert")').innerText()).includes("Belgique"));
+  await ines.ctx.close();
+  await admin.ctx.close();
+
+  // Dossier dont l'unique expert exerce en Belgique : ni déclaration ni autorisation EPS.
+  await db.query(`INSERT INTO "Project" (id, "organizationId", title, "typeId", status, "updatedAt") VALUES ('e2e-prj-be', 'demo-org-dentalys', 'Conférence à Bruxelles', 'pleniere', 'VALIDE', now())`);
+  await db.query(`INSERT INTO "ProjectExpert" (id, "projectId", "practitionerId", status, "feeCents", days) VALUES ('e2e-prj-be-x0', 'e2e-prj-be', 'demo-p-janssens', 'VALIDE', 300000, 1)`);
+  const claire = await session();
+  await login(claire.page, "claire.morel@demo.kolbase.local");
+  await claire.page.goto(`${BASE}/organisations/demo-org-dentalys/dossiers/e2e-prj-be`);
+  let t = await text(claire.page);
+  check("Dossier hors France : régime « Hors France », obligations belges rappelées", t.includes("Hors France") && t.includes("betransparent.be") && t.includes("Mdeon"));
+  check("Dossier hors France : pas de démarche auprès de l'Ordre", !t.includes("Demander l'autorisation à l'Ordre") && !t.includes("Déclaration simple"));
+  await claire.page.click('button:has-text("Hors France")');
+  await claire.page.waitForTimeout(1200);
+  const st = (await db.query(`SELECT status FROM "Project" WHERE id = 'e2e-prj-be'`)).rows[0].status;
+  check("Dossier hors France : passage direct à la signature", st === "SIGNATURE", st);
+  const pdf = await claire.ctx.request.get(`${BASE}/organisations/demo-org-dentalys/dossiers/e2e-prj-be/convention/e2e-prj-be-x0`);
+  check("Convention d'une experte belge générée", pdf.status() === 200 && pdf.headers()["content-type"] === "application/pdf");
+  await claire.ctx.close();
+  // Retour à l'état de départ pour la suite des parcours.
+  await db.query(`UPDATE "PractitionerProfile" SET country = 'FR', "licenseNumber" = NULL, listed = false, "listedAt" = NULL, "rppsVerified" = false, "rppsCheckedAt" = NULL WHERE id = 'demo-p-lambert'`);
+  await db.end();
 }
 
 // ── Mandats d'agence ───────────────────────────────────────────────────────
@@ -358,7 +496,7 @@ async function submitNewOrg(page, siren) {
   await hugo.page.waitForTimeout(1200);
   check("Référencement sans RPPS refusé", (await text(hugo.page)).includes("Renseignez d'abord votre numéro RPPS"));
   const infos = 'form:has(h2:has-text("Informations personnelles"))';
-  await hugo.page.fill(`${infos} input[name="rpps"]`, "10101010101");
+  await hugo.page.fill(`${infos} input[name="rpps"]`, "10101010105");
   await hugo.page.click(`${infos} button:has-text("Enregistrer")`);
   await hugo.page.waitForTimeout(1200);
   await hugo.page.reload();
@@ -500,7 +638,7 @@ async function submitNewOrg(page, siren) {
   check("Suppression : conservation annoncée (conventions)", (await deleteAs("linh.nguyen@demo.kolbase.local")).includes("restent attachés à vos"));
   const linh = await userRow("demo-u-nguyen");
   check("Anonymisation : nom conservé pour les conventions, adresse et mot de passe effacés", linh?.firstName === "Linh" && linh.email.endsWith("@kolbase.invalid") && linh.passwordHash === null && Number(linh.links) > 0, JSON.stringify(linh));
-  const pub = await (await browser.newContext()).newPage();
+  const pub = await (await browser.newContext({ locale: "fr-FR" })).newPage();
   const fiche = await pub.goto(`${BASE}/experts/demo-p-nguyen`);
   check("Anonymisation : fiche expert retirée", fiche?.status() === 404, String(fiche?.status()));
 
@@ -555,6 +693,87 @@ async function submitNewOrg(page, siren) {
   await page.goto(`${BASE}/mentions-legales`);
   check("Mentions légales : éditeur complet", (await page.locator("main").innerText()).includes("MUTARA, société par actions simplifiée (SAS) au capital de 100 €"));
   await ctx.close();
+}
+
+// ── 3 bis. Logo d'organisation et exports protégés ─────────────────────────
+{
+  const { ctx, page } = await session();
+  const db = new pg.Client({ connectionString: process.env.DATABASE_URL });
+  await db.connect();
+  await login(page, "claire.morel@demo.kolbase.local");
+  await page.goto(`${BASE}/organisations/demo-org-dentalys/membres`);
+  // PNG 1×1 valide, puis un « logo » SVG déguisé en PNG (refusé sur son contenu).
+  const png = Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==", "base64");
+  await page.setInputFiles('input[name="logo"]', { name: "faux.png", mimeType: "image/png", buffer: Buffer.from("<svg onload=alert(1)>") });
+  await page.click('button:has-text("Ajouter le logo")');
+  await page.waitForTimeout(800);
+  check("Logo : SVG déguisé refusé", (await text(page)).includes("Format non reconnu"));
+  await page.setInputFiles('input[name="logo"]', { name: "logo.png", mimeType: "image/png", buffer: png });
+  await page.click('button:has-text("Ajouter le logo")');
+  await page.waitForTimeout(800);
+  check("Logo : enregistré", (await text(page)).includes("Logo enregistré"));
+  const anon = await browser.newContext({ locale: "fr-FR" });
+  const r = await anon.request.get(`${BASE}/logos/demo-org-dentalys`);
+  check("Logo : public pour une organisation validée", r.status() === 200 && r.headers()["content-type"] === "image/png", String(r.status()));
+  const pub = await anon.newPage();
+  await pub.goto(`${BASE}/structures/demo-org-dentalys`);
+  check("Logo : affiché sur la fiche publique", (await pub.locator('main img[src^="/logos/demo-org-dentalys"]').count()) > 0);
+  await anon.close();
+  // Export CSV : une formule saisie comme nom est neutralisée.
+  await db.query(`update "User" set "lastName"='=HYPERLINK("http://x")' where id='demo-u-lambert'`);
+  const csv = await (await ctx.request.get(`${BASE}/organisations/demo-org-dentalys/hospitalites/export`)).text();
+  check("Export CSV : formule neutralisée", csv.includes(`"'=HYPERLINK(""http://x"")"`) && !/;=HYPERLINK/.test(csv));
+  await db.query(`update "User" set "lastName"='Lambert' where id='demo-u-lambert'`);
+  // Convention PDF : nom en alphabet étendu conservé (police Unicode embarquée).
+  await db.query(`update "User" set "firstName"='Łukasz', "lastName"='Żółć' where id='demo-u-durand'`);
+  const pdf = await ctx.request.get(`${BASE}/organisations/demo-org-dentalys/dossiers/demo-prj-board/convention/demo-prj-board-x1`);
+  const body = await pdf.body();
+  check("Convention PDF : générée avec un nom non latin", pdf.status() === 200 && pdf.headers()["content-type"] === "application/pdf" && body.subarray(0, 5).toString() === "%PDF-" && body.length < 200_000, `${pdf.status()} ${body.length} o`);
+  await db.query(`update "User" set "firstName"='Hélène', "lastName"='Durand' where id='demo-u-durand'`);
+  await db.end();
+  await ctx.close();
+}
+
+// ── Interface en anglais ───────────────────────────────────────────────────
+{
+  // Navigateur réglé en anglais : interface en anglais dès la première visite.
+  const ctx = await browser.newContext({ locale: "en-US" });
+  const page = await ctx.newPage();
+  await page.goto(`${BASE}/`);
+  check("Navigateur en anglais : page en anglais", (await page.getAttribute("html", "lang")) === "en" && (await page.locator("header").innerText()).includes("Sign in"));
+  check("Pied de page : mention de la version française faisant foi", (await page.locator("footer").innerText()).includes("binding in their French version"));
+  await page.goto(`${BASE}/experts`);
+  check("Experts : libellés traduits (glossaire)", (await page.locator("main").innerText()).includes("Implantology"));
+  // Le sélecteur repasse en français, et le choix est retenu.
+  await Promise.all([page.waitForResponse((r) => r.request().method() === "POST"), page.locator('footer .locale-switch button:has-text("FR")').click()]);
+  await page.waitForTimeout(800);
+  await page.goto(`${BASE}/`);
+  check("Sélecteur de langue : retour au français mémorisé", (await page.getAttribute("html", "lang")) === "fr" && (await page.locator("header").innerText()).includes("Se connecter"));
+  await ctx.close();
+
+  // Praticienne : langue choisie dans son compte, appliquée à l'interface.
+  const camille = await session();
+  await login(camille.page, "camille.petit@demo.kolbase.local");
+  await camille.page.goto(`${BASE}/compte`);
+  const infos = 'form:has(select[name="locale"])';
+  await camille.page.selectOption(`${infos} select[name="locale"]`, "en");
+  await camille.page.click(`${infos} button.btn`);
+  await camille.page.waitForTimeout(1200);
+  await camille.page.goto(`${BASE}/tableau-de-bord`);
+  check("Compte réglé en anglais : interface en anglais", (await camille.page.getAttribute("html", "lang")) === "en");
+  const db = new pg.Client({ connectionString: process.env.DATABASE_URL });
+  await db.connect();
+  check("Langue enregistrée dans le compte (e-mails)", (await db.query(`SELECT locale FROM "User" WHERE id = 'demo-u-petit'`)).rows[0].locale === "en");
+  await db.query(`UPDATE "User" SET locale = 'fr' WHERE id = 'demo-u-petit'`);
+  await db.end();
+  await camille.ctx.close();
+
+  // Convention : traduction anglaise de courtoisie.
+  const claire = await session();
+  await login(claire.page, "claire.morel@demo.kolbase.local");
+  const pdf = await claire.ctx.request.get(`${BASE}/organisations/demo-org-dentalys/dossiers/demo-prj-board/convention/demo-prj-board-x1?lang=en`);
+  check("Convention : version anglaise disponible", pdf.status() === 200 && (pdf.headers()["content-disposition"] ?? "").includes("-en.pdf"));
+  await claire.ctx.close();
 }
 
 // ── 4. Limitation des tentatives ───────────────────────────────────────────

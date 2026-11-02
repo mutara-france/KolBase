@@ -8,6 +8,7 @@ import { str } from "@/lib/form";
 import { PROJECT_ROLES } from "@/lib/projects";
 import { COMPLIANCE_ROLES } from "@/lib/events";
 import { ALLOWED_TYPES, deleteObject, MAX_UPLOAD_BYTES, putObject, safeFileName, storageEnabled } from "@/lib/storage";
+import { getT } from "@/lib/i18n/server";
 
 export type ActionState = { error?: string; ok?: string } | undefined;
 const ENGAGED = (s: string) => s !== "ATT_EXPERTS" && s !== "DECLINE";
@@ -30,22 +31,23 @@ const refresh = (orgId: string, projectId: string, linkId?: string | null) => {
 
 /** Dépôt d'une pièce (ou de la convention signée d'un expert) dans le dossier. */
 export async function uploadDocument(_: ActionState, form: FormData): Promise<ActionState> {
-  if (!storageEnabled()) return { error: "Le dépôt de documents n'est pas encore activé (stockage non configuré)." };
+  const { t } = await getT();
+  if (!storageEnabled()) return { error: t("Le dépôt de documents n'est pas encore activé (stockage non configuré).") };
   const a = await access(str(form, "projectId"));
-  if (!a || (!a.team && !a.ownLink)) return { error: "Accès refusé." };
+  if (!a || (!a.team && !a.ownLink)) return { error: t("Accès refusé.") };
   const file = form.get("file");
-  if (!(file instanceof File) || file.size === 0) return { error: "Choisissez un fichier." };
-  if (file.size > MAX_UPLOAD_BYTES) return { error: "Fichier trop lourd : 10 Mo au maximum." };
-  if (!(file.type in ALLOWED_TYPES)) return { error: "Format non accepté : PDF, JPEG, PNG, Word, Excel ou PowerPoint." };
+  if (!(file instanceof File) || file.size === 0) return { error: t("Choisissez un fichier.") };
+  if (file.size > MAX_UPLOAD_BYTES) return { error: t("Fichier trop lourd : 10 Mo au maximum.") };
+  if (!(file.type in ALLOWED_TYPES)) return { error: t("Format non accepté : PDF, JPEG, PNG, Word, Excel ou PowerPoint.") };
   const bytes = new Uint8Array(await file.arrayBuffer());
-  if (file.type === "application/pdf" && new TextDecoder().decode(bytes.slice(0, 5)) !== "%PDF-") return { error: "Ce fichier n'est pas un PDF valide." };
+  if (file.type === "application/pdf" && new TextDecoder().decode(bytes.slice(0, 5)) !== "%PDF-") return { error: t("Ce fichier n'est pas un PDF valide.") };
 
   const kind = str(form, "kind") === "CONVENTION_SIGNEE" ? "CONVENTION_SIGNEE" : "PIECE";
   // Un expert dépose pour son propre lien ; l'organisation choisit l'expert concerné (obligatoire pour une convention).
   const linkId = a.ownLink && !a.team ? a.ownLink.id : str(form, "linkId") || null;
   const link = linkId ? a.project.experts.find((e) => e.id === linkId && ENGAGED(e.status)) : null;
-  if (linkId && !link) return { error: "Expert introuvable sur ce dossier." };
-  if (kind === "CONVENTION_SIGNEE" && !link) return { error: "Indiquez l'expert signataire de la convention." };
+  if (linkId && !link) return { error: t("Expert introuvable sur ce dossier.") };
+  if (kind === "CONVENTION_SIGNEE" && !link) return { error: t("Indiquez l'expert signataire de la convention.") };
 
   const key = `dossiers/${a.project.id}/${randomBytes(8).toString("hex")}-${safeFileName(file.name)}`;
   await putObject(key, bytes, file.type);
@@ -54,7 +56,7 @@ export async function uploadDocument(_: ActionState, form: FormData): Promise<Ac
   });
   await audit(a.user.id, kind === "CONVENTION_SIGNEE" ? "document.signed_convention" : "document.upload", "Project", a.project.id, { documentId: doc.id, name: doc.name, linkId: link?.id });
   refresh(a.project.organizationId, a.project.id, link?.id);
-  return { ok: kind === "CONVENTION_SIGNEE" ? "Convention signée déposée." : "Document déposé." };
+  return { ok: kind === "CONVENTION_SIGNEE" ? t("Convention signée déposée.") : t("Document déposé.") };
 }
 
 /** Retrait d'un document : l'équipe du dossier ou son auteur ; une convention signée d'un dossier signé reste archivée. */

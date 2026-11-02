@@ -7,8 +7,9 @@ import { audit, requireUser } from "@/lib/auth";
 import { ORG_NOT_VERIFIED, isVerifiedOrg, requireMembership } from "@/lib/orgs";
 import { parseParisDateTime } from "@/lib/events";
 import { collabType, SOURCING_ROLES } from "@/lib/projects";
-import { eurToCents, str } from "@/lib/form";
+import { eurToCents, str, unitsOrNull, UNITS_INVALID } from "@/lib/form";
 import { notifyApplication, notifyNotRetained, notifySolicitations } from "@/lib/notifications";
+import { getT } from "@/lib/i18n/server";
 
 export type ActionState = { error?: string; ok?: string } | undefined;
 
@@ -57,20 +58,21 @@ export async function setOpenCallStatus(form: FormData) {
 
 export async function applyToCall(_: ActionState, form: FormData): Promise<ActionState> {
   const user = await requireUser();
-  if (!user.practitioner?.listed) return { error: "Référencez-vous comme expert pour candidater." };
+  const { t } = await getT();
+  if (!user.practitioner?.listed) return { error: t("Référencez-vous comme expert pour candidater.") };
   const callId = str(form, "callId");
-  const call = await db.openCall.findUnique({ where: { id: callId } });
-  if (!call || call.status !== "open") return { error: "Cet appel n'est plus ouvert." };
-  if (call.deadline && call.deadline < new Date()) return { error: "La date limite est dépassée." };
+  const call = await db.openCall.findUnique({ where: { id: callId }, include: { organization: true } });
+  if (!call || call.status !== "open" || !isVerifiedOrg(call.organization)) return { error: t("Cet appel n'est plus ouvert.") };
+  if (call.deadline && call.deadline < new Date()) return { error: t("La date limite est dépassée.") };
   const message = str(form, "message");
-  if (message.length < 20) return { error: "Présentez votre candidature en quelques lignes (20 caractères minimum)." };
+  if (message.length < 20) return { error: t("Présentez votre candidature en quelques lignes (20 caractères minimum).") };
   const existing = await db.application.findUnique({ where: { openCallId_practitionerId: { openCallId: callId, practitionerId: user.practitioner.id } } });
-  if (existing) return { error: "Vous avez déjà candidaté." };
+  if (existing) return { error: t("Vous avez déjà candidaté.") };
   const app = await db.application.create({ data: { openCallId: callId, practitionerId: user.practitioner.id, message } });
   await audit(user.id, "application.create", "Application", app.id, { callId });
   notifyApplication(callId, user.practitioner.id);
   revalidatePath(`/opportunites/${callId}`);
-  return { ok: "Candidature envoyée." };
+  return { ok: t("Candidature envoyée.") };
 }
 
 export async function withdrawApplication(form: FormData) {
@@ -103,7 +105,8 @@ export async function rejectApplication(form: FormData) {
  */
 export async function retainApplication(_: ActionState, form: FormData): Promise<ActionState> {
   const orgId = str(form, "orgId");
-  const { user } = await requireMembership(orgId, SOURCING_ROLES);
+  const { user, org } = await requireMembership(orgId, SOURCING_ROLES);
+  if (!isVerifiedOrg(org)) return { error: ORG_NOT_VERIFIED };
   const appId = str(form, "applicationId");
   const app = await db.application.findFirst({
     where: { id: appId, openCall: { organizationId: orgId } },
@@ -113,28 +116,37 @@ export async function retainApplication(_: ActionState, form: FormData): Promise
   if (app.status !== "pending") return { error: "Cette candidature a déjà été traitée." };
   const fee = eurToCents(str(form, "fee"));
   if (fee === null) return { error: "Indiquez les honoraires convenus." };
-  const units = Number(str(form, "units").replace(",", ".")) || 1;
+  const parsedUnits = unitsOrNull(str(form, "units"));
+  if (parsedUnits === undefined) return { error: UNITS_INVALID };
+  const units = parsedUnits ?? 1;
 
-  const project = await db.project.create({
-    data: {
-      organizationId: orgId,
-      title: app.openCall.title,
-      typeId: app.openCall.typeId,
-      therapeuticArea: app.openCall.specialty,
-      description: app.openCall.description,
-      origin: "Opportunité",
-      status: "ATT_EXPERTS",
-      createdById: user.id,
-      experts: { create: { practitionerId: app.practitionerId, status: "ATT_EXPERTS", feeCents: fee, days: units } },
-    },
-    include: { experts: true },
-  });
-  if (app.message) {
-    await db.message.create({
-      data: { projectId: project.id, projectExpertId: project.experts[0].id, authorId: app.practitioner.userId, body: app.message, createdAt: app.createdAt },
+  // La candidature est « réservée » avant toute création : un double envoi ne crée pas deux dossiers.
+  const project = await db.$transaction(async (tx) => {
+    const { count } = await tx.application.updateMany({ where: { id: app.id, status: "pending" }, data: { status: "retained" } });
+    if (count === 0) return null;
+    const created = await tx.project.create({
+      data: {
+        organizationId: orgId,
+        title: app.openCall.title,
+        typeId: app.openCall.typeId,
+        therapeuticArea: app.openCall.specialty,
+        description: app.openCall.description,
+        origin: "Opportunité",
+        status: "ATT_EXPERTS",
+        createdById: user.id,
+        experts: { create: { practitionerId: app.practitionerId, status: "ATT_EXPERTS", feeCents: fee, days: units } },
+      },
+      include: { experts: true },
     });
-  }
-  await db.application.update({ where: { id: app.id }, data: { status: "retained", projectId: project.id } });
+    if (app.message) {
+      await tx.message.create({
+        data: { projectId: created.id, projectExpertId: created.experts[0].id, authorId: app.practitioner.userId, body: app.message, createdAt: app.createdAt },
+      });
+    }
+    await tx.application.update({ where: { id: app.id }, data: { projectId: created.id } });
+    return created;
+  });
+  if (!project) return { error: "Cette candidature a déjà été traitée." };
   await audit(user.id, "application.retain", "Application", app.id, { projectId: project.id });
   await audit(user.id, "project.create", "Project", project.id, { from: "opencall", callId: app.openCallId });
   notifySolicitations(project.id, "honoraires");

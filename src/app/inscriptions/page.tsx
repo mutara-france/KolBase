@@ -4,12 +4,20 @@ import { SectionNav } from "@/components/SectionNav";
 import { practitionerSectionTabs } from "@/lib/nav";
 import { db } from "@/lib/db";
 import { requireUser } from "@/lib/auth";
-import { formatDateTime, formatEUR } from "@/lib/events";
+import { TZ } from "@/lib/events";
+import { fmtEur, intlLocale } from "@/lib/i18n";
+import { getT } from "@/lib/i18n/server";
 
-export const metadata = { title: "Mes inscriptions — KolBase" };
+export async function generateMetadata() {
+  const { t } = await getT();
+  return { title: `${t("Mes inscriptions")} — KolBase` };
+}
 
 export default async function Page() {
   const user = await requireUser();
+  const { t, locale } = await getT();
+  const formatDateTime = (d: Date) =>
+    d.toLocaleString(intlLocale(locale), { timeZone: TZ, weekday: "long", day: "numeric", month: "long", year: "numeric", hour: "2-digit", minute: "2-digit" });
   const regs = await db.registration.findMany({
     where: { userId: user.id },
     include: { event: { include: { organization: { select: { name: true } } } }, benefits: { include: { benefit: true } } },
@@ -26,8 +34,8 @@ export default async function Page() {
         <strong>{r.event.title}</strong>
         <span className="muted">{formatDateTime(r.event.startsAt)} · {r.event.organization.name}</span>
         <span className="muted">
-          {total === 0 ? "Aucune prestation acceptée" : `${r.benefits.map((b) => b.benefit.label).join(", ")} · ${formatEUR(total)}`}
-          {r.declared && " · déclaré"}
+          {total === 0 ? t("Aucune prestation acceptée") : `${r.benefits.map((b) => t(b.benefit.label)).join(", ")} · ${fmtEur(locale, total)}`}
+          {r.declared && ` · ${t("déclaré")}`}
         </span>
       </Link>
     );
@@ -37,16 +45,16 @@ export default async function Page() {
     <>
       <SiteHeader />
       <main className="narrow stack">
-        {user.practitioner?.listed && <SectionNav tabs={practitionerSectionTabs("agenda")} active="inscriptions" label="Rubrique Agenda" />}
+        {user.practitioner?.listed && <SectionNav tabs={practitionerSectionTabs("agenda").map((tab) => ({ ...tab, label: t(tab.label) }))} active="inscriptions" label={t("Rubrique Agenda")} />}
         <div className="actions spread">
-          <h1>Mes inscriptions</h1>
-          <a className="btn ghost small" href="/inscriptions/calendrier">Exporter vers mon agenda (.ics)</a>
+          <h1>{t("Mes inscriptions")}</h1>
+          <a className="btn ghost small" href="/inscriptions/calendrier">{t("Exporter vers mon agenda (.ics)")}</a>
         </div>
-        <p className="muted">Les événements auxquels vous assistez. Les avantages que vous acceptez sont conventionnés et déclarés par l&apos;organisateur.</p>
-        {regs.length === 0 && <p className="muted">Aucune inscription. <Link href="/evenements">Voir l&apos;agenda</Link></p>}
-        {upcoming.length > 0 && <h2>À venir</h2>}
+        <p className="muted">{t("Les événements auxquels vous assistez. Les avantages que vous acceptez sont conventionnés et déclarés par l'organisateur.")}</p>
+        {regs.length === 0 && <p className="muted">{t("Aucune inscription.")} <Link href="/evenements">{t("Voir l'agenda")}</Link></p>}
+        {upcoming.length > 0 && <h2>{t("À venir")}</h2>}
         {upcoming.map((r) => <Row key={r.id} r={r} />)}
-        {past.length > 0 && <h2>Passés</h2>}
+        {past.length > 0 && <h2>{t("Passés")}</h2>}
         {past.map((r) => <Row key={r.id} r={r} />)}
       </main>
     </>

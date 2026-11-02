@@ -1,7 +1,8 @@
 import { describe, expect, it } from "vitest";
 import { canSee, kolViewer, kolVisibility, DEFAULT_KOL_VISIBILITY } from "@/lib/visibility";
 import { safeNext } from "@/lib/safe-redirect";
-import { eurToCents, intOrNull } from "@/lib/form";
+import { eurToCents, intOrNull, unitsOrNull } from "@/lib/form";
+import { sniffLogo } from "@/lib/logos";
 import { complianceSettings, DEFAULT_COMPLIANCE, hospitalityRegime, projectRegime, remunerationRegime } from "@/lib/compliance";
 import { fmvCheck, TRANSITIONS } from "@/lib/projects";
 import { csvEscape, eventScope, parseParisDateTime, toCSV } from "@/lib/events";
@@ -9,7 +10,7 @@ import { orgNavItems, orgSectionTabs, itemMatches } from "@/lib/nav";
 import { toIcs } from "@/lib/ics";
 import { invitableRoles, isVerifiedOrg, roleLabel } from "@/lib/org-roles";
 import { parseSiren, readSirenResponse, sirenKeyOk } from "@/lib/siren";
-import { canBeExpert, drPrefix, isRpps, normalizeRpps } from "@/lib/professions";
+import { canBeExpert, drPrefix, isRpps, normalizeRpps, withLuhn } from "@/lib/professions";
 
 const member = (kind: string, verification = "VERIFIED") => ({ organizationId: "o1", organization: { kind, verification } });
 
@@ -191,8 +192,11 @@ describe("vérification des identités", () => {
     expect(drPrefix("Étudiant(e) en odontologie")).toBe("");
   });
   it("RPPS : 11 chiffres", () => {
-    expect(isRpps(normalizeRpps("10 0012 3456 7"))).toBe(true);
+    expect(isRpps(normalizeRpps("10 0006 6854 0"))).toBe(true); // exemple de l'ANS
     expect(isRpps("1234")).toBe(false);
+    expect(isRpps("10001234567")).toBe(false); // clé de Luhn fausse
+    expect(isRpps("31234567890")).toBe(false); // numéro INAMI belge
+    expect(isRpps(withLuhn("9990000001"))).toBe(true);
   });
   it("organisation validée", () => {
     expect(isVerifiedOrg({ verification: "VERIFIED" })).toBe(true);
@@ -228,6 +232,84 @@ describe("textes légaux", () => {
     expect(legal("editor")).toBe("MUTARA");
     expect(legal("capital")).toBe("100 €");
     expect(legal("storageProvider")).toBe("[hébergeur des documents à compléter]");
+    expect(legal("signatureProvider")).toContain("Youtrust SAS");
     expect(missingLegal()).toEqual(["hébergeur des documents"]);
+  });
+});
+
+describe("campagne de tests : entrées piégées", () => {
+  const s = DEFAULT_COMPLIANCE;
+  it("CSV : formules neutralisées, nombres intacts", () => {
+    expect(csvEscape('=HYPERLINK("http://x";"clic")')).toBe(`"'=HYPERLINK(""http://x"";""clic"")"`);
+    expect(csvEscape("+33 6 12 34 56 78")).toBe("'+33 6 12 34 56 78");
+    expect(csvEscape("@SUM(A1)")).toBe("'@SUM(A1)");
+    expect(csvEscape(-12)).toBe("-12");
+    expect(csvEscape("Dupont")).toBe("Dupont");
+  });
+  it("volume : positif et plausible, sinon refusé", () => {
+    expect(unitsOrNull("")).toBeNull();
+    expect(unitsOrNull("2,5")).toBe(2.5);
+    expect(unitsOrNull("-1")).toBeUndefined();
+    expect(unitsOrNull("0")).toBeUndefined();
+    expect(unitsOrNull("abc")).toBeUndefined();
+    expect(unitsOrNull("100000")).toBeUndefined();
+  });
+  it("régime : un volume absent ou négatif ne contourne pas le seuil horaire", () => {
+    expect(remunerationRegime(s, 150000, null, "heure").regime).toBe("autorisation");
+    expect(remunerationRegime(s, 150000, -1, "heure").regime).toBe("autorisation");
+    expect(remunerationRegime(s, 150000, 10, "heure").regime).toBe("declaration");
+    expect(remunerationRegime(s, 170000, null, "journée").regime).toBe("autorisation");
+  });
+  it("logo : contenu réel contrôlé (pas de SVG ni de fichier renommé)", () => {
+    expect(sniffLogo(new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0]))).toBe("image/png");
+    expect(sniffLogo(new Uint8Array([0xff, 0xd8, 0xff, 0xe0]))).toBe("image/jpeg");
+    expect(sniffLogo(new TextEncoder().encode("RIFF1234WEBPVP8 "))).toBe("image/webp");
+    expect(sniffLogo(new TextEncoder().encode("<svg onload=alert(1)>"))).toBeNull();
+  });
+});
+
+describe("praticiens exerçant hors de France", () => {
+  const s = DEFAULT_COMPLIANCE;
+  it("identifiants : NPI (préfixe 80840), INAMI, autres pays", async () => {
+    const { isNpi, isInami, licenseRule } = await import("@/lib/countries");
+    expect(isNpi("1234567893")).toBe(true); // exemple de la CMS
+    expect(isNpi("1234567898")).toBe(false);
+    expect(isInami("31234567890")).toBe(true);
+    expect(isInami("3123456789")).toBe(false);
+    expect(licenseRule("ES").valid("Colegio de Dentistas de Madrid 12345")).toBe(true);
+    expect(licenseRule("ES").valid("12")).toBe(false);
+  });
+  it("régime : tous les experts hors de France → pas de démarche EPS", () => {
+    const be = { status: "ACCORD", feeCents: 500000, days: 1, country: "BE" };
+    const fr = { status: "ACCORD", feeCents: 500000, days: 1, country: "FR" };
+    expect(projectRegime(s, "journée", [be])?.regime).toBe("hors_france");
+    expect(projectRegime(s, "journée", [be, fr])?.regime).toBe("autorisation"); // l'expert français reste soumis au régime
+    expect(projectRegime(s, "journée", [{ ...be, country: "US" }, be])?.regime).toBe("hors_france");
+    expect(projectRegime(s, "journée", [{ status: "ACCORD", feeCents: 50000, days: 1 }])?.regime).toBe("declaration"); // pays absent = France
+  });
+  it("obligations et clause de convention selon le pays", async () => {
+    const { foreignObligations, conventionClause } = await import("@/lib/countries");
+    expect(foreignObligations("BE").join(" ")).toContain("betransparent.be");
+    expect(foreignObligations("US").join(" ")).toContain("Open Payments");
+    expect(conventionClause("FR")[0]).toContain("L.1453-1");
+    expect(conventionClause("BE")[0]).toContain("en Belgique");
+  });
+});
+
+describe("traductions", () => {
+  it("le français sert de clé, repli sur le français sans traduction", async () => {
+    const { translate } = await import("@/lib/i18n");
+    expect(translate("fr", "Se connecter")).toBe("Se connecter");
+    expect(translate("en", "Se connecter")).toBe("Sign in");
+    expect(translate("en", "Texte sans traduction")).toBe("Texte sans traduction");
+    expect(translate("en", "Nouvelle sollicitation de {org}", { org: "Dentalys" })).toBe("New collaboration request from Dentalys");
+    expect(translate("en", "Chirurgien-dentiste")).toBe("Dentist");
+  });
+  it("e-mail dans la langue du destinataire", async () => {
+    const { renderMail } = await import("@/lib/mail");
+    const en = renderMail({ to: "x@y.fr", subject: "s", text: "Hello", locale: "en" });
+    expect(en.html).toContain('lang="en"');
+    expect(en.text).toContain("Manage your notifications");
+    expect(renderMail({ to: "x@y.fr", subject: "s", text: "Bonjour" }).text).toContain("Gérer vos notifications");
   });
 });

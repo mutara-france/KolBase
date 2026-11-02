@@ -1,6 +1,7 @@
 import { requireMembership } from "@/lib/orgs";
 import { COMPLIANCE_ROLES, formatDate, toCSV } from "@/lib/events";
 import { REGIME_LABEL } from "@/lib/compliance";
+import { country } from "@/lib/countries";
 import { registerRows } from "@/lib/compliance-data";
 import { STATUS_LABEL } from "@/lib/projects";
 
@@ -16,12 +17,12 @@ export async function GET(req: Request, { params }: { params: Promise<{ id: stri
   if (type === "transparence") rows = rows.filter((r) => r.kind === "remuneration" && ["SIGNE", "TERMINE"].includes(r.status));
 
   const out: unknown[][] = [[
-    "Entreprise", "Type", "Date", "Nom", "Prénom", "RPPS", "Ville", "Objet", "Nature", "Montant (€)", "Régime", "Motif", "Statut", "Publié", "Référence",
+    "Entreprise", "Type", "Date", "Nom", "Prénom", "RPPS", "Pays d'exercice", "Identifiant étranger", "Ville", "Objet", "Nature", "Montant (€)", "Régime", "Motif", "Statut", "Publié", "Référence",
   ]];
   for (const r of rows) {
     out.push([
       org.name, r.kind === "remuneration" ? "Convention de rémunération" : "Convention d'hospitalité", formatDate(r.date),
-      r.lastName, r.firstName, r.rpps, r.city, r.subject, r.nature, (r.amountCents / 100).toFixed(2).replace(".", ","),
+      r.lastName, r.firstName, r.rpps, country(r.country).name, r.license, r.city, r.subject, r.nature, (r.amountCents / 100).toFixed(2).replace(".", ","),
       REGIME_LABEL[r.regime], r.reason, r.status ? STATUS_LABEL[r.status as keyof typeof STATUS_LABEL] : "", r.declared ? "oui" : "non", r.declarationRef,
     ]);
   }

@@ -2,10 +2,12 @@ import Link from "next/link";
 import { ArrowRight, ChevronDown, Plus } from "lucide-react";
 import { TodoList, type TodoItem } from "@/components/Todo";
 import { TZ } from "@/lib/events";
+import { fmtDate, intlLocale, type Locale } from "@/lib/i18n";
+import { getT } from "@/lib/i18n/server";
 
 /** Briques communes des tableaux de bord : en-tête, compteurs, « À faire », « À venir ». */
 
-export const todayLabel = () => new Date().toLocaleDateString("fr-FR", { timeZone: TZ, weekday: "long", day: "numeric", month: "long" });
+export const todayLabel = (locale: Locale = "fr") => new Date().toLocaleDateString(intlLocale(locale), { timeZone: TZ, weekday: "long", day: "numeric", month: "long" });
 
 export function DashHead({ kicker, title, lede, action }: { kicker: string; title: string; lede?: string; action?: React.ReactNode }) {
   return (
@@ -59,22 +61,31 @@ export function DashStats({ stats }: { stats: { href: string; value: number | st
 }
 
 /** « À faire » : les urgences d'abord, puis le reste. */
-export function TodoGroups({ todos, empty }: { todos: TodoItem[]; empty?: string }) {
+/** Actions à mener, les urgentes d'abord ; au-delà de `limit` par groupe, un simple décompte. */
+export function TodoGroups({ todos, empty, limit = 15, moreHref }: { todos: TodoItem[]; empty?: string; limit?: number; moreHref?: string }) {
   const urgent = todos.filter((t) => t.tone === "danger");
   const rest = todos.filter((t) => t.tone !== "danger");
   if (todos.length === 0) return <TodoList items={[]} empty={empty} />;
+  const more = (n: number) =>
+    n > limit && (
+      <p className="text-xs muted" style={{ margin: "6px 0 0" }}>
+        … et {n - limit} autre{n - limit > 1 ? "s" : ""}{moreHref && <> · <Link href={moreHref}>tout voir</Link></>}
+      </p>
+    );
   return (
     <div className="todo-groups">
       {urgent.length > 0 && (
         <div>
           <p className="todo-group urgent">Urgent</p>
-          <TodoList items={urgent} />
+          <TodoList items={urgent.slice(0, limit)} />
+          {more(urgent.length)}
         </div>
       )}
       {rest.length > 0 && (
         <div>
           {urgent.length > 0 && <p className="todo-group">À traiter</p>}
-          <TodoList items={rest} />
+          <TodoList items={rest.slice(0, limit)} />
+          {more(rest.length)}
         </div>
       )}
     </div>
@@ -84,14 +95,15 @@ export function TodoGroups({ todos, empty }: { todos: TodoItem[]; empty?: string
 export type TimelineItem = { date: Date; title: string; detail?: string | null; href: string; strong?: boolean };
 
 /** Prochaines échéances et prochains événements, dans l'ordre du calendrier. */
-export function Timeline({ items, empty }: { items: TimelineItem[]; empty?: React.ReactNode }) {
+export async function Timeline({ items, empty }: { items: TimelineItem[]; empty?: React.ReactNode }) {
   if (items.length === 0) return empty ? <p className="muted">{empty}</p> : null;
+  const { locale } = await getT();
   return (
     <ol className="timeline">
       {items.map((i, n) => (
         <li key={n}>
           <span className={`timeline-date${i.strong ? " strong" : ""}`}>
-            {i.date.toLocaleDateString("fr-FR", { timeZone: TZ, day: "2-digit", month: "2-digit" })}
+            {fmtDate(locale, i.date, { day: "2-digit", month: "2-digit" })}
           </span>
           <Link href={i.href}>
             <strong>{i.title}</strong>

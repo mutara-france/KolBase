@@ -1,26 +1,31 @@
 import Link from "next/link";
 import { Logo } from "@/components/Logo";
+import { LocaleSwitch } from "@/components/LocaleSwitch";
+import { getT } from "@/lib/i18n/server";
 
-export function SiteFooter() {
+export async function SiteFooter() {
+  const { t, locale } = await getT();
   return (
     <footer className="site-footer">
       <div className="footer-inner">
         <div>
           <Logo tone="light" height={26} />
           <p className="text-xs mt-2" style={{ maxWidth: 360 }}>
-            La plateforme qui met en relation les chirurgiens-dentistes et les organisations du secteur.
+            {t("La plateforme qui met en relation les chirurgiens-dentistes et les organisations du secteur.")}
           </p>
         </div>
-        <nav className="footer-links" aria-label="Informations légales">
-          <Link href="/mentions-legales" className="footer-link">Mentions légales</Link>
-          <Link href="/confidentialite" className="footer-link">Confidentialité</Link>
-          <Link href="/cgu" className="footer-link">Conditions d&apos;utilisation</Link>
-          <Link href="/aide" className="footer-link">Aide</Link>
+        <nav className="footer-links" aria-label={t("Informations légales")}>
+          <Link href="/mentions-legales" className="footer-link">{t("Mentions légales")}</Link>
+          <Link href="/confidentialite" className="footer-link">{t("Confidentialité")}</Link>
+          <Link href="/cgu" className="footer-link">{t("Conditions d'utilisation")}</Link>
+          <Link href="/aide" className="footer-link">{t("Aide")}</Link>
+          <LocaleSwitch className="on-dark" />
         </nav>
       </div>
       <div className="footer-bottom">
-        <span>© {new Date().getFullYear()} KolBase. Tous droits réservés.</span>
-        {process.env.SEED_DEMO === "1" && <span>Environnement de démonstration — données simulées</span>}
+        <span>{t("© {year} KolBase. Tous droits réservés.", { year: new Date().getFullYear() })}</span>
+        {locale === "en" && <span>{t("Les documents juridiques font foi en français.")}</span>}
+        {process.env.SEED_DEMO === "1" && <span>{t("Environnement de démonstration — données simulées")}</span>}
       </div>
     </footer>
   );

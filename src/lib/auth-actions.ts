@@ -1,5 +1,6 @@
 "use server";
 
+import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import { db } from "@/lib/db";
@@ -8,11 +9,14 @@ import { hashPassword, passwordProblem, verifyPassword } from "@/lib/password";
 import { blockedFor, clientIp, hit, reset } from "@/lib/rate-limit";
 import { safeNext } from "@/lib/safe-redirect";
 import { canBeExpert, isRpps, normalizeRpps, PROFESSIONS } from "@/lib/professions";
+import { country, isCountry, licenseRule, practicesInFrance } from "@/lib/countries";
 import { sendLater } from "@/lib/mail";
 import { notifyPlatformAdmins } from "@/lib/notifications";
 import { consumeToken, findToken, issueToken } from "@/lib/tokens";
 import { anonymizeAccount, soleAdminOrgs } from "@/lib/account";
-import { str } from "@/lib/form";
+import { MAX_NAME, str } from "@/lib/form";
+import { getLocale, getT, LOCALE_COOKIE } from "@/lib/i18n/server";
+import { makeT, type T } from "@/lib/i18n";
 
 export type FormState = { error?: string; ok?: string } | undefined;
 
@@ -40,27 +44,32 @@ async function sendVerification(user: { id: string; email: string; firstName: st
   });
 }
 
-const tooMany = (minutes: number) => ({ error: `Trop de tentatives. Réessayez dans ${minutes} minute${minutes > 1 ? "s" : ""}.` });
+const tooMany = (t: T, minutes: number) => ({
+  error: minutes > 1 ? t("Trop de tentatives. Réessayez dans {n} minutes.", { n: minutes }) : t("Trop de tentatives. Réessayez dans {n} minute.", { n: minutes }),
+});
 
 export async function signUp(_: FormState, form: FormData): Promise<FormState> {
-  const firstName = str(form, "firstName");
-  const lastName = str(form, "lastName");
+  const firstName = str(form, "firstName", MAX_NAME);
+  const lastName = str(form, "lastName", MAX_NAME);
   const email = str(form, "email").toLowerCase();
   const password = String(form.get("password") ?? "");
   const profession = str(form, "profession");
+  const countryCode = str(form, "country") || "FR";
+  const { t } = await getT();
 
-  if (!firstName || !lastName) return { error: "Indiquez votre prénom et votre nom." };
-  if (!emailOk(email)) return { error: "Adresse e-mail invalide." };
+  if (!firstName || !lastName) return { error: t("Indiquez votre prénom et votre nom.") };
+  if (!isCountry(countryCode)) return { error: t("Pays d'exercice invalide.") };
+  if (!emailOk(email)) return { error: t("Adresse e-mail invalide.") };
   const pwErr = passwordProblem(password);
-  if (pwErr) return { error: pwErr };
-  if (!form.get("cgu")) return { error: "Vous devez accepter les conditions d'utilisation." };
-  if (profession && !(PROFESSIONS as readonly string[]).includes(profession)) return { error: "Profession invalide." };
+  if (pwErr) return { error: t(pwErr) };
+  if (!form.get("cgu")) return { error: t("Vous devez accepter les conditions d'utilisation.") };
+  if (profession && !(PROFESSIONS as readonly string[]).includes(profession)) return { error: t("Profession invalide.") };
   const signupKey = `signup:ip:${await clientIp()}`;
   const wait = blockedFor(signupKey, SIGNUP_MAX_PER_IP, SIGNUP_WINDOW_MS);
-  if (wait) return tooMany(wait);
+  if (wait) return tooMany(t, wait);
 
   const exists = await db.user.findUnique({ where: { email } });
-  if (exists) return { error: "Un compte existe déjà avec cette adresse. Connectez-vous." };
+  if (exists) return { error: t("Un compte existe déjà avec cette adresse. Connectez-vous.") };
 
   const user = await db.user.create({
     data: {
@@ -68,7 +77,9 @@ export async function signUp(_: FormState, form: FormData): Promise<FormState> {
       firstName,
       lastName,
       passwordHash: await hashPassword(password),
-      practitioner: profession ? { create: { profession, languages: ["fr"] } } : undefined,
+      // Langue utilisée pendant l'inscription : elle sert ensuite pour l'interface et les e-mails.
+      locale: await getLocale(),
+      practitioner: profession ? { create: { profession, country: countryCode, languages: practicesInFrance(countryCode) ? ["fr"] : [] } } : undefined,
     },
   });
   hit(signupKey);
@@ -83,16 +94,17 @@ export async function signIn(_: FormState, form: FormData): Promise<FormState> {
   const password = String(form.get("password") ?? "");
   const ipKey = `signin:ip:${await clientIp()}`;
   const emailKey = `signin:email:${email}`;
+  const { t } = await getT();
   // Vérifié avant le calcul (coûteux) du hash : un attaquant bloqué ne consomme plus de CPU.
   const wait = Math.max(blockedFor(emailKey, SIGNIN_MAX_FAILURES_PER_EMAIL, SIGNIN_WINDOW_MS), blockedFor(ipKey, SIGNIN_MAX_FAILURES_PER_IP, SIGNIN_WINDOW_MS));
-  if (wait) return tooMany(wait);
+  if (wait) return tooMany(t, wait);
   const user = await db.user.findUnique({ where: { email } });
   const ok = await verifyPassword(password, user?.passwordHash);
   if (!user || !ok) {
     hit(emailKey);
     hit(ipKey);
     if (user) await audit(user.id, "user.signin_failed", "User", user.id);
-    return { error: "E-mail ou mot de passe incorrect." };
+    return { error: t("E-mail ou mot de passe incorrect.") };
   }
   reset(emailKey);
   await audit(user.id, "user.signin", "User", user.id);
@@ -107,74 +119,107 @@ export async function signOut() {
 
 export async function updateProfile(_: FormState, form: FormData): Promise<FormState> {
   const user = await requireUser();
-  const firstName = str(form, "firstName");
-  const lastName = str(form, "lastName");
-  if (!firstName || !lastName) return { error: "Prénom et nom sont obligatoires." };
+  const firstName = str(form, "firstName", MAX_NAME);
+  const lastName = str(form, "lastName", MAX_NAME);
+  if (!firstName || !lastName) return { error: (await getT()).t("Prénom et nom sont obligatoires.") };
+  const locale = str(form, "locale") === "en" ? "en" : "fr";
+  // Messages dans la langue de la page affichée après l'enregistrement (la langue choisie, si elle a changé).
+  const t = locale !== user.locale ? makeT(locale) : (await getT()).t;
   await db.user.update({
     where: { id: user.id },
-    data: { firstName, lastName, phone: str(form, "phone") || null, locale: str(form, "locale") === "en" ? "en" : "fr" },
+    data: { firstName, lastName, phone: str(form, "phone") || null, locale },
   });
+  // La langue choisie s'applique aussi à cet appareil (le sélecteur de langue pose le même cookie).
+  if (locale !== user.locale) (await cookies()).set(LOCALE_COOKIE, locale, { path: "/", maxAge: 365 * 24 * 3600, sameSite: "lax", httpOnly: true, secure: process.env.NODE_ENV === "production" });
   let unlisted = false;
-  let rppsToCheck: string | null = null;
+  let toCheck: string | null = null;
   if (user.practitioner) {
     const p = user.practitioner;
     const profession = str(form, "profession") || p.profession;
-    if (!(PROFESSIONS as readonly string[]).includes(profession) && profession !== p.profession) return { error: "Profession invalide." };
-    const rpps = normalizeRpps(str(form, "rpps")) || null;
-    if (rpps && !isRpps(rpps)) return { error: "Le numéro RPPS comporte 11 chiffres." };
-    if (rpps && rpps !== p.rpps && (await db.practitionerProfile.findFirst({ where: { rpps, NOT: { id: p.id } } })))
-      return { error: "Ce numéro RPPS est déjà associé à un autre compte. Contactez-nous s'il s'agit du vôtre." };
-    // Un RPPS modifié doit être contrôlé à nouveau ; sans RPPS ou hors profession éligible, plus de référencement.
-    const rppsChanged = rpps !== p.rpps;
-    if (rppsChanged && rpps) rppsToCheck = rpps;
-    unlisted = p.listed && (!rpps || !canBeExpert(profession));
+    if (!(PROFESSIONS as readonly string[]).includes(profession) && profession !== p.profession) return { error: t("Profession invalide.") };
+    const countryCode = str(form, "country") || p.country;
+    if (!isCountry(countryCode)) return { error: t("Pays d'exercice invalide.") };
+    const inFrance = practicesInFrance(countryCode);
+    // En France, le RPPS ; ailleurs, l'identifiant du pays d'exercice (INAMI, NPI, n° d'Ordre…).
+    let rpps: string | null = null;
+    let license: string | null = null;
+    if (inFrance) {
+      rpps = normalizeRpps(str(form, "rpps")) || null;
+      if (rpps && !isRpps(rpps)) return { error: t("Numéro RPPS invalide : 11 chiffres, le dernier étant une clé de contrôle. Vérifiez la saisie. Si vous exercez hors de France, choisissez votre pays d'exercice.") };
+      if (rpps && rpps !== p.rpps && (await db.practitionerProfile.findFirst({ where: { rpps, NOT: { id: p.id } } })))
+        return { error: t("Ce numéro RPPS est déjà associé à un autre compte. Contactez-nous s'il s'agit du vôtre.") };
+    } else {
+      const rule = licenseRule(countryCode);
+      license = rule.normalize(str(form, "licenseNumber", 120)) || null;
+      if (license && !rule.valid(license)) return { error: t(rule.error) };
+      if (license && (await db.practitionerProfile.findFirst({ where: { country: countryCode, licenseNumber: license, NOT: { id: p.id } } })))
+        return { error: t("Cet identifiant professionnel est déjà associé à un autre compte. Contactez-nous s'il s'agit du vôtre.") };
+    }
+    const identifier = inFrance ? rpps : license;
+    // Un identifiant modifié doit être contrôlé à nouveau ; sans identifiant ou hors profession éligible, plus de référencement.
+    const idChanged = countryCode !== p.country || rpps !== p.rpps || license !== p.licenseNumber;
+    if (idChanged && identifier) toCheck = inFrance ? `RPPS ${identifier}` : `${licenseRule(countryCode).label} ${identifier} (${country(countryCode).name})`;
+    unlisted = p.listed && (!identifier || !canBeExpert(profession));
     await db.practitionerProfile.update({
       where: { userId: user.id },
       data: {
         profession,
+        country: countryCode,
         rpps,
+        licenseNumber: license,
         city: str(form, "city") || null,
         specialty: str(form, "specialty") || null,
-        ...(rppsChanged ? { rppsVerified: false, rppsCheckedAt: null, rppsCheckNote: null } : {}),
+        ...(idChanged ? { rppsVerified: false, rppsCheckedAt: null, rppsCheckNote: null } : {}),
         ...(unlisted ? { listed: false, listedAt: null } : {}),
       },
     });
   }
   await audit(user.id, "user.update_profile", "User", user.id, unlisted ? { unlisted: true } : undefined);
-  if (rppsToCheck) notifyPlatformAdmins(`RPPS à vérifier : ${firstName} ${lastName}`, `${firstName} ${lastName} a renseigné le RPPS ${rppsToCheck}.`, "/admin?onglet=praticiens");
+  if (toCheck) notifyPlatformAdmins(`Identité à vérifier : ${firstName} ${lastName}`, `${firstName} ${lastName} a renseigné : ${toCheck}.`, "/admin?onglet=praticiens");
   revalidatePath("/compte");
-  return { ok: unlisted ? "Informations enregistrées. Votre référencement d'expert est suspendu (RPPS ou profession requis)." : "Informations enregistrées." };
+  return { ok: unlisted ? t("Informations enregistrées. Votre référencement d'expert est suspendu (identifiant professionnel ou profession requis).") : t("Informations enregistrées.") };
 }
 
 export async function changePassword(_: FormState, form: FormData): Promise<FormState> {
   const user = await requireUser();
   const current = String(form.get("current") ?? "");
   const next = String(form.get("next") ?? "");
-  if (!(await verifyPassword(current, user.passwordHash))) return { error: "Mot de passe actuel incorrect." };
+  const { t } = await getT();
+  if (!(await verifyPassword(current, user.passwordHash))) return { error: t("Mot de passe actuel incorrect.") };
   const pwErr = passwordProblem(next);
-  if (pwErr) return { error: pwErr };
-  if (next !== String(form.get("confirm") ?? "")) return { error: "Les deux mots de passe ne correspondent pas." };
+  if (pwErr) return { error: t(pwErr) };
+  if (next !== String(form.get("confirm") ?? "")) return { error: t("Les deux mots de passe ne correspondent pas.") };
   await db.user.update({ where: { id: user.id }, data: { passwordHash: await hashPassword(next) } });
   await destroyOtherSessions(user.id);
   await audit(user.id, "user.change_password", "User", user.id);
-  return { ok: "Mot de passe modifié. Vos autres sessions ont été fermées." };
+  return { ok: t("Mot de passe modifié. Vos autres sessions ont été fermées.") };
 }
 
 // Le praticien se référence (ou se retire) comme expert KOL.
 export async function setListed(_: FormState, form: FormData): Promise<FormState> {
   const user = await requireUser();
-  if (!user.practitioner) return { error: "Cette option est réservée aux comptes praticiens." };
+  const { t } = await getT();
+  if (!user.practitioner) return { error: t("Cette option est réservée aux comptes praticiens.") };
   const listed = form.get("listed") === "1";
   if (listed && !canBeExpert(user.practitioner.profession))
-    return { error: "Le référencement comme expert est réservé aux chirurgiens-dentistes, orthodontistes, chirurgiens oraux et stomatologues." };
-  if (listed && !user.practitioner.rpps) return { error: "Renseignez d'abord votre numéro RPPS dans « Informations personnelles » : KolBase le vérifie pour afficher le badge « Identité vérifiée »." };
+    return { error: t("Le référencement comme expert est réservé aux chirurgiens-dentistes, orthodontistes, chirurgiens oraux et stomatologues.") };
+  const p = user.practitioner;
+  const identifier = practicesInFrance(p.country) ? p.rpps : p.licenseNumber;
+  if (listed && !identifier)
+    return {
+      error: practicesInFrance(p.country)
+        ? t("Renseignez d'abord votre numéro RPPS dans « Informations personnelles » : KolBase le vérifie pour afficher le badge « Identité vérifiée ».")
+        : t("Renseignez d'abord votre {id} dans « Informations personnelles » : KolBase le vérifie pour afficher le badge « Identité vérifiée ».", { id: t(licenseRule(p.country).short) }),
+    };
+  if (listed && !p.rppsVerified && p.rppsCheckedAt)
+    return { error: t("Votre identifiant professionnel n'a pas pu être vérifié : corrigez-le dans « Informations personnelles » pour vous référencer à nouveau.") };
   await db.practitionerProfile.update({
     where: { userId: user.id },
     data: { listed, listedAt: listed ? new Date() : null },
   });
   await audit(user.id, listed ? "practitioner.listed" : "practitioner.unlisted", "PractitionerProfile", user.practitioner.id);
   revalidatePath("/compte");
-  return { ok: listed ? "Vous êtes référencé comme expert." : "Votre profil n'est plus référencé." };
+  return { ok: listed ? t("Vous êtes référencé comme expert.") : t("Votre profil n'est plus référencé.") };
 }
 
 // ─── Mot de passe oublié, confirmation d'adresse, préférences ──────────────
@@ -182,11 +227,12 @@ export async function setListed(_: FormState, form: FormData): Promise<FormState
 /** Envoie un lien de réinitialisation (réponse identique que le compte existe ou non). */
 export async function requestPasswordReset(_: FormState, form: FormData): Promise<FormState> {
   const email = str(form, "email").toLowerCase();
-  if (!emailOk(email)) return { error: "Adresse e-mail invalide." };
+  const { t } = await getT();
+  if (!emailOk(email)) return { error: t("Adresse e-mail invalide.") };
   const ipKey = `reset:ip:${await clientIp()}`;
   const emailKey = `reset:email:${email}`;
   const wait = Math.max(blockedFor(ipKey, RESET_MAX_PER_IP, RESET_WINDOW_MS), blockedFor(emailKey, RESET_MAX_PER_EMAIL, RESET_WINDOW_MS));
-  if (wait) return tooMany(wait);
+  if (wait) return tooMany(t, wait);
   hit(ipKey);
   hit(emailKey);
   const user = await db.user.findUnique({ where: { email } });
@@ -200,18 +246,19 @@ export async function requestPasswordReset(_: FormState, form: FormData): Promis
     });
     await audit(user.id, "user.reset_request", "User", user.id);
   }
-  return { ok: "Si un compte existe avec cette adresse, un e-mail vient de vous être envoyé. Pensez à vérifier les indésirables." };
+  return { ok: t("Si un compte existe avec cette adresse, un e-mail vient de vous être envoyé. Pensez à vérifier les indésirables.") };
 }
 
 /** Nouveau mot de passe à partir du lien reçu : toutes les sessions sont fermées, puis l'utilisateur est connecté. */
 export async function resetPassword(_: FormState, form: FormData): Promise<FormState> {
   const t = await findToken(str(form, "token"), "RESET_PASSWORD");
-  if (!t) return { error: "Ce lien n'est plus valable. Demandez-en un nouveau." };
+  const { t: tr } = await getT();
+  if (!t) return { error: tr("Ce lien n'est plus valable. Demandez-en un nouveau.") };
   const password = String(form.get("password") ?? "");
   const pwErr = passwordProblem(password);
-  if (pwErr) return { error: pwErr };
-  if (password !== String(form.get("confirm") ?? "")) return { error: "Les deux mots de passe ne correspondent pas." };
-  if (!(await consumeToken(t.id, t.userId, "RESET_PASSWORD"))) return { error: "Ce lien n'est plus valable. Demandez-en un nouveau." };
+  if (pwErr) return { error: tr(pwErr) };
+  if (password !== String(form.get("confirm") ?? "")) return { error: tr("Les deux mots de passe ne correspondent pas.") };
+  if (!(await consumeToken(t.id, t.userId, "RESET_PASSWORD"))) return { error: tr("Ce lien n'est plus valable. Demandez-en un nouveau.") };
   await db.user.update({
     where: { id: t.userId },
     // Le lien reçu prouve aussi l'accès à la boîte mail.
@@ -227,13 +274,14 @@ export async function resetPassword(_: FormState, form: FormData): Promise<FormS
 /** Renvoie le lien de confirmation d'adresse. */
 export async function resendVerification(_: FormState): Promise<FormState> {
   const user = await requireUser();
-  if (user.emailVerifiedAt) return { ok: "Votre adresse est déjà confirmée." };
+  const { t } = await getT();
+  if (user.emailVerifiedAt) return { ok: t("Votre adresse est déjà confirmée.") };
   const key = `verify:user:${user.id}`;
   const wait = blockedFor(key, VERIFY_RESEND_MAX, RESET_WINDOW_MS);
-  if (wait) return tooMany(wait);
+  if (wait) return tooMany(t, wait);
   hit(key);
   await sendVerification(user);
-  return { ok: `Lien envoyé à ${user.email}.` };
+  return { ok: t("Lien envoyé à {email}.", { email: user.email }) };
 }
 
 /** Préférence de notifications par e-mail (les e-mails de service partent toujours). */
@@ -244,17 +292,19 @@ export async function updateNotifyPrefs(_: FormState, form: FormData): Promise<F
   await db.user.update({ where: { id: user.id }, data: { notifyPrefs: { ...prefs, email } } });
   await audit(user.id, "user.notify_prefs", "User", user.id, { email });
   revalidatePath("/compte");
-  return { ok: email ? "Vous recevrez les notifications par e-mail." : "Vous ne recevrez plus de notifications par e-mail (hors e-mails de service)." };
+  const { t } = await getT();
+  return { ok: email ? t("Vous recevrez les notifications par e-mail.") : t("Vous ne recevrez plus de notifications par e-mail (hors e-mails de service).") };
 }
 
 /** Suppression du compte (anonymisation), après confirmation par le mot de passe. */
 export async function deleteAccount(_: FormState, form: FormData): Promise<FormState> {
   const user = await requireUser();
-  if (form.get("confirm") !== "1") return { error: "Cochez la case de confirmation." };
-  if (!(await verifyPassword(String(form.get("password") ?? ""), user.passwordHash))) return { error: "Mot de passe incorrect." };
+  const { t } = await getT();
+  if (form.get("confirm") !== "1") return { error: t("Cochez la case de confirmation.") };
+  if (!(await verifyPassword(String(form.get("password") ?? ""), user.passwordHash))) return { error: t("Mot de passe incorrect.") };
   const blocking = await soleAdminOrgs(user.id);
   if (blocking.length)
-    return { error: `Vous êtes le seul administrateur de ${blocking.join(", ")} : nommez d'abord un autre administrateur (Membres et réglages), ou retirez les autres membres.` };
+    return { error: t("Vous êtes le seul administrateur de {orgs} : nommez d'abord un autre administrateur (Membres et réglages), ou retirez les autres membres.", { orgs: blocking.join(", ") }) };
   const { kept } = await anonymizeAccount(user.id);
   await audit(user.id, "user.delete", "User", user.id, { kept });
   await destroySession();

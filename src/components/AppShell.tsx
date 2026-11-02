@@ -9,6 +9,7 @@ import {
 import { Logo } from "@/components/Logo";
 import { signOut } from "@/lib/auth-actions";
 import { itemMatches, type ShellIcon, type ShellItem, type ShellSpace } from "@/lib/nav";
+import { useT } from "@/components/I18nProvider";
 
 const ICONS: Record<ShellIcon, typeof House> = { House, Users, Folder, FileText, CalendarDays, ShieldCheck, Send, Megaphone, UserRound, Receipt, Plug, ExternalLink };
 const COOKIE = "kb_espace";
@@ -41,6 +42,7 @@ export function AppShell({
   admin?: boolean;
 }) {
   const path = usePathname();
+  const t = useT();
   const space = resolveSpace(spaces, path, initialSpace);
   const matched = space ? spaceMatches(space, path) : false;
 
@@ -59,7 +61,7 @@ export function AppShell({
         <Logo />
         <div className="top-actions">
           {bell && (
-            <Link href="/suivis" className={`icon-btn${path === "/suivis" ? " active" : ""}`} aria-label={bell.count ? `Suivis, ${bell.count} nouveauté${bell.count > 1 ? "s" : ""}` : "Suivis"}>
+            <Link href="/suivis" className={`icon-btn${path === "/suivis" ? " active" : ""}`} aria-label={bell.count ? (bell.count > 1 ? t("Suivis, {n} nouveautés", { n: bell.count }) : t("Suivis, {n} nouveauté", { n: bell.count })) : t("Suivis")}>
               <Bell size={19} strokeWidth={1.8} aria-hidden />
               {bell.count > 0 && <span className="icon-badge" aria-hidden>{bell.count}</span>}
             </Link>
@@ -69,7 +71,7 @@ export function AppShell({
       </header>
 
       {space && (
-        <aside className="sidebar" aria-label="Navigation">
+        <aside className="sidebar" aria-label={t("Navigation")}>
           <SpaceSwitch space={space} spaces={spaces} />
           <nav className="side-nav" aria-label={space.title}>
             {space.items.map((i) => {
@@ -78,7 +80,7 @@ export function AppShell({
                 <Link key={i.key} href={i.href} className={`side-link${isActive(i) ? " active" : ""}`} aria-current={isActive(i) ? "page" : undefined}>
                   <Icon size={19} strokeWidth={1.8} aria-hidden />
                   {i.label}
-                  {i.badge ? <span className="side-badge" aria-label={`${i.badge} à traiter`}>{i.badge}</span> : null}
+                  {i.badge ? <span className="side-badge" aria-label={t("{n} à traiter", { n: i.badge })}>{i.badge}</span> : null}
                 </Link>
               );
             })}
@@ -87,14 +89,14 @@ export function AppShell({
       )}
 
       {space && (
-        <nav className="bottom-nav" aria-label="Navigation principale">
+        <nav className="bottom-nav" aria-label={t("Navigation principale")}>
           {space.items.map((i) => {
             const Icon = ICONS[i.icon];
             return (
               <Link key={i.key} href={i.href} className={isActive(i) ? "active" : undefined} aria-current={isActive(i) ? "page" : undefined}>
                 <Icon size={22} strokeWidth={isActive(i) ? 2 : 1.8} aria-hidden />
                 <span>{i.short ?? i.label}</span>
-                {i.badge ? <span className="bottom-badge" aria-label={`${i.badge} à traiter`}>{i.badge}</span> : null}
+                {i.badge ? <span className="bottom-badge" aria-label={t("{n} à traiter", { n: i.badge })}>{i.badge}</span> : null}
               </Link>
             );
           })}
@@ -115,6 +117,7 @@ function SpaceMark({ space, size = 40 }: { space: ShellSpace; size?: number }) {
 /** En-tête de la barre latérale : l'espace courant, et le passage à un autre espace s'il y en a plusieurs. */
 function SpaceSwitch({ space, spaces }: { space: ShellSpace; spaces: ShellSpace[] }) {
   const path = usePathname();
+  const t = useT();
   const head = (
     <>
       <SpaceMark space={space} />
@@ -127,7 +130,7 @@ function SpaceSwitch({ space, spaces }: { space: ShellSpace; spaces: ShellSpace[
   if (spaces.length < 2) return <div className="space-head">{head}</div>;
   return (
     <details className="space-switch" key={path}>
-      <summary className="space-head" aria-label={`${space.title}, changer d'espace`}>
+      <summary className="space-head" aria-label={t("{title}, changer d'espace", { title: space.title })}>
         {head}
         <ChevronDown size={18} className="space-chevron" aria-hidden />
       </summary>
@@ -147,6 +150,7 @@ function SpaceSwitch({ space, spaces }: { space: ShellSpace; spaces: ShellSpace[
 /** Menu sous l'avatar : réglages de l'espace, compte, aide, déconnexion. */
 function AccountMenu({ user, space, spaces, admin }: { user: ShellUser; space?: ShellSpace; spaces: ShellSpace[]; admin: boolean }) {
   const [open, setOpen] = useState(false);
+  const t = useT();
   const ref = useRef<HTMLDivElement>(null);
   useEffect(() => {
     if (!open) return;
@@ -171,19 +175,19 @@ function AccountMenu({ user, space, spaces, admin }: { user: ShellUser; space?: 
         <span className="avatar" style={{ width: 36, height: 36, fontSize: 13, background: user.color }} aria-hidden>{user.initials}</span>
         <span className="session-text">
           <span className="session-name">{user.name}</span>
-          <span className="session-role">{space?.chip ?? "Mon compte"}</span>
+          <span className="session-role">{space?.chip ?? t("Mon compte")}</span>
         </span>
         <ChevronDown size={16} className="session-chevron" aria-hidden />
       </button>
       {open && (
-        <div className="account-menu" role="menu" aria-label="Menu du compte" onClick={(e) => (e.target as HTMLElement).closest("a") && setOpen(false)}>
+        <div className="account-menu" role="menu" aria-label={t("Menu du compte")} onClick={(e) => (e.target as HTMLElement).closest("a") && setOpen(false)}>
           <div className="account-head">
             <strong>{user.name}</strong>
             {space && <span>{space.chip === space.title ? space.subtitle : space.chip}</span>}
           </div>
           {spaces.length > 1 && (
             <>
-              <p className="account-label">Changer d&apos;espace</p>
+              <p className="account-label">{t("Changer d'espace")}</p>
               {spaces.map((s) => (
                 <Link key={s.key} href={s.home} role="menuitem" className={s.key === space?.key ? "current" : undefined}>
                   <SpaceMark space={s} size={26} />
@@ -195,7 +199,7 @@ function AccountMenu({ user, space, spaces, admin }: { user: ShellUser; space?: 
           )}
           {space && space.links.length > 0 && (
             <>
-              <p className="account-label">{isPractitioner ? "Mon profil" : space.title}</p>
+              <p className="account-label">{isPractitioner ? t("Mon profil") : space.title}</p>
               {space.links.map((l) => {
                 const Icon = ICONS[l.icon];
                 return (
@@ -209,14 +213,14 @@ function AccountMenu({ user, space, spaces, admin }: { user: ShellUser; space?: 
           )}
           <hr />
           {!isPractitioner && (
-            <Link href="/compte" role="menuitem"><UserRound size={18} strokeWidth={1.8} aria-hidden />Mon compte</Link>
+            <Link href="/compte" role="menuitem"><UserRound size={18} strokeWidth={1.8} aria-hidden />{t("Mon compte")}</Link>
           )}
-          <Link href="/organisations" role="menuitem"><Building2 size={18} strokeWidth={1.8} aria-hidden />Mes organisations</Link>
-          <Link href="/aide" role="menuitem"><CircleHelp size={18} strokeWidth={1.8} aria-hidden />Aide</Link>
-          {admin && <Link href="/admin" role="menuitem"><ShieldCheck size={18} strokeWidth={1.8} aria-hidden />Administration KolBase</Link>}
+          <Link href="/organisations" role="menuitem"><Building2 size={18} strokeWidth={1.8} aria-hidden />{t("Mes organisations")}</Link>
+          <Link href="/aide" role="menuitem"><CircleHelp size={18} strokeWidth={1.8} aria-hidden />{t("Aide")}</Link>
+          {admin && <Link href="/admin" role="menuitem"><ShieldCheck size={18} strokeWidth={1.8} aria-hidden />{t("Administration KolBase")}</Link>}
           <hr />
           <form action={signOut}>
-            <button type="submit" role="menuitem"><LogOut size={18} strokeWidth={1.8} aria-hidden />Se déconnecter</button>
+            <button type="submit" role="menuitem"><LogOut size={18} strokeWidth={1.8} aria-hidden />{t("Se déconnecter")}</button>
           </form>
         </div>
       )}

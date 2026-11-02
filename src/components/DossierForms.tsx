@@ -4,6 +4,9 @@ import { useActionState, useState } from "react";
 import { addExpense, addMaterial, addMaterialVersion, proposeCollaboration, setBudget } from "@/lib/dossier-actions";
 import { Notice } from "@/components/AuthForms";
 import { uploadDocument } from "@/lib/document-actions";
+import { intlLocale } from "@/lib/i18n";
+import { useLocale, useT } from "@/components/I18nProvider";
+import { refreshSignatureStatus, sendConventionForSignature } from "@/lib/signature-actions";
 
 type Hidden = { orgId: string; projectId: string };
 const H = ({ orgId, projectId }: Hidden) => (<><input type="hidden" name="orgId" value={orgId} /><input type="hidden" name="projectId" value={projectId} /></>);
@@ -39,18 +42,19 @@ export function ExpenseForm(p: Hidden) {
 export function MaterialForm({ projectId, kinds }: { projectId: string; kinds: Record<string, string> }) {
   const [state, action, pending] = useActionState(addMaterial, undefined);
   const [open, setOpen] = useState(false);
-  if (!open) return <button type="button" className="btn secondary small" onClick={() => setOpen(true)}>Soumettre un support</button>;
+  const t = useT();
+  if (!open) return <button type="button" className="btn secondary small" onClick={() => setOpen(true)}>{t("Soumettre un support")}</button>;
   return (
     <form action={action} className="form sub-form" key={state?.ok ? Date.now() : "mat"}>
       <Notice state={state} />
       <input type="hidden" name="projectId" value={projectId} />
       <div className="row">
-        <label>Titre<input name="title" required placeholder="Diaporama du symposium" /></label>
-        <label>Type<select name="kind" defaultValue="diaporama">{Object.entries(kinds).map(([k, v]) => <option key={k} value={k}>{v}</option>)}</select></label>
+        <label>{t("Titre")}<input name="title" required placeholder={t("Diaporama du symposium")} /></label>
+        <label>{t("Type")}<select name="kind" defaultValue="diaporama">{Object.entries(kinds).map(([k, v]) => <option key={k} value={k}>{t(v)}</option>)}</select></label>
       </div>
-      <label>Lien vers le document<input name="url" type="url" placeholder="https://… (Drive, SharePoint, Dropbox…)" /></label>
-      <label>Contenu ou précisions<textarea name="notes" rows={3} placeholder="Résumé, messages clés, points à vérifier…" /></label>
-      <button className="btn small" disabled={pending}>{pending ? "Envoi…" : "Soumettre à la relecture"}</button>
+      <label>{t("Lien vers le document")}<input name="url" type="url" placeholder={t("https://… (Drive, SharePoint, Dropbox…)")} /></label>
+      <label>{t("Contenu ou précisions")}<textarea name="notes" rows={3} placeholder={t("Résumé, messages clés, points à vérifier…")} /></label>
+      <button className="btn small" disabled={pending}>{pending ? t("Envoi…") : t("Soumettre à la relecture")}</button>
     </form>
   );
 }
@@ -58,15 +62,16 @@ export function MaterialForm({ projectId, kinds }: { projectId: string; kinds: R
 export function VersionForm({ materialId }: { materialId: string }) {
   const [state, action, pending] = useActionState(addMaterialVersion, undefined);
   const [open, setOpen] = useState(false);
+  const t = useT();
   if (state?.ok) return <p className="notice ok">{state.ok}</p>;
-  if (!open) return <button type="button" className="link" onClick={() => setOpen(true)}>Déposer une nouvelle version</button>;
+  if (!open) return <button type="button" className="link" onClick={() => setOpen(true)}>{t("Déposer une nouvelle version")}</button>;
   return (
     <form action={action} className="form sub-form">
       <Notice state={state} />
       <input type="hidden" name="materialId" value={materialId} />
-      <label>Lien vers la nouvelle version<input name="url" type="url" placeholder="https://…" /></label>
-      <label>Modifications apportées<textarea name="notes" rows={2} /></label>
-      <button className="btn small" disabled={pending}>Soumettre la version</button>
+      <label>{t("Lien vers la nouvelle version")}<input name="url" type="url" placeholder="https://…" /></label>
+      <label>{t("Modifications apportées")}<textarea name="notes" rows={2} /></label>
+      <button className="btn small" disabled={pending}>{t("Soumettre la version")}</button>
     </form>
   );
 }
@@ -76,26 +81,29 @@ export function ProposeForm({ orgId, orgName, types, defaultFee }: { orgId: stri
   const [state, action, pending] = useActionState(proposeCollaboration, undefined);
   const [open, setOpen] = useState(false);
   const [typeId, setTypeId] = useState(types[0].id);
-  const type = types.find((t) => t.id === typeId)!;
-  if (!open) return <button type="button" className="btn secondary" onClick={() => setOpen(true)}>Proposer une collaboration</button>;
+  const t = useT();
+  const locale = useLocale();
+  const num = (n: number) => n.toLocaleString(intlLocale(locale));
+  const type = types.find((x) => x.id === typeId)!;
+  if (!open) return <button type="button" className="btn secondary" onClick={() => setOpen(true)}>{t("Proposer une collaboration")}</button>;
   return (
     <form action={action} className="card form">
-      <h2>Proposer une collaboration à {orgName}</h2>
-      <p className="muted">Votre proposition ouvre un dossier que l&apos;organisation peut accepter ou décliner.</p>
+      <h2>{t("Proposer une collaboration à {org}", { org: orgName })}</h2>
+      <p className="muted">{t("Votre proposition ouvre un dossier que l'organisation peut accepter ou décliner.")}</p>
       <Notice state={state} />
       <input type="hidden" name="orgId" value={orgId} />
-      <label>Titre<input name="title" required placeholder="Ex. : Webinaire sur la maintenance implantaire" /></label>
+      <label>{t("Titre")}<input name="title" required placeholder={t("Ex. : Webinaire sur la maintenance implantaire")} /></label>
       <div className="row">
-        <label>Type<select name="typeId" value={typeId} onChange={(e) => setTypeId(e.target.value)}>{types.map((t) => <option key={t.id} value={t.id}>{t.label}</option>)}</select></label>
-        <label>Domaine<input name="therapeuticArea" /></label>
+        <label>{t("Type")}<select name="typeId" value={typeId} onChange={(e) => setTypeId(e.target.value)}>{types.map((x) => <option key={x.id} value={x.id}>{t(x.label)}</option>)}</select></label>
+        <label>{t("Domaine")}<input name="therapeuticArea" /></label>
       </div>
       <div className="row">
-        <label>Volume ({type.unit})<input name="units" inputMode="decimal" defaultValue="1" /></label>
-        <label>Honoraires souhaités (€ HT)<input name="fee" inputMode="decimal" defaultValue={defaultFee} /></label>
+        <label>{t("Volume ({unit})", { unit: t(type.unit) })}<input name="units" inputMode="decimal" defaultValue="1" /></label>
+        <label>{t("Honoraires souhaités (€ HT)")}<input name="fee" inputMode="decimal" defaultValue={defaultFee} /></label>
       </div>
-      <p className="hint">Référence : {type.fmv[0].toLocaleString("fr-FR")} à {type.fmv[1].toLocaleString("fr-FR")} € HT par {type.unit}.</p>
-      <label>Votre proposition<textarea name="message" rows={4} required minLength={30} placeholder="Objectif, public, format, dates possibles…" /></label>
-      <button className="btn" disabled={pending}>{pending ? "Envoi…" : "Envoyer la proposition"}</button>
+      <p className="hint">{t("Référence : {min} à {max} € HT par {unit}.", { min: num(type.fmv[0]), max: num(type.fmv[1]), unit: t(type.unit) })}</p>
+      <label>{t("Votre proposition")}<textarea name="message" rows={4} required minLength={30} placeholder={t("Objectif, public, format, dates possibles…")} /></label>
+      <button className="btn" disabled={pending}>{pending ? t("Envoi…") : t("Envoyer la proposition")}</button>
     </form>
   );
 }
@@ -103,29 +111,61 @@ export function ProposeForm({ orgId, orgName, types, defaultFee }: { orgId: stri
 /** Dépôt d'un document de dossier (pièce, ou convention signée d'un expert). */
 export function DocumentUploadForm({ projectId, experts, ownLinkId }: { projectId: string; experts: { id: string; name: string }[]; ownLinkId?: string }) {
   const [state, action, pending] = useActionState(uploadDocument, undefined);
+  const t = useT();
   return (
     <form action={action} className="form stack-sm" key={state?.ok ? Date.now() : "doc"}>
       <Notice state={state} />
       <input type="hidden" name="projectId" value={projectId} />
       <div className="row">
-        <label>Document
+        <label>{t("Document")}
           <select name="kind" defaultValue="PIECE">
-            <option value="PIECE">Pièce du dossier</option>
-            <option value="CONVENTION_SIGNEE">Convention signée</option>
+            <option value="PIECE">{t("Pièce du dossier")}</option>
+            <option value="CONVENTION_SIGNEE">{t("Convention signée")}</option>
           </select>
         </label>
         {ownLinkId ? <input type="hidden" name="linkId" value={ownLinkId} /> : (
-          <label>Expert concerné
+          <label>{t("Expert concerné")}
             <select name="linkId" defaultValue="">
-              <option value="">— tout le dossier —</option>
+              <option value="">{t("— tout le dossier —")}</option>
               {experts.map((e) => <option key={e.id} value={e.id}>{e.name}</option>)}
             </select>
           </label>
         )}
       </div>
-      <label>Fichier<input type="file" name="file" required accept=".pdf,.jpg,.jpeg,.png,.docx,.xlsx,.pptx" /></label>
-      <p className="hint">PDF, image ou document bureautique, 10 Mo au maximum.</p>
-      <button className="btn secondary" disabled={pending}>{pending ? "Envoi…" : "Déposer"}</button>
+      <label>{t("Fichier")}<input type="file" name="file" required accept=".pdf,.jpg,.jpeg,.png,.docx,.xlsx,.pptx" /></label>
+      <p className="hint">{t("PDF, image ou document bureautique, 10 Mo au maximum.")}</p>
+      <button className="btn secondary" disabled={pending}>{pending ? t("Envoi…") : t("Déposer")}</button>
+    </form>
+  );
+}
+
+/** Envoi de la convention d'un expert en signature électronique (Yousign). */
+export function SendSignatureForm({ orgId, linkId, again }: { orgId: string; linkId: string; again?: boolean }) {
+  const [state, action, pending] = useActionState(sendConventionForSignature, undefined);
+  return (
+    <form action={action} className="stack-sm">
+      <Notice state={state} />
+      <input type="hidden" name="orgId" value={orgId} />
+      <input type="hidden" name="linkId" value={linkId} />
+      {!state?.ok && (
+        <span>
+          <button className="btn small" disabled={pending}>{pending ? "Envoi en cours…" : again ? "Envoyer de nouveau en signature électronique" : "Envoyer en signature électronique"}</button>
+        </span>
+      )}
+    </form>
+  );
+}
+
+/** Interrogation du prestataire de signature (sans webhook, ou pour rattraper un événement manqué). */
+export function RefreshSignatureForm({ linkId }: { linkId: string }) {
+  const [state, action, pending] = useActionState(refreshSignatureStatus, undefined);
+  const t = useT();
+  return (
+    <form action={action} className="inline wrap">
+      <input type="hidden" name="linkId" value={linkId} />
+      <button className="link" disabled={pending}>{pending ? t("Mise à jour…") : t("Mettre à jour le statut")}</button>
+      {state?.error && <span className="text-xs" style={{ color: "var(--danger)" }} role="alert">{state.error}</span>}
+      {state?.ok && <span className="text-xs" role="status">{state.ok}</span>}
     </form>
   );
 }

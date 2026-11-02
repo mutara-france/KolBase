@@ -10,8 +10,9 @@ import { collabType, PROJECT_ROLES, SOURCING_ROLES, PROJECT_VIEW_ROLES, TRANSITI
 import type { ProjectStatus } from "@/generated/prisma/client";
 import { complianceSettings, projectRegime } from "@/lib/compliance";
 import { missingSignedConventions } from "@/lib/project-documents";
-import { eurToCents, str } from "@/lib/form";
+import { eurToCents, str, unitsOrNull, UNITS_INVALID } from "@/lib/form";
 import { notifyCompliance, notifyExpertAnswer, notifyMessage, notifySolicitations } from "@/lib/notifications";
+import { getT } from "@/lib/i18n/server";
 
 export type ActionState = { error?: string; ok?: string } | undefined;
 
@@ -32,8 +33,9 @@ export async function createProject(_: ActionState, form: FormData): Promise<Act
   const experts = [];
   for (const id of expertIds) {
     const fee = eurToCents(str(form, `fee_${id}`));
-    const units = Number(str(form, `units_${id}`).replace(",", ".")) || null;
+    const units = unitsOrNull(str(form, `units_${id}`));
     if (fee === null) return { error: "Indiquez des honoraires pour chaque expert (0 si bénévole)." };
+    if (units === undefined) return { error: UNITS_INVALID };
     experts.push({ practitionerId: id, feeCents: fee, days: units });
   }
 
@@ -78,11 +80,12 @@ export async function respondToSolicitation(_: ActionState, form: FormData): Pro
   const user = await requireUser();
   const linkId = str(form, "linkId");
   const answer = str(form, "answer");
+  const { t } = await getT();
   const link = await db.projectExpert.findFirst({ where: { id: linkId, practitioner: { userId: user.id } }, include: { project: true } });
-  if (!link) return { error: "Sollicitation introuvable." };
-  if (link.status !== "ATT_EXPERTS") return { error: "Vous avez déjà répondu." };
-  if (link.project.status === "DECLINE") return { error: "Ce dossier a été abandonné par l'organisation." };
-  if (!["accept", "decline"].includes(answer)) return { error: "Réponse invalide." };
+  if (!link) return { error: t("Sollicitation introuvable.") };
+  if (link.status !== "ATT_EXPERTS") return { error: t("Vous avez déjà répondu.") };
+  if (link.project.status === "DECLINE") return { error: t("Ce dossier a été abandonné par l'organisation.") };
+  if (!["accept", "decline"].includes(answer)) return { error: t("Réponse invalide.") };
   const status: ProjectStatus = answer === "accept" ? "ACCORD" : "DECLINE";
   await db.projectExpert.update({ where: { id: link.id }, data: { status, responseNote: str(form, "note") || null, respondedAt: new Date() } });
   if (str(form, "note")) {
@@ -97,7 +100,7 @@ export async function respondToSolicitation(_: ActionState, form: FormData): Pro
   await audit(user.id, answer === "accept" ? "solicitation.accept" : "solicitation.decline", "ProjectExpert", link.id, { projectId: link.projectId });
   notifyExpertAnswer(link.id, answer === "accept");
   revalidatePath(`/sollicitations/${link.id}`);
-  return { ok: answer === "accept" ? "Accord de principe envoyé. L'organisation va préparer la convention." : "Sollicitation déclinée." };
+  return { ok: answer === "accept" ? t("Accord de principe envoyé. L'organisation va préparer la convention.") : t("Sollicitation déclinée.") };
 }
 
 /** Message dans le fil organisation ↔ expert. Accessible aux deux parties. */
@@ -105,18 +108,19 @@ export async function postMessage(_: ActionState, form: FormData): Promise<Actio
   const user = await requireUser();
   const linkId = str(form, "linkId");
   const body = str(form, "body");
-  if (!body) return { error: "Message vide." };
-  if (body.length > 5000) return { error: "Message trop long." };
+  const { t } = await getT();
+  if (!body) return { error: t("Message vide.") };
+  if (body.length > 5000) return { error: t("Message trop long.") };
   const link = await db.projectExpert.findUnique({ where: { id: linkId }, include: { project: true, practitioner: true } });
-  if (!link) return { error: "Fil introuvable." };
+  if (!link) return { error: t("Fil introuvable.") };
   const isExpert = link.practitioner.userId === user.id;
   const isOrg = user.memberships.some((m) => m.organizationId === link.project.organizationId && PROJECT_VIEW_ROLES.includes(m.role));
-  if (!isExpert && !isOrg) return { error: "Accès refusé." };
+  if (!isExpert && !isOrg) return { error: t("Accès refusé.") };
   await db.message.create({ data: { projectId: link.projectId, projectExpertId: link.id, authorId: user.id, body } });
   notifyMessage(link.id, user.id);
   revalidatePath(`/sollicitations/${link.id}`);
   revalidatePath(`/organisations/${link.project.organizationId}/dossiers/${link.projectId}`);
-  return { ok: "Message envoyé." };
+  return { ok: t("Message envoyé.") };
 }
 
 /** Fait avancer le dossier dans le circuit réglementaire. */
@@ -127,12 +131,16 @@ export async function advanceProject(form: FormData) {
   const t = TRANSITIONS[key];
   if (!t) return;
   const { user } = await requireMembership(orgId, t.roles === "compliance" ? COMPLIANCE_ROLES : PROJECT_ROLES);
-  const project = await db.project.findFirst({ where: { id: projectId, organizationId: orgId }, include: { experts: true, organization: { select: { complianceSettings: true } } } });
+  const project = await db.project.findFirst({ where: { id: projectId, organizationId: orgId }, include: { experts: { include: { practitioner: { select: { country: true } } } }, organization: { select: { complianceSettings: true } } } });
   if (!project || !(t.from as readonly string[]).includes(project.status)) return;
   // Convention signée : avec le stockage activé, la convention signée de chaque expert engagé doit être déposée.
   if (key === "signed" && (await missingSignedConventions(projectId)).length > 0) return;
-  // Un dossier au-delà des seuils d'autorisation ne peut pas passer par la déclaration simple.
-  if (key === "declaration" && projectRegime(complianceSettings(project.organization.complianceSettings), collabType(project.typeId)?.unit ?? "", project.experts)?.regime === "autorisation") return;
+  // Un dossier au-delà des seuils d'autorisation ne peut pas passer par la déclaration simple ;
+  // la voie « hors France » est réservée aux dossiers dont tous les experts exercent à l'étranger.
+  const regime = projectRegime(complianceSettings(project.organization.complianceSettings), collabType(project.typeId)?.unit ?? "", project.experts.map((e) => ({ ...e, country: e.practitioner.country })))?.regime;
+  if (key === "declaration" && (regime === "autorisation" || regime === "hors_france")) return;
+  if (key === "ordre" && regime === "hors_france") return;
+  if (key === "hors_france" && regime !== "hors_france") return;
 
   const note = str(form, "note");
   await db.project.update({

@@ -34,7 +34,7 @@ export default async function Page({ params }: { params: Promise<{ id: string }>
           <p className="muted">Aucun événement pour l&apos;instant.</p>
         ) : (
           <section className="card">
-            <table className="table">
+            <table className="table" tabIndex={0}>
               <thead><tr><th>Date</th><th>Titre</th><th>Type</th><th>Statut</th><th>Inscrits</th></tr></thead>
               <tbody>
                 {events.map((e) => (

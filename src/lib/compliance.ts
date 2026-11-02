@@ -6,6 +6,8 @@
  * collation et 2 000 € au total (transport compris). À valider par le service juridique de chaque
  * organisation (notamment HT / TTC). Le dépassement d'un seul seuil soumet toute la convention à autorisation.
  */
+import { country, practicesInFrance } from "@/lib/countries";
+
 export type ComplianceSettings = {
   remunerationConventionMax: number; // € HT par convention
   remunerationHourlyMax: number; // € HT par heure
@@ -55,24 +57,42 @@ export function complianceSettings(raw: unknown): ComplianceSettings {
   return out;
 }
 
-export type Regime = "declaration" | "autorisation";
-export const REGIME_LABEL: Record<Regime, string> = { declaration: "Déclaration", autorisation: "Autorisation" };
+export type Regime = "declaration" | "autorisation" | "hors_france";
+export const REGIME_LABEL: Record<Regime, string> = { declaration: "Déclaration", autorisation: "Autorisation", hors_france: "Hors France" };
+
+/** Praticien exerçant hors de France : le dispositif anti-cadeaux français (EPS) ne s'applique pas. */
+export function foreignRegime(code: string): { regime: Regime; reason: string } {
+  return { regime: "hors_france", reason: `Exerce ${country(code).in} : règles du pays d'exercice` };
+}
 
 /** Régime d'une rémunération : autorisation au-delà du seuil par convention ou du taux horaire. */
 export function remunerationRegime(s: ComplianceSettings, feeCents: number | null, units: number | null, unit: string): { regime: Regime; reason: string } {
   const fee = (feeCents ?? 0) / 100;
   if (fee > s.remunerationConventionMax) return { regime: "autorisation", reason: `${fee.toLocaleString("fr-FR")} € > ${s.remunerationConventionMax.toLocaleString("fr-FR")} € par convention` };
-  if (unit === "heure" && units && fee / units > s.remunerationHourlyMax)
-    return { regime: "autorisation", reason: `${Math.round(fee / units)} €/h > ${s.remunerationHourlyMax} €/h` };
+  // Volume absent ou incohérent : on compte une seule unité, l'hypothèse la plus prudente.
+  const known = units != null && Number.isFinite(units) && units > 0;
+  const n = known ? units : 1;
+  const unknown = known ? "" : " (volume non renseigné : compté pour 1)";
+  if (unit === "heure" && fee / n > s.remunerationHourlyMax)
+    return { regime: "autorisation", reason: `${Math.round(fee / n)} €/h > ${s.remunerationHourlyMax} €/h${unknown}` };
   // Une journée compte deux demi-journées.
-  if (unit === "journée" && units && fee / units > 2 * s.remunerationHalfDayMax)
-    return { regime: "autorisation", reason: `${Math.round(fee / units).toLocaleString("fr-FR")} € par journée > ${s.remunerationHalfDayMax} € par demi-journée` };
+  if (unit === "journée" && fee / n > 2 * s.remunerationHalfDayMax)
+    return { regime: "autorisation", reason: `${Math.round(fee / n).toLocaleString("fr-FR")} € par journée > ${s.remunerationHalfDayMax} € par demi-journée${unknown}` };
   return { regime: "declaration", reason: "Sous les seuils d'autorisation" };
 }
 
-/** Régime d'un dossier : autorisation dès qu'un expert engagé dépasse un seuil. */
-export function projectRegime(s: ComplianceSettings, unit: string, experts: { status: string; feeCents: number | null; days: number | null }[]) {
-  const regimes = experts.filter((e) => e.status !== "DECLINE").map((e) => remunerationRegime(s, e.feeCents, e.days, unit));
+/**
+ * Régime d'un dossier : autorisation dès qu'un expert engagé exerçant en France dépasse un seuil.
+ * Si tous les experts engagés exercent hors de France, le dossier sort du dispositif EPS (« hors France »).
+ */
+export function projectRegime(s: ComplianceSettings, unit: string, experts: { status: string; feeCents: number | null; days: number | null; country?: string | null }[]) {
+  const engaged = experts.filter((e) => e.status !== "DECLINE");
+  const french = engaged.filter((e) => practicesInFrance(e.country));
+  if (engaged.length > 0 && french.length === 0) {
+    const codes = [...new Set(engaged.map((e) => e.country ?? "XX"))];
+    return codes.length === 1 ? foreignRegime(codes[0]) : { regime: "hors_france" as Regime, reason: "Experts exerçant hors de France : règles de leurs pays d'exercice" };
+  }
+  const regimes = french.map((e) => remunerationRegime(s, e.feeCents, e.days, unit));
   return regimes.find((r) => r.regime === "autorisation") ?? regimes[0] ?? null;
 }
 

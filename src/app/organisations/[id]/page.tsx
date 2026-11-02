@@ -98,7 +98,7 @@ export default async function Page({ params }: { params: Promise<{ id: string }>
             <h2 id="a-faire" className="dash-title">
               À faire {todos.length > 0 && <span className="count-pill">{todos.length}</span>}
             </h2>
-            <TodoGroups todos={todos} />
+            <TodoGroups todos={todos} moreHref={can.view ? `${base}/dossiers` : undefined} />
           </section>
           {timeline.length > 0 && (
             <section className="card dash-card" aria-labelledby="a-venir">

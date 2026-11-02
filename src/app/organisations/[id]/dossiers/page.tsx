@@ -10,15 +10,23 @@ import { collabType, PROJECT_VIEW_ROLES, SOURCING_ROLES } from "@/lib/projects";
 
 export const metadata = { title: "Dossiers — KolBase" };
 
-export default async function Page({ params }: { params: Promise<{ id: string }> }) {
+const PER_PAGE = 50;
+
+export default async function Page({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: Promise<{ page?: string }> }) {
   const { id } = await params;
-  const { org, roles } = await requireMembership(id, PROJECT_VIEW_ROLES);
+  const { roles } = await requireMembership(id, PROJECT_VIEW_ROLES);
   const canCreate = roles.some((r) => SOURCING_ROLES.includes(r));
+  const total = await db.project.count({ where: { organizationId: id } });
+  const pages = Math.max(1, Math.ceil(total / PER_PAGE));
+  const page = Math.min(pages, Math.max(1, Math.floor(Number((await searchParams).page)) || 1));
   const projects = await db.project.findMany({
     where: { organizationId: id },
     include: { experts: { include: { practitioner: { include: { user: { select: { lastName: true } } } } } } },
     orderBy: { updatedAt: "desc" },
+    skip: (page - 1) * PER_PAGE,
+    take: PER_PAGE,
   });
+  const pageHref = (n: number) => `/organisations/${id}/dossiers${n > 1 ? `?page=${n}` : ""}`;
   const sectionTabs = await orgTabs("dossiers", id);
   return (
     <>
@@ -33,7 +41,7 @@ export default async function Page({ params }: { params: Promise<{ id: string }>
           <p className="muted">Aucun dossier. Créez-en un, ou sollicitez un expert depuis l&apos;annuaire.</p>
         ) : (
           <section className="card">
-            <table className="table">
+            <table className="table" tabIndex={0}>
               <thead><tr><th>Dossier</th><th>Type</th><th>Experts</th><th>Statut</th><th>Mis à jour</th></tr></thead>
               <tbody>
                 {projects.map((p) => (
@@ -47,6 +55,13 @@ export default async function Page({ params }: { params: Promise<{ id: string }>
                 ))}
               </tbody>
             </table>
+            {pages > 1 && (
+              <nav className="pager" aria-label="Pages de dossiers">
+                {page > 1 ? <Link href={pageHref(page - 1)} className="btn ghost small" rel="prev">Précédent</Link> : <span />}
+                <span className="muted text-sm">{total} dossiers · page {page} sur {pages}</span>
+                {page < pages ? <Link href={pageHref(page + 1)} className="btn ghost small" rel="next">Suivant</Link> : <span />}
+              </nav>
+            )}
           </section>
         )}
       </main>

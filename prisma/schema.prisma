@@ -92,8 +92,9 @@ model PractitionerProfile {
   user          User     @relation(fields: [userId], references: [id], onDelete: Cascade)
   profession    String
   rpps          String?  @unique
-  rppsVerified  Boolean  @default(false)
-  country       String   @default("FR")
+  rppsVerified  Boolean  @default(false) // identité vérifiée par KolBase (RPPS en France, identifiant du pays sinon)
+  country       String   @default("FR")  // pays d'exercice principal (code ISO, « XX » : autre pays)
+  licenseNumber String?                  // hors France : identifiant professionnel (INAMI, NPI, n° d'Ordre…)
   city          String?
   hospital      String?
   specialty     String?
@@ -194,9 +195,12 @@ model Organization {
   verifiedAt         DateTime?
   verifiedById       String?
   verificationNote   String?
+  // Logo (image stockée à part, servie par /logos/[id]) : date de mise à jour, null si aucun logo.
+  logoUpdatedAt      DateTime?
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
 
+  logo          OrganizationLogo?
   members       Membership[]
   projects      Project[]
   events        Event[]       @relation("orgEvents")
@@ -353,8 +357,35 @@ model ProjectExpert {
 
   messages  Message[]
   documents Document[]
+  signature ConventionSignature?
 
   @@unique([projectId, practitionerId])
+}
+
+// Statut d'une demande de signature électronique (valeurs du prestataire, Yousign).
+enum SignatureStatus {
+  draft
+  ongoing
+  done
+  declined
+  expired
+  canceled
+}
+
+// Signature électronique (Yousign) de la convention d'un expert. Une seule demande suivie par expert :
+// un nouvel envoi (après refus, expiration ou annulation) remplace la précédente ; l'historique est dans AuditLog.
+model ConventionSignature {
+  id              String          @id @default(cuid())
+  projectExpertId String          @unique
+  projectExpert   ProjectExpert   @relation(fields: [projectExpertId], references: [id], onDelete: Cascade)
+  requestId       String          @unique // identifiant de la demande chez le prestataire
+  documentId      String?         // identifiant du document à signer chez le prestataire
+  status          SignatureStatus @default(draft)
+  sentById        String?         // signataire côté organisation (auteur de l'envoi)
+  sentAt          DateTime?
+  completedAt     DateTime?
+  note            String?         // motif d'un refus, échec de l'envoi
+  updatedAt       DateTime        @updatedAt
 }
 
 // Pièce d'un dossier, stockée dans le stockage objet (S3 compatible) : convention signée d'un expert ou autre pièce.
@@ -646,4 +677,13 @@ enum ExpenseStatus {
 enum RegistrationKind {
   participant
   speaker
+}
+
+/** Logo d'une organisation (PNG, JPEG ou WebP, 500 Ko au plus), conservé en base pour ne pas dépendre du stockage S3. */
+model OrganizationLogo {
+  organizationId String       @id
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  data           Bytes
+  contentType    String
+  updatedAt      DateTime     @updatedAt
 }

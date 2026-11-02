@@ -99,7 +99,10 @@ export default async function Page({ params, searchParams }: { params: Promise<{
                             <div className="muted">{[q.delay, q.note].filter(Boolean).join(" · ")}</div>
                           </div>
                           <span className="amount">{formatEUR(q.amountCents)}</span>
-                          {r.status === "sent" && (
+                          {r.status === "sent" && user.memberships.some((m) => m.organizationId === q.supplierId) && (
+                            <span className="text-xs muted" title="Conflit d'intérêts : vous êtes membre de ce prestataire.">Retenu par un autre membre</span>
+                          )}
+                          {r.status === "sent" && !user.memberships.some((m) => m.organizationId === q.supplierId) && (
                             <form action={awardQuote}>
                               <input type="hidden" name="orgId" value={id} />
                               <input type="hidden" name="quoteId" value={q.id} />

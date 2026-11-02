@@ -1,13 +1,14 @@
 import Link from "next/link";
 import { BadgeCheck, Calendar, ChevronRight, MapPin, Ticket, Video } from "lucide-react";
 import { Avatar } from "@/components/Avatar";
-import { eventTypeLabel, formatEUR, TZ } from "@/lib/events";
+import { eventTypeLabel, TZ } from "@/lib/events";
 import { collabType } from "@/lib/projects";
+import { fmtDate, fmtEur } from "@/lib/i18n";
+import { getT } from "@/lib/i18n/server";
 
 /* Cartes publiques — charte KolBase : vignettes sur fond Aurore, cartes blanches, une seule couleur d'action. */
 
 const hashCode = (s: string) => [...s].reduce((h, c) => (Math.imul(31, h) + c.charCodeAt(0)) | 0, 0);
-const MONTHS = ["janv.", "févr.", "mars", "avr.", "mai", "juin", "juil.", "août", "sept.", "oct.", "nov.", "déc."];
 const AURORE_FRAMES = ["20% 30%", "50% 50%", "80% 70%", "35% 60%", "65% 35%", "45% 80%"];
 
 /** Visuel de couverture : le dégradé Aurore de la marque, cadré différemment selon la graine. */
@@ -38,10 +39,11 @@ export type EventCardData = {
   organization: { name: string }; registrations: number;
 };
 const FORMAT = { PRESENTIEL: "présentiel", DISTANCIEL: "visioconférence", HYBRIDE: "hybride" } as const;
-const dur = (m: number | null) => (m == null ? "" : m >= 60 ? ` · ${Math.floor(m / 60)} h${m % 60 ? String(m % 60).padStart(2, "0") : ""}` : ` · ${m} min`);
-
-export function EventCard({ ev, compact = false }: { ev: EventCardData; compact?: boolean }) {
+export async function EventCard({ ev, compact = false }: { ev: EventCardData; compact?: boolean }) {
+  const { t, locale } = await getT();
+  const dur = (m: number | null) => (m == null ? "" : m >= 60 ? ` · ${t("{h} h{m}", { h: Math.floor(m / 60), m: m % 60 ? String(m % 60).padStart(2, "0") : "" })}` : ` · ${m} min`);
   const full = ev.capacity != null && ev.registrations >= ev.capacity;
+  // Parties numériques seulement (jour, année, heure 24 h) : identiques en français et en anglais.
   const parts = new Intl.DateTimeFormat("fr-FR", { timeZone: TZ, day: "2-digit", month: "numeric", year: "numeric", hour: "2-digit", minute: "2-digit" }).formatToParts(ev.startsAt);
   const get = (t: string) => parts.find((p) => p.type === t)?.value ?? "";
   const FormatIcon = ev.format === "DISTANCIEL" ? Video : MapPin;
@@ -49,25 +51,25 @@ export function EventCard({ ev, compact = false }: { ev: EventCardData; compact?
   const left = ev.capacity != null ? Math.max(ev.capacity - ev.registrations, 0) : null;
   return (
     <article className="event-card">
-      <Link href={href} className="event-cover" aria-label={ev.title}>
+      <Link href={href} className="event-cover" aria-hidden="true" tabIndex={-1}>
         <AreaArt seed={ev.id + (ev.therapeuticArea ?? "")} height={compact ? 112 : 128} />
         <time className="event-date-chip" dateTime={ev.startsAt.toISOString()}>
-          <span className="event-month">{MONTHS[Number(get("month")) - 1]}</span>
+          <span className="event-month">{fmtDate(locale, ev.startsAt, { month: "short" })}</span>
           <span className="event-day">{get("day")}</span>
           <span className="event-year">{get("year")}</span>
         </time>
-        <span className="event-type">{eventTypeLabel(ev.typeId)}</span>
+        <span className="event-type">{t(eventTypeLabel(ev.typeId))}</span>
       </Link>
       <div className="event-body">
         <h3 className="card-title" style={{ marginBottom: 2 }}><Link href={href} className="ink">{ev.title}</Link></h3>
-        <div className="meta-line"><FormatIcon size={14} /> {[ev.city, FORMAT[ev.format]].filter(Boolean).join(" · ")} · {get("hour")}:{get("minute")}{dur(ev.durationMinutes)}</div>
-        {ev.therapeuticArea && <div className="meta-line">{ev.therapeuticArea}</div>}
+        <div className="meta-line"><FormatIcon size={14} /> {[ev.city, t(FORMAT[ev.format])].filter(Boolean).join(" · ")} · {get("hour")}:{get("minute")}{dur(ev.durationMinutes)}</div>
+        {ev.therapeuticArea && <div className="meta-line">{t(ev.therapeuticArea)}</div>}
         <div className="event-org">{ev.organization.name}</div>
         <div className="event-foot">
           <span>
-            {!ev.registrationOpen ? "Inscriptions closes" : full ? "Complet" : left != null ? <><span className="mono ink">{left}</span> place{left > 1 ? "s" : ""} restante{left > 1 ? "s" : ""}</> : "Inscriptions ouvertes"}
+            {!ev.registrationOpen ? t("Inscriptions closes") : full ? t("Complet") : left != null ? <><span className="mono ink">{left}</span> {t(left > 1 ? "places restantes" : "place restante")}</> : t("Inscriptions ouvertes")}
           </span>
-          {ev.registrationOpen && !full && <Link href={href} className="btn small"><Ticket size={14} /> S&apos;inscrire</Link>}
+          {ev.registrationOpen && !full && <Link href={href} className="btn small"><Ticket size={14} /> {t("S'inscrire")}</Link>}
         </div>
       </div>
     </article>
@@ -76,57 +78,62 @@ export function EventCard({ ev, compact = false }: { ev: EventCardData; compact?
 
 export type KolCardData = {
   id: string; name: string; specialty: string | null; subspecialty: string | null; profession: string; city: string | null; hospital: string | null;
+  /** Pays d'exercice (nom affiché) ; « France » par défaut. */
+  country?: string;
   verified: boolean; types: string[]; collaborations: number | null; organizations: number | null;
 };
-export function KolCard({ k }: { k: KolCardData }) {
+export async function KolCard({ k }: { k: KolCardData }) {
+  const { t } = await getT();
   return (
     <Link href={`/experts/${k.id}`} className="kol-card">
       <div className="kol-head">
         <Avatar name={k.name} size={60} />
-        {k.verified && <span className="verif ok small"><BadgeCheck size={13} /> Identité vérifiée</span>}
+        {k.verified && <span className="verif ok small"><BadgeCheck size={13} /> {t("Identité vérifiée")}</span>}
       </div>
       <h3 className="kol-name">{k.name}</h3>
-      <p className="text-sm">{[k.specialty || k.profession, k.subspecialty].filter(Boolean).join(" · ")}</p>
-      <div className="meta-line mt-1"><MapPin size={13} /> {[k.city, k.hospital].filter(Boolean).join(" — ") || "France"}</div>
-      <div className="tags mt-3 mb-3">{k.types.slice(0, 3).map((t) => <span key={t} className="tag tag-sm">{t}</span>)}</div>
+      <p className="text-sm">{[t(k.specialty || k.profession), k.subspecialty].filter(Boolean).join(" · ")}</p>
+      <div className="meta-line mt-1"><MapPin size={13} /> {[[k.city, k.hospital].filter(Boolean).join(" — "), k.country && k.country !== "France" ? t(k.country) : null].filter(Boolean).join(" · ") || t(k.country || "France")}</div>
+      <div className="tags mt-3 mb-3">{k.types.slice(0, 3).map((x) => <span key={x} className="tag tag-sm">{t(x)}</span>)}</div>
       <div className="kol-foot">
         <span className="text-xs">
-          {k.collaborations == null ? null : k.collaborations > 0 ? <><span className="mono ink">{k.collaborations}</span> collaboration{k.collaborations > 1 ? "s" : ""}</> : "Nouveau sur KolBase"}
+          {k.collaborations == null ? null : k.collaborations > 0 ? <><span className="mono ink">{k.collaborations}</span> {t(k.collaborations > 1 ? "collaborations" : "collaboration")}</> : t("Nouveau sur KolBase")}
         </span>
-        <span className="card-cta">Voir le profil <ChevronRight size={15} /></span>
+        <span className="card-cta">{t("Voir le profil")} <ChevronRight size={15} /></span>
       </div>
     </Link>
   );
 }
 
-export type OrgCardData = { id: string; name: string; kind: string; sector: string | null; about: string | null; hq: string | null; areas: string[]; openCalls: number; collaborations: number };
-export function OrgCard({ o }: { o: OrgCardData }) {
+export type OrgCardData = { id: string; name: string; logo?: string | null; kind: string; sector: string | null; about: string | null; hq: string | null; areas: string[]; openCalls: number; collaborations: number };
+export async function OrgCard({ o }: { o: OrgCardData }) {
+  const { t } = await getT();
   return (
     <Link href={`/structures/${o.id}`} className="kol-card">
       <div className="kol-head">
-        <Avatar name={o.name} size={56} square />
-        <span className="sector-tag">{o.kind}</span>
+        <Avatar name={o.name} size={56} square src={o.logo} />
+        <span className="sector-tag">{t(o.kind)}</span>
       </div>
       <h3 className="kol-name">{o.name}</h3>
       {o.sector && <p className="text-sm">{o.sector}</p>}
       {o.hq && <div className="meta-line mt-1"><MapPin size={13} /> {o.hq}</div>}
       {o.about && <p className="text-sm mt-2">{o.about}</p>}
-      <div className="tags mt-3 mb-3">{o.areas.slice(0, 4).map((a) => <span key={a} className="tag tag-sm">{a}</span>)}</div>
+      <div className="tags mt-3 mb-3">{o.areas.slice(0, 4).map((a) => <span key={a} className="tag tag-sm">{t(a)}</span>)}</div>
       <div className="kol-foot">
         <span className="text-xs">
-          <span className="mono ink">{o.openCalls}</span> appel{o.openCalls > 1 ? "s" : ""} ouvert{o.openCalls > 1 ? "s" : ""} · <span className="mono ink">{o.collaborations}</span> collaboration{o.collaborations > 1 ? "s" : ""}
+          <span className="mono ink">{o.openCalls}</span> {t(o.openCalls > 1 ? "appels ouverts" : "appel ouvert")} · <span className="mono ink">{o.collaborations}</span> {t(o.collaborations > 1 ? "collaborations" : "collaboration")}
         </span>
-        <span className="card-cta">Voir la fiche <ChevronRight size={15} /></span>
+        <span className="card-cta">{t("Voir la fiche")} <ChevronRight size={15} /></span>
       </div>
     </Link>
   );
 }
 
 export type CallCardData = { id: string; title: string; specialty: string | null; typeId: string; poster: string; deadline: Date | null; description: string | null; budgetMinCents: number | null; budgetMaxCents: number | null; open: boolean };
-export function CallCard({ c, action }: { c: CallCardData; action?: React.ReactNode }) {
-  const date = c.deadline?.toLocaleDateString("fr-FR", { timeZone: TZ, day: "2-digit", month: "2-digit", year: "numeric" });
+export async function CallCard({ c, action }: { c: CallCardData; action?: React.ReactNode }) {
+  const { t, locale } = await getT();
+  const date = c.deadline ? fmtDate(locale, c.deadline, { day: "2-digit", month: "2-digit", year: "numeric" }) : undefined;
   const budget = c.budgetMinCents != null || c.budgetMaxCents != null
-    ? [c.budgetMinCents, c.budgetMaxCents].filter((x) => x != null).map((x) => formatEUR(x!)).join(" – ")
+    ? [c.budgetMinCents, c.budgetMaxCents].filter((x) => x != null).map((x) => fmtEur(locale, x!)).join(" – ")
     : null;
   return (
     <article className="dossier-card">
@@ -134,15 +141,15 @@ export function CallCard({ c, action }: { c: CallCardData; action?: React.ReactN
         <Avatar name={c.poster} size={40} square />
         <div className="grow" style={{ minWidth: 0 }}>
           <div className="ink" style={{ fontWeight: 600 }}>{c.poster}</div>
-          <div className="text-xs">{[c.specialty, collabType(c.typeId)?.label ?? c.typeId].filter(Boolean).join(" · ")}</div>
+          <div className="text-xs">{[c.specialty && t(c.specialty), t(collabType(c.typeId)?.label ?? c.typeId)].filter(Boolean).join(" · ")}</div>
         </div>
-        {!c.open && <span className="pill st-neutral">Clôturé</span>}
+        {!c.open && <span className="pill st-neutral">{t("Clôturé")}</span>}
       </div>
       <h3 className="card-title" style={{ fontSize: 21 }}>{c.title}</h3>
       {c.description && <p className="text-sm mb-3">{c.description}</p>}
       <div className="tags mb-1">
         {budget && <span className="tag mono">{budget}</span>}
-        {date && <span className="tag"><Calendar size={12} style={{ verticalAlign: "-2px", marginRight: 4 }} />Jusqu&apos;au {date}</span>}
+        {date && <span className="tag"><Calendar size={12} style={{ verticalAlign: "-2px", marginRight: 4 }} />{t("Jusqu'au {date}", { date })}</span>}
       </div>
       {action && <div className="mt-3">{action}</div>}
     </article>

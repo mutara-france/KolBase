@@ -6,8 +6,9 @@ import { db } from "@/lib/db";
 import { audit, requireUser } from "@/lib/auth";
 import { requireMembership } from "@/lib/orgs";
 import { collabType, MATERIAL_KINDS, PROJECT_ROLES, REVIEW_ROLES } from "@/lib/projects";
-import { eurToCents, str } from "@/lib/form";
+import { eurToCents, str, unitsOrNull, UNITS_INVALID } from "@/lib/form";
 import { notifyProposal } from "@/lib/notifications";
+import { getT } from "@/lib/i18n/server";
 
 export type ActionState = { error?: string; ok?: string } | undefined;
 const okUrl = (u: string) => !u || /^https?:\/\/\S+$/i.test(u);
@@ -81,39 +82,41 @@ async function canSubmit(userId: string, projectId: string) {
 
 export async function addMaterial(_: ActionState, form: FormData): Promise<ActionState> {
   const user = await requireUser();
+  const { t } = await getT();
   const projectId = str(form, "projectId");
   const project = await canSubmit(user.id, projectId);
-  if (!project) return { error: "Accès refusé." };
+  if (!project) return { error: t("Accès refusé.") };
   const title = str(form, "title"); const kind = str(form, "kind"); const url = str(form, "url");
-  if (!title) return { error: "Donnez un titre au support." };
-  if (!(kind in MATERIAL_KINDS)) return { error: "Type de support invalide." };
-  if (!okUrl(url)) return { error: "Le lien doit commencer par http:// ou https://." };
-  if (!url && !str(form, "notes")) return { error: "Indiquez un lien vers le document ou son contenu." };
+  if (!title) return { error: t("Donnez un titre au support.") };
+  if (!(kind in MATERIAL_KINDS)) return { error: t("Type de support invalide.") };
+  if (!okUrl(url)) return { error: t("Le lien doit commencer par http:// ou https://.") };
+  if (!url && !str(form, "notes")) return { error: t("Indiquez un lien vers le document ou son contenu.") };
   const m = await db.material.create({
     data: { projectId, title, kind, versions: { create: { version: 1, url: url || null, notes: str(form, "notes") || null, submittedById: user.id } } },
   });
   await audit(user.id, "material.submit", "Project", projectId, { materialId: m.id, version: 1, title });
   revalidatePath(`/organisations/${project.organizationId}/dossiers/${projectId}`);
   revalidatePath("/sollicitations", "layout");
-  return { ok: "Support soumis à la relecture." };
+  return { ok: t("Support soumis à la relecture.") };
 }
 
 export async function addMaterialVersion(_: ActionState, form: FormData): Promise<ActionState> {
   const user = await requireUser();
+  const { t } = await getT();
   const materialId = str(form, "materialId");
   const material = await db.material.findUnique({ where: { id: materialId }, include: { versions: { orderBy: { version: "desc" }, take: 1 } } });
-  if (!material) return { error: "Support introuvable." };
+  if (!material) return { error: t("Support introuvable.") };
   const project = await canSubmit(user.id, material.projectId);
-  if (!project) return { error: "Accès refusé." };
+  if (!project) return { error: t("Accès refusé.") };
   const url = str(form, "url");
-  if (!okUrl(url)) return { error: "Le lien doit commencer par http:// ou https://." };
-  if (!url && !str(form, "notes")) return { error: "Indiquez un lien ou décrivez les modifications." };
+  if (!okUrl(url)) return { error: t("Le lien doit commencer par http:// ou https://.") };
+  if (!url && !str(form, "notes")) return { error: t("Indiquez un lien ou décrivez les modifications.") };
   const version = (material.versions[0]?.version ?? 0) + 1;
   await db.materialVersion.create({ data: { materialId, version, url: url || null, notes: str(form, "notes") || null, submittedById: user.id } });
   await audit(user.id, "material.submit", "Project", material.projectId, { materialId, version, title: material.title });
   revalidatePath(`/organisations/${project.organizationId}/dossiers/${material.projectId}`);
   revalidatePath("/sollicitations", "layout");
-  return { ok: `Version ${version} soumise.` };
+  return { ok: t("Version {n} soumise.", { n: version }) };
 }
 
 export async function reviewMaterial(form: FormData) {
@@ -135,16 +138,19 @@ export async function reviewMaterial(form: FormData) {
 
 export async function proposeCollaboration(_: ActionState, form: FormData): Promise<ActionState> {
   const user = await requireUser();
-  if (!user.practitioner?.listed) return { error: "Référencez-vous comme expert pour proposer une collaboration." };
+  const { t } = await getT();
+  if (!user.practitioner?.listed) return { error: t("Référencez-vous comme expert pour proposer une collaboration.") };
   const orgId = str(form, "orgId");
-  const org = await db.organization.findFirst({ where: { id: orgId, listed: true } });
-  if (!org) return { error: "Organisation introuvable." };
+  const org = await db.organization.findFirst({ where: { id: orgId, listed: true, verification: "VERIFIED", kind: { not: "PRESTATAIRE" } } });
+  if (!org) return { error: t("Organisation introuvable.") };
   const title = str(form, "title"); const typeId = str(form, "typeId"); const message = str(form, "message");
-  if (!title) return { error: "Donnez un titre à votre proposition." };
-  if (!collabType(typeId)) return { error: "Type de collaboration invalide." };
-  if (message.length < 30) return { error: "Décrivez votre proposition en quelques lignes (30 caractères minimum)." };
+  if (!title) return { error: t("Donnez un titre à votre proposition.") };
+  if (!collabType(typeId)) return { error: t("Type de collaboration invalide.") };
+  if (message.length < 30) return { error: t("Décrivez votre proposition en quelques lignes (30 caractères minimum).") };
   const fee = eurToCents(str(form, "fee"));
-  const units = Number(str(form, "units").replace(",", ".")) || 1;
+  const parsedUnits = unitsOrNull(str(form, "units"));
+  if (parsedUnits === undefined) return { error: t(UNITS_INVALID) };
+  const units = parsedUnits ?? 1;
   const project = await db.project.create({
     data: {
       organizationId: orgId, title, typeId, therapeuticArea: str(form, "therapeuticArea") || user.practitioner.specialty, description: message,
