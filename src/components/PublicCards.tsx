@@ -104,9 +104,10 @@ export async function KolCard({ k }: { k: KolCardData }) {
   );
 }
 
-export type OrgCardData = { id: string; name: string; logo?: string | null; kind: string; sector: string | null; about: string | null; hq: string | null; areas: string[]; openCalls: number; collaborations: number };
+export type OrgCardData = { id: string; name: string; logo?: string | null; kind: string; family?: string; categories?: string[]; coverage?: string | null; sector: string | null; about: string | null; hq: string | null; areas: string[]; openCalls: number; collaborations: number };
 export async function OrgCard({ o }: { o: OrgCardData }) {
   const { t } = await getT();
+  const supplier = o.family === "prestataires";
   return (
     <Link href={`/structures/${o.id}`} className="kol-card">
       <div className="kol-head">
@@ -117,11 +118,16 @@ export async function OrgCard({ o }: { o: OrgCardData }) {
       {o.sector && <p className="text-sm">{o.sector}</p>}
       {o.hq && <div className="meta-line mt-1"><MapPin size={13} /> {o.hq}</div>}
       {o.about && <p className="text-sm mt-2">{o.about}</p>}
-      <div className="tags mt-3 mb-3">{o.areas.slice(0, 4).map((a) => <span key={a} className="tag tag-sm">{t(a)}</span>)}</div>
+      {/* Prestataire : ses prestations et sa zone ; autres organisations : domaines, appels et collaborations. */}
+      <div className="tags mt-3 mb-3">{(supplier ? o.categories ?? [] : o.areas).slice(0, 4).map((a) => <span key={a} className="tag tag-sm">{t(a)}</span>)}</div>
       <div className="kol-foot">
-        <span className="text-xs">
-          <span className="mono ink">{o.openCalls}</span> {t(o.openCalls > 1 ? "appels ouverts" : "appel ouvert")} · <span className="mono ink">{o.collaborations}</span> {t(o.collaborations > 1 ? "collaborations" : "collaboration")}
-        </span>
+        {supplier ? (
+          <span className="text-xs">{o.coverage ? t("Zone : {zone}", { zone: o.coverage }) : ""}</span>
+        ) : (
+          <span className="text-xs">
+            <span className="mono ink">{o.openCalls}</span> {t(o.openCalls > 1 ? "appels ouverts" : "appel ouvert")} · <span className="mono ink">{o.collaborations}</span> {t(o.collaborations > 1 ? "collaborations" : "collaboration")}
+          </span>
+        )}
         <span className="card-cta">{t("Voir la fiche")} <ChevronRight size={15} /></span>
       </div>
     </Link>

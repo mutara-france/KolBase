@@ -674,3 +674,8 @@ body:has(.sidebar) .site-footer { padding: 24px 32px; }
 .locale-switch.on-dark { border-color: rgba(255, 255, 255, 0.35); }
 .locale-switch.on-dark button { color: rgba(255, 255, 255, 0.85); }
 .locale-switch.on-dark button[aria-pressed="true"] { background: #fff; color: var(--outremer); }
+
+/* Page des organisations : une section par famille */
+.org-family { margin-top: 8px; }
+.org-family + .org-family { margin-top: 40px; padding-top: 32px; border-top: 1px solid var(--line); }
+.org-family .section-head p { margin: 4px 0 0; }

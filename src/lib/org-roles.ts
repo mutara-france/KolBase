@@ -8,6 +8,16 @@ export const ORG_KIND_LABEL: Record<OrgKind, string> = {
   PRESTATAIRE: "Prestataire (agence, logistique…)",
 };
 
+/** Familles affichées sur la page publique des organisations (les sociétés savantes et associations vont ensemble). */
+export const ORG_FAMILIES = [
+  { id: "industriels", label: "Industriels", kinds: ["INDUSTRIEL"], desc: "Fabricants et distributeurs de dispositifs, produits et solutions dentaires." },
+  { id: "societes-savantes", label: "Sociétés savantes et associations", kinds: ["SOCIETE_SAVANTE", "ASSOCIATION_PRO"], desc: "Sociétés savantes, collèges et associations professionnelles." },
+  { id: "formation", label: "Organismes de formation", kinds: ["ORGANISME_FORMATION"], desc: "Formation continue, DPC et travaux pratiques." },
+  { id: "prestataires", label: "Prestataires", kinds: ["PRESTATAIRE"], desc: "Agences, traiteurs, lieux, hébergement et transport pour les événements." },
+] as const satisfies readonly { id: string; label: string; kinds: readonly OrgKind[]; desc: string }[];
+export type OrgFamily = (typeof ORG_FAMILIES)[number]["id"];
+export const orgFamily = (kind: OrgKind): OrgFamily => ORG_FAMILIES.find((f) => (f.kinds as readonly OrgKind[]).includes(kind))!.id;
+
 export const ROLE_LABEL: Record<OrgRole, string> = {
   ADMIN: "Administrateur",
   EDUCATION: "Éducation",

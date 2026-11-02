@@ -842,6 +842,19 @@ async function submitNewOrg(page, siren) {
   await db.end();
 }
 
+// ── Organisations publiques rangées par famille ────────────────────────────
+{
+  const ctx = await browser.newContext();
+  const page = await ctx.newPage();
+  await page.goto(`${BASE}/structures`);
+  const heads = await page.locator("main h2").allInnerTexts();
+  check("Organisations : une section par famille", JSON.stringify(heads) === JSON.stringify(["Industriels", "Sociétés savantes et associations", "Organismes de formation", "Prestataires"]), heads.join(" / "));
+  await page.goto(`${BASE}/structures?type=prestataires`);
+  const t = await text(page);
+  check("Organisations : filtre « Prestataires » (catégories et zone, sans industriels)", t.includes("Traiteur Belleville") && t.includes("Restauration et traiteur") && !t.includes("Dentalys Implants"));
+  await ctx.close();
+}
+
 // ── 4. Limitation des tentatives ───────────────────────────────────────────
 {
   const { ctx, page } = await session();
