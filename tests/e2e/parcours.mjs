@@ -653,6 +653,48 @@ async function submitNewOrg(page, siren) {
   await ctx.close();
 }
 
+// ── Interface en anglais ───────────────────────────────────────────────────
+{
+  // Navigateur réglé en anglais : interface en anglais dès la première visite.
+  const ctx = await browser.newContext({ locale: "en-US" });
+  const page = await ctx.newPage();
+  await page.goto(`${BASE}/`);
+  check("Navigateur en anglais : page en anglais", (await page.getAttribute("html", "lang")) === "en" && (await page.locator("header").innerText()).includes("Sign in"));
+  check("Pied de page : mention de la version française faisant foi", (await page.locator("footer").innerText()).includes("binding in their French version"));
+  await page.goto(`${BASE}/experts`);
+  check("Experts : libellés traduits (glossaire)", (await page.locator("main").innerText()).includes("Implantology"));
+  // Le sélecteur repasse en français, et le choix est retenu.
+  await Promise.all([page.waitForResponse((r) => r.request().method() === "POST"), page.locator('footer .locale-switch button:has-text("FR")').click()]);
+  await page.waitForTimeout(800);
+  await page.goto(`${BASE}/`);
+  check("Sélecteur de langue : retour au français mémorisé", (await page.getAttribute("html", "lang")) === "fr" && (await page.locator("header").innerText()).includes("Se connecter"));
+  await ctx.close();
+
+  // Praticienne : langue choisie dans son compte, appliquée à l'interface.
+  const camille = await session();
+  await login(camille.page, "camille.petit@demo.kolbase.local");
+  await camille.page.goto(`${BASE}/compte`);
+  const infos = 'form:has(select[name="locale"])';
+  await camille.page.selectOption(`${infos} select[name="locale"]`, "en");
+  await camille.page.click(`${infos} button.btn`);
+  await camille.page.waitForTimeout(1200);
+  await camille.page.goto(`${BASE}/tableau-de-bord`);
+  check("Compte réglé en anglais : interface en anglais", (await camille.page.getAttribute("html", "lang")) === "en");
+  const db = new pg.Client({ connectionString: process.env.DATABASE_URL });
+  await db.connect();
+  check("Langue enregistrée dans le compte (e-mails)", (await db.query(`SELECT locale FROM "User" WHERE id = 'demo-u-petit'`)).rows[0].locale === "en");
+  await db.query(`UPDATE "User" SET locale = 'fr' WHERE id = 'demo-u-petit'`);
+  await db.end();
+  await camille.ctx.close();
+
+  // Convention : traduction anglaise de courtoisie.
+  const claire = await session();
+  await login(claire.page, "claire.morel@demo.kolbase.local");
+  const pdf = await claire.ctx.request.get(`${BASE}/organisations/demo-org-dentalys/dossiers/demo-prj-board/convention/demo-prj-board-x1?lang=en`);
+  check("Convention : version anglaise disponible", pdf.status() === 200 && (pdf.headers()["content-disposition"] ?? "").includes("-en.pdf"));
+  await claire.ctx.close();
+}
+
 // ── 4. Limitation des tentatives ───────────────────────────────────────────
 {
   const { ctx, page } = await session();

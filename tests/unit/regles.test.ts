@@ -294,3 +294,21 @@ describe("praticiens exerçant hors de France", () => {
     expect(conventionClause("BE")[0]).toContain("en Belgique");
   });
 });
+
+describe("traductions", () => {
+  it("le français sert de clé, repli sur le français sans traduction", async () => {
+    const { translate } = await import("@/lib/i18n");
+    expect(translate("fr", "Se connecter")).toBe("Se connecter");
+    expect(translate("en", "Se connecter")).toBe("Sign in");
+    expect(translate("en", "Texte sans traduction")).toBe("Texte sans traduction");
+    expect(translate("en", "Nouvelle sollicitation de {org}", { org: "Dentalys" })).toBe("New collaboration request from Dentalys");
+    expect(translate("en", "Chirurgien-dentiste")).toBe("Dentist");
+  });
+  it("e-mail dans la langue du destinataire", async () => {
+    const { renderMail } = await import("@/lib/mail");
+    const en = renderMail({ to: "x@y.fr", subject: "s", text: "Hello", locale: "en" });
+    expect(en.html).toContain('lang="en"');
+    expect(en.text).toContain("Manage your notifications");
+    expect(renderMail({ to: "x@y.fr", subject: "s", text: "Bonjour" }).text).toContain("Gérer vos notifications");
+  });
+});
