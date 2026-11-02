@@ -31,7 +31,10 @@ export default async function Page({ params }: { params: Promise<{ id: string }>
   const [event, user] = await Promise.all([
     db.event.findFirst({
       where: { id, publishedAt: { not: null }, organization: { verification: "VERIFIED" } },
-      include: { organization: true, benefits: true, _count: { select: { registrations: true } } },
+      include: {
+        organization: true, benefits: true, _count: { select: { registrations: true } },
+        calls: { where: { status: "open" }, include: { _count: { select: { applications: { where: { status: "retained" } } } } }, orderBy: { createdAt: "asc" } },
+      },
     }),
     getCurrentUser(),
   ]);
@@ -53,7 +56,8 @@ export default async function Page({ params }: { params: Promise<{ id: string }>
         ? { label: t("Complet"), tone: "bad" }
         : { label: t("Inscriptions ouvertes"), tone: "ok" };
   const benefitsTotal = event.benefits.reduce((s, b) => s + b.valueCents, 0);
-  const speakerCall = event.speakerCallOpen && !past && (!event.speakerDeadline || event.speakerDeadline >= new Date());
+  // Appels à candidatures rattachés à l'événement, encore ouverts (date limite, places).
+  const openCalls = past ? [] : event.calls.filter((c) => (!c.deadline || c.deadline >= new Date()) && (!c.slots || c._count.applications < c.slots));
 
   return (
     <>
@@ -84,25 +88,24 @@ export default async function Page({ params }: { params: Promise<{ id: string }>
               )}
               {event.benefits.length > 0 && <p className="hint">{t("Chaque prestation acceptée par un professionnel de santé est un avantage déclaré, rattaché à votre nom.")}</p>}
             </section>
-            {speakerCall && (
-              <section className="card">
-                <h2>{t("Appel à intervenants")}</h2>
+            {openCalls.map((c) => (
+              <section key={c.id} className="card stack-sm">
+                <h2>{t("Appel à candidatures")}</h2>
+                <p><strong>{c.title}</strong></p>
                 <p className="muted">
-                  {(() => {
-                    const who = event.speakerSlots ? t(event.speakerSlots > 1 ? "{n} intervenants" : "{n} intervenant", { n: event.speakerSlots }) : t("des intervenants");
-                    return event.speakerDeadline
-                      ? t("L'organisateur recherche {who} (candidatures jusqu'au {date}).", { who, date: fmtDate(locale, event.speakerDeadline, { weekday: "long", day: "numeric", month: "long", year: "numeric" }) })
-                      : t("L'organisateur recherche {who}.", { who });
-                  })()}
+                  {[
+                    c.slots ? t(c.slots > 1 ? "{n} places" : "{n} place", { n: c.slots }) : null,
+                    c.deadline ? t("candidatures jusqu'au {date}", { date: fmtDate(locale, c.deadline, { day: "numeric", month: "long", year: "numeric" }) }) : null,
+                  ].filter(Boolean).join(" · ")}
                 </p>
-                {event.speakerProfile && <p>{event.speakerProfile}</p>}
+                {c.description && <p className="pre-line clamp-4">{c.description}</p>}
                 {user?.practitioner?.listed ? (
-                  <Link className="btn ghost" href="/interventions?onglet=appels">{t("Candidater depuis Mes interventions")}</Link>
+                  <Link className="btn ghost small" href={`/opportunites/${c.id}`}>{t("Voir l'appel et candidater")}</Link>
                 ) : (
                   <p className="hint">{t("Réservé aux experts référencés.")}</p>
                 )}
               </section>
-            )}
+            ))}
           </div>
           <aside className="page-aside">
             <section className="card next-step">

@@ -134,7 +134,7 @@ export async function OrgCard({ o }: { o: OrgCardData }) {
   );
 }
 
-export type CallCardData = { id: string; title: string; specialty: string | null; typeId: string; poster: string; posterLogo?: string | null; deadline: Date | null; description: string | null; budgetMinCents: number | null; budgetMaxCents: number | null; open: boolean };
+export type CallCardData = { id: string; title: string; specialty: string | null; typeId: string; poster: string; posterLogo?: string | null; deadline: Date | null; description: string | null; budgetMinCents: number | null; budgetMaxCents: number | null; open: boolean; event?: { title: string; startsAt: Date } | null };
 export async function CallCard({ c, action }: { c: CallCardData; action?: React.ReactNode }) {
   const { t, locale } = await getT();
   const date = c.deadline ? fmtDate(locale, c.deadline, { day: "2-digit", month: "2-digit", year: "numeric" }) : undefined;
@@ -147,7 +147,7 @@ export async function CallCard({ c, action }: { c: CallCardData; action?: React.
         <Avatar name={c.poster} size={40} square src={c.posterLogo} />
         <div className="grow" style={{ minWidth: 0 }}>
           <div className="ink" style={{ fontWeight: 600 }}>{c.poster}</div>
-          <div className="text-xs">{[c.specialty && t(c.specialty), t(collabType(c.typeId)?.label ?? c.typeId)].filter(Boolean).join(" · ")}</div>
+          <div className="text-xs">{[c.specialty && t(c.specialty), t(collabType(c.typeId)?.label ?? c.typeId), c.event && t("intervention le {date}", { date: fmtDate(locale, c.event.startsAt) })].filter(Boolean).join(" · ")}</div>
         </div>
         {!c.open && <span className="pill st-neutral">{t("Clôturé")}</span>}
       </div>

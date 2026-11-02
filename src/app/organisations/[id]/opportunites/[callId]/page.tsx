@@ -1,7 +1,7 @@
 import Link from "next/link";
 import type { ApplicationStatus } from "@/generated/prisma/client";
 import { notFound } from "next/navigation";
-import { CalendarDays, Euro, Inbox, UserCheck } from "lucide-react";
+import { CalendarDays, Euro, Inbox, Mic, UserCheck } from "lucide-react";
 import { SiteHeader } from "@/components/SiteHeader";
 import { PageHero } from "@/components/PageHero";
 import { RetainForm } from "@/components/OpportunityForms";
@@ -11,7 +11,7 @@ import { formatDate, formatEUR } from "@/lib/events";
 import { collabType, SOURCING_ROLES } from "@/lib/projects";
 import { rejectApplication, setOpenCallStatus } from "@/lib/opportunity-actions";
 
-export const metadata = { title: "Opportunité — KolBase" };
+export const metadata = { title: "Appel à candidatures — KolBase" };
 
 const APP_STATUS: Record<ApplicationStatus, string> = { pending: "À traiter", retained: "Retenue", rejected: "Non retenue", declined: "Honoraires déclinés" };
 
@@ -21,6 +21,7 @@ export default async function Page({ params }: { params: Promise<{ id: string; c
   const call = await db.openCall.findFirst({
     where: { id: callId, organizationId: id },
     include: {
+      event: { select: { id: true, title: true, startsAt: true, city: true } },
       applications: {
         include: { practitioner: { include: { user: { select: { firstName: true, lastName: true } } } } },
         orderBy: { createdAt: "asc" },
@@ -38,15 +39,16 @@ export default async function Page({ params }: { params: Promise<{ id: string; c
     <>
       <SiteHeader />
       <main className="stack">
-        <p className="muted"><Link href={`/organisations/${id}`}>{org.name}</Link> / <Link href={`/organisations/${id}/opportunites`}>Appels à experts</Link></p>
+        <p className="muted"><Link href={`/organisations/${id}`}>{org.name}</Link> / <Link href={`/organisations/${id}/opportunites`}>Appels à candidatures</Link></p>
         <PageHero
-          eyebrow={`Appel à experts · ${type?.label ?? call.typeId}${call.specialty ? ` · ${call.specialty}` : ""}`}
+          eyebrow={`Appel à candidatures · ${type?.label ?? call.typeId}${call.specialty ? ` · ${call.specialty}` : ""}`}
           status={<span className={`pill ${call.status === "open" ? "ok" : "done"}`}>{call.status === "open" ? "Ouvert" : "Clôturé"}</span>}
           title={call.title}
           lead={call.description}
           facts={[
             { icon: <Inbox size={13} />, label: "Candidatures", value: String(call.applications.length), sub: pendingCount ? `${pendingCount} à traiter` : "aucune en attente" },
-            { icon: <UserCheck size={13} />, label: "Retenues", value: String(retained), sub: retained ? "dossiers ouverts" : "personne pour l'instant" },
+            { icon: <UserCheck size={13} />, label: "Retenues", value: call.slots ? `${retained} / ${call.slots}` : String(retained), sub: call.slots ? (retained >= call.slots ? "toutes les places sont pourvues" : `${call.slots - retained} place${call.slots - retained > 1 ? "s" : ""} à pourvoir`) : retained ? "dossiers ouverts" : "personne pour l'instant" },
+            ...(call.event ? [{ icon: <Mic size={13} />, label: "Événement", value: formatDate(call.event.startsAt), sub: call.event.title }] : []),
             { icon: <Euro size={13} />, label: "Budget", value: budget[0] || budget[1] ? `${budget.filter(Boolean).join(" – ")} HT` : "Non précisé", sub: type ? `repère : ${type.fmv[0]}–${type.fmv[1]} € par ${type.unit}` : undefined },
             { icon: <CalendarDays size={13} />, label: "Date limite", value: call.deadline ? formatDate(call.deadline) : "Aucune" },
           ]}
@@ -67,12 +69,12 @@ export default async function Page({ params }: { params: Promise<{ id: string; c
                 {a.message && <p>{a.message}</p>}
                 {a.status === "pending" && (
                   <div className="actions">
-                    <RetainForm
+                    {call.slots != null && retained >= call.slots ? <span className="muted text-sm">Places pourvues</span> : <RetainForm
                       orgId={id}
                       applicationId={a.id}
                       unit={type?.unit ?? "unité"}
                       defaultFee={call.budgetMaxCents != null ? String(call.budgetMaxCents / 100) : a.practitioner.dayRateCents != null ? String(a.practitioner.dayRateCents / 100) : ""}
-                    />
+                    />}
                     <form action={rejectApplication}>
                       <input type="hidden" name="orgId" value={id} />
                       <input type="hidden" name="applicationId" value={a.id} />
@@ -89,7 +91,7 @@ export default async function Page({ params }: { params: Promise<{ id: string; c
           <aside className="page-aside">
             <section className="card next-step">
               <span className="eyebrow-sm">Pilotage</span>
-              <p className="next-hint">{call.status === "open" ? "Les experts référencés voient l'appel dans « Appels à experts ». Retenir une candidature propose des honoraires à l'expert ; son accord ouvre un dossier." : "Appel clôturé : il n'est plus visible des experts."}</p>
+              <p className="next-hint">{call.status === "open" ? "Les experts référencés voient l'appel dans « Appels à candidatures »" + (call.event ? " et sur la page de l'événement" : "") + ". Retenir une candidature propose des honoraires à l'expert ; son accord ouvre un dossier." : "Appel clôturé : il n'est plus visible des experts."}</p>
               <form action={setOpenCallStatus} className="transitions-stack">
                 <input type="hidden" name="orgId" value={id} />
                 <input type="hidden" name="callId" value={callId} />
@@ -97,6 +99,14 @@ export default async function Page({ params }: { params: Promise<{ id: string; c
                 <button className="btn ghost">{call.status === "open" ? "Clôturer l'appel" : "Rouvrir l'appel"}</button>
               </form>
             </section>
+            {call.event && (
+              <section className="card stack-sm">
+                <h2 className="section-title">Événement</h2>
+                <Link href={`/organisations/${id}/evenements/${call.event.id}`}><strong>{call.event.title}</strong></Link>
+                <span className="muted text-sm">{formatDate(call.event.startsAt)}{call.event.city ? ` · ${call.event.city}` : ""}</span>
+                <p className="hint">Les personnes retenues interviennent à cet événement ; leur dossier précise l&apos;intervention.</p>
+              </section>
+            )}
           </aside>
         </div>
       </main>

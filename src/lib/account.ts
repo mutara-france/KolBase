@@ -12,8 +12,7 @@ export async function exportAccount(userId: string) {
           publications: true,
           structures: true,
           projectLinks: { include: { project: { select: { title: true, typeId: true, status: true, organization: { select: { name: true } } } }, messages: { select: { body: true, createdAt: true, authorId: true } } } },
-          applications: { include: { openCall: { select: { title: true, organization: { select: { name: true } } } } } },
-          speakerApplications: { include: { event: { select: { title: true, startsAt: true, organization: { select: { name: true } } } } } },
+          applications: { include: { openCall: { select: { title: true, organization: { select: { name: true } }, event: { select: { title: true, startsAt: true } } } } } },
         },
       },
       memberships: { select: { role: true, createdAt: true, organization: { select: { name: true, kind: true } } } },
@@ -71,7 +70,6 @@ export async function anonymizeAccount(userId: string) {
           db.publication.deleteMany({ where: { practitionerId: p.id } }),
           db.practitionerStructure.deleteMany({ where: { practitionerId: p.id, ...(keep ? { isPayee: false } : {}) } }),
           db.application.deleteMany({ where: { practitionerId: p.id, status: "pending" } }),
-          db.speakerApplication.deleteMany({ where: { practitionerId: p.id, status: "pending" } }),
           db.projectExpert.updateMany({ where: { practitionerId: p.id, status: "ATT_EXPERTS" }, data: { status: "DECLINE", respondedAt: now, responseNote: "Compte supprimé" } }),
           db.practitionerProfile.update({
             where: { id: p.id },

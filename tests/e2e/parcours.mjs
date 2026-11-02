@@ -1064,8 +1064,7 @@ async function submitNewOrg(page, siren) {
   await page.goto(`${BASE}/organisations/demo-org-dentalys`);
   check("Accueil : plus de date du jour", (await page.locator(".dash-kicker").count()) === 0);
   await page.goto(`${BASE}/organisations/demo-org-dentalys/opportunites`);
-  const kinds = await page.locator(".call-kinds").innerText();
-  check("Appels : les deux sortes expliquées côte à côte", kinds.includes("Appel à experts") && kinds.includes("Appel à intervenants") && kinds.includes("collaboration rémunérée"));
+  check("Appels : une seule sorte, rattachable à un événement", (await text(page)).includes("Appels à candidatures") && (await page.locator('select[name="eventId"] option').count()) > 1);
   await ctx.close();
   const anon = await session();
   await anon.page.goto(`${BASE}/evenements/demo-ev-soiree-implanto`);
@@ -1084,7 +1083,7 @@ async function submitNewOrg(page, siren) {
   await login(exp.page, "olivier.girard@demo.kolbase.local");
   await exp.page.goto(`${BASE}/interventions?onglet=candidatures`);
   const ct = await text(exp.page);
-  check("Praticien : candidatures des deux sortes d'appels réunies", ct.includes("Appels à experts") && ct.includes("Appels à intervenants"));
+  check("Praticien : toutes les candidatures réunies", ct.includes("Mes candidatures") && ct.includes("Formateur TP CFAO"));
   await exp.ctx.close();
 }
 
@@ -1114,6 +1113,51 @@ async function submitNewOrg(page, siren) {
   // Appel à experts et nouveau dossier : boutons présents.
   await page.goto(`${BASE}/organisations/demo-org-dentalys/opportunites`);
   check("IA : rédaction d'un appel à experts proposée", (await page.locator('button:has-text("Rédiger l\'appel avec l\'IA")').count()) === 1);
+  await ctx.close();
+}
+
+// ── Appels à candidatures rattachés à un événement ─────────────────────────
+{
+  const { ctx, page } = await session();
+  await login(page, "claire.morel@demo.kolbase.local");
+  // Les anciens appels à intervenants sont devenus des appels rattachés à leur événement.
+  await page.goto(`${BASE}/organisations/demo-org-dentalys/evenements/demo-ev-live-surgery`);
+  const card = page.locator('section.card:has(h2:has-text("Intervenants"))');
+  check("Événement : appel rattaché repris, candidatures visibles", (await card.innerText()).includes("Intervenants : Live surgery") && (await card.innerText()).includes("2 candidatures à examiner"));
+  // Lancer un appel depuis la fiche de l'événement : l'événement et le titre sont préremplis.
+  await page.goto(`${BASE}/organisations/demo-org-dentalys/evenements/demo-ev-soiree-implanto`);
+  await page.click('a:has-text("Lancer un appel")');
+  await page.waitForURL(/opportunites\?evenement=demo-ev-soiree-implanto/);
+  check("Nouvel appel : événement prérempli", (await page.locator('select[name="eventId"]').inputValue()) === "demo-ev-soiree-implanto" && (await page.locator('input[name="title"]').inputValue()).startsWith("Intervenants : Soirée implantologie"));
+  await page.fill('input[name="slots"]', "1");
+  await page.fill('textarea[name="description"]', "Présentation de deux cas cliniques complexes en implantologie, 20 minutes, suivie d'échanges avec la salle.");
+  await Promise.all([page.waitForURL(/\/opportunites\/[^/?]+$/), page.click('button:has-text("Publier l\'appel")')]);
+  const callUrl = page.url();
+  const callId = callUrl.split("/").pop();
+  check("Appel publié : événement et places affichés", (await text(page)).includes("Soirée implantologie") && (await text(page)).includes("0 / 1"));
+  const anon = await session();
+  await anon.page.goto(`${BASE}/evenements/demo-ev-soiree-implanto`);
+  check("Page de l'événement : appel à candidatures annoncé", (await text(anon.page)).includes("Appel à candidatures") && (await text(anon.page)).includes("Intervenants : Soirée implantologie"));
+  await anon.ctx.close();
+  // Un expert le trouve parmi les appels liés à un événement et candidate.
+  const exp = await session();
+  await login(exp.page, "olivier.girard@demo.kolbase.local");
+  await exp.page.goto(`${BASE}/opportunites?evenement=avec`);
+  check("Praticien : filtre « intervenir à un événement »", (await text(exp.page)).includes("Intervenants : Soirée implantologie") && !(await text(exp.page)).includes("Investigateurs pour étude"));
+  await exp.page.goto(`${BASE}/opportunites/${callId}`);
+  await exp.page.fill('textarea[name="message"]', "Je peux présenter deux cas de réhabilitation complète guidée, avec leurs suites à trois ans.");
+  await exp.page.click('button:has-text("Candidater")');
+  await exp.page.waitForTimeout(1200);
+  check("E-mail à l'organisation : nouvelle candidature", !!(await waitMail("claire.morel@demo.kolbase.local", "Nouvelle candidature : Intervenants : Soirée")));
+  // L'organisation retient : un dossier s'ouvre au nom de l'intervenant, la place est pourvue.
+  await page.goto(callUrl);
+  await page.click('button:has-text("Retenir…")');
+  await page.fill('input[name="fee"]', "1500");
+  await Promise.all([page.waitForURL(/\/dossiers\//), page.click('button:has-text("Proposer ces honoraires")')]);
+  check("Retenu : dossier ouvert au nom de l'intervenant", (await text(page)).includes("Soirée implantologie — cas cliniques complexes : intervention du Dr Girard"));
+  await exp.page.goto(`${BASE}/opportunites/${callId}`);
+  check("Appel complet : plus de candidature possible", (await text(exp.page)).includes("Votre candidature a été retenue"));
+  await exp.ctx.close();
   await ctx.close();
 }
 

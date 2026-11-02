@@ -24,12 +24,12 @@ async function eventContext(eventId: string, orgId: string, scope: object) {
     include: {
       organization: { select: { name: true } },
       benefits: true,
-      speakerApplications: { where: { status: "retained" }, include: { practitioner: { include: { user: { select: { firstName: true, lastName: true } } } } } },
+      calls: { include: { applications: { where: { status: "retained" }, include: { practitioner: { include: { user: { select: { firstName: true, lastName: true } } } } } } } },
       project: { include: { experts: { where: { status: { notIn: ["DECLINE", "ATT_EXPERTS"] } }, include: { practitioner: { include: { user: { select: { firstName: true, lastName: true } } } } } } } },
     },
   });
   if (!e) return null;
-  const people = [...e.speakerApplications.map((a) => a.practitioner), ...(e.project?.experts.map((x) => x.practitioner) ?? [])];
+  const people = [...e.calls.flatMap((c) => c.applications.map((a) => a.practitioner)), ...(e.project?.experts.map((x) => x.practitioner) ?? [])];
   const speakers = [...new Map(people.map((p) => [p.id, `${drPrefix(p.profession)}${p.user.firstName} ${p.user.lastName}${p.specialty ? ` (${p.specialty})` : ""}`])).values()];
   return {
     e,
@@ -78,15 +78,11 @@ export async function aiDraft(form: FormData): Promise<AiResult> {
     const type = collabType(str(form, "typeId"));
     prompt = `Dossier de collaboration avec des praticiens : « ${cut(str(form, "title"), 200) || "[titre à compléter]"} ».\nType : ${type?.label ?? "[à compléter]"} (unité : ${type?.unit ?? "?"}).${str(form, "therapeuticArea") ? ` Domaine : ${cut(str(form, "therapeuticArea"), 100)}.` : ""}\n${str(form, "description") ? `Notes : ${cut(str(form, "description"), 800)}\n` : ""}\nRédige l'objet et le déroulé de la collaboration (6 à 10 lignes), tel qu'il figurera dans la convention : contexte et objectif, prestations attendues de l'expert, livrables, calendrier ([à compléter] si inconnu), modalités (présentiel, distanciel). Le contenu doit justifier un besoin réel et légitime, sans visée promotionnelle.`;
   } else if (kind === "appel") {
-    await requireMembership(orgId, SOURCING_ROLES);
+    const { user: u, roles } = await requireMembership(orgId, SOURCING_ROLES);
     const type = collabType(str(form, "typeId"));
     const budget = [str(form, "budgetMin"), str(form, "budgetMax")].filter(Boolean).join(" à ");
-    prompt = `Appel à experts publié par une organisation du secteur dentaire : « ${cut(str(form, "title"), 200) || "[titre à compléter]"} ».\nType de collaboration : ${type?.label ?? "[à compléter]"}.${str(form, "specialty") ? ` Spécialité recherchée : ${cut(str(form, "specialty"), 100)}.` : ""}${budget ? ` Budget : ${budget} € HT.` : ""}\n${str(form, "description") ? `Notes : ${cut(str(form, "description"), 800)}\n` : ""}\nRédige la description de l'appel (6 à 10 lignes) : contexte, mission proposée, profil recherché, engagement attendu (durée, dates [à compléter]), modalités de sélection. Précise qu'une convention écrite encadre la collaboration.`;
-  } else if (kind === "intervenants") {
-    const { user: u, roles } = await requireMembership(orgId, EVENT_ORGANIZER_ROLES);
-    const ctx = await eventContext(str(form, "eventId"), orgId, eventScope(u, roles));
-    if (!ctx) return { error: "Choisissez l'événement." };
-    prompt = `${ctx.text}\n\nPlaces d'intervenant : ${str(form, "slots") || "?"}.\n${str(form, "profile") ? `Notes : ${cut(str(form, "profile"), 800)}\n` : ""}\nRédige le profil recherché pour l'appel à intervenants (4 à 6 lignes) : spécialité et expérience attendues, thème et format de l'intervention, durée de prise de parole, attentes (support à fournir pour relecture, échanges avec la salle).`;
+    const ctx = str(form, "eventId") ? await eventContext(str(form, "eventId"), orgId, eventScope(u, roles)) : null;
+    prompt = `Appel à candidatures publié par une organisation du secteur dentaire : « ${cut(str(form, "title"), 200) || "[titre à compléter]"} ».\nType de collaboration : ${type?.label ?? "[à compléter]"}.${str(form, "specialty") ? ` Spécialité recherchée : ${cut(str(form, "specialty"), 100)}.` : ""}${budget ? ` Budget : ${budget} € HT.` : ""}${str(form, "slots") ? ` Places : ${str(form, "slots")}.` : ""}\n${ctx ? `Appel rattaché à cet événement, où la personne retenue interviendra :\n${ctx.text}\n` : ""}${str(form, "description") ? `Notes : ${cut(str(form, "description"), 800)}\n` : ""}\nRédige la description de l'appel (6 à 10 lignes) : contexte, mission proposée${ctx ? " (thème, format et durée de l'intervention)" : ""}, profil recherché, engagement attendu (dates [à compléter] si inconnues), modalités de sélection. Précise qu'une convention écrite encadre la collaboration.`;
   } else if (kind === "offre") {
     const { org } = await requireMembership(orgId);
     if (org.kind !== "PRESTATAIRE") return { error: "Action réservée aux prestataires." };

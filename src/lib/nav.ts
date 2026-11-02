@@ -54,7 +54,7 @@ export function orgNavItems(orgId: string, roles: OrgRole[], kind: string): Shel
       label: has(roles, EVENT_ORGANIZER_ROLES) ? "Événements" : "Événements confiés",
       short: "Événements",
       icon: "CalendarDays",
-      match: [`${base}/intervenants`, `${base}/prestataires`],
+      match: [`${base}/prestataires`],
     });
   if (has(roles, COMPLIANCE_ROLES)) items.push({ key: "conformite", href: `${base}/conformite`, label: "Conformité", icon: "ShieldCheck", match: [`${base}/hospitalites`, `${base}/relecture`] });
   return items;
@@ -80,14 +80,13 @@ export function orgSectionTabs(section: OrgSectionKey, orgId: string, roles: Org
     section === "praticiens"
       ? [
           has(roles, SOURCING_ROLES) && { key: "rechercher", href: "/annuaire", label: "Rechercher" },
-          has(roles, SOURCING_ROLES) && { key: "appels", href: `${base}/opportunites`, label: "Appels à experts" },
+          has(roles, SOURCING_ROLES) && { key: "appels", href: `${base}/opportunites`, label: "Appels à candidatures" },
         ]
       : section === "dossiers"
         ? [has(roles, PROJECT_VIEW_ROLES) && { key: "dossiers", href: `${base}/dossiers`, label: "Dossiers" }]
         : section === "evenements"
           ? [
               has(roles, EVENT_MANAGER_ROLES) && { key: "evenements", href: `${base}/evenements`, label: has(roles, EVENT_ORGANIZER_ROLES) ? "Événements" : "Événements confiés" },
-              has(roles, EVENT_ORGANIZER_ROLES) && { key: "intervenants", href: `${base}/intervenants`, label: "Appels à intervenants" },
               has(roles, EVENT_MANAGER_ROLES) && { key: "prestataires", href: `${base}/prestataires`, label: "Prestataires et devis" },
             ]
           : // Espace conformité : un seul niveau d'onglets, de la validation à la publication.
@@ -107,8 +106,7 @@ export function orgSectionTabs(section: OrgSectionKey, orgId: string, roles: Org
 export function practitionerSectionTabs(section: PractitionerSectionKey): SectionTab[] {
   return section === "opportunites"
     ? [
-        { key: "appels", href: "/opportunites", label: "Appels à experts" },
-        { key: "intervenants", href: "/interventions?onglet=appels", label: "Appels à intervenants" },
+        { key: "appels", href: "/opportunites", label: "Appels à candidatures" },
         { key: "candidatures", href: "/interventions?onglet=candidatures", label: "Mes candidatures" },
       ]
     : [

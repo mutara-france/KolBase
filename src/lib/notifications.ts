@@ -154,7 +154,7 @@ export function notifyProposal(projectId: string) {
   });
 }
 
-/** Nouvelle candidature à un appel ouvert. */
+/** Nouvelle candidature à un appel à candidatures (avec ou sans événement). */
 export function notifyApplication(callId: string, practitionerId: string) {
   later(async () => {
     const [call, prac] = await Promise.all([
@@ -168,22 +168,6 @@ export function notifyApplication(callId: string, practitionerId: string) {
       subject: `Nouvelle candidature : ${call.title}`,
       text: `Bonjour,\n\n${expertName(prac)} a candidaté à votre appel « ${call.title} ».`,
       cta: { label: "Voir la candidature", href: `/organisations/${call.organizationId}/opportunites/${call.id}` },
-    });
-  });
-}
-
-/** Nouvelle candidature d'intervenant. */
-export function notifySpeakerApplication(eventId: string, practitionerId: string) {
-  later(async () => {
-    const [ev, prac] = await Promise.all([
-      db.event.findUnique({ where: { id: eventId } }),
-      db.practitionerProfile.findUnique({ where: { id: practitionerId }, include: { user: { select: { firstName: true, lastName: true } } } }),
-    ]);
-    if (!ev || !prac) return;
-    await send(await members(ev.organizationId, EVENT_ORGANIZER_ROLES), {
-      subject: `Candidature d'intervenant : ${ev.title}`,
-      text: `Bonjour,\n\n${expertName(prac)} propose d'intervenir lors de « ${ev.title} ».`,
-      cta: { label: "Voir l'appel à intervenants", href: `/organisations/${ev.organizationId}/intervenants` },
     });
   });
 }

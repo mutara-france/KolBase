@@ -8,18 +8,34 @@ import { useT } from "@/components/I18nProvider";
 
 type CType = { id: string; label: string; category: string; unit: string; fmv: readonly number[] };
 
-export function NewCallForm({ orgId, types, ai = false }: { orgId: string; types: readonly CType[]; ai?: boolean }) {
+type EventOpt = { id: string; label: string; title: string; typeId: string; area: string | null };
+
+/** Appel à candidatures : pour une collaboration, ou pour intervenir à l'un des événements de l'organisation. */
+export function NewCallForm({ orgId, types, ai = false, events = [], defaultEventId }: { orgId: string; types: readonly CType[]; ai?: boolean; events?: EventOpt[]; defaultEventId?: string }) {
   const [state, action, pending] = useActionState(createOpenCall, undefined);
-  const [typeId, setTypeId] = useState(types[0].id);
+  const [eventId, setEventId] = useState(defaultEventId ?? "");
+  const ev = events.find((e) => e.id === eventId);
+  const [typeId, setTypeId] = useState(ev && types.some((t) => t.id === ev.typeId) ? ev.typeId : types[0].id);
   const type = types.find((t) => t.id === typeId)!;
   const categories = [...new Set(types.map((t) => t.category))];
+  const pickEvent = (id: string) => {
+    setEventId(id);
+    const e = events.find((x) => x.id === id);
+    if (e && types.some((t) => t.id === e.typeId)) setTypeId(e.typeId);
+  };
   return (
     <form action={action} className="card form">
-      <h2>Publier une opportunité</h2>
-      <p className="muted">Un appel ouvert visible par tous les experts référencés, qui peuvent y candidater.</p>
+      <h2>Nouvel appel à candidatures</h2>
+      <p className="muted">Visible de tous les experts référencés, qui peuvent y candidater. Rattachez-le à un événement si la personne retenue doit y intervenir.</p>
       <Notice state={state} />
       <input type="hidden" name="orgId" value={orgId} />
-      <label>Titre<input name="title" required placeholder="Ex. : Conférencier pour une soirée parodontologie à Bordeaux" /></label>
+      <label>Événement concerné
+        <select name="eventId" value={eventId} onChange={(e) => pickEvent(e.target.value)}>
+          <option value="">— aucun : collaboration hors événement (board, étude, rédaction…) —</option>
+          {events.map((e) => <option key={e.id} value={e.id}>{e.label}</option>)}
+        </select>
+      </label>
+      <label>Titre<input key={`t-${eventId}`} name="title" required defaultValue={ev ? `Intervenants : ${ev.title}` : ""} placeholder="Ex. : Formateur pour deux sessions de travaux pratiques CFAO" /></label>
       <div className="row">
         <label>Type
           <select name="typeId" value={typeId} onChange={(e) => setTypeId(e.target.value)}>
@@ -28,17 +44,18 @@ export function NewCallForm({ orgId, types, ai = false }: { orgId: string; types
             ))}
           </select>
         </label>
-        <label>Spécialité recherchée<input name="specialty" placeholder="Parodontologie…" /></label>
+        <label>Spécialité recherchée<input key={`s-${eventId}`} name="specialty" defaultValue={ev?.area ?? ""} placeholder="Parodontologie…" /></label>
       </div>
-      <label>Description<textarea name="description" rows={ai ? 6 : 4} placeholder="Contexte, profil recherché, dates, livrables…" /></label>
+      <label>Description<textarea name="description" rows={ai ? 6 : 4} placeholder={ev ? "Thème et format de l'intervention, profil recherché, durée de prise de parole…" : "Contexte, profil recherché, dates, livrables…"} /></label>
       {ai && <AiDraft kind="appel" target="description" label="Rédiger l'appel avec l'IA" />}
       <div className="row">
+        <label>Places<input name="slots" type="number" min={1} max={50} defaultValue={ev ? 1 : undefined} placeholder="Sans limite" /></label>
         <label>Budget min (€ HT)<input name="budgetMin" inputMode="decimal" /></label>
         <label>Budget max (€ HT)<input name="budgetMax" inputMode="decimal" /></label>
         <label>Date limite<input name="deadline" type="date" /></label>
       </div>
-      <p className="hint">Référence : {type.fmv[0].toLocaleString("fr-FR")} à {type.fmv[1].toLocaleString("fr-FR")} € HT par {type.unit}.</p>
-      <button className="btn" disabled={pending}>{pending ? "Publication…" : "Publier l'opportunité"}</button>
+      <p className="hint">Repère : {type.fmv[0].toLocaleString("fr-FR")} à {type.fmv[1].toLocaleString("fr-FR")} € HT par {type.unit}.</p>
+      <button className="btn" disabled={pending}>{pending ? "Publication…" : "Publier l'appel"}</button>
     </form>
   );
 }

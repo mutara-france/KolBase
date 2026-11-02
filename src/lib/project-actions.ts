@@ -102,7 +102,6 @@ export async function respondToSolicitation(_: ActionState, form: FormData): Pro
   await syncProjectFromExperts(link.projectId);
   // Candidature retenue puis honoraires refusés : la place d'intervenant (ou la candidature) est libérée.
   if (status === "DECLINE") {
-    await db.speakerApplication.updateMany({ where: { projectId: link.projectId, practitionerId: link.practitionerId, status: "retained" }, data: { status: "declined" } });
     await db.application.updateMany({ where: { projectId: link.projectId, practitionerId: link.practitionerId, status: "retained" }, data: { status: "declined" } });
   }
   await audit(user.id, answer === "accept" ? "solicitation.accept" : "solicitation.decline", "ProjectExpert", link.id, { projectId: link.projectId });
