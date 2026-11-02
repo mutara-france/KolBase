@@ -1,7 +1,13 @@
 // Faux services externes pour les parcours : répertoire des entreprises et ORCID (OAuth + API publique).
 // L'application doit être lancée avec SIREN_API_URL=http://localhost:3998, ORCID_BASE_URL=http://localhost:3997,
-// ORCID_PUB_API_URL=http://localhost:3997/v3.0, ORCID_CLIENT_ID et ORCID_CLIENT_SECRET définis.
+// ORCID_PUB_API_URL=http://localhost:3997/v3.0, ORCID_CLIENT_ID et ORCID_CLIENT_SECRET définis,
+// SMTP_URL=smtp://localhost:2525 et MAIL_DELIVER_RESERVED=1 (les comptes de démo sont en .local).
 import http from "node:http";
+import { SMTPServer } from "smtp-server";
+import { simpleParser } from "mailparser";
+
+/** E-mails reçus par le faux serveur SMTP (port 2525) : { to, subject, text }. */
+export const mails = [];
 
 const json = (res, body, status = 200) => {
   res.writeHead(status, { "Content-Type": "application/json" });
@@ -35,7 +41,19 @@ export function startFakes() {
       });
     json(res, { error: "introuvable" }, 404);
   });
+  const smtp = new SMTPServer({
+    authOptional: true,
+    disabledCommands: ["STARTTLS"],
+    logger: false,
+    onData(stream, session, done) {
+      simpleParser(stream).then((m) => {
+        for (const to of session.envelope.rcptTo) mails.push({ to: to.address, subject: m.subject ?? "", text: m.text ?? "" });
+        done();
+      }, done);
+    },
+  });
   siren.listen(3998);
   orcid.listen(3997);
-  return () => { siren.close(); orcid.close(); };
+  smtp.listen(2525);
+  return () => { siren.close(); orcid.close(); smtp.close(); };
 }

@@ -199,3 +199,19 @@ describe("vérification des identités", () => {
     expect(isVerifiedOrg({ verification: "PENDING" })).toBe(false);
   });
 });
+
+describe("e-mails", () => {
+  it("lien absolu, texte brut et HTML échappé", async () => {
+    process.env.APP_URL = "https://kolbase.example.fr";
+    const { renderMail } = await import("@/lib/mail");
+    const { text, html } = renderMail({ to: "a@b.fr", subject: "S", text: "Bonjour <Dr> & co", cta: { label: "Répondre", href: "/sollicitations/x" } });
+    expect(text).toContain("Répondre : https://kolbase.example.fr/sollicitations/x");
+    expect(html).toContain("Bonjour &lt;Dr&gt; &amp; co");
+    expect(html).toContain('href="https://kolbase.example.fr/sollicitations/x"');
+  });
+  it("aucun envoi vers les adresses de démonstration", async () => {
+    const { isReservedAddress } = await import("@/lib/mail");
+    expect(isReservedAddress("anne.chevalier@demo.kolbase.local")).toBe(true);
+    expect(isReservedAddress("contact@exemple.fr")).toBe(false);
+  });
+});

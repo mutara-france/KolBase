@@ -3,7 +3,7 @@
 // Usage : BASE=http://localhost:3000 DEMO_PASSWORD=… DATABASE_URL=… npm run test:e2e
 import { chromium } from "playwright";
 import pg from "pg";
-import { startFakes } from "./faux-services.mjs";
+import { mails, startFakes } from "./faux-services.mjs";
 
 const BASE = process.env.BASE ?? "http://localhost:3000";
 const PW = process.env.DEMO_PASSWORD;
@@ -32,6 +32,17 @@ async function login(page, email, password = PW, next = "") {
   await page.waitForTimeout(800);
 }
 const text = (page) => page.locator("main").innerText();
+/** Attend un e-mail (envoyé après la réponse du serveur) correspondant au destinataire et au sujet. */
+async function waitMail(to, subject, timeout = 8000) {
+  const end = Date.now() + timeout;
+  while (Date.now() < end) {
+    const m = mails.find((x) => x.to === to && (typeof subject === "string" ? x.subject.includes(subject) : subject.test(x.subject)));
+    if (m) return m;
+    await new Promise((r) => setTimeout(r, 200));
+  }
+  return null;
+}
+const linkIn = (mail) => mail?.text.match(/https?:\/\/\S+/g)?.find((u) => !u.endsWith("/compte")) ?? null;
 
 // ── 3. Visibilité : liste publique ──────────────────────────────────────────
 {
@@ -91,10 +102,13 @@ const text = (page) => page.locator("main").innerText();
   const options = await page.locator('select[name="role"] option').allInnerTexts();
   check("Prestataire : rôles d'invitation limités", JSON.stringify(options) === JSON.stringify(["Administrateur", "Membre de l'équipe"]), options.join(", "));
   check("Prestataire : rôle par défaut non administrateur", (await page.locator('select[name="role"]').inputValue()) === "PRESTATAIRE");
+  await page.fill('form:has(h2:has-text("Inviter un membre")) input[name="email"]', "nouvelle.recrue@exemple.fr");
   await page.click('button:has-text("Générer le lien")');
   await page.waitForSelector(".copy input", { timeout: 10000 }).catch(() => {});
   const link = await page.locator(".copy input").inputValue().catch(() => "");
   check("Prestataire : l'admin peut générer une invitation", link.includes("/invitation/"), link);
+  const invitationMail = await waitMail("nouvelle.recrue@exemple.fr", "vous invite à rejoindre Agence Médiane");
+  check("Invitation envoyée par e-mail avec le lien", linkIn(invitationMail) === link, linkIn(invitationMail) ?? "aucun e-mail");
   await page.fill('form:has(h2:has-text("Fiche de l")) input[name="sector"]', "Logistique événementielle et congrès");
   await page.click('form:has(h2:has-text("Fiche de l")) button:has-text("Enregistrer")');
   await page.waitForTimeout(1500);
@@ -142,6 +156,8 @@ const text = (page) => page.locator("main").innerText();
   const dossier = await text(page);
   check("Candidature retenue : dossier en attente de l'expert", dossier.includes("En attente des experts") && dossier.includes("Réponse attendue"));
   check("Candidature retenue : pas de convention avant accord", (await page.locator('a:has-text("Convention (PDF)")').count()) === 0);
+  const feeMail = await waitMail("olivier.girard@demo.kolbase.local", "vous propose des honoraires");
+  check("E-mail à l'expert : proposition d'honoraires", !!feeMail && /4\s000\s€/.test(feeMail.text), feeMail?.subject ?? "aucun e-mail");
   await ctx.close();
 }
 {
@@ -157,6 +173,29 @@ const text = (page) => page.locator("main").innerText();
   await page.waitForTimeout(1200);
   await page.reload();
   check("Expert : après accord, la convention devient disponible", (await page.locator('a:has-text("Projet de convention")').count()) === 1);
+  check("E-mail à l'organisation : accord de principe", !!(await waitMail("anne.chevalier@demo.kolbase.local", "a donné son accord de principe")));
+  // Message de l'expert → e-mail à l'organisation ; puis l'expert coupe les notifications.
+  await page.fill('textarea[name="body"]', "Bonjour, je confirme mes disponibilités.");
+  await page.click('button:has-text("Envoyer")');
+  check("E-mail à l'organisation : nouveau message de l'expert", !!(await waitMail("anne.chevalier@demo.kolbase.local", "Nouveau message de Dr Olivier Girard")));
+  const dossierUrl = page.url();
+  await page.goto(`${BASE}/compte`);
+  await page.uncheck('form:has(h2:has-text("Notifications")) input[name="email"]');
+  await page.click('form:has(h2:has-text("Notifications")) button:has-text("Enregistrer")');
+  await page.waitForTimeout(1000);
+  check("Préférence : notifications par e-mail coupées", (await text(page)).includes("Vous ne recevrez plus de notifications"));
+  await ctx.close();
+}
+
+// L'organisation écrit à l'expert, qui a coupé ses notifications : pas d'e-mail.
+{
+  const { ctx, page } = await session();
+  await login(page, "anne.chevalier@demo.kolbase.local");
+  await page.goto(`${BASE}/organisations/demo-org-academie/dossiers`);
+  await Promise.all([page.waitForURL(/\/dossiers\/[^/]+$/), page.click('a:has-text("Formateur TP CFAO")')]);
+  await page.fill('textarea[name="body"]', "Merci, nous vous envoyons la convention.");
+  await page.click('button:has-text("Envoyer")');
+  check("Notifications coupées : pas d'e-mail à l'expert", !(await waitMail("olivier.girard@demo.kolbase.local", "Nouveau message de Académie", 4000)));
   await ctx.close();
 }
 
@@ -220,6 +259,7 @@ async function submitNewOrg(page, siren) {
   await submitNewOrg(page, "732 829 320");
   check("Nouvelle organisation : entreprise fermée refusée", (await text(page)).includes("est fermée"));
   await submitNewOrg(page, "542 051 180");
+  check("E-mail aux administrateurs KolBase : organisation à valider", !!(await waitMail("anne.chevalier@demo.kolbase.local", "Organisation à valider : Implants Express")));
   check("Nouvelle organisation : créée, en attente de validation", /\/organisations\/[^/]+$/.test(page.url()) && (await text(page)).includes("en attente de validation"), page.url());
   const orgUrl = page.url();
   await page.goto(`${BASE}/annuaire`);
@@ -292,6 +332,57 @@ async function submitNewOrg(page, siren) {
   await page.waitForTimeout(1500);
   check("ORCID : publications importées", (await text(page)).includes("1 publication importée"));
   await ctx.close();
+}
+
+// ── Compte : confirmation d'adresse et mot de passe oublié ─────────────────
+{
+  const { ctx, page } = await session();
+  await page.goto(`${BASE}/inscription`);
+  await page.fill('input[name="firstName"]', "Camille");
+  await page.fill('input[name="lastName"]', "Nouvel");
+  await page.fill('input[name="email"]', "camille.nouvel@exemple.fr");
+  await page.fill('input[name="password"]', "premier-mot-de-passe-1");
+  await page.check('input[name="cgu"]');
+  await Promise.all([page.waitForURL(/tableau-de-bord|organisations\/nouvelle|compte/), page.click('button:has-text("Créer")')]);
+  const verify = await waitMail("camille.nouvel@exemple.fr", "Confirmez votre adresse");
+  check("Inscription : e-mail de confirmation envoyé", !!linkIn(verify), verify?.subject ?? "aucun e-mail");
+  await page.goto(`${BASE}/compte`);
+  check("Adresse non confirmée : rappel dans Mon compte", (await text(page)).includes("Confirmez votre adresse"));
+  await page.goto(linkIn(verify));
+  check("Lien de confirmation : adresse confirmée", (await text(page)).includes("Adresse e-mail confirmée") && !(await text(page)).includes("Renvoyer le lien"));
+  await page.goto(linkIn(verify));
+  check("Lien de confirmation : usage unique", (await text(page)).includes("n'est plus valable"));
+  await ctx.close();
+
+  const anon = await session();
+  await anon.page.goto(`${BASE}/connexion`);
+  check("Connexion : lien « Mot de passe oublié »", (await anon.page.locator('a[href="/mot-de-passe-oublie"]').count()) === 1);
+  await anon.page.goto(`${BASE}/mot-de-passe-oublie`);
+  await anon.page.fill('input[name="email"]', "camille.nouvel@exemple.fr");
+  await anon.page.click('button:has-text("Recevoir le lien")');
+  await anon.page.waitForTimeout(800);
+  check("Mot de passe oublié : réponse neutre", (await text(anon.page)).includes("Si un compte existe avec cette adresse"));
+  await anon.page.goto(`${BASE}/mot-de-passe-oublie`);
+  await anon.page.fill('input[name="email"]', "inconnu@exemple.fr");
+  await anon.page.click('button:has-text("Recevoir le lien")');
+  await anon.page.waitForTimeout(800);
+  check("Mot de passe oublié : même réponse pour une adresse inconnue", (await text(anon.page)).includes("Si un compte existe avec cette adresse") && !(await waitMail("inconnu@exemple.fr", "", 1500)));
+  const resetMail = await waitMail("camille.nouvel@exemple.fr", "Réinitialiser votre mot de passe");
+  await anon.page.goto(linkIn(resetMail));
+  await anon.page.fill('input[name="password"]', "nouveau-mot-de-passe-2");
+  await anon.page.fill('input[name="confirm"]', "nouveau-mot-de-passe-2");
+  await Promise.all([anon.page.waitForURL(/tableau-de-bord|organisations\/nouvelle|compte/), anon.page.click('button:has-text("Enregistrer et me connecter")')]);
+  check("Réinitialisation : connecté avec le nouveau mot de passe", !anon.page.url().includes("/mot-de-passe"), anon.page.url());
+  await anon.page.goto(linkIn(resetMail));
+  check("Réinitialisation : lien à usage unique", (await text(anon.page)).includes("Lien expiré"));
+  await anon.ctx.close();
+
+  const again = await session();
+  await login(again.page, "camille.nouvel@exemple.fr", "premier-mot-de-passe-1");
+  check("Ancien mot de passe refusé", (await text(again.page)).includes("E-mail ou mot de passe incorrect"));
+  await login(again.page, "camille.nouvel@exemple.fr", "nouveau-mot-de-passe-2");
+  check("Nouveau mot de passe accepté", !again.page.url().includes("/connexion"), again.page.url());
+  await again.ctx.close();
 }
 
 // ── 4. Limitation des tentatives ───────────────────────────────────────────
