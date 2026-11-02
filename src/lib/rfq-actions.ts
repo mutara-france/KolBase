@@ -71,7 +71,8 @@ export async function cancelRfq(form: FormData) {
   const orgId = str(form, "orgId");
   const { user, roles } = await requireMembership(orgId, EVENT_MANAGER_ROLES);
   const rfqId = str(form, "rfqId");
-  await db.rfq.updateMany({ where: { id: rfqId, organizationId: orgId, ...rfqScope(user, roles), status: { in: ["draft", "sent"] } }, data: { status: "cancelled" } });
+  const { count } = await db.rfq.updateMany({ where: { id: rfqId, organizationId: orgId, ...rfqScope(user, roles), status: { in: ["draft", "sent"] } }, data: { status: "cancelled" } });
+  if (!count) return;
   await audit(user.id, "rfq.cancel", "Rfq", rfqId);
   revalidatePath(`/organisations/${orgId}/prestataires`);
 }
@@ -120,7 +121,8 @@ export async function declineRfq(form: FormData) {
   const orgId = str(form, "orgId");
   const { user } = await requireSupplier(orgId);
   const rfqId = str(form, "rfqId");
-  await db.rfqSupplier.updateMany({ where: { rfqId, supplierId: orgId }, data: { declined: true } });
+  const { count } = await db.rfqSupplier.updateMany({ where: { rfqId, supplierId: orgId }, data: { declined: true } });
+  if (!count) return;
   await audit(user.id, "rfq.decline", "Rfq", rfqId, { supplierId: orgId });
   revalidatePath(`/organisations/${orgId}/devis`);
 }

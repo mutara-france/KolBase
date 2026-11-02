@@ -69,7 +69,8 @@ export async function setEventFlag(form: FormData) {
     flag === "open" ? { registrationOpen: true } :
     flag === "close" ? { registrationOpen: false } : null;
   if (!data) return;
-  await db.event.updateMany({ where: { id: eventId, organizationId: orgId, ...eventScope(user, roles) }, data });
+  const { count } = await db.event.updateMany({ where: { id: eventId, organizationId: orgId, ...eventScope(user, roles) }, data });
+  if (!count) return;
   await audit(user.id, `event.${flag}`, "Event", eventId);
   revalidatePath(`/organisations/${orgId}/evenements/${eventId}`);
   revalidatePath("/evenements");
@@ -82,7 +83,8 @@ export async function setEventAgency(form: FormData) {
   const { user } = await requireMembership(orgId, EVENT_ORGANIZER_ROLES);
   const agencyId = str(form, "agencyId") || null;
   if (agencyId && !(await db.mandate.findFirst({ where: { mandatorId: orgId, agencyId, OR: [{ endsAt: null }, { endsAt: { gt: new Date() } }] } }))) return;
-  await db.event.updateMany({ where: { id: eventId, organizationId: orgId }, data: { agencyId } });
+  const { count } = await db.event.updateMany({ where: { id: eventId, organizationId: orgId }, data: { agencyId } });
+  if (!count) return;
   await audit(user.id, "event.agency", "Event", eventId, { agencyId });
   revalidatePath(`/organisations/${orgId}/evenements/${eventId}`);
 }
@@ -106,15 +108,22 @@ export async function registerToEvent(_: ActionState, form: FormData): Promise<A
   if (accepted.length > 0 && user.practitioner && !form.get("ackHcp"))
     return { error: "Merci de confirmer avoir pris connaissance de l'information sur les avantages." };
 
-  const reg = await db.registration.create({
-    data: {
-      eventId,
-      userId: user.id,
-      profession: user.practitioner?.profession ?? null,
-      structure: str(form, "structure") || user.practitioner?.hospital || null,
-      benefits: { create: accepted.map((b) => ({ benefitId: b.id, valueCents: b.valueCents })) },
-    },
+  // L'événement est verrouillé le temps de compter les places et d'inscrire : deux inscriptions
+  // simultanées ne peuvent pas dépasser la capacité.
+  const reg = await db.$transaction(async (tx) => {
+    await tx.$executeRaw`SELECT 1 FROM "Event" WHERE id = ${eventId} FOR UPDATE`;
+    if (event.capacity && (await tx.registration.count({ where: { eventId } })) >= event.capacity) return null;
+    return tx.registration.create({
+      data: {
+        eventId,
+        userId: user.id,
+        profession: user.practitioner?.profession ?? null,
+        structure: str(form, "structure") || user.practitioner?.hospital || null,
+        benefits: { create: accepted.map((b) => ({ benefitId: b.id, valueCents: b.valueCents })) },
+      },
+    });
   });
+  if (!reg) return { error: "L'événement est complet." };
   await audit(user.id, "registration.create", "Registration", reg.id, {
     eventId,
     benefits: accepted.map((b) => b.catalogId),

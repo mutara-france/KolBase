@@ -11,8 +11,14 @@ import { canSee, companyVisibility, type Viewer } from "@/lib/visibility";
 import { ProposeForm } from "@/components/DossierForms";
 import { FollowButton } from "@/components/FollowButton";
 import { COLLAB_TYPES } from "@/lib/projects";
+import type { Metadata } from "next";
 
-export const metadata = { title: "Organisation — KolBase" };
+export async function generateMetadata({ params }: { params: Promise<{ id: string }> }): Promise<Metadata> {
+  const { id } = await params;
+  const o = await db.organization.findFirst({ where: { id, listed: true, verification: "VERIFIED" }, select: { name: true, kind: true, about: true } });
+  if (!o) return { title: "Organisation — KolBase", robots: { index: false } };
+  return { title: `${o.name} — ${ORG_KIND_LABEL[o.kind]} — KolBase`, description: (o.about ?? `${o.name} sur KolBase.`).slice(0, 160) };
+}
 
 export default async function Page({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;

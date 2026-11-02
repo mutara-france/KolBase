@@ -511,6 +511,40 @@ async function submitNewOrg(page, siren) {
   await db.end();
 }
 
+// ── Finitions : capacité des événements, pages d'erreur, référencement, en-têtes ─────
+{
+  const db = new pg.Client({ connectionString: process.env.DATABASE_URL });
+  await db.connect();
+  await db.query(`UPDATE "Event" SET capacity = 1 WHERE id = 'demo-ev-live-surgery'`);
+  const a = await session();
+  const b = await session();
+  await login(a.page, "emma.simon@demo.kolbase.local");
+  await login(b.page, "sarah.mercier@demo.kolbase.local");
+  await Promise.all([a.page.goto(`${BASE}/evenements/demo-ev-live-surgery`), b.page.goto(`${BASE}/evenements/demo-ev-live-surgery`)]);
+  await Promise.all([a.page.click('button:has-text("M\'inscrire")'), b.page.click('button:has-text("M\'inscrire")')]);
+  await Promise.all([a.page.waitForTimeout(2000), b.page.waitForTimeout(2000)]);
+  const { rows } = await db.query(`SELECT count(*)::int AS n FROM "Registration" WHERE "eventId" = 'demo-ev-live-surgery'`);
+  const msgs = [await text(a.page), await text(b.page)];
+  check("Capacité : deux inscriptions simultanées pour la dernière place, une seule acceptée", rows[0].n === 1 && msgs.some((m) => m.includes("complet")), `${rows[0].n} inscription(s)`);
+  await db.end();
+  await a.ctx.close();
+  await b.ctx.close();
+
+  const { ctx, page } = await session();
+  const missing = await page.goto(`${BASE}/experts/inexistant`);
+  check("Page 404 : statut et message", missing?.status() === 404 && (await page.locator("main").innerText()).includes("Page introuvable"));
+  const home = await page.goto(`${BASE}/`);
+  const h = home?.headers() ?? {};
+  check("En-têtes de sécurité", h["x-frame-options"] === "DENY" && (h["content-security-policy"] ?? "").includes("frame-ancestors 'none'") && h["x-content-type-options"] === "nosniff", JSON.stringify({ xfo: h["x-frame-options"] }));
+  await page.goto(`${BASE}/experts/demo-p-martin`);
+  check("Fiche expert : titre de page descriptif", (await page.title()).startsWith("Dr Antoine Martin — Chirurgie orale"), await page.title());
+  const robots = await (await page.request.get(`${BASE}/robots.txt`)).text();
+  check("robots.txt : espaces privés exclus", robots.includes("Disallow: /admin") && robots.includes("Disallow: /organisations") && robots.includes("sitemap.xml"));
+  const sitemap = await (await page.request.get(`${BASE}/sitemap.xml`)).text();
+  check("Plan du site : experts référencés et événements publiés", sitemap.includes("/experts/demo-p-martin") && sitemap.includes("/evenements/demo-ev-tp-endo") && !sitemap.includes("demo-p-lambert"));
+  await ctx.close();
+}
+
 // ── 4. Limitation des tentatives ───────────────────────────────────────────
 {
   const { ctx, page } = await session();

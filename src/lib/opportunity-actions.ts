@@ -49,7 +49,8 @@ export async function setOpenCallStatus(form: FormData) {
   const { user, org } = await requireMembership(orgId, SOURCING_ROLES);
   const status = str(form, "status") === "closed" ? "closed" : "open";
   if (status === "open" && !isVerifiedOrg(org)) return;
-  await db.openCall.updateMany({ where: { id: callId, organizationId: orgId }, data: { status } });
+  const { count } = await db.openCall.updateMany({ where: { id: callId, organizationId: orgId }, data: { status } });
+  if (!count) return;
   await audit(user.id, `opencall.${status}`, "OpenCall", callId);
   revalidatePath(`/organisations/${orgId}/opportunites/${callId}`);
 }

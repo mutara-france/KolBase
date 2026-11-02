@@ -7,8 +7,17 @@ import { db } from "@/lib/db";
 import { getCurrentUser } from "@/lib/auth";
 import { eventTypeLabel, formatDateTime, formatEUR, FORMAT_LABEL, isHcp } from "@/lib/events";
 import { cancelRegistration } from "@/lib/event-actions";
+import type { Metadata } from "next";
 
-export const metadata = { title: "Événement — KolBase" };
+export async function generateMetadata({ params }: { params: Promise<{ id: string }> }): Promise<Metadata> {
+  const { id } = await params;
+  const e = await db.event.findFirst({ where: { id, publishedAt: { not: null } }, include: { organization: { select: { name: true } } } });
+  if (!e) return { title: "Événement — KolBase", robots: { index: false } };
+  return {
+    title: `${e.title} — ${e.organization.name} — KolBase`,
+    description: `${eventTypeLabel(e.typeId)} · ${formatDateTime(e.startsAt)}${e.city ? ` · ${e.city}` : ""}. ${e.description ?? ""}`.trim().slice(0, 160),
+  };
+}
 
 export default async function Page({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
