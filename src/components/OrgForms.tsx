@@ -1,7 +1,7 @@
 "use client";
 
 import { useActionState, useState } from "react";
-import { createInvitation, createOrganization, updateOrganization, updateExpertProfile, type InviteState } from "@/lib/org-actions";
+import { createInvitation, createOrganization, submitSiren, updateOrganization, updateExpertProfile, type InviteState } from "@/lib/org-actions";
 import { Notice } from "@/components/AuthForms";
 
 type Opt = { value: string; label: string };
@@ -21,6 +21,9 @@ export function NewOrgForm({ kinds }: { kinds: Opt[] }) {
         <label>Secteur<input name="sector" placeholder="Dispositifs médicaux…" /></label>
         <label>Siège<input name="headquarters" placeholder="Lyon, France" /></label>
       </div>
+      <label>SIREN ou SIRET<input name="siren" inputMode="numeric" placeholder="9 ou 14 chiffres" />
+        <span className="hint">Obligatoire pour un industriel, un organisme de formation ou un prestataire. KolBase le contrôle dans le répertoire des entreprises, puis valide l&apos;organisation avant qu&apos;elle puisse solliciter des praticiens ou publier.</span>
+      </label>
       <label>E-mail de contact<input name="contactEmail" type="email" /></label>
       <button className="btn" disabled={pending}>{pending ? "Création…" : "Créer l'organisation"}</button>
     </form>
@@ -111,5 +114,39 @@ export function ExpertProfileForm({ p, types }: { p: Expert; types: string[] }) 
       </label>
       <button className="btn" disabled={pending}>{pending ? "Enregistrement…" : "Enregistrer le profil expert"}</button>
     </form>
+  );
+}
+
+type Verification = { status: "PENDING" | "VERIFIED" | "REJECTED"; siren: string | null; legalName: string | null; note: string | null };
+
+/** Validation de l'organisation par KolBase : statut et saisie du SIREN (administrateurs). */
+export function VerificationCard({ orgId, v, canEdit }: { orgId: string; v: Verification; canEdit: boolean }) {
+  const [state, action, pending] = useActionState(submitSiren, undefined);
+  const label = { PENDING: "En attente de validation", VERIFIED: "Validée par KolBase", REJECTED: "Refusée" }[v.status];
+  const tone = { PENDING: "wait", VERIFIED: "ok", REJECTED: "bad" }[v.status];
+  return (
+    <section className="card form">
+      <h2>Validation de l&apos;organisation <span className={`pill ${tone}`}>{label}</span></h2>
+      {v.status === "VERIFIED" ? (
+        <p className="muted">
+          {v.legalName ? `Raison sociale : ${v.legalName}` : "Organisation validée"}{v.siren ? ` · SIREN ${v.siren}` : ""}. Modifier le nom ou le SIREN relance la validation.
+        </p>
+      ) : (
+        <p className="muted">
+          Tant que KolBase n&apos;a pas validé l&apos;organisation, elle ne peut ni solliciter de praticiens, ni publier d&apos;événements ou d&apos;appels, ni apparaître sur le site public.
+          {v.status === "REJECTED" && v.note ? ` Motif du refus : ${v.note}.` : ""}
+        </p>
+      )}
+      {canEdit && (
+        <form action={action} className="stack-sm">
+          <Notice state={state} />
+          <input type="hidden" name="orgId" value={orgId} />
+          <div className="row">
+            <label>SIREN ou SIRET<input name="siren" inputMode="numeric" defaultValue={v.siren ?? ""} placeholder="9 ou 14 chiffres" required /></label>
+            <button className="btn secondary" disabled={pending} style={{ alignSelf: "end" }}>{pending ? "Contrôle…" : v.status === "VERIFIED" ? "Mettre à jour" : "Envoyer pour validation"}</button>
+          </div>
+        </form>
+      )}
+    </section>
   );
 }

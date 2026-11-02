@@ -4,7 +4,7 @@ import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import { db } from "@/lib/db";
 import { audit, requireUser } from "@/lib/auth";
-import { requireMembership } from "@/lib/orgs";
+import { ORG_NOT_VERIFIED, isVerifiedOrg, requireMembership } from "@/lib/orgs";
 import { BENEFIT_CATALOG, COMPLIANCE_ROLES, EVENT_MANAGER_ROLES, EVENT_ORGANIZER_ROLES, eventScope, EVENT_TYPES, parseParisDateTime } from "@/lib/events";
 import { EventFormat } from "@/generated/prisma/enums";
 import { eurToCents, intOrNull, str } from "@/lib/form";
@@ -13,7 +13,7 @@ export type ActionState = { error?: string; ok?: string } | undefined;
 
 export async function createEvent(_: ActionState, form: FormData): Promise<ActionState> {
   const orgId = str(form, "orgId");
-  const { user } = await requireMembership(orgId, EVENT_ORGANIZER_ROLES);
+  const { user, org } = await requireMembership(orgId, EVENT_ORGANIZER_ROLES);
 
   const title = str(form, "title");
   const typeId = str(form, "typeId");
@@ -34,6 +34,7 @@ export async function createEvent(_: ActionState, form: FormData): Promise<Actio
   }
 
   const publish = form.get("publish") === "1";
+  if (publish && !isVerifiedOrg(org)) return { error: `Publication impossible pour l'instant : ${ORG_NOT_VERIFIED} Enregistrez l'événement en brouillon.` };
   const event = await db.event.create({
     data: {
       organizationId: orgId,
@@ -59,8 +60,9 @@ export async function createEvent(_: ActionState, form: FormData): Promise<Actio
 export async function setEventFlag(form: FormData) {
   const orgId = str(form, "orgId");
   const eventId = str(form, "eventId");
-  const { user, roles } = await requireMembership(orgId, EVENT_MANAGER_ROLES);
+  const { user, roles, org } = await requireMembership(orgId, EVENT_MANAGER_ROLES);
   const flag = str(form, "flag");
+  if (flag === "publish" && !isVerifiedOrg(org)) return;
   const data =
     flag === "publish" ? { publishedAt: new Date() } :
     flag === "unpublish" ? { publishedAt: null } :

@@ -127,7 +127,10 @@ async function main() {
     await db.organization.upsert({
       where: { id: o.id },
       update: {},
-      create: { id: o.id, name: o.name, kind: o.kind, sector: o.sector, headquarters: o.hq, areas: o.areas, about: o.about, policy: o.policy || null, listed: true, contactEmail: `contact@${MAIL}` },
+      create: {
+        id: o.id, name: o.name, kind: o.kind, sector: o.sector, headquarters: o.hq, areas: o.areas, about: o.about, policy: o.policy || null, listed: true, contactEmail: `contact@${MAIL}`,
+        verification: "VERIFIED", verifiedAt: at(-180), verificationNote: "Organisation fictive de démonstration",
+      },
     });
     if (o.cats) await db.organization.updateMany({ where: { id: o.id, supplierCategories: { isEmpty: true } }, data: { supplierCategories: o.cats, coverage: o.coverage } });
   }
@@ -162,6 +165,12 @@ async function main() {
         bio: p.bio, listed: p.listed, rppsVerified: verified, listedAt: p.listed ? at(-200 + Math.floor(Math.random() * 150)) : null, responseDays: p.listed ? 3 : null,
       },
     });
+    // RPPS fictifs (préfixe 999, hors plage réelle) : vérifiés pour la plupart, trois en attente de contrôle.
+    if (p.listed)
+      await db.practitionerProfile.updateMany({
+        where: { id: p.id, rpps: null },
+        data: { rpps: `999${String(PRACS.indexOf(p) + 1).padStart(8, "0")}`, rppsCheckedAt: verified ? at(-60) : null },
+      });
   }
   const PUBS: [string, string, string, number, string[]][] = [
     ["demo-p-durand", "Régénération osseuse guidée avant implantation : résultats à 5 ans", "Revue francophone d'implantologie (fictive)", 2024, ["ROG", "implantologie"]],

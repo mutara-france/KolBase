@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useActionState } from "react";
 import { signIn, signUp, type FormState } from "@/lib/auth-actions";
+import { PROFESSIONS } from "@/lib/professions";
 
 export function Notice({ state }: { state: FormState }) {
   if (state?.error) return <p className="notice error" role="alert">{state.error}</p>;
@@ -25,7 +26,6 @@ export function SignInForm({ next }: { next?: string }) {
   );
 }
 
-const PROFESSIONS = ["Chirurgien-dentiste", "Chirurgien-dentiste spécialiste ODF", "Chirurgien oral", "Médecin stomatologue", "Assistant(e) dentaire", "Prothésiste dentaire", "Étudiant(e) en odontologie"];
 
 export function SignUpForm({ next }: { next?: string }) {
   const [state, action, pending] = useActionState(signUp, undefined);

@@ -3,10 +3,14 @@
 import { useActionState } from "react";
 import { changePassword, setListed, updateProfile } from "@/lib/auth-actions";
 import { Notice } from "@/components/AuthForms";
+import { PROFESSIONS } from "@/lib/professions";
 
 type Props = {
   user: { firstName: string; lastName: string; email: string; phone: string | null; locale: string };
-  practitioner: { profession: string; rpps: string | null; city: string | null; specialty: string | null; listed: boolean } | null;
+  practitioner: {
+    profession: string; rpps: string | null; city: string | null; specialty: string | null; listed: boolean;
+    rppsStatus: "none" | "pending" | "verified" | "rejected"; rppsNote: string | null;
+  } | null;
 };
 
 export function ProfileForm({ user, practitioner }: Props) {
@@ -28,8 +32,19 @@ export function ProfileForm({ user, practitioner }: Props) {
       {practitioner && (
         <>
           <div className="row">
-            <label>Profession<input name="profession" defaultValue={practitioner.profession} /></label>
-            <label>N° RPPS<input name="rpps" inputMode="numeric" pattern="[0-9]{11}" title="11 chiffres" defaultValue={practitioner.rpps ?? ""} /></label>
+            <label>Profession
+              <select name="profession" defaultValue={practitioner.profession}>
+                {[...new Set([...PROFESSIONS, practitioner.profession])].map((p) => <option key={p}>{p}</option>)}
+              </select>
+            </label>
+            <label>N° RPPS<input name="rpps" inputMode="numeric" pattern="[0-9 ]{11,14}" title="11 chiffres" defaultValue={practitioner.rpps ?? ""} />
+              <span className="hint">
+                {practitioner.rppsStatus === "verified" && "Vérifié par KolBase : badge « Identité vérifiée » affiché."}
+                {practitioner.rppsStatus === "pending" && "En cours de vérification par KolBase sur l'Annuaire Santé."}
+                {practitioner.rppsStatus === "rejected" && `Non validé${practitioner.rppsNote ? ` : ${practitioner.rppsNote}` : ""}. Corrigez le numéro pour une nouvelle vérification.`}
+                {practitioner.rppsStatus === "none" && "Nécessaire pour être référencé comme expert ; vérifié par KolBase."}
+              </span>
+            </label>
           </div>
           <div className="row">
             <label>Ville d&apos;exercice<input name="city" defaultValue={practitioner.city ?? ""} /></label>
@@ -59,8 +74,15 @@ export function PasswordForm({ email }: { email: string }) {
   );
 }
 
-export function ListingForm({ listed }: { listed: boolean }) {
+export function ListingForm({ listed, eligible, hasRpps }: { listed: boolean; eligible: boolean; hasRpps: boolean }) {
   const [state, action, pending] = useActionState(setListed, undefined);
+  if (!listed && !eligible)
+    return (
+      <section className="card">
+        <h2>Référencement comme expert</h2>
+        <p className="muted">Le référencement comme expert (KOL) est réservé aux chirurgiens-dentistes, orthodontistes, chirurgiens oraux et stomatologues. Votre compte vous permet de vous inscrire aux événements.</p>
+      </section>
+    );
   return (
     <form action={action} className={`card form ${listed ? "" : "highlight"}`}>
       <h2>{listed ? "Vous êtes référencé comme expert" : "Devenir expert référencé (KOL)"}</h2>
@@ -72,6 +94,7 @@ export function ListingForm({ listed }: { listed: boolean }) {
           <li>Votre profil apparaît dans l&apos;annuaire des experts et sur le site public.</li>
           <li>Vous recevez des sollicitations et accédez aux opportunités.</li>
           <li>Toute rémunération ou avantage reçu sera conventionné et publié sur Transparence Santé.</li>
+          {!hasRpps && <li><strong>Prérequis : renseignez votre numéro RPPS</strong> (Informations personnelles, plus bas).</li>}
         </ul>
       )}
       <input type="hidden" name="listed" value={listed ? "0" : "1"} />

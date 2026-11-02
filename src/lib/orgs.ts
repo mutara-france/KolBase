@@ -4,10 +4,11 @@ import { createHash } from "node:crypto";
 import { notFound, redirect } from "next/navigation";
 import { db } from "@/lib/db";
 import { requireUser } from "@/lib/auth";
+import { lookupSiren } from "@/lib/siren";
 import type { OrgRole } from "@/generated/prisma/client";
 
 // Libellés et rôles (module sans dépendance serveur, réutilisable et testable).
-export { INTERVENTION_TYPES, ORG_KIND_LABEL, ROLE_LABEL, SUPPLIER_ROLES, invitableRoles, roleLabel } from "@/lib/org-roles";
+export { INTERVENTION_TYPES, ORG_KIND_LABEL, ORG_NOT_VERIFIED, ROLE_LABEL, SIREN_REQUIRED, SUPPLIER_ROLES, VERIFICATION_LABEL, invitableRoles, isVerifiedOrg, roleLabel } from "@/lib/org-roles";
 
 /**
  * Vérifie que l'utilisateur courant est membre de l'organisation (et, si précisé, a l'un des rôles).
@@ -28,14 +29,26 @@ export async function requireMembership(orgId: string, roles?: OrgRole[], { allo
   return { user, org, roles: userRoles, isAdmin: userRoles.includes("ADMIN") };
 }
 
-/** L'annuaire (sourcing) est réservé aux équipes Éducation, Cumul et aux administrateurs. Les autres voient l'annuaire public. */
+/** L'annuaire (sourcing) est réservé aux équipes Éducation, Cumul et aux administrateurs d'une organisation validée. Les autres voient l'annuaire public. */
 export async function requireDirectoryAccess() {
   const user = await requireUser();
-  if (!user.memberships.some((m) => SOURCING_ROLES.includes(m.role) && m.organization.kind !== "PRESTATAIRE")) redirect("/experts");
+  if (!user.memberships.some((m) => SOURCING_ROLES.includes(m.role) && m.organization.kind !== "PRESTATAIRE" && m.organization.verification === "VERIFIED")) redirect("/experts");
   return user;
 }
 
 export async function findInvitation(token: string) {
   const tokenHash = createHash("sha256").update(token).digest("hex");
   return db.invitation.findUnique({ where: { tokenHash }, include: { organization: true, invitedBy: true } });
+}
+
+/** SIREN contrôlé auprès de l'API Recherche d'entreprises : champs à enregistrer sur l'organisation. */
+export async function sirenFields(siren: string) {
+  const r = await lookupSiren(siren);
+  return {
+    siren,
+    sirenCheckedAt: r ? new Date() : null,
+    legalName: r?.found ? r.name : null,
+    sirenActive: r ? (r.found ? r.active : false) : null,
+    lookup: r,
+  };
 }

@@ -7,12 +7,21 @@ import { INTERVENTION_TYPES } from "@/lib/orgs";
 import { db } from "@/lib/db";
 import { KolVisibilityForm, OrcidImportForm, PublicationForm, StructureForm } from "@/components/ProfileForms";
 import { kolVisibility } from "@/lib/visibility";
+import { canBeExpert } from "@/lib/professions";
+import { orcidOAuth } from "@/lib/orcid";
 import { removePublication, removeStructure } from "@/lib/profile-actions";
 
 export const metadata = { title: "Mon compte — KolBase" };
 
-export default async function Page({ searchParams }: { searchParams: Promise<{ annuaire?: string }> }) {
-  const { annuaire } = await searchParams;
+const ORCID_NOTICE = {
+  ok: ["ok", "Compte ORCID connecté : votre iD est vérifié. Vous pouvez importer vos publications."],
+  erreur: ["error", "La connexion à ORCID n'a pas abouti. Réessayez."],
+  pris: ["error", "Cet iD ORCID est déjà associé à un autre praticien. Contactez-nous s'il s'agit du vôtre."],
+} as const;
+
+export default async function Page({ searchParams }: { searchParams: Promise<{ annuaire?: string; orcid?: string }> }) {
+  const { annuaire, orcid } = await searchParams;
+  const orcidNotice = orcid && orcid in ORCID_NOTICE ? ORCID_NOTICE[orcid as keyof typeof ORCID_NOTICE] : null;
   const user = await requireUser();
   const p = user.practitioner;
   const [pubs, structs] = p
@@ -35,7 +44,8 @@ export default async function Page({ searchParams }: { searchParams: Promise<{ a
         {annuaire && (
           <p className="notice error">L&apos;annuaire est réservé aux membres d&apos;une organisation et aux experts référencés.</p>
         )}
-        {p && <ListingForm listed={p.listed} />}
+        {orcidNotice && <p className={`notice ${orcidNotice[0]}`}>{orcidNotice[1]}</p>}
+        {p && <ListingForm listed={p.listed} eligible={canBeExpert(p.profession)} hasRpps={!!p.rpps} />}
         {p?.listed && (
           <div className="actions" style={{ marginTop: 0 }}>
             <Link className="btn secondary" href={`/experts/${p.id}`}>Voir ma fiche publique</Link>
@@ -51,7 +61,12 @@ export default async function Page({ searchParams }: { searchParams: Promise<{ a
         {p && (
           <section className="card stack">
             <h2>Publications ({pubs.length})</h2>
-            <OrcidImportForm orcid={p.orcid} syncedAt={p.orcidSyncedAt ? p.orcidSyncedAt.toLocaleDateString("fr-FR", { timeZone: "Europe/Paris" }) : null} />
+            <OrcidImportForm
+              orcid={p.orcid}
+              oauth={!!orcidOAuth()}
+              verified={p.orcidVerified}
+              syncedAt={p.orcidSyncedAt ? p.orcidSyncedAt.toLocaleDateString("fr-FR", { timeZone: "Europe/Paris" }) : null}
+            />
             {pubs.length > 0 && (
               <ul className="pub-list">
                 {pubs.map((x) => (
@@ -84,7 +99,15 @@ export default async function Page({ searchParams }: { searchParams: Promise<{ a
         )}
         <ProfileForm
           user={{ firstName: user.firstName, lastName: user.lastName, email: user.email, phone: user.phone, locale: user.locale }}
-          practitioner={p ? { profession: p.profession, rpps: p.rpps, city: p.city, specialty: p.specialty, listed: p.listed } : null}
+          practitioner={
+            p
+              ? {
+                  profession: p.profession, rpps: p.rpps, city: p.city, specialty: p.specialty, listed: p.listed,
+                  rppsStatus: !p.rpps ? "none" : p.rppsVerified ? "verified" : p.rppsCheckedAt ? "rejected" : "pending",
+                  rppsNote: p.rppsCheckNote,
+                }
+              : null
+          }
         />
         <PasswordForm email={user.email} />
         <section className="card">

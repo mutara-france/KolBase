@@ -3,6 +3,7 @@
 // Usage : BASE=http://localhost:3000 DEMO_PASSWORD=… DATABASE_URL=… npm run test:e2e
 import { chromium } from "playwright";
 import pg from "pg";
+import { startFakes } from "./faux-services.mjs";
 
 const BASE = process.env.BASE ?? "http://localhost:3000";
 const PW = process.env.DEMO_PASSWORD;
@@ -13,6 +14,7 @@ const client = new pg.Client({ connectionString: process.env.DATABASE_URL });
 await client.connect();
 await client.query(`UPDATE "PractitionerProfile" SET visibility = '{"contact":"masque","historique":"masque"}' WHERE id = 'demo-p-durand'`);
 await client.end();
+const stopFakes = startFakes();
 const results = [];
 const check = (name, ok, detail = "") => { results.push({ name, ok, detail }); console.log(`${ok ? "OK  " : "FAIL"} ${name}${detail ? " — " + detail : ""}`); };
 
@@ -199,6 +201,99 @@ const text = (page) => page.locator("main").innerText();
   await agent.ctx.close();
 }
 
+// ── Vérification des organisations (SIREN + validation par un administrateur KolBase) ─────
+async function submitNewOrg(page, siren) {
+  await page.goto(`${BASE}/organisations/nouvelle`);
+  await page.fill('input[name="name"]', "Implants Express");
+  await page.selectOption('select[name="kind"]', "INDUSTRIEL");
+  await page.fill('input[name="siren"]', siren);
+  await page.click('button:has-text("Créer l\'organisation")');
+  await page.waitForTimeout(1500);
+}
+{
+  const { ctx, page } = await session();
+  await login(page, "ines.lambert@demo.kolbase.local");
+  await submitNewOrg(page, "");
+  check("Nouvelle organisation : SIREN obligatoire pour un industriel", (await text(page)).includes("Indiquez le SIREN"));
+  await submitNewOrg(page, "542051181");
+  check("Nouvelle organisation : clé du SIREN contrôlée", (await text(page)).includes("SIREN invalide"));
+  await submitNewOrg(page, "732 829 320");
+  check("Nouvelle organisation : entreprise fermée refusée", (await text(page)).includes("est fermée"));
+  await submitNewOrg(page, "542 051 180");
+  check("Nouvelle organisation : créée, en attente de validation", /\/organisations\/[^/]+$/.test(page.url()) && (await text(page)).includes("en attente de validation"), page.url());
+  const orgUrl = page.url();
+  await page.goto(`${BASE}/annuaire`);
+  check("Organisation non validée : pas d'annuaire", page.url().endsWith("/experts"), page.url());
+  await page.goto(`${BASE}/experts/demo-p-martin`);
+  check("Organisation non validée : tarif des experts masqué", !(await text(page)).includes("Tarif journalier indicatif"));
+  const notAdmin = await page.goto(`${BASE}/admin`);
+  check("Administration : inaccessible sans droit", notAdmin?.status() === 404, String(notAdmin?.status()));
+
+  const admin = await session();
+  await login(admin.page, "anne.chevalier@demo.kolbase.local");
+  await admin.page.goto(`${BASE}/admin`);
+  const card = admin.page.locator('section.card:has-text("Implants Express")').first();
+  check("Administration : SIREN contrôlé dans le répertoire", (await card.innerText()).includes("IMPLANTS EXPRESS SAS — active"));
+  await card.locator('button:has-text("Valider")').click();
+  await admin.page.waitForTimeout(1200);
+
+  await page.goto(`${BASE}/annuaire`);
+  check("Organisation validée : annuaire accessible", page.url().endsWith("/annuaire"), page.url());
+  await page.goto(`${BASE}/experts/demo-p-martin`);
+  check("Organisation validée : tarif des experts visible", (await text(page)).includes("Tarif journalier indicatif"));
+  await page.goto(`${orgUrl}/membres`);
+  await page.fill('form:has(h2:has-text("Fiche de l")) input[name="name"]', "Straumann France");
+  await page.click('form:has(h2:has-text("Fiche de l")) button:has-text("Enregistrer")');
+  await page.waitForTimeout(1500);
+  check("Organisation renommée : nouvelle validation demandée", (await text(page)).includes("KolBase doit la valider à nouveau"));
+
+  // ── Praticiens : RPPS et professions éligibles
+  const hugo = await session();
+  await login(hugo.page, "hugo.robert@demo.kolbase.local");
+  await hugo.page.goto(`${BASE}/compte`);
+  await hugo.page.click('button:has-text("Me référencer comme expert")');
+  await hugo.page.waitForTimeout(1200);
+  check("Référencement sans RPPS refusé", (await text(hugo.page)).includes("Renseignez d'abord votre numéro RPPS"));
+  const infos = 'form:has(h2:has-text("Informations personnelles"))';
+  await hugo.page.fill(`${infos} input[name="rpps"]`, "10101010101");
+  await hugo.page.click(`${infos} button:has-text("Enregistrer")`);
+  await hugo.page.waitForTimeout(1200);
+  await hugo.page.reload();
+  check("RPPS saisi : en cours de vérification", (await text(hugo.page)).includes("En cours de vérification par KolBase"));
+  await hugo.page.click('button:has-text("Me référencer comme expert")');
+  await hugo.page.waitForTimeout(1200);
+  check("Référencement avec RPPS accepté", (await text(hugo.page)).includes("Vous êtes référencé comme expert"));
+
+  await admin.page.goto(`${BASE}/admin?onglet=praticiens`);
+  await admin.page.locator('section.card:has-text("Hugo Robert") button:has-text("Valider")').click();
+  await admin.page.waitForTimeout(1200);
+  await hugo.page.goto(`${BASE}/compte`);
+  check("RPPS validé par l'administrateur", (await text(hugo.page)).includes("Vérifié par KolBase"));
+  await hugo.page.goto(`${BASE}/experts`);
+  check("Badge « Identité vérifiée » sur la fiche publique", (await hugo.page.locator('a.kol-card:has-text("Hugo Robert")').innerText()).includes("Identité vérifiée"));
+
+  const manon = await session();
+  await login(manon.page, "manon.dubois@demo.kolbase.local");
+  await manon.page.goto(`${BASE}/compte`);
+  const m = await text(manon.page);
+  check("Assistante dentaire : pas de référencement d'expert", m.includes("réservé aux chirurgiens-dentistes") && !m.includes("Me référencer comme expert"));
+  check("Assistante dentaire : pas de titre « Dr »", !(await manon.page.locator(".session-chip").innerText()).includes("Dr "));
+  for (const s of [ctx, admin.ctx, hugo.ctx, manon.ctx]) await s.close();
+}
+
+// ── ORCID : iD prouvé par connexion, puis import ───────────────────────────
+{
+  const { ctx, page } = await session();
+  await login(page, "helene.durand@demo.kolbase.local");
+  await page.goto(`${BASE}/compte`);
+  await Promise.all([page.waitForURL(/\/compte\?orcid=/), page.click('a:has-text("Connecter mon compte ORCID")')]);
+  check("ORCID : compte connecté et iD vérifié", (await text(page)).includes("Compte ORCID connecté"), page.url());
+  await page.click('button:has-text("Importer depuis ORCID")');
+  await page.waitForTimeout(1500);
+  check("ORCID : publications importées", (await text(page)).includes("1 publication importée"));
+  await ctx.close();
+}
+
 // ── 4. Limitation des tentatives ───────────────────────────────────────────
 {
   const { ctx, page } = await session();
@@ -217,6 +312,7 @@ const text = (page) => page.locator("main").innerText();
 }
 
 await browser.close();
+stopFakes();
 const failed = results.filter((r) => !r.ok);
 console.log(`\n${results.length - failed.length}/${results.length} vérifications OK`);
 process.exit(failed.length ? 1 : 0);

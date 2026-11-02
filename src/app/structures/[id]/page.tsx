@@ -21,7 +21,7 @@ export default async function Page({ params }: { params: Promise<{ id: string }>
   const viewer: Viewer = isMember ? "proprietaire" : user ? "membre" : "public";
   const now = new Date();
   const o = await db.organization.findFirst({
-    where: { id, ...(isMember ? {} : { listed: true }) },
+    where: { id, ...(isMember ? {} : { listed: true, verification: "VERIFIED" }) },
     include: {
       openCalls: { where: { status: "open", OR: [{ deadline: null }, { deadline: { gte: now } }] }, orderBy: { deadline: "asc" } },
       events: { where: { publishedAt: { not: null }, startsAt: { gte: now } }, orderBy: { startsAt: "asc" }, include: { _count: { select: { registrations: true } } } },

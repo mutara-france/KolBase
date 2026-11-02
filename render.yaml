@@ -43,3 +43,13 @@ services:
       # Comptes réels à rendre administrateurs des organisations de démo (e-mails séparés par des virgules).
       - key: DEMO_ADMIN_EMAILS
         sync: false
+      # Administrateurs de la plateforme (validation des organisations et des RPPS, page /admin) :
+      # e-mails de comptes déjà créés, séparés par des virgules.
+      - key: PLATFORM_ADMIN_EMAILS
+        sync: false
+      # Connexion ORCID (facultatif) : application déclarée sur https://orcid.org/developer-tools,
+      # URL de redirection <APP_URL>/compte/orcid/retour. Sans ces variables, l'iD se saisit à la main.
+      - key: ORCID_CLIENT_ID
+        sync: false
+      - key: ORCID_CLIENT_SECRET
+        sync: false

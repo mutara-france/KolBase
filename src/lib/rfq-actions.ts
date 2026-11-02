@@ -4,7 +4,7 @@ import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import { db } from "@/lib/db";
 import { audit } from "@/lib/auth";
-import { requireMembership } from "@/lib/orgs";
+import { ORG_NOT_VERIFIED, isVerifiedOrg, requireMembership } from "@/lib/orgs";
 import { EVENT_MANAGER_ROLES, eventScope, parseParisDateTime } from "@/lib/events";
 import { SUPPLIER_CATEGORIES } from "@/lib/suppliers";
 import { eurToCents, str } from "@/lib/form";
@@ -21,7 +21,7 @@ function rfqScope(user: Parameters<typeof eventScope>[0], roles: Parameters<type
 
 export async function createRfq(_: ActionState, form: FormData): Promise<ActionState> {
   const orgId = str(form, "orgId");
-  const { user, roles } = await requireMembership(orgId, EVENT_MANAGER_ROLES);
+  const { user, roles, org } = await requireMembership(orgId, EVENT_MANAGER_ROLES);
   const scope = eventScope(user, roles);
   const category = str(form, "category");
   if (!SUPPLIER_CATEGORIES.some((c) => c.id === category)) return { error: "Type de prestation invalide." };
@@ -40,6 +40,7 @@ export async function createRfq(_: ActionState, form: FormData): Promise<ActionS
   if (deadlineRaw && (!deadline || deadline < new Date())) return { error: "Date de réponse invalide ou passée." };
   const headcount = Number(str(form, "headcount")) || event?.capacity || null;
   const send = str(form, "intent") === "send";
+  if (send && !isVerifiedOrg(org)) return { error: `Envoi impossible pour l'instant : ${ORG_NOT_VERIFIED} Enregistrez la demande en brouillon.` };
 
   const rfq = await db.rfq.create({
     data: {
@@ -54,7 +55,8 @@ export async function createRfq(_: ActionState, form: FormData): Promise<ActionS
 
 export async function sendRfq(form: FormData) {
   const orgId = str(form, "orgId");
-  const { user, roles } = await requireMembership(orgId, EVENT_MANAGER_ROLES);
+  const { user, roles, org } = await requireMembership(orgId, EVENT_MANAGER_ROLES);
+  if (!isVerifiedOrg(org)) return;
   const rfqId = str(form, "rfqId");
   await db.rfq.updateMany({ where: { id: rfqId, organizationId: orgId, ...rfqScope(user, roles), status: "draft" }, data: { status: "sent", sentAt: new Date() } });
   await audit(user.id, "rfq.send", "Rfq", rfqId);
@@ -120,11 +122,12 @@ export async function declineRfq(form: FormData) {
 
 export async function updateSupplierProfile(_: ActionState, form: FormData): Promise<ActionState> {
   const orgId = str(form, "orgId");
-  const { user, isAdmin } = await requireSupplier(orgId);
+  const { user, isAdmin, org: ctxOrg } = await requireSupplier(orgId);
   if (!isAdmin) return { error: "Réservé aux administrateurs." };
   const categories = form.getAll("categories").map(String).filter((c) => SUPPLIER_CATEGORIES.some((x) => x.id === c));
   const listed = form.get("listed") === "on";
   if (listed && categories.length === 0) return { error: "Choisissez au moins une catégorie pour être référencé." };
+  if (listed && !isVerifiedOrg(ctxOrg)) return { error: `Référencement impossible pour l'instant : ${ORG_NOT_VERIFIED}` };
   await db.organization.update({ where: { id: orgId }, data: { supplierCategories: categories, coverage: str(form, "coverage") || null, listed } });
   await audit(user.id, "supplier.profile", "Organization", orgId, { categories, listed });
   revalidatePath(`/organisations/${orgId}/devis`);

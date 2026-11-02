@@ -8,6 +8,7 @@ import { db } from "@/lib/db";
 import { requireUser } from "@/lib/auth";
 import { formatDate, formatEUR } from "@/lib/events";
 import { collabType } from "@/lib/projects";
+import { drPrefix } from "@/lib/professions";
 
 export const metadata = { title: "Accueil — KolBase" };
 
@@ -102,7 +103,7 @@ export default async function Page() {
     <>
       <SiteHeader />
       <main className="stack dash">
-        <DashHead kicker={todayLabel()} title={`Bonjour Dr ${user.lastName}.`} lede={lede} />
+        <DashHead kicker={todayLabel()} title={`Bonjour ${drPrefix(p.profession) || `${user.firstName} `}${user.lastName}.`} lede={lede} />
 
         {!p.listed && (
           <section className="card highlight flex-between">

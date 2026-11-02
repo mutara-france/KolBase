@@ -1,6 +1,18 @@
 /** Lecture des travaux publics d'un chercheur via l'API publique ORCID (sans clé). */
 export const ORCID_RE = /^\d{4}-\d{4}-\d{4}-\d{3}[\dX]$/;
 
+const PUB_API = (process.env.ORCID_PUB_API_URL ?? "https://pub.orcid.org/v3.0").replace(/\/$/, "");
+
+/**
+ * Connexion au compte ORCID (OAuth, portée /authenticate) : prouve que l'iD appartient au praticien.
+ * Active si ORCID_CLIENT_ID et ORCID_CLIENT_SECRET sont définis (application déclarée sur orcid.org/developer-tools).
+ */
+export function orcidOAuth() {
+  const id = process.env.ORCID_CLIENT_ID;
+  const secret = process.env.ORCID_CLIENT_SECRET;
+  return id && secret ? { id, secret, base: (process.env.ORCID_BASE_URL ?? "https://orcid.org").replace(/\/$/, "") } : null;
+}
+
 export type OrcidWork = { title: string; journal: string | null; year: number | null; doi: string | null };
 
 type Summary = {
@@ -11,7 +23,7 @@ type Summary = {
 };
 
 export async function fetchOrcidWorks(orcid: string): Promise<OrcidWork[]> {
-  const res = await fetch(`https://pub.orcid.org/v3.0/${orcid}/works`, { headers: { Accept: "application/json" }, signal: AbortSignal.timeout(10000), cache: "no-store" });
+  const res = await fetch(`${PUB_API}/${orcid}/works`, { headers: { Accept: "application/json" }, signal: AbortSignal.timeout(10000), cache: "no-store" });
   if (res.status === 404) throw new Error("Identifiant ORCID introuvable.");
   if (!res.ok) throw new Error(`ORCID indisponible (${res.status}).`);
   const json = (await res.json()) as { group?: { "work-summary"?: Summary[] }[] };

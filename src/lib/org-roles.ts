@@ -29,3 +29,13 @@ export const invitableRoles = (kind: OrgKind): OrgRole[] => (kind === "PRESTATAI
 
 /** Libellé d'un rôle selon le type d'organisation (dans une agence, « Prestataire » désigne un membre de l'équipe). */
 export const roleLabel = (role: OrgRole, kind: OrgKind) => (kind === "PRESTATAIRE" && role === "PRESTATAIRE" ? "Membre de l'équipe" : ROLE_LABEL[role]);
+
+/** Une organisation n'agit auprès des praticiens qu'une fois validée par KolBase. */
+export const isVerifiedOrg = (org: { verification: string }) => org.verification === "VERIFIED";
+export const ORG_NOT_VERIFIED =
+  "Votre organisation doit d'abord être validée par KolBase (SIREN contrôlé). Un administrateur de l'organisation peut compléter la demande dans « Membres et réglages ».";
+
+/** Types d'organisation pour lesquels le SIREN est obligatoire (les sociétés savantes et associations n'en ont pas toujours). */
+export const SIREN_REQUIRED: OrgKind[] = ["INDUSTRIEL", "ORGANISME_FORMATION", "PRESTATAIRE"];
+
+export const VERIFICATION_LABEL = { PENDING: "En attente de validation", VERIFIED: "Validée", REJECTED: "Refusée" } as const;

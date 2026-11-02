@@ -1,3 +1,4 @@
+import { drPrefix } from "@/lib/professions";
 import "server-only";
 import { PDFDocument, StandardFonts, rgb, type PDFFont, type PDFPage } from "pdf-lib";
 
@@ -111,7 +112,7 @@ export async function buildCollaborationConvention(i: CollabConventionInput) {
   w.text("et", { color: MUTED });
   const e = i.expert;
   w.text(
-    `Dr ${e.firstName} ${e.lastName}, ${e.profession}${e.city ? ` exerçant à ${e.city}` : ""}${e.rpps ? `, n° RPPS ${e.rpps}` : ""}, ${e.email}` +
+    `${drPrefix(e.profession)}${e.firstName} ${e.lastName}, ${e.profession}${e.city ? ` exerçant à ${e.city}` : ""}${e.rpps ? `, n° RPPS ${e.rpps}` : ""}, ${e.email}` +
       (e.structure ? `, agissant pour le compte de ${e.structure.name} (${e.structure.legalForm}${e.structure.siren ? `, SIREN ${e.structure.siren}` : ""})` : "") +
       ", ci-après « l'Expert ».",
   );
@@ -147,7 +148,7 @@ export async function buildCollaborationConvention(i: CollabConventionInput) {
   if (i.org.policy) { w.heading("Politique de collaboration de l'Organisation"); w.text(i.org.policy, { color: MUTED }); }
 
   w.heading("Signatures");
-  w.signatures(`Pour ${i.org.name}`, `Dr ${e.firstName} ${e.lastName}`);
+  w.signatures(`Pour ${i.org.name}`, `${drPrefix(e.profession)}${e.firstName} ${e.lastName}`);
   return doc.save();
 }
 

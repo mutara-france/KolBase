@@ -6,7 +6,7 @@ import type { CallCardData, EventCardData, KolCardData, OrgCardData } from "@/co
 
 export async function publicEvents(take?: number): Promise<EventCardData[]> {
   const events = await db.event.findMany({
-    where: { publishedAt: { not: null }, startsAt: { gte: new Date() } },
+    where: { publishedAt: { not: null }, startsAt: { gte: new Date() }, organization: { verification: "VERIFIED" } },
     include: { organization: { select: { name: true } }, _count: { select: { registrations: true } } },
     orderBy: { startsAt: "asc" },
     take,
@@ -37,7 +37,7 @@ export async function publicExperts(take?: number): Promise<KolCardData[]> {
 
 export async function publicOrgs(take?: number): Promise<OrgCardData[]> {
   const os = await db.organization.findMany({
-    where: { listed: true },
+    where: { listed: true, verification: "VERIFIED" },
     include: { _count: { select: { openCalls: { where: { status: "open" } }, projects: { where: { status: { notIn: ["ATT_EXPERTS", "DECLINE"] } } } } } },
     orderBy: { createdAt: "asc" },
     take,
@@ -48,7 +48,7 @@ export async function publicOrgs(take?: number): Promise<OrgCardData[]> {
 export async function publicCalls(take?: number): Promise<CallCardData[]> {
   const now = new Date();
   const cs = await db.openCall.findMany({
-    where: { status: "open", OR: [{ deadline: null }, { deadline: { gte: now } }] },
+    where: { status: "open", OR: [{ deadline: null }, { deadline: { gte: now } }], organization: { verification: "VERIFIED" } },
     include: { organization: { select: { name: true } } },
     orderBy: [{ deadline: "asc" }, { createdAt: "desc" }],
     take,
@@ -61,10 +61,10 @@ export async function publicCounts() {
   const [experts, verified, industriels, organizations, events, calls] = await Promise.all([
     db.practitionerProfile.count({ where: { listed: true } }),
     db.practitionerProfile.count({ where: { listed: true, rppsVerified: true } }),
-    db.organization.count({ where: { listed: true, kind: "INDUSTRIEL" } }),
-    db.organization.count({ where: { listed: true } }),
-    db.event.count({ where: { publishedAt: { not: null }, startsAt: { gte: now } } }),
-    db.openCall.count({ where: { status: "open", OR: [{ deadline: null }, { deadline: { gte: now } }] } }),
+    db.organization.count({ where: { listed: true, verification: "VERIFIED", kind: "INDUSTRIEL" } }),
+    db.organization.count({ where: { listed: true, verification: "VERIFIED" } }),
+    db.event.count({ where: { publishedAt: { not: null }, startsAt: { gte: now }, organization: { verification: "VERIFIED" } } }),
+    db.openCall.count({ where: { status: "open", OR: [{ deadline: null }, { deadline: { gte: now } }], organization: { verification: "VERIFIED" } } }),
   ]);
   return { experts, verified, industriels, organizations, events, calls };
 }
