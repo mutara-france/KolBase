@@ -4,6 +4,9 @@ import { collabType, fmvCheck, STATUS_LABEL } from "@/lib/projects";
 import { eventTypeLabel } from "@/lib/events";
 import type { CollabConventionInput, HospitalityConventionInput } from "@/lib/convention-pdf";
 
+/** Référence d'une convention de collaboration (dossier et expert). */
+export const conventionRef = (projectId: string, linkId: string) => `KB-${projectId.slice(-6).toUpperCase()}-${linkId.slice(-4).toUpperCase()}`;
+
 /** Données d'une convention de collaboration (un expert d'un dossier). */
 export async function loadCollabConvention(linkId: string, where: { organizationId?: string; expertUserId?: string }): Promise<CollabConventionInput | null> {
   const link = await db.projectExpert.findFirst({
@@ -23,7 +26,7 @@ export async function loadCollabConvention(linkId: string, where: { organization
   const fmv = fmvCheck(p.typeId, link.feeCents, link.days);
   const s = link.practitioner.structures[0];
   return {
-    ref: `KB-${p.id.slice(-6).toUpperCase()}-${link.id.slice(-4).toUpperCase()}`,
+    ref: conventionRef(p.id, link.id),
     statusLabel: STATUS_LABEL[p.status],
     org: { name: p.organization.name, headquarters: p.organization.headquarters, contactEmail: p.organization.contactEmail, policy: p.organization.policy },
     expert: {

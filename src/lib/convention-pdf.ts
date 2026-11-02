@@ -92,6 +92,8 @@ class Writer {
       this.y -= Math.max(1, lines.length) * 14 + 4;
     }
   }
+  /** Cadres de signature dessinés (repère PDF : origine en bas à gauche), pour la signature électronique. */
+  boxes: SignatureBox[] = [];
   signatures(left: string, right: string) {
     this.ensure(120);
     this.y -= 10;
@@ -100,6 +102,7 @@ class Writer {
       this.page.drawText(this.clean(label as string), { x: x as number, y: this.y - 10, size: 10, font: this.bold, color: INK });
       this.page.drawText("Date, nom, qualité et signature :", { x: x as number, y: this.y - 26, size: 9, font: this.font, color: MUTED });
       this.page.drawRectangle({ x: x as number, y: this.y - 110, width: w, height: 76, borderColor: MUTED, borderWidth: 0.5 });
+      this.boxes.push({ page: this.pageNo, x: x as number, y: this.y - 110, width: w, height: 76, pageHeight: A4[1] });
     });
     this.y -= 120;
   }
@@ -144,7 +147,15 @@ export type CollabConventionInput = {
   fmv: { min: number; max: number; perUnit: number; verdict: "ok" | "above" | "below" } | null;
 };
 
+/** Cadre de signature : page (à partir de 1), position et taille en points, repère PDF (origine en bas à gauche). */
+export type SignatureBox = { page: number; x: number; y: number; width: number; height: number; pageHeight: number };
+
 export async function buildCollaborationConvention(i: CollabConventionInput) {
+  return (await buildCollaborationConventionForSignature(i)).bytes;
+}
+
+/** Convention et position des cadres de signature (organisation, puis expert), pour la signature électronique. */
+export async function buildCollaborationConventionForSignature(i: CollabConventionInput) {
   const { doc, w } = await setup(`Convention - ${i.project.title}`, `KolBase - Convention ${i.ref} - document généré, à faire valider par le service juridique avant signature.`);
   header(w, "Convention de collaboration", i.ref, i.statusLabel);
 
@@ -190,7 +201,7 @@ export async function buildCollaborationConvention(i: CollabConventionInput) {
 
   w.heading("Signatures");
   w.signatures(`Pour ${i.org.name}`, `${drPrefix(e.profession)}${e.firstName} ${e.lastName}`);
-  return doc.save();
+  return { bytes: await doc.save(), boxes: w.boxes };
 }
 
 export type HospitalityConventionInput = {
