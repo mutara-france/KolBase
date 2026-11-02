@@ -551,9 +551,9 @@ async function submitNewOrg(page, siren) {
   await login(page, "anne.chevalier@demo.kolbase.local");
   await page.goto(`${BASE}/admin?onglet=lancement`);
   const t = await text(page);
-  check("Administration : état du lancement", t.includes("Avant l'ouverture au public") && t.includes("Envoi d'e-mails") && t.includes("À compléter : forme sociale et capital"));
+  check("Administration : état du lancement", t.includes("Avant l'ouverture au public") && t.includes("Envoi d'e-mails") && t.includes("À compléter : capital social"));
   await page.goto(`${BASE}/mentions-legales`);
-  check("Mentions légales : champs manquants signalés", (await page.locator("main").innerText()).includes("[forme sociale et capital à compléter]"));
+  check("Mentions légales : champs manquants signalés", (await page.locator("main").innerText()).includes("MUTARA, société par actions simplifiée (SAS) au capital de [capital social à compléter]"));
   await ctx.close();
 }
 

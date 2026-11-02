@@ -3,12 +3,14 @@
  * Un champ laissé à null s'affiche « [… à compléter] » et apparaît dans l'onglet Lancement de /admin.
  */
 export const LEGAL = {
-  editor: "Mutara France",
-  legalForm: null as string | null, // forme sociale et capital, ex. « SAS au capital de 1 000 € »
-  address: null as string | null, // adresse du siège social
-  registration: null as string | null, // immatriculation, ex. « RCS Lyon 123 456 789 »
-  vatNumber: null as string | null, // n° de TVA intracommunautaire (si assujetti)
-  publicationDirector: null as string | null, // directeur ou directrice de la publication
+  // Registre du commerce (source : RNE / Pappers, novembre 2026).
+  editor: "MUTARA",
+  legalForm: "société par actions simplifiée (SAS)" as string | null,
+  capital: null as string | null, // capital social, ex. « 1 000 € »
+  address: "20 rue Léon Martine, 92290 Châtenay-Malabry" as string | null,
+  registration: "au RCS de Nanterre sous le numéro 927 839 134" as string | null,
+  vatNumber: "FR79927839134" as string | null,
+  publicationDirector: "Kévin Peyrotte, président" as string | null, // représentant légal
   contactEmail: null as string | null, // contact général
   privacyContact: null as string | null, // contact pour les données personnelles (DPO le cas échéant)
   court: null as string | null, // juridiction compétente, ex. « tribunaux de Lyon »
@@ -18,7 +20,8 @@ export const LEGAL = {
 
 export const LEGAL_LABEL: Record<keyof typeof LEGAL, string> = {
   editor: "nom de l'éditeur",
-  legalForm: "forme sociale et capital",
+  legalForm: "forme sociale",
+  capital: "capital social",
   address: "adresse du siège",
   registration: "immatriculation (RCS et SIREN)",
   vatNumber: "numéro de TVA",

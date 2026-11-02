@@ -225,8 +225,9 @@ describe("e-mails", () => {
 describe("textes légaux", () => {
   it("champ manquant affiché « à compléter » et listé", async () => {
     const { legal, missingLegal } = await import("@/lib/legal");
-    expect(legal("editor")).toBe("Mutara France");
-    expect(legal("registration")).toBe("[immatriculation (RCS et SIREN) à compléter]");
-    expect(missingLegal()).toContain("directeur de la publication");
+    expect(legal("editor")).toBe("MUTARA");
+    expect(legal("capital")).toBe("[capital social à compléter]");
+    expect(missingLegal()).toContain("adresse de contact");
+    expect(missingLegal()).not.toContain("immatriculation (RCS et SIREN)");
   });
 });
