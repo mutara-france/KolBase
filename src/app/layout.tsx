@@ -11,13 +11,15 @@ import "@fontsource/ibm-plex-mono/latin-500.css";
 import "./globals.css";
 import { SiteFooter } from "@/components/SiteFooter";
 import { I18nProvider } from "@/components/I18nProvider";
-import { getLocale } from "@/lib/i18n/server";
+import { getLocale, getT } from "@/lib/i18n/server";
 
-export const metadata: Metadata = {
-  title: "KolBase — praticiens × organisations",
-  description:
-    "KolBase met en relation les chirurgiens-dentistes et les organisations du secteur : industriels, sociétés savantes, associations, organismes de formation.",
-};
+export async function generateMetadata(): Promise<Metadata> {
+  const { t } = await getT();
+  return {
+    title: t("KolBase — praticiens × organisations"),
+    description: t("KolBase met en relation les chirurgiens-dentistes et les organisations du secteur : industriels, sociétés savantes, associations, organismes de formation."),
+  };
+}
 
 export default async function RootLayout({ children }: { children: React.ReactNode }) {
   const locale = await getLocale();

@@ -8,6 +8,7 @@ import { ORG_NOT_VERIFIED, isVerifiedOrg, requireMembership } from "@/lib/orgs";
 import { BENEFIT_CATALOG, COMPLIANCE_ROLES, EVENT_MANAGER_ROLES, EVENT_ORGANIZER_ROLES, eventScope, EVENT_TYPES, parseParisDateTime } from "@/lib/events";
 import { EventFormat } from "@/generated/prisma/enums";
 import { eurToCents, intOrNull, str } from "@/lib/form";
+import { getT } from "@/lib/i18n/server";
 
 export type ActionState = { error?: string; ok?: string } | undefined;
 
@@ -92,21 +93,22 @@ export async function setEventAgency(form: FormData) {
 /** Inscription nominative d'un utilisateur connecté, avec les avantages qu'il accepte. */
 export async function registerToEvent(_: ActionState, form: FormData): Promise<ActionState> {
   const user = await requireUser();
+  const { t } = await getT();
   const eventId = str(form, "eventId");
   const event = await db.event.findFirst({
     where: { id: eventId, publishedAt: { not: null } },
     include: { benefits: true, _count: { select: { registrations: true } } },
   });
-  if (!event) return { error: "Événement introuvable." };
-  if (!event.registrationOpen) return { error: "Les inscriptions sont closes." };
-  if (event.startsAt < new Date()) return { error: "Cet événement a déjà eu lieu." };
-  if (event.capacity && event._count.registrations >= event.capacity) return { error: "L'événement est complet." };
+  if (!event) return { error: t("Événement introuvable.") };
+  if (!event.registrationOpen) return { error: t("Les inscriptions sont closes.") };
+  if (event.startsAt < new Date()) return { error: t("Cet événement a déjà eu lieu.") };
+  if (event.capacity && event._count.registrations >= event.capacity) return { error: t("L'événement est complet.") };
   if (await db.registration.findUnique({ where: { eventId_userId: { eventId, userId: user.id } } }))
-    return { error: "Vous êtes déjà inscrit." };
+    return { error: t("Vous êtes déjà inscrit.") };
 
   const accepted = event.benefits.filter((b) => form.get(`accept_${b.id}`));
   if (accepted.length > 0 && user.practitioner && !form.get("ackHcp"))
-    return { error: "Merci de confirmer avoir pris connaissance de l'information sur les avantages." };
+    return { error: t("Merci de confirmer avoir pris connaissance de l'information sur les avantages.") };
 
   // L'événement est verrouillé le temps de compter les places et d'inscrire : deux inscriptions
   // simultanées ne peuvent pas dépasser la capacité.
@@ -123,14 +125,14 @@ export async function registerToEvent(_: ActionState, form: FormData): Promise<A
       },
     });
   });
-  if (!reg) return { error: "L'événement est complet." };
+  if (!reg) return { error: t("L'événement est complet.") };
   await audit(user.id, "registration.create", "Registration", reg.id, {
     eventId,
     benefits: accepted.map((b) => b.catalogId),
     totalCents: accepted.reduce((s, b) => s + b.valueCents, 0),
   });
   revalidatePath(`/evenements/${eventId}`);
-  return { ok: "Inscription confirmée." };
+  return { ok: t("Inscription confirmée.") };
 }
 
 export async function cancelRegistration(form: FormData) {
