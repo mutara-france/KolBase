@@ -89,7 +89,7 @@ export default async function Page({ params }: { params: Promise<{ id: string }>
             {org.verification === "REJECTED"
               ? `KolBase n'a pas validé votre organisation${org.verificationNote ? ` : ${org.verificationNote}` : ""}.`
               : "Votre organisation est en attente de validation par KolBase. D'ici là, elle ne peut ni solliciter de praticiens, ni publier."}{" "}
-            {isAdmin ? <Link href={`${base}/membres`}>{org.siren ? "Voir la demande" : "Renseigner le SIREN"}</Link> : "Un administrateur de l'organisation peut compléter la demande."}
+            {isAdmin ? <Link href={`${base}/membres?onglet=organisation`}>{org.siren ? "Voir la demande" : "Renseigner le SIREN"}</Link> : "Un administrateur de l'organisation peut compléter la demande."}
           </p>
         )}
         <DashStats stats={stats} />

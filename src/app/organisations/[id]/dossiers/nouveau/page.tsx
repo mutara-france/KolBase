@@ -21,7 +21,7 @@ export default async function Page({ params, searchParams }: { params: Promise<{
           <section className="card stack-sm">
             <h1>Nouveau dossier</h1>
             <p>{ORG_NOT_VERIFIED}</p>
-            <p><Link className="btn secondary" href={`/organisations/${id}/membres`}>Suivre la validation</Link></p>
+            <p><Link className="btn secondary" href={`/organisations/${id}/membres?onglet=organisation`}>Suivre la validation</Link></p>
           </section>
         </main>
       </>

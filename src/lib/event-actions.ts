@@ -198,7 +198,7 @@ export async function createMandate(_: ActionState, form: FormData): Promise<Act
   const m = await db.mandate.create({ data: { mandatorId: orgId, agencyId, scope: str(form, "scope") || null } });
   await audit(user.id, "mandate.create", "Mandate", m.id, { agencyId });
   revalidatePath(`/organisations/${orgId}/prestataires`);
-  return { ok: `${agency.name} est mandatée. Confiez-lui des événements depuis leur fiche, et invitez ses collaborateurs avec le rôle « Agence mandatée ».` };
+  return { ok: `${agency.name} est mandatée. Confiez-lui des événements depuis leur fiche : son équipe y accède aussitôt, sans invitation.` };
 }
 
 /** Fin de mandat : l'agence perd l'accès aux événements qui lui étaient confiés. */

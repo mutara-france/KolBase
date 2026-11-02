@@ -1,6 +1,6 @@
 "use client";
 
-import { useActionState, useState } from "react";
+import { useActionState, useState, useTransition } from "react";
 import { createInvitation, createOrganization, removeOrgLogo, setMemberRoles, submitSiren, updateOrganization, updateExpertProfile, updateOrgLogo, type InviteState } from "@/lib/org-actions";
 import { Avatar } from "@/components/Avatar";
 import { Notice } from "@/components/AuthForms";
@@ -184,26 +184,56 @@ export function LogoForm({ orgId, name, src, verified }: { orgId: string; name: 
   );
 }
 
-/** Rôles d'un membre : cases à cocher pour l'administrateur, enregistrées d'un coup (et retrait du membre). */
+/** Rôles d'un membre : chaque case cochée ou décochée est enregistrée aussitôt ; le retrait demande une confirmation. */
 export function MemberRolesForm({ orgId, userId, roles, options, canRemove }: { orgId: string; userId: string; roles: string[]; options: (Opt & { desc?: string })[]; canRemove: boolean }) {
-  const [state, action, pending] = useActionState(setMemberRoles, undefined);
+  const [checked, setChecked] = useState(roles);
+  const [confirming, setConfirming] = useState(false);
+  const [state, action, pending] = useActionState(async (prev: Awaited<ReturnType<typeof setMemberRoles>>, fd: FormData) => {
+    const r = await setMemberRoles(prev, fd);
+    // Refus (dernier administrateur, aucun rôle) : les cases reviennent à l'état enregistré.
+    if (r?.error) setChecked(roles);
+    return r;
+  }, undefined);
+  const [isPending, startTransition] = useTransition();
+  const submit = (next: string[], remove = false) => {
+    const fd = new FormData();
+    fd.set("orgId", orgId);
+    fd.set("userId", userId);
+    next.forEach((r) => fd.append("role", r));
+    if (remove) fd.set("remove", "1");
+    startTransition(() => action(fd));
+  };
+  const busy = pending || isPending;
   return (
-    <form action={action} className="member-roles">
-      <input type="hidden" name="orgId" value={orgId} />
-      <input type="hidden" name="userId" value={userId} />
-      <div className="role-chips">
+    <div className="member-roles">
+      <div className="role-chips" role="group" aria-label="Rôles">
         {options.map((o) => (
           <label key={o.value} className="role-chip" title={o.desc}>
-            <input type="checkbox" name="role" value={o.value} defaultChecked={roles.includes(o.value)} />
+            <input
+              type="checkbox"
+              value={o.value}
+              checked={checked.includes(o.value)}
+              disabled={busy}
+              onChange={(e) => {
+                const next = e.target.checked ? [...checked, o.value] : checked.filter((r) => r !== o.value);
+                setChecked(next);
+                submit(next);
+              }}
+            />
             <span>{o.label}</span>
           </label>
         ))}
       </div>
       <div className="actions">
-        <button className="btn small secondary" disabled={pending}>{pending ? "Enregistrement…" : "Enregistrer"}</button>
-        {canRemove && <button className="link danger" name="remove" value="1" disabled={pending}>Retirer de l&apos;organisation</button>}
-        {(state?.error || state?.ok) && <span className={`text-xs ${state?.error ? "error-text" : ""}`} role="status">{state?.error ?? state?.ok}</span>}
+        {canRemove && !confirming && <button type="button" className="link danger" disabled={busy} onClick={() => setConfirming(true)}>Retirer de l&apos;organisation</button>}
+        {canRemove && confirming && (
+          <>
+            <button type="button" className="btn small danger" disabled={busy} onClick={() => submit([], true)}>Confirmer le retrait</button>
+            <button type="button" className="link" onClick={() => setConfirming(false)}>Annuler</button>
+          </>
+        )}
+        {busy ? <span className="text-xs muted" role="status">Enregistrement…</span> : (state?.error || state?.ok) && <span className={`text-xs ${state?.error ? "error-text" : "muted"}`} role="status">{state?.error ?? state?.ok}</span>}
       </div>
-    </form>
+    </div>
   );
 }

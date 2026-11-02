@@ -47,7 +47,21 @@ export const getCurrentUser = cache(async () => {
     include: { user: { include: { practitioner: true, memberships: { include: { organization: true } } } } },
   });
   if (!session || session.expiresAt < new Date()) return null;
-  return session.user;
+  const user = session.user;
+  // Agences mandatées : les membres d'une agence accèdent à chaque organisation qui la mandate (mandat actif),
+  // avec le seul rôle « Agence mandatée » (événements confiés). Aucune invitation séparée : le mandat fait foi.
+  const agencyIds = user.memberships.filter((m) => m.organization.kind === "PRESTATAIRE").map((m) => m.organizationId);
+  if (agencyIds.length > 0) {
+    const mandates = await db.mandate.findMany({
+      where: { agencyId: { in: agencyIds }, OR: [{ endsAt: null }, { endsAt: { gt: new Date() } }] },
+      include: { mandator: true },
+    });
+    for (const m of mandates) {
+      if (user.memberships.some((x) => x.organizationId === m.mandatorId && x.role === "PRESTATAIRE")) continue;
+      user.memberships.push({ id: `mandat:${m.id}`, userId: user.id, organizationId: m.mandatorId, role: "PRESTATAIRE", createdAt: m.startsAt, organization: m.mandator });
+    }
+  }
+  return user;
 });
 
 export async function requireUser() {

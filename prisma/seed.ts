@@ -71,7 +71,6 @@ const STAFF: { id: string; first: string; last: string; org: string; roles: OrgR
   { id: "demo-u-pierre", first: "Pierre", last: "Vidal", org: "demo-org-cdra", roles: ["ADMIN"] },
   { id: "demo-u-anne", first: "Anne", last: "Chevalier", org: "demo-org-academie", roles: ["ADMIN"] },
   { id: "demo-u-karim", first: "Karim", last: "Benali", org: "demo-org-mediane", roles: ["ADMIN"] },
-  { id: "demo-u-karim", first: "Karim", last: "Benali", org: "demo-org-dentalys", roles: ["PRESTATAIRE"] },
   { id: "demo-u-ludovic", first: "Ludovic", last: "Perrin", org: "demo-sup-belleville", roles: ["ADMIN"] },
 ];
 

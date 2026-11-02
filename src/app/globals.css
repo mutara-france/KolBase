@@ -829,3 +829,4 @@ body:has(.sidebar) .site-footer { padding: 24px 32px; }
   .row-status { grid-column: 1; }
   .row-figures { grid-column: 2; grid-row: 1 / span 2; }
 }
+.quote-lines > .link { align-self: flex-start; display: inline-flex; align-items: center; gap: 4px; margin-top: 2px; }

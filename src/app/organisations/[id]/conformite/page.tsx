@@ -59,24 +59,20 @@ export default async function Page({ params, searchParams }: { params: Promise<{
     transparence: toPublish.filter((p) => !p.declared).length,
   };
 
-  const sectionTabs = await orgTabs("conformite", id);
+  // Onglets de la rubrique (un seul niveau) : les compteurs viennent de cette page pour ses propres onglets.
+  const sectionTabs = (await orgTabs("conformite", id)).map((t) => (t.key in counts ? { ...t, count: counts[t.key] } : t.key === "hospitalites" || t.key === "relecture" ? t : { ...t, count: 0 }));
   return (
     <>
       <SiteHeader />
       <main className="stack">
-        <SectionNav tabs={sectionTabs} active="conformite" label="Rubrique Conformité" />
-        <h1>Espace conformité</h1>
-        <p className="muted">
-          Validation des dossiers, régime applicable (déclaration ou autorisation), registre des conventions et suivi des publications
-          Transparence Santé. Les seuils se règlent dans l&apos;onglet Paramètres.
-        </p>
-        <nav className="tabs">
-          {TABS.map(([k, l]) => (
-            <Link key={k} href={`?onglet=${k}`} className={k === onglet ? "active" : ""}>
-              {l}{counts[k] ? <span className="count">{counts[k]}</span> : null}
-            </Link>
-          ))}
-        </nav>
+        <SectionNav tabs={sectionTabs} active={onglet} label="Rubrique Conformité" />
+        <h1>{TABS.find(([k]) => k === onglet)?.[1] ?? "Espace conformité"}</h1>
+        {onglet === "a-valider" && (
+          <p className="muted">
+            Validation des dossiers et régime applicable (déclaration ou autorisation). Viennent ensuite la relecture des supports, les autorisations,
+            les hospitalités, le registre des conventions et les publications Transparence Santé.
+          </p>
+        )}
 
         {onglet === "a-valider" && <ToValidate />}
         {onglet === "autorisations" && (
