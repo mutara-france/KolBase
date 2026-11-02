@@ -6,15 +6,15 @@ export const LEGAL = {
   // Registre du commerce (source : RNE / Pappers, novembre 2026).
   editor: "MUTARA",
   legalForm: "société par actions simplifiée (SAS)" as string | null,
-  capital: null as string | null, // capital social, ex. « 1 000 € »
+  capital: "100 €" as string | null,
   address: "20 rue Léon Martine, 92290 Châtenay-Malabry" as string | null,
   registration: "au RCS de Nanterre sous le numéro 927 839 134" as string | null,
   vatNumber: "FR79927839134" as string | null,
   publicationDirector: "Kévin Peyrotte, président" as string | null, // représentant légal
-  contactEmail: null as string | null, // contact général
-  privacyContact: null as string | null, // contact pour les données personnelles (DPO le cas échéant)
-  court: null as string | null, // juridiction compétente, ex. « tribunaux de Lyon »
-  emailProvider: null as string | null, // prestataire d'envoi d'e-mails, ex. « Brevo (Sendinblue SAS, Paris) »
+  contactEmail: "contact@kolbase.io" as string | null,
+  privacyContact: "contact@kolbase.io" as string | null, // données personnelles (DPO le cas échéant)
+  court: "tribunaux de Nanterre" as string | null,
+  emailProvider: "LWS (Ligne Web Services, Paris)" as string | null,
   storageProvider: null as string | null, // hébergeur des documents, ex. « Scaleway SAS, Paris »
 };
 

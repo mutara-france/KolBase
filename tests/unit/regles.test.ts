@@ -226,8 +226,8 @@ describe("textes légaux", () => {
   it("champ manquant affiché « à compléter » et listé", async () => {
     const { legal, missingLegal } = await import("@/lib/legal");
     expect(legal("editor")).toBe("MUTARA");
-    expect(legal("capital")).toBe("[capital social à compléter]");
-    expect(missingLegal()).toContain("adresse de contact");
-    expect(missingLegal()).not.toContain("immatriculation (RCS et SIREN)");
+    expect(legal("capital")).toBe("100 €");
+    expect(legal("storageProvider")).toBe("[hébergeur des documents à compléter]");
+    expect(missingLegal()).toEqual(["hébergeur des documents"]);
   });
 });
