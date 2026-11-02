@@ -39,6 +39,13 @@ export default async function Page({ params }: { params: Promise<{ id: string; e
     },
   });
   if (!event) notFound();
+  const calls = isOrganizer
+    ? await db.openCall.findMany({
+        where: { organizationId: id, eventId },
+        include: { applications: { select: { status: true, practitioner: { select: { profession: true, user: { select: { firstName: true, lastName: true } } } } } } },
+        orderBy: { createdAt: "asc" },
+      })
+    : [];
   const [rfqs, agencies] = await Promise.all([
     db.rfq.findMany({
       where: { organizationId: id, eventId },
@@ -189,6 +196,42 @@ export default async function Page({ params }: { params: Promise<{ id: string; e
                 </div>
               )}
             </section>
+
+            {isOrganizer && (
+              <section className="card stack-sm">
+                <div className="card-head">
+                  <div>
+                    <h2>Intervenants</h2>
+                    <p className="muted">Lancez un appel à candidatures rattaché à l&apos;événement : les experts référencés candidatent, vous retenez, un dossier s&apos;ouvre pour chaque intervenant.</p>
+                  </div>
+                  <Link className="btn ghost" href={`/organisations/${id}/opportunites?evenement=${eventId}#nouvel-appel`}>Lancer un appel</Link>
+                </div>
+                {calls.length > 0 && (
+                  <ul className="logistics-list">
+                    {calls.map((c) => {
+                      const kept = c.applications.filter((a) => a.status === "retained");
+                      const pending = c.applications.filter((a) => a.status === "pending").length;
+                      return (
+                        <li key={c.id}>
+                          <div className="logistics-row">
+                            <div>
+                              <strong>{c.title}</strong>
+                              <div className="muted text-sm">
+                                {kept.length}{c.slots ? ` / ${c.slots}` : ""} retenu{kept.length > 1 ? "s" : ""}
+                                {kept.length ? ` : ${kept.map((a) => `${drPrefix(a.practitioner.profession)}${a.practitioner.user.lastName}`).join(", ")}` : ""}
+                                {pending ? ` · ${pending} candidature${pending > 1 ? "s" : ""} à examiner` : ""}
+                              </div>
+                            </div>
+                            <span className={`pill ${c.status === "open" ? "ok" : "done"}`}>{c.status === "open" ? "Ouvert" : "Clôturé"}</span>
+                            <Link className="btn ghost small" href={`/organisations/${id}/opportunites/${c.id}`}>Voir</Link>
+                          </div>
+                        </li>
+                      );
+                    })}
+                  </ul>
+                )}
+              </section>
+            )}
 
             {event.internal && (
               <section className="card">

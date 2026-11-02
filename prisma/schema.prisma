@@ -116,7 +116,6 @@ model PractitionerProfile {
   publications  Publication[]
   projectLinks  ProjectExpert[]
   applications  Application[]
-  speakerApplications SpeakerApplication[]
   followers     Follow[]
   orcidSyncedAt DateTime?
   orcidVerified Boolean   @default(false) // iD obtenu par connexion au compte ORCID
@@ -466,12 +465,6 @@ model Event {
   // Réunion interne (board, comité…) : ni publication dans l'agenda, ni inscriptions en ligne.
   internal         Boolean      @default(false)
   program          String?      // programme scientifique (déroulé horaire), affiché sur la page publique
-  speakerCallOpen  Boolean      @default(false)
-  speakerDeadline  DateTime?
-  speakerSlots     Int?
-  speakerBudgetMinCents Int?
-  speakerBudgetMaxCents Int?
-  speakerProfile   String?
   // Agence prestataire mandatée : ses membres (rôle Prestataire) ne voient que les événements confiés.
   agencyId         String?
   agency           Organization? @relation("agencyEvents", fields: [agencyId], references: [id])
@@ -480,23 +473,8 @@ model Event {
 
   benefits      EventBenefit[]
   registrations Registration[]
-  speakerApplications SpeakerApplication[]
   rfqs          Rfq[]
-}
-
-// Candidature d'un expert à un appel à intervenants (rattaché à un événement).
-model SpeakerApplication {
-  id             String              @id @default(cuid())
-  eventId        String
-  event          Event               @relation(fields: [eventId], references: [id], onDelete: Cascade)
-  practitionerId String
-  practitioner   PractitionerProfile @relation(fields: [practitionerId], references: [id])
-  message        String?
-  status         ApplicationStatus   @default(pending)
-  projectId      String?
-  createdAt      DateTime            @default(now())
-
-  @@unique([eventId, practitionerId])
+  calls         OpenCall[]
 }
 
 // Demande de devis adressée à des prestataires référencés.
@@ -627,10 +605,16 @@ model OpenCall {
   deadline       DateTime?
   description    String?
   status         OpenCallStatus @default(open)
+  // Appel rattaché à un événement (formation, symposium…) : la personne retenue y intervient.
+  eventId        String?
+  event          Event?       @relation(fields: [eventId], references: [id], onDelete: SetNull)
+  slots          Int?         // places à pourvoir (facultatif)
   createdById    String?
   createdAt      DateTime     @default(now())
 
   applications Application[]
+
+  @@index([eventId])
 }
 
 model Application {

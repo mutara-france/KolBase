@@ -11,11 +11,11 @@ export async function GET() {
   const [regs, talks] = await Promise.all([
     db.registration.findMany({ where: { userId: user.id, event: { startsAt: { gte: now } } }, include: { event: { include: { organization: { select: { name: true } } } } } }),
     user.practitioner
-      ? db.speakerApplication.findMany({ where: { practitionerId: user.practitioner.id, status: "retained", event: { startsAt: { gte: now } } }, include: { event: { include: { organization: { select: { name: true } } } } } })
+      ? db.application.findMany({ where: { practitionerId: user.practitioner.id, status: "retained", openCall: { event: { startsAt: { gte: now } } } }, include: { openCall: { include: { event: { include: { organization: { select: { name: true } } } } } } } })
       : Promise.resolve([]),
   ]);
   const seen = new Set<string>();
-  const items = [...talks.map((t) => ({ e: t.event, talk: true })), ...regs.map((r) => ({ e: r.event, talk: false }))].filter(({ e }) => !seen.has(e.id) && !!seen.add(e.id));
+  const items = [...talks.flatMap((a) => (a.openCall.event ? [{ e: a.openCall.event, talk: true }] : [])), ...regs.map((r) => ({ e: r.event, talk: false }))].filter(({ e }) => !seen.has(e.id) && !!seen.add(e.id));
   return icsResponse("kolbase-mon-agenda.ics", toIcs(t("KolBase — mon agenda"), items.map(({ e, talk }) => ({
     uid: `${e.id}-${user.id}`, start: e.startsAt, minutes: e.durationMinutes, title: talk ? t("Intervention : {title}", { title: e.title }) : e.title, location: eventLocation(e),
     description: t("Organisé par {org}.", { org: e.organization.name }), url: `${appUrl()}/evenements/${e.id}`,

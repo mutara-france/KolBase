@@ -842,3 +842,5 @@ body:has(.sidebar) .site-footer { padding: 24px 32px; }
 .ai-btn { border-color: #cfc8f5; color: var(--outremer); background: linear-gradient(90deg, #fff, var(--tint)); }
 .ai-btn svg { color: #7208c9; }
 .program { white-space: pre-line; font-size: 14px; line-height: 1.8; margin: 0; font-variant-numeric: tabular-nums; }
+.date-block.muted-block { background: var(--bg-subtle); color: var(--ink-soft); }
+.date-block.muted-block small { font-size: 9.5px; margin: 0; letter-spacing: 0; }

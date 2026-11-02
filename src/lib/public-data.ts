@@ -59,14 +59,17 @@ export async function publicOrgs(take?: number): Promise<OrgCardData[]> {
 export async function publicCalls(take?: number): Promise<CallCardData[]> {
   const now = new Date();
   const cs = await db.openCall.findMany({
-    where: { status: "open", OR: [{ deadline: null }, { deadline: { gte: now } }], organization: { verification: "VERIFIED" } },
-    include: { organization: { select: { id: true, name: true, visibility: true, logoUpdatedAt: true } } },
+    where: {
+      status: "open", organization: { verification: "VERIFIED" },
+      AND: [{ OR: [{ deadline: null }, { deadline: { gte: now } }] }, { OR: [{ eventId: null }, { event: { startsAt: { gte: now } } }] }],
+    },
+    include: { organization: { select: { id: true, name: true, visibility: true, logoUpdatedAt: true } }, event: { select: { title: true, startsAt: true } } },
     orderBy: [{ deadline: "asc" }, { createdAt: "desc" }],
   });
   // Pages publiques : seulement les organisations qui affichent leurs appels publiquement (réglage « Appels ouverts ») ;
   // les praticiens connectés voient tous les appels ouverts dans « Opportunités ».
   const visible = cs.filter((c) => canSee(companyVisibility(c.organization.visibility).projets, "public"));
-  return visible.slice(0, take).map((c) => ({ id: c.id, title: c.title, specialty: c.specialty, typeId: c.typeId, poster: c.organization.name, posterLogo: logoSrc(c.organization), deadline: c.deadline, description: c.description, budgetMinCents: c.budgetMinCents, budgetMaxCents: c.budgetMaxCents, open: true }));
+  return visible.slice(0, take).map((c) => ({ id: c.id, title: c.title, specialty: c.specialty, typeId: c.typeId, poster: c.organization.name, posterLogo: logoSrc(c.organization), deadline: c.deadline, description: c.description, budgetMinCents: c.budgetMinCents, budgetMaxCents: c.budgetMaxCents, open: true, event: c.event ? { title: c.event.title, startsAt: c.event.startsAt } : null }));
 }
 
 export async function publicCounts() {

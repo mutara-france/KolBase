@@ -31,7 +31,6 @@ export async function reviewOrganization(form: FormData) {
         data: { verification: decision === "reject" ? "REJECTED" : "PENDING", verifiedAt: null, verifiedById: admin.id, verificationNote: note, listed: false },
       }),
       db.openCall.updateMany({ where: { organizationId: orgId, status: "open" }, data: { status: "closed" } }),
-      db.event.updateMany({ where: { organizationId: orgId, speakerCallOpen: true }, data: { speakerCallOpen: false } }),
     ]);
   } else return;
   await audit(admin.id, `platform.org_${decision}`, "Organization", orgId, { note: note ?? undefined });

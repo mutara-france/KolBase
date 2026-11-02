@@ -41,7 +41,7 @@ export const orgOverview = cache(async (orgId: string) => {
   const now = new Date();
   const base = `/organisations/${orgId}`;
 
-  const [projects, events, calls, hosp, reviewQueue, speakerApps, rfqs, waitingQuotes] = await Promise.all([
+  const [projects, events, calls, hosp, reviewQueue, rfqs, waitingQuotes] = await Promise.all([
     can.view ? db.project.findMany({ where: { organizationId: orgId }, include: { experts: true }, orderBy: { updatedAt: "desc" } }) : Promise.resolve([]),
     can.events || can.compliance
       ? db.event.findMany({ where: { organizationId: orgId, ...(can.compliance ? {} : evScope) }, include: { _count: { select: { registrations: true } } }, orderBy: { startsAt: "asc" } })
@@ -55,7 +55,6 @@ export const orgOverview = cache(async (orgId: string) => {
     can.review
       ? db.materialVersion.findMany({ where: { status: "submitted", material: { project: { organizationId: orgId } } }, include: { material: { include: { project: { select: { id: true, title: true } } } } } })
       : Promise.resolve([]),
-    can.organizer ? db.speakerApplication.groupBy({ by: ["eventId"], where: { status: "pending", event: { organizationId: orgId } }, _count: true }) : Promise.resolve([]),
     can.organizer
       ? db.rfq.findMany({ where: { organizationId: orgId, status: { in: ["draft", "sent"] } }, include: { event: { select: { title: true } }, _count: { select: { quotes: true, suppliers: true } } } })
       : Promise.resolve([]),
@@ -109,11 +108,6 @@ export const orgOverview = cache(async (orgId: string) => {
         todos.push({ href: `${base}/evenements/${e.id}`, title: `Brouillon à publier : ${e.title}`, detail: formatDate(e.startsAt), icon: "CalendarClock", tone: "warn" });
   }
   if (can.organizer) {
-    const n = speakerApps.reduce((s, a) => s + a._count, 0);
-    if (n) {
-      const titles = events.filter((e) => speakerApps.some((a) => a.eventId === e.id)).map((e) => e.title);
-      todos.push({ href: `${base}/intervenants`, title: `${n} candidature${n > 1 ? "s" : ""} d'intervenant à examiner`, detail: titles.join(", ") || undefined, icon: "Mic", tone: "warn" });
-    }
     for (const r of rfqs) {
       const label = r.event?.title ?? "Demande de devis";
       if (r.status === "draft") todos.push({ href: `${base}/prestataires`, title: `Demande de devis à envoyer : ${label}`, icon: "Receipt" });

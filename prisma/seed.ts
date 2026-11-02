@@ -416,7 +416,7 @@ async function main() {
   // Événement confié à l'agence mandatée (son membre « Prestataire » n'accède qu'à celui-ci).
   await db.event.updateMany({ where: { id: "demo-ev-soiree-implanto", agencyId: null }, data: { agencyId: "demo-org-mediane" } });
 
-  // ─── Appels à intervenants ───────────────────────────────────────────────
+  // ─── Appels à candidatures rattachés à un événement (intervenants) ────────
   const SPEAKER_CALLS: { event: string; slots: number; deadline: number; min: number; max: number; profile: string; apps: [string, string, string?, string?][] }[] = [
     { event: "demo-ev-live-surgery", slots: 2, deadline: 40, min: 1500, max: 3000, profile: "Implantologistes pratiquant la mise en charge immédiate, à l'aise avec la chirurgie retransmise et les échanges avec la salle.",
       apps: [["demo-p-moreau", "Je peux réaliser et commenter deux cas de mise en charge immédiate, dont un cas complet maxillaire."], ["demo-p-durand", "Je propose de commenter la séquence chirurgicale et la gestion des tissus autour des implants immédiats."]] },
@@ -424,15 +424,23 @@ async function main() {
       apps: [["demo-p-nguyen", "Conférence plénière sur la prévalence de la péri-implantite en cabinet libéral.", "retained", "demo-prj-cdra-paro"], ["demo-p-blanc", "Communication sur les implants courts en secteur postérieur, résultats de notre essai multicentrique."], ["demo-p-lemoine", "Participation à la table ronde : prévention et maintenance parodontale autour des implants."]] },
   ];
   for (const c of SPEAKER_CALLS) {
-    await db.event.updateMany({
-      where: { id: c.event, speakerSlots: null },
-      data: { speakerCallOpen: true, speakerSlots: c.slots, speakerDeadline: at(c.deadline, 21), speakerBudgetMinCents: c.min * 100, speakerBudgetMaxCents: c.max * 100, speakerProfile: c.profile },
+    const ev = await db.event.findUnique({ where: { id: c.event } });
+    if (!ev) continue;
+    // Même identifiant que la migration des anciens appels à intervenants : pas de doublon en production.
+    const callId = `spk-${c.event}`;
+    await db.openCall.upsert({
+      where: { id: callId },
+      update: {},
+      create: {
+        id: callId, organizationId: ev.organizationId, eventId: ev.id, slots: c.slots, title: `Intervenants : ${ev.title}`, typeId: ev.typeId, specialty: ev.therapeuticArea,
+        description: c.profile, budgetMinCents: c.min * 100, budgetMaxCents: c.max * 100, deadline: at(c.deadline, 21), status: "open", createdAt: at(-12),
+      },
     });
     for (const [pid, message, status, projectId] of c.apps) {
-      await db.speakerApplication.upsert({
-        where: { eventId_practitionerId: { eventId: c.event, practitionerId: pid } },
+      await db.application.upsert({
+        where: { openCallId_practitionerId: { openCallId: callId, practitionerId: pid } },
         update: {},
-        create: { eventId: c.event, practitionerId: pid, message, status: (status ?? "pending") as ApplicationStatus, projectId, createdAt: at(-Math.floor(2 + Math.random() * 6)) },
+        create: { openCallId: callId, practitionerId: pid, message, status: (status ?? "pending") as ApplicationStatus, projectId, createdAt: at(-Math.floor(2 + Math.random() * 6)) },
       });
     }
   }
@@ -595,7 +603,7 @@ async function main() {
     console.log(`${email} est administrateur des ${ORGS.length} organisations de démo.`);
   }
 
-  console.log(`Données de démo OK : ${ORGS.length} organisations, ${STAFF.length} rôles, ${PRACS.length} praticiens, ${EVENTS.length + 1} événements, ${REGS.length} inscriptions, ${PROJECTS.length} dossiers, ${CALLS.length} opportunités, ${SPEAKER_CALLS.length} appels à intervenants, ${RFQS.length + 1} demandes de devis.`);
+  console.log(`Données de démo OK : ${ORGS.length} organisations, ${STAFF.length} rôles, ${PRACS.length} praticiens, ${EVENTS.length + 1} événements, ${REGS.length} inscriptions, ${PROJECTS.length} dossiers, ${CALLS.length} opportunités, ${SPEAKER_CALLS.length} appels liés à un événement, ${RFQS.length + 1} demandes de devis.`);
   if (!passwordHash) console.log("DEMO_PASSWORD non défini : les comptes de démo n'ont pas de mot de passe.");
 }
 

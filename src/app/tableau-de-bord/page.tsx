@@ -31,8 +31,8 @@ export default async function Page() {
     db.registration.findMany({ where: { userId: user.id, event: { startsAt: { gte: now } } }, include: { event: { include: { organization: { select: { name: true } } } } }, orderBy: { event: { startsAt: "asc" } } }),
     p.listed
       ? db.openCall.findMany({
-          where: { status: "open", OR: [{ deadline: null }, { deadline: { gte: now } }], applications: { none: { practitionerId: p.id } } },
-          include: { organization: { select: { name: true } } },
+          where: { status: "open", OR: [{ deadline: null }, { deadline: { gte: now } }], applications: { none: { practitionerId: p.id } }, organization: { verification: "VERIFIED" } },
+          include: { organization: { select: { name: true } }, event: { select: { title: true, startsAt: true } } },
           orderBy: { deadline: "asc" },
           take: 20,
         })
@@ -40,9 +40,9 @@ export default async function Page() {
     db.publication.count({ where: { practitionerId: p.id } }),
     db.practitionerStructure.count({ where: { practitionerId: p.id, isPayee: true } }),
     p.listed
-      ? db.speakerApplication.findMany({
-          where: { practitionerId: p.id, status: { in: ["pending", "retained"] }, event: { startsAt: { gte: now } } },
-          include: { event: { include: { organization: { select: { name: true } } } } },
+      ? db.application.findMany({
+          where: { practitionerId: p.id, status: { in: ["pending", "retained"] }, openCall: { event: { startsAt: { gte: now } } } },
+          include: { openCall: { include: { event: { include: { organization: { select: { name: true } } } } } } },
         })
       : Promise.resolve([]),
   ]);
@@ -51,11 +51,6 @@ export default async function Page() {
     where: { status: "changes", submittedById: user.id, material: { versions: { none: { status: { in: ["submitted", "approved"] } } } } },
     include: { material: { include: { project: { select: { id: true, title: true } } } } },
   });
-  const speakerCalls = p.listed
-    ? await db.event.count({
-        where: { speakerCallOpen: true, publishedAt: { not: null }, startsAt: { gte: now }, OR: [{ speakerDeadline: null }, { speakerDeadline: { gte: now } }], speakerApplications: { none: { practitionerId: p.id } } },
-      })
-    : 0;
 
   const linkOf = (projectId: string) => links.find((l) => l.projectId === projectId)?.id;
   const pending = links.filter((l) => l.status === "ATT_EXPERTS" && recruitmentOpen(l.project.status));
@@ -70,9 +65,6 @@ export default async function Page() {
       .filter((c) => linkOf(c.material.project.id))
       .map((c) => ({ href: `/sollicitations/${linkOf(c.material.project.id)}`, title: t("Modifier le support : {title}", { title: c.material.title }), detail: c.reviewComment ?? c.material.project.title, icon: "AlertTriangle" as const, tone: "danger" as const })),
     ...toSign.map((l) => ({ href: `/sollicitations/${l.id}`, title: t("Convention à signer"), detail: `${l.project.title} · ${l.project.organization.name}`, icon: "FileSignature" as const, tone: "warn" as const })),
-    ...(speakerCalls
-      ? [{ href: "/interventions?onglet=appels", title: plural(speakerCalls, "{n} appel à intervenants ouvert", "{n} appels à intervenants ouverts"), detail: t("Proposez votre candidature"), icon: "Mic" as const }]
-      : []),
   ];
   const profileTodos: TodoItem[] = p.listed
     ? [
@@ -84,10 +76,10 @@ export default async function Page() {
     : [];
 
   const agenda: TimelineItem[] = [
-    ...apps.map((a) => ({
+    ...apps.flatMap((a) => (a.openCall.event ? [{ ...a, event: a.openCall.event }] : [])).map((a) => ({
       date: a.event.startsAt,
       title: a.event.title,
-      detail: a.status === "retained" ? t("Vous intervenez · {org}", { org: a.event.organization.name }) : t("Candidature d'intervenant · en attente de réponse"),
+      detail: a.status === "retained" ? t("Vous intervenez · {org}", { org: a.event.organization.name }) : t("Candidature en attente de réponse"),
       href: a.status === "retained" ? "/interventions?onglet=interventions" : "/interventions?onglet=candidatures",
       strong: a.status === "retained",
     })),
@@ -167,11 +159,11 @@ export default async function Page() {
                     <Link key={c.id} href={`/opportunites/${c.id}`} className="suggest-card">
                       <span className="suggest-kind">{c.specialty || t(collabType(c.typeId)?.label ?? "")}</span>
                       <strong>{c.title}</strong>
-                      <span>{c.organization.name}{c.deadline ? ` · ${t("jusqu'au {date}", { date: fmtDate(locale, c.deadline) })}` : ""}</span>
+                      <span>{c.organization.name}{c.event ? ` · ${t("intervention le {date}", { date: fmtDate(locale, c.event.startsAt) })}` : ""}{c.deadline ? ` · ${t("jusqu'au {date}", { date: fmtDate(locale, c.deadline) })}` : ""}</span>
                     </Link>
                   ))
                 )}
-                <MoreLink href="/opportunites">{t("Toutes les opportunités")}</MoreLink>
+                <MoreLink href="/opportunites">{t("Tous les appels à candidatures")}</MoreLink>
               </section>
             )}
             <section className="card dash-card" aria-labelledby="mon-agenda">

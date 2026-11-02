@@ -13,6 +13,10 @@ import { getT } from "@/lib/i18n/server";
 
 export type ActionState = { error?: string; ok?: string } | undefined;
 
+/**
+ * Appel à candidatures : pour une collaboration (board, étude, rédaction…) ou pour intervenir à un événement
+ * de l'organisation (formation, symposium…). Dans les deux cas, la personne retenue ouvre un dossier.
+ */
 export async function createOpenCall(_: ActionState, form: FormData): Promise<ActionState> {
   const orgId = str(form, "orgId");
   const { user, org } = await requireMembership(orgId, SOURCING_ROLES);
@@ -21,17 +25,27 @@ export async function createOpenCall(_: ActionState, form: FormData): Promise<Ac
   const typeId = str(form, "typeId");
   if (!title) return { error: "Le titre est obligatoire." };
   if (!collabType(typeId)) return { error: "Type de collaboration invalide." };
+  const eventId = str(form, "eventId") || null;
+  const event = eventId ? await db.event.findFirst({ where: { id: eventId, organizationId: orgId } }) : null;
+  if (eventId && !event) return { error: "Événement introuvable." };
+  if (event && event.startsAt < new Date()) return { error: "Cet événement est déjà passé." };
+  const slotsRaw = str(form, "slots");
+  const slots = slotsRaw ? Number(slotsRaw) : null;
+  if (slots != null && (!Number.isInteger(slots) || slots < 1 || slots > 50)) return { error: "Nombre de places invalide (1 à 50)." };
   const min = eurToCents(str(form, "budgetMin"));
   const max = eurToCents(str(form, "budgetMax"));
   if (min != null && max != null && min > max) return { error: "Le budget minimum dépasse le maximum." };
   const deadlineRaw = str(form, "deadline");
   const deadline = deadlineRaw ? parseParisDateTime(`${deadlineRaw}T23:59`) : null;
   if (deadlineRaw && (!deadline || deadline < new Date())) return { error: "Date limite invalide ou passée." };
+  if (deadline && event && deadline > event.startsAt) return { error: "La date limite doit précéder l'événement." };
   const call = await db.openCall.create({
     data: {
       organizationId: orgId,
       title,
       typeId,
+      eventId: event?.id ?? null,
+      slots,
       specialty: str(form, "specialty") || null,
       description: str(form, "description") || null,
       budgetMinCents: min,
@@ -40,7 +54,7 @@ export async function createOpenCall(_: ActionState, form: FormData): Promise<Ac
       createdById: user.id,
     },
   });
-  await audit(user.id, "opencall.create", "OpenCall", call.id);
+  await audit(user.id, "opencall.create", "OpenCall", call.id, event ? { eventId: event.id } : undefined);
   redirect(`/organisations/${orgId}/opportunites/${call.id}`);
 }
 
@@ -61,9 +75,10 @@ export async function applyToCall(_: ActionState, form: FormData): Promise<Actio
   const { t } = await getT();
   if (!user.practitioner?.listed) return { error: t("Référencez-vous comme expert pour candidater.") };
   const callId = str(form, "callId");
-  const call = await db.openCall.findUnique({ where: { id: callId }, include: { organization: true } });
+  const call = await db.openCall.findUnique({ where: { id: callId }, include: { organization: true, event: true, _count: { select: { applications: { where: { status: "retained" } } } } } });
   if (!call || call.status !== "open" || !isVerifiedOrg(call.organization)) return { error: t("Cet appel n'est plus ouvert.") };
-  if (call.deadline && call.deadline < new Date()) return { error: t("La date limite est dépassée.") };
+  if ((call.deadline && call.deadline < new Date()) || (call.event && call.event.startsAt < new Date())) return { error: t("La date limite est dépassée.") };
+  if (call.slots && call._count.applications >= call.slots) return { error: t("Toutes les places sont pourvues.") };
   const message = str(form, "message");
   if (message.length < 20) return { error: t("Présentez votre candidature en quelques lignes (20 caractères minimum).") };
   const existing = await db.application.findUnique({ where: { openCallId_practitionerId: { openCallId: callId, practitionerId: user.practitioner.id } } });
@@ -85,6 +100,7 @@ export async function withdrawApplication(form: FormData) {
     await audit(user.id, "application.withdraw", "Application", app.id, { callId });
   }
   revalidatePath(`/opportunites/${callId}`);
+  revalidatePath("/interventions");
 }
 
 export async function rejectApplication(form: FormData) {
@@ -110,7 +126,7 @@ export async function retainApplication(_: ActionState, form: FormData): Promise
   const appId = str(form, "applicationId");
   const app = await db.application.findFirst({
     where: { id: appId, openCall: { organizationId: orgId } },
-    include: { openCall: true, practitioner: true },
+    include: { openCall: { include: { event: true } }, practitioner: { include: { user: { select: { lastName: true } } } } },
   });
   if (!app) return { error: "Candidature introuvable." };
   if (app.status !== "pending") return { error: "Cette candidature a déjà été traitée." };
@@ -120,18 +136,26 @@ export async function retainApplication(_: ActionState, form: FormData): Promise
   if (parsedUnits === undefined) return { error: UNITS_INVALID };
   const units = parsedUnits ?? 1;
 
-  // La candidature est « réservée » avant toute création : un double envoi ne crée pas deux dossiers.
+  const call = app.openCall;
+  const ev = call.event;
+  // Plusieurs personnes retenues (places, événement) : un dossier par personne, à son nom.
+  const title = ev ? `${ev.title} : intervention du Dr ${app.practitioner.user.lastName}` : call.slots && call.slots > 1 ? `${call.title} : Dr ${app.practitioner.user.lastName}` : call.title;
+
+  // La candidature est « réservée » avant toute création (verrou sur l'appel) : un double envoi ne crée pas deux
+  // dossiers, et deux décisions simultanées ne dépassent pas le nombre de places.
   const project = await db.$transaction(async (tx) => {
+    await tx.$queryRaw`SELECT 1 FROM "OpenCall" WHERE id = ${call.id} FOR UPDATE`;
+    if (call.slots && (await tx.application.count({ where: { openCallId: call.id, status: "retained" } })) >= call.slots) return "full" as const;
     const { count } = await tx.application.updateMany({ where: { id: app.id, status: "pending" }, data: { status: "retained" } });
     if (count === 0) return null;
     const created = await tx.project.create({
       data: {
         organizationId: orgId,
-        title: app.openCall.title,
-        typeId: app.openCall.typeId,
-        therapeuticArea: app.openCall.specialty,
-        description: app.openCall.description,
-        origin: "Opportunité",
+        title,
+        typeId: call.typeId,
+        therapeuticArea: call.specialty ?? ev?.therapeuticArea ?? null,
+        description: call.description ?? ev?.description ?? null,
+        origin: ev ? `Appel à candidatures : ${ev.title}` : "Appel à candidatures",
         status: "ATT_EXPERTS",
         createdById: user.id,
         experts: { create: { practitionerId: app.practitionerId, status: "ATT_EXPERTS", feeCents: fee, days: units } },
@@ -146,6 +170,7 @@ export async function retainApplication(_: ActionState, form: FormData): Promise
     await tx.application.update({ where: { id: app.id }, data: { projectId: created.id } });
     return created;
   });
+  if (project === "full") return { error: "Toutes les places sont déjà pourvues." };
   if (!project) return { error: "Cette candidature a déjà été traitée." };
   await audit(user.id, "application.retain", "Application", app.id, { projectId: project.id });
   await audit(user.id, "project.create", "Project", project.id, { from: "opencall", callId: app.openCallId });

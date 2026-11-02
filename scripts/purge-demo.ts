@@ -42,7 +42,6 @@ async function main() {
     db.rfqSupplier.deleteMany({ where: { OR: [{ supplierId: inOrgs }, { rfq: { organizationId: inOrgs } }] } }),
     db.rfq.deleteMany({ where: { OR: [{ organizationId: inOrgs }, { event: { organizationId: inOrgs } }] } }),
     db.registration.deleteMany({ where: { OR: [{ userId: inUsers }, { event: { organizationId: inOrgs } }] } }),
-    db.speakerApplication.deleteMany({ where: { OR: [{ practitionerId: inPracs }, { event: { organizationId: inOrgs } }] } }),
     db.application.deleteMany({ where: { OR: [{ practitionerId: inPracs }, { openCall: { organizationId: inOrgs } }] } }),
     db.message.deleteMany({ where: { OR: [{ authorId: inUsers }, { project: { organizationId: inOrgs } }] } }),
     db.projectExpert.deleteMany({ where: { OR: [{ practitionerId: inPracs }, { project: { organizationId: inOrgs } }] } }),

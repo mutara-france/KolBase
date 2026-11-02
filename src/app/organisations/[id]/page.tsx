@@ -69,8 +69,7 @@ export default async function Page({ params }: { params: Promise<{ id: string }>
   const create = [
     can.sourcing && { href: `${base}/dossiers/nouveau`, label: "Un dossier de collaboration" },
     can.organizer && { href: `${base}/evenements/nouveau`, label: "Un événement" },
-    can.sourcing && { href: `${base}/opportunites#nouvel-appel`, label: "Un appel à experts (collaboration rémunérée)" },
-    can.organizer && { href: `${base}/intervenants`, label: "Un appel à intervenants (prise de parole à un événement)" },
+    can.sourcing && { href: `${base}/opportunites#nouvel-appel`, label: "Un appel à candidatures" },
   ].filter((c): c is Exclude<typeof c, false> => !!c);
 
   const urgent = todos.filter((t) => t.tone === "danger").length;

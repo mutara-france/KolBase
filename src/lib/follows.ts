@@ -28,7 +28,7 @@ export async function followFeed(userId: string): Promise<FeedItem[]> {
       include: {
         user: { select: { firstName: true, lastName: true } },
         publications: { where: { createdAt: { gte: since } } },
-        speakerApplications: { where: { status: "retained", createdAt: { gte: since }, event: { publishedAt: { not: null } } }, include: { event: true } },
+        applications: { where: { status: "retained", createdAt: { gte: since }, openCall: { event: { publishedAt: { not: null } } } }, include: { openCall: { include: { event: true } } } },
       },
     });
     for (const p of pracs) {
@@ -40,8 +40,8 @@ export async function followFeed(userId: string): Promise<FeedItem[]> {
         for (const x of p.publications) items.push({ key: `pub-${x.id}`, date: x.createdAt, subject: name, href, kind: "practitioner", ...label("Nouvelle publication : {title}", { title: x.title }) });
       // Une intervention retenue révèle un partenaire : seulement si le praticien affiche ses collaborations en détail.
       if (v.projets === "nominatif" && canSee(v.historique, viewer))
-        for (const a of p.speakerApplications)
-          items.push({ key: `spk-${a.id}`, date: a.createdAt, subject: name, href: `/evenements/${a.eventId}`, kind: "practitioner", ...label("Intervient à « {title} »", { title: a.event.title }) });
+        for (const a of p.applications)
+          if (a.openCall.event) items.push({ key: `spk-${a.id}`, date: a.createdAt, subject: name, href: `/evenements/${a.openCall.event.id}`, kind: "practitioner", ...label("Intervient à « {title} »", { title: a.openCall.event.title }) });
       if (p.listedAt && p.listedAt >= since) items.push({ key: `lst-${p.id}`, date: p.listedAt, subject: name, href, kind: "practitioner", ...label("Référencé(e) comme expert") });
     }
   }
@@ -60,8 +60,6 @@ export async function followFeed(userId: string): Promise<FeedItem[]> {
         for (const c of o.openCalls) items.push({ key: `call-${c.id}`, date: c.createdAt, subject: o.name, href: `/opportunites/${c.id}`, kind: "organization", ...label("Nouvel appel : {title}", { title: c.title }) });
       for (const e of o.events) {
         items.push({ key: `ev-${e.id}`, date: e.publishedAt!, subject: o.name, href: `/evenements/${e.id}`, kind: "organization", ...label("Nouvel événement : {title}", { title: e.title }) });
-        if (e.speakerCallOpen && e.startsAt > new Date())
-          items.push({ key: `spc-${e.id}`, date: e.updatedAt, subject: o.name, href: `/evenements/${e.id}`, kind: "organization", ...label("Appel à intervenants : {title}", { title: e.title }) });
       }
     }
   }
