@@ -6,6 +6,7 @@ import { createRfq, postRfqMessage, submitQuote, updateSupplierProfile } from "@
 import { Notice } from "@/components/AuthForms";
 import { VAT_OPTIONS } from "@/lib/quotes";
 import { Avatar } from "@/components/Avatar";
+import { AiDraft } from "@/components/AiDraft";
 
 type Cat = { id: string; label: string };
 type Supplier = { id: string; name: string; categories: string[]; city: string | null; coverage: string | null; about: string | null; since: number };
@@ -29,7 +30,7 @@ export function SupplierLine({ s, catLabel, selected, onToggle }: { s: Supplier;
   );
 }
 
-export function NewRfqForm({ orgId, categories, suppliers, events, defaultEventId, defaultCategory }: { orgId: string; categories: Cat[]; suppliers: Supplier[]; events: EventOpt[]; defaultEventId?: string; defaultCategory?: string }) {
+export function NewRfqForm({ orgId, categories, suppliers, events, defaultEventId, defaultCategory, ai = false }: { orgId: string; categories: Cat[]; suppliers: Supplier[]; events: EventOpt[]; defaultEventId?: string; defaultCategory?: string; ai?: boolean }) {
   const [state, action, pending] = useActionState(createRfq, undefined);
   const [category, setCategory] = useState(categories.some((c) => c.id === defaultCategory) ? defaultCategory! : categories[0].id);
   const [picked, setPicked] = useState<string[]>([]);
@@ -65,7 +66,8 @@ export function NewRfqForm({ orgId, categories, suppliers, events, defaultEventI
         {matching.map((s) => <SupplierLine key={s.id} s={s} catLabel={categories.find((c) => c.id === category)!.label} selected={picked.includes(s.id)} onToggle={() => toggle(s.id)} />)}
         {matching.length === 0 && <p className="muted">Aucun prestataire référencé dans cette catégorie pour l&apos;instant.</p>}
       </div>
-      <label>Besoin<textarea name="needs" rows={3} required placeholder="Prestations attendues, contraintes horaires, niveau de service…" /></label>
+      <label>Besoin<textarea name="needs" rows={ai ? 6 : 3} required placeholder="Prestations attendues, contraintes horaires, niveau de service…" /></label>
+      {ai && <AiDraft kind="besoin" target="needs" label="Rédiger le besoin avec l'IA" />}
       <div className="row">
         <label>Participants attendus<input key={eventId} name="headcount" type="number" min={1} defaultValue={ev?.capacity ?? undefined} placeholder="Selon l'événement" /></label>
         <label>Réponse attendue avant<input name="deadline" type="date" /></label>
@@ -97,7 +99,7 @@ const LINE_EXAMPLE: Record<string, string> = {
 };
 
 /** Devis du prestataire : détail ligne par ligne (total calculé), TVA, validité, conditions et PDF signé. */
-export function QuoteForm({ orgId, rfqId, category, current, headcount, uploads }: { orgId: string; rfqId: string; category: string; current?: QuoteCurrent; headcount: number | null; uploads: boolean }) {
+export function QuoteForm({ orgId, rfqId, category, current, headcount, uploads, ai = false }: { orgId: string; rfqId: string; category: string; current?: QuoteCurrent; headcount: number | null; uploads: boolean; ai?: boolean }) {
   const [state, action, pending] = useActionState(submitQuote, undefined);
   const [open, setOpen] = useState(!current);
   // Un ancien devis au montant global devient une ligne « Forfait », modifiable comme les autres.
@@ -152,7 +154,8 @@ export function QuoteForm({ orgId, rfqId, category, current, headcount, uploads 
         <label>Délai / disponibilité<input name="delay" defaultValue={current?.delay} placeholder="Confirmation sous 48 h" /></label>
         <label>Conditions<input name="conditions" defaultValue={current?.conditions} placeholder="Acompte 30 %, annulation sans frais jusqu'à J-15…" /></label>
       </div>
-      <label>Présentation de l&apos;offre<textarea name="note" rows={2} defaultValue={current?.note} placeholder="Ce qui est inclus, options, références…" /></label>
+      <label>Présentation de l&apos;offre<textarea name="note" rows={ai ? 4 : 2} defaultValue={current?.note} placeholder="Ce qui est inclus, options, références…" /></label>
+      {ai && <AiDraft kind="offre" target="note" label="Rédiger la présentation avec l'IA" />}
       {uploads && (
         <label>Devis signé (PDF, facultatif){current?.fileName ? <span className="hint"> Actuel : {current.fileName}</span> : null}
           <input name="file" type="file" accept="application/pdf" />

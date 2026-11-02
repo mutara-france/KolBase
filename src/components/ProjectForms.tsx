@@ -1,5 +1,6 @@
 "use client";
 
+import { AiDraft } from "@/components/AiDraft";
 import { useActionState, useMemo, useState } from "react";
 import { createProject, postMessage, respondToSolicitation } from "@/lib/project-actions";
 import { Notice } from "@/components/AuthForms";
@@ -8,7 +9,7 @@ import { useT } from "@/components/I18nProvider";
 type CType = { id: string; label: string; category: string; unit: string; fmv: readonly number[] };
 type Expert = { id: string; name: string; detail: string; dayRateCents: number | null };
 
-export function NewProjectForm({ orgId, types, experts, preselected }: { orgId: string; types: readonly CType[]; experts: Expert[]; preselected: string[] }) {
+export function NewProjectForm({ orgId, types, experts, preselected, ai = false }: { orgId: string; types: readonly CType[]; experts: Expert[]; preselected: string[]; ai?: boolean }) {
   const [state, action, pending] = useActionState(createProject, undefined);
   const [typeId, setTypeId] = useState(types[0].id);
   const [selected, setSelected] = useState<string[]>(preselected);
@@ -38,7 +39,8 @@ export function NewProjectForm({ orgId, types, experts, preselected }: { orgId: 
         <label>Domaine thérapeutique<input name="therapeuticArea" /></label>
       </div>
       <p className="hint">Repère indicatif KolBase (non réglementaire) : {type.fmv[0].toLocaleString("fr-FR")} à {type.fmv[1].toLocaleString("fr-FR")} € HT par {type.unit}. La juste contrepartie reste à documenter par votre organisation.</p>
-      <label>Objet et déroulé<textarea name="description" rows={4} placeholder="Contexte, livrables attendus, dates…" /></label>
+      <label>Objet et déroulé<textarea name="description" rows={ai ? 6 : 4} placeholder="Contexte, livrables attendus, dates…" /></label>
+      {ai && <AiDraft kind="objet" target="description" label="Rédiger l'objet avec l'IA" />}
 
       <fieldset>
         <legend>Experts sollicités</legend>

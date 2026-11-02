@@ -838,3 +838,7 @@ body:has(.sidebar) .site-footer { padding: 24px 32px; }
 .call-kind:not(.current):hover { opacity: 1; border-color: var(--outremer); }
 .call-kind-icon { flex: none; display: grid; place-items: center; width: 34px; height: 34px; border-radius: 10px; background: var(--tint); color: var(--outremer); }
 .pre-line { white-space: pre-line; }
+.ai-draft { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.ai-btn { border-color: #cfc8f5; color: var(--outremer); background: linear-gradient(90deg, #fff, var(--tint)); }
+.ai-btn svg { color: #7208c9; }
+.program { white-space: pre-line; font-size: 14px; line-height: 1.8; margin: 0; font-variant-numeric: tabular-nums; }

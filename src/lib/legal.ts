@@ -19,6 +19,8 @@ export const LEGAL = {
   // Signature électronique des conventions (si YOUSIGN_API_KEY) : Yousign SAS, renommée Youtrust SAS en 2026
   // (RCS Caen 794 513 986, source : youtrust.com/fr-fr/mentions, novembre 2026).
   signatureProvider: "Youtrust SAS (anciennement Yousign), Caen" as string | null,
+  // Assistant de rédaction (si ANTHROPIC_API_KEY) : modèle d'IA Claude.
+  aiProvider: "Anthropic PBC, San Francisco (États-Unis)" as string | null,
 };
 
 export const LEGAL_LABEL: Record<keyof typeof LEGAL, string> = {
@@ -35,6 +37,7 @@ export const LEGAL_LABEL: Record<keyof typeof LEGAL, string> = {
   emailProvider: "prestataire d'e-mails",
   storageProvider: "hébergeur des documents",
   signatureProvider: "prestataire de signature électronique",
+  aiProvider: "fournisseur de l'assistant de rédaction (IA)",
 };
 
 /** Valeur, ou « [… à compléter] ». */

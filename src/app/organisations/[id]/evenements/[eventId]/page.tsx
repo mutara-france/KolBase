@@ -1,3 +1,5 @@
+import { aiEnabled } from "@/lib/ai";
+import { ProgramForm } from "@/components/EventForms";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { CalendarDays, Euro, Gift, MapPin, Truck, Users } from "lucide-react";
@@ -206,6 +208,14 @@ export default async function Page({ params }: { params: Promise<{ id: string; e
                 <p className="hint">Les hospitalités offertes aux experts (repas, nuitée) relèvent de leur convention : précisez-les dans le dossier.</p>
               </section>
             )}
+
+            <section className="card">
+              <div className="block-head">
+                <h2>Programme</h2>
+                {!event.internal && event.publishedAt && event.program && <Link className="link" href={`/evenements/${event.id}`}>voir sur la page publique</Link>}
+              </div>
+              <ProgramForm orgId={id} eventId={eventId} program={event.program ?? ""} ai={aiEnabled()} />
+            </section>
 
             <section className="card">
               <h2>Hospitalités proposées</h2>

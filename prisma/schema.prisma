@@ -465,6 +465,7 @@ model Event {
   publishedAt      DateTime?
   // Réunion interne (board, comité…) : ni publication dans l'agenda, ni inscriptions en ligne.
   internal         Boolean      @default(false)
+  program          String?      // programme scientifique (déroulé horaire), affiché sur la page publique
   speakerCallOpen  Boolean      @default(false)
   speakerDeadline  DateTime?
   speakerSlots     Int?

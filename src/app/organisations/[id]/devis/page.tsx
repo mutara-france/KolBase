@@ -1,3 +1,4 @@
+import { aiEnabled } from "@/lib/ai";
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { Receipt } from "lucide-react";
@@ -94,6 +95,7 @@ export default async function Page({ params, searchParams }: { params: Promise<{
                         orgId={id}
                         rfqId={r.id}
                         category={r.category}
+                        ai={aiEnabled()}
                         headcount={r.headcount}
                         uploads={storageEnabled()}
                         current={q ? {

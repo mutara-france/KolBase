@@ -1,3 +1,4 @@
+import { aiEnabled } from "@/lib/ai";
 import Link from "next/link";
 import { Check, Info, Receipt, Send, X } from "lucide-react";
 import { SiteHeader } from "@/components/SiteHeader";
@@ -212,6 +213,7 @@ export default async function Page({ params, searchParams }: { params: Promise<{
         {onglet === "nouvelle" && (
           <NewRfqForm
             orgId={id}
+            ai={aiEnabled()}
             categories={SUPPLIER_CATEGORIES.map((c) => ({ id: c.id, label: c.label }))}
             suppliers={suppliers}
             events={events.map((e) => ({ id: e.id, label: `${formatDate(e.startsAt)} — ${e.title}`, city: e.city, capacity: e.capacity }))}
