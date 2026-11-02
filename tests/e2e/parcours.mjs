@@ -21,7 +21,7 @@ const check = (name, ok, detail = "") => { results.push({ name, ok, detail }); c
 const browser = await chromium.launch();
 
 async function session() {
-  const ctx = await browser.newContext();
+  const ctx = await browser.newContext({ locale: "fr-FR" });
   return { ctx, page: await ctx.newPage() };
 }
 async function login(page, email, password = PW, next = "") {
@@ -557,7 +557,7 @@ async function submitNewOrg(page, siren) {
   check("Suppression : conservation annoncée (conventions)", (await deleteAs("linh.nguyen@demo.kolbase.local")).includes("restent attachés à vos"));
   const linh = await userRow("demo-u-nguyen");
   check("Anonymisation : nom conservé pour les conventions, adresse et mot de passe effacés", linh?.firstName === "Linh" && linh.email.endsWith("@kolbase.invalid") && linh.passwordHash === null && Number(linh.links) > 0, JSON.stringify(linh));
-  const pub = await (await browser.newContext()).newPage();
+  const pub = await (await browser.newContext({ locale: "fr-FR" })).newPage();
   const fiche = await pub.goto(`${BASE}/experts/demo-p-nguyen`);
   check("Anonymisation : fiche expert retirée", fiche?.status() === 404, String(fiche?.status()));
 
@@ -631,7 +631,7 @@ async function submitNewOrg(page, siren) {
   await page.click('button:has-text("Ajouter le logo")');
   await page.waitForTimeout(800);
   check("Logo : enregistré", (await text(page)).includes("Logo enregistré"));
-  const anon = await browser.newContext();
+  const anon = await browser.newContext({ locale: "fr-FR" });
   const r = await anon.request.get(`${BASE}/logos/demo-org-dentalys`);
   check("Logo : public pour une organisation validée", r.status() === 200 && r.headers()["content-type"] === "image/png", String(r.status()));
   const pub = await anon.newPage();
