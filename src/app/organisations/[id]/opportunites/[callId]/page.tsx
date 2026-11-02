@@ -1,7 +1,9 @@
 import Link from "next/link";
 import type { ApplicationStatus } from "@/generated/prisma/client";
 import { notFound } from "next/navigation";
+import { CalendarDays, Euro, Inbox, UserCheck } from "lucide-react";
 import { SiteHeader } from "@/components/SiteHeader";
+import { PageHero } from "@/components/PageHero";
 import { RetainForm } from "@/components/OpportunityForms";
 import { db } from "@/lib/db";
 import { requireMembership } from "@/lib/orgs";
@@ -29,29 +31,28 @@ export default async function Page({ params }: { params: Promise<{ id: string; c
   const type = collabType(call.typeId);
   const budget = [call.budgetMinCents, call.budgetMaxCents].map((c) => (c != null ? formatEUR(c) : null));
 
+  const pendingCount = call.applications.filter((a) => a.status === "pending").length;
+  const retained = call.applications.filter((a) => a.status === "retained").length;
+
   return (
     <>
       <SiteHeader />
       <main className="stack">
-        <p className="muted"><Link href={`/organisations/${id}`}>{org.name}</Link> / <Link href={`/organisations/${id}/opportunites`}>Opportunités</Link></p>
-        <div className="actions spread">
-          <div>
-            <span className={`pill ${call.status === "open" ? "ok" : "done"}`}>{call.status === "open" ? "Ouverte" : "Clôturée"}</span>
-            <h1>{call.title}</h1>
-            <p className="muted">
-              {type?.label ?? call.typeId}{call.specialty ? ` · ${call.specialty}` : ""}
-              {budget[0] || budget[1] ? ` · budget ${budget.filter(Boolean).join(" – ")} HT` : ""}
-              {call.deadline ? ` · jusqu'au ${formatDate(call.deadline)}` : ""}
-            </p>
-          </div>
-          <form action={setOpenCallStatus}>
-            <input type="hidden" name="orgId" value={id} />
-            <input type="hidden" name="callId" value={callId} />
-            <input type="hidden" name="status" value={call.status === "open" ? "closed" : "open"} />
-            <button className="btn ghost">{call.status === "open" ? "Clôturer" : "Rouvrir"}</button>
-          </form>
-        </div>
-        {call.description && <section className="card"><h2>Description</h2><p>{call.description}</p></section>}
+        <p className="muted"><Link href={`/organisations/${id}`}>{org.name}</Link> / <Link href={`/organisations/${id}/opportunites`}>Appels à experts</Link></p>
+        <PageHero
+          eyebrow={`Appel à experts · ${type?.label ?? call.typeId}${call.specialty ? ` · ${call.specialty}` : ""}`}
+          status={<span className={`pill ${call.status === "open" ? "ok" : "done"}`}>{call.status === "open" ? "Ouvert" : "Clôturé"}</span>}
+          title={call.title}
+          lead={call.description}
+          facts={[
+            { icon: <Inbox size={13} />, label: "Candidatures", value: String(call.applications.length), sub: pendingCount ? `${pendingCount} à traiter` : "aucune en attente" },
+            { icon: <UserCheck size={13} />, label: "Retenues", value: String(retained), sub: retained ? "dossiers ouverts" : "personne pour l'instant" },
+            { icon: <Euro size={13} />, label: "Budget", value: budget[0] || budget[1] ? `${budget.filter(Boolean).join(" – ")} HT` : "Non précisé", sub: type ? `repère : ${type.fmv[0]}–${type.fmv[1]} € par ${type.unit}` : undefined },
+            { icon: <CalendarDays size={13} />, label: "Date limite", value: call.deadline ? formatDate(call.deadline) : "Aucune" },
+          ]}
+        />
+        <div className="page-grid">
+          <div className="page-main">
         <section className="card">
           <h2>Candidatures ({call.applications.length})</h2>
           {call.applications.length === 0 && <p className="muted">Aucune candidature pour l&apos;instant.</p>}
@@ -84,6 +85,20 @@ export default async function Page({ params }: { params: Promise<{ id: string; c
             ))}
           </ul>
         </section>
+          </div>
+          <aside className="page-aside">
+            <section className="card next-step">
+              <span className="eyebrow-sm">Pilotage</span>
+              <p className="next-hint">{call.status === "open" ? "Les experts référencés voient l'appel dans « Appels à experts ». Retenir une candidature propose des honoraires à l'expert ; son accord ouvre un dossier." : "Appel clôturé : il n'est plus visible des experts."}</p>
+              <form action={setOpenCallStatus} className="transitions-stack">
+                <input type="hidden" name="orgId" value={id} />
+                <input type="hidden" name="callId" value={callId} />
+                <input type="hidden" name="status" value={call.status === "open" ? "closed" : "open"} />
+                <button className="btn ghost">{call.status === "open" ? "Clôturer l'appel" : "Rouvrir l'appel"}</button>
+              </form>
+            </section>
+          </aside>
+        </div>
       </main>
     </>
   );

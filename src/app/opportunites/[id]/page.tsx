@@ -1,6 +1,8 @@
 import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
+import { Briefcase, CalendarDays, Euro } from "lucide-react";
 import { SiteHeader } from "@/components/SiteHeader";
+import { PageHero } from "@/components/PageHero";
 import { ApplyForm } from "@/components/OpportunityForms";
 import { db } from "@/lib/db";
 import { requireUser } from "@/lib/auth";
@@ -37,44 +39,53 @@ export default async function Page({ params }: { params: Promise<{ id: string }>
   const { t, locale } = await getT();
   const num = (n: number) => n.toLocaleString(intlLocale(locale));
 
+  const budget = [call.budgetMinCents, call.budgetMaxCents].filter((x) => x != null).map((x) => fmtEur(locale, x!)).join(" – ");
+
   return (
     <>
       <SiteHeader />
-      <main className="narrow stack">
-        <p className="muted"><Link href="/opportunites">{t("Opportunités")}</Link></p>
-        <div>
-          <span className="tag">{type ? t(type.label) : call.typeId}</span>
-          <h1>{call.title}</h1>
-          <p className="muted">{call.organization.name}</p>
-        </div>
-        <section className="card">
-          <dl className="facts">
-            {call.specialty && (<><dt>{t("Spécialité")}</dt><dd>{call.specialty}</dd></>)}
-            {(call.budgetMinCents != null || call.budgetMaxCents != null) && (
-              <><dt>{t("Budget")}</dt><dd>{t("{amount} HT", { amount: [call.budgetMinCents, call.budgetMaxCents].filter((x) => x != null).map((x) => fmtEur(locale, x!)).join(" – ") })}</dd></>
-            )}
-            {type && (<><dt>{t("Référence de marché")}</dt><dd>{t("{min} à {max} € HT par {unit}", { min: num(type.fmv[0]), max: num(type.fmv[1]), unit: t(type.unit) })}</dd></>)}
-            <dt>{t("Date limite")}</dt><dd>{call.deadline ? fmtDate(locale, call.deadline) : t("Aucune")}</dd>
-          </dl>
-        </section>
-        {call.description && <section className="card"><h2>{t("Description")}</h2><p>{call.description}</p></section>}
-        {call.organization.policy && <section className="card"><h2>{t("Politique de collaboration de {org}", { org: call.organization.name })}</h2><p>{call.organization.policy}</p></section>}
-        <section className="card highlight">
-          <h2>{t("Candidature")}</h2>
-          {mine ? (
-            <>
-              <p className={`notice ${mine.status === "rejected" ? "error" : "ok"}`}>{t(APP_STATUS[mine.status])}</p>
-              {mine.message && <p className="muted">« {mine.message} »</p>}
-              {mine.status === "pending" && !closed && (
-                <form action={withdrawApplication}><input type="hidden" name="callId" value={id} /><button className="btn ghost">{t("Retirer ma candidature")}</button></form>
+      <main className="stack">
+        <p className="muted"><Link href="/opportunites">{t("Appels à experts")}</Link></p>
+        <PageHero
+          eyebrow={`${t("Appel à experts")} · ${call.organization.name}`}
+          status={<span className={`pill ${closed ? "done" : "ok"}`}>{closed ? t("Clôturé") : t("Ouvert")}</span>}
+          title={call.title}
+          lead={call.description}
+          facts={[
+            { icon: <Briefcase size={13} />, label: t("Collaboration"), value: type ? t(type.label) : call.typeId, sub: call.specialty ?? undefined },
+            { icon: <Euro size={13} />, label: t("Budget"), value: budget ? t("{amount} HT", { amount: budget }) : t("À discuter"), sub: type ? t("repère : {min} à {max} € HT par {unit}", { min: num(type.fmv[0]), max: num(type.fmv[1]), unit: t(type.unit) }) : undefined },
+            { icon: <CalendarDays size={13} />, label: t("Date limite"), value: call.deadline ? fmtDate(locale, call.deadline) : t("Aucune") },
+          ]}
+        />
+        <div className="page-grid">
+          <div className="page-main">
+            {call.organization.policy && <section className="card"><h2>{t("Politique de collaboration de {org}", { org: call.organization.name })}</h2><p>{call.organization.policy}</p></section>}
+            <section className="card stack-sm">
+              <h2 className="section-title">{call.organization.name}</h2>
+              {call.organization.about && <p className="text-sm">{call.organization.about}</p>}
+              <Link className="link" href={`/structures/${call.organizationId}`}>{t("Voir la page de l'organisation")}</Link>
+            </section>
+            <p className="hint">{t("Si votre candidature est retenue, l'organisation vous propose des honoraires ; votre accord ouvre un dossier de collaboration avec une convention.")}</p>
+          </div>
+          <aside className="page-aside">
+            <section className="card next-step">
+              <span className="eyebrow-sm">{t("Candidature")}</span>
+              {mine ? (
+                <>
+                  <p className={`notice ${mine.status === "rejected" ? "error" : "ok"}`}>{t(APP_STATUS[mine.status])}</p>
+                  {mine.message && <p className="muted">« {mine.message} »</p>}
+                  {mine.status === "pending" && !closed && (
+                    <form action={withdrawApplication}><input type="hidden" name="callId" value={id} /><button className="btn ghost">{t("Retirer ma candidature")}</button></form>
+                  )}
+                </>
+              ) : closed ? (
+                <p className="muted">{t("Cet appel est clôturé.")}</p>
+              ) : (
+                <ApplyForm callId={id} />
               )}
-            </>
-          ) : closed ? (
-            <p className="muted">{t("Cet appel est clôturé.")}</p>
-          ) : (
-            <ApplyForm callId={id} />
-          )}
-        </section>
+            </section>
+          </aside>
+        </div>
       </main>
     </>
   );

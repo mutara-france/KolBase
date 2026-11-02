@@ -218,7 +218,10 @@ export async function DocumentsPanel({ projectId, linkId, canUpload, openUpload 
       )}
       {canUpload && (enabled ? (
         linkId ? (
-          <DocumentUploadForm projectId={projectId} ownLinkId={linkId} experts={[]} />
+          <details className="disclosure" open={openUpload}>
+            <summary>{t("Déposer un document")}</summary>
+            <DocumentUploadForm projectId={projectId} ownLinkId={linkId} experts={[]} />
+          </details>
         ) : (
           // Côté organisation, le formulaire reste replié sauf quand des conventions signées sont attendues.
           <details className="disclosure" open={openUpload}>
