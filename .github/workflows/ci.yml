@@ -68,6 +68,9 @@ jobs:
         run: npx prisma migrate diff --from-config-datasource --to-schema prisma/schema.prisma --exit-code
       - name: Données de démonstration
         run: npm run db:seed
+      # La mise en production relance la démo sur une base déjà remplie : le chargement doit être rejouable.
+      - name: Données de démo (second passage, idempotence)
+        run: npm run db:seed
 
       - name: Build
         run: npm run build

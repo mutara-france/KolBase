@@ -158,6 +158,9 @@ async function main() {
     create: { id: "demo-mandate-1", mandatorId: "demo-org-dentalys", agencyId: "demo-org-mediane", scope: "Logistique des soirées scientifiques" },
   });
 
+  // Les RPPS fictifs changent de format (clé de Luhn) : on libère d'abord les anciens numéros de démo,
+  // sinon un nouveau numéro peut heurter l'ancien numéro d'un autre profil (contrainte d'unicité).
+  await db.practitionerProfile.updateMany({ where: { id: { startsWith: "demo-p-" }, rpps: { startsWith: "999" } }, data: { rpps: null } });
   for (const p of PRACS) {
     const uid = p.id.replace("demo-p-", "demo-u-");
     await upsertUser(uid, p.first, p.last, passwordHash);
