@@ -87,6 +87,26 @@ vers les adresses réservées (`.local`, `.test`…), donc vers les comptes de d
   l'expert, messages, proposition spontanée, candidatures (reçue, non retenue), circuit de conformité,
   demandes de devis et devis reçus ; organisations et RPPS à valider pour les administrateurs KolBase.
 
+## Données personnelles
+
+Depuis « Mon compte » : téléchargement des données du compte (JSON) et suppression du compte. La suppression
+anonymise le compte (connexion impossible, fiche retirée, coordonnées, publications, suivis et candidatures en
+attente effacés, inscriptions à venir annulées) ; le nom, la profession, le RPPS, la ville et la structure de
+facturation ne sont conservés que s'ils figurent sur des conventions ou des hospitalités passées ou déclarées.
+
+## Avant l'ouverture au public
+
+1. **Textes légaux** : compléter les passages « à compléter » des mentions légales (éditeur, SIREN, directeur
+   de la publication, contact), des CGU (juridiction) et de la politique de confidentialité (contact, DPO,
+   prestataire d'e-mails, durées de conservation).
+2. **Variables Render** : `PLATFORM_ADMIN_EMAILS`, `SMTP_URL`, `MAIL_FROM` (et `ORCID_CLIENT_ID` /
+   `ORCID_CLIENT_SECRET` si la connexion ORCID est souhaitée).
+3. **Démo** : passer `SEED_DEMO` à `0` (sinon le déploiement suivant la recharge), puis, depuis le shell Render,
+   `npm run db:purge-demo` (aperçu) et `npm run db:purge-demo -- --confirmer` (suppression). Les comptes réels
+   sont conservés.
+4. **Administration** : revoir dans `/admin` les organisations reprises comme validées.
+5. **Sauvegardes** : vérifier les sauvegardes de la base PostgreSQL proposées par le plan Render.
+
 ## Feuille de route
 
 1. Authentification (e-mail + mot de passe, puis Pro Santé Connect)
