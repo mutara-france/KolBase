@@ -8,6 +8,7 @@ import { ORG_NOT_VERIFIED, isVerifiedOrg, requireMembership } from "@/lib/orgs";
 import { EVENT_MANAGER_ROLES, eventScope, parseParisDateTime } from "@/lib/events";
 import { SUPPLIER_CATEGORIES } from "@/lib/suppliers";
 import { eurToCents, str } from "@/lib/form";
+import { notifyQuote, notifyRfqSent } from "@/lib/notifications";
 
 export type ActionState = { error?: string; ok?: string } | undefined;
 
@@ -50,6 +51,7 @@ export async function createRfq(_: ActionState, form: FormData): Promise<ActionS
     },
   });
   await audit(user.id, send ? "rfq.send" : "rfq.create", "Rfq", rfq.id, { suppliers: supplierIds.length });
+  if (send) notifyRfqSent(rfq.id);
   redirect(`/organisations/${orgId}/prestataires`);
 }
 
@@ -58,8 +60,10 @@ export async function sendRfq(form: FormData) {
   const { user, roles, org } = await requireMembership(orgId, EVENT_MANAGER_ROLES);
   if (!isVerifiedOrg(org)) return;
   const rfqId = str(form, "rfqId");
-  await db.rfq.updateMany({ where: { id: rfqId, organizationId: orgId, ...rfqScope(user, roles), status: "draft" }, data: { status: "sent", sentAt: new Date() } });
+  const { count } = await db.rfq.updateMany({ where: { id: rfqId, organizationId: orgId, ...rfqScope(user, roles), status: "draft" }, data: { status: "sent", sentAt: new Date() } });
+  if (!count) return;
   await audit(user.id, "rfq.send", "Rfq", rfqId);
+  notifyRfqSent(rfqId);
   revalidatePath(`/organisations/${orgId}/prestataires`);
 }
 
@@ -107,6 +111,7 @@ export async function submitQuote(_: ActionState, form: FormData): Promise<Actio
   const q = await db.quote.upsert({ where: { rfqId_supplierId: { rfqId, supplierId: orgId } }, update: data, create: { rfqId, supplierId: orgId, ...data } });
   if (invite.declined) await db.rfqSupplier.update({ where: { rfqId_supplierId: { rfqId, supplierId: orgId } }, data: { declined: false } });
   await audit(user.id, "quote.submit", "Quote", q.id, { rfqId, amountCents });
+  notifyQuote(rfqId, orgId);
   revalidatePath(`/organisations/${orgId}/devis`);
   return { ok: "Devis transmis." };
 }

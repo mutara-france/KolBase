@@ -8,6 +8,7 @@ import { ORG_NOT_VERIFIED, isVerifiedOrg, requireMembership } from "@/lib/orgs";
 import { EVENT_ORGANIZER_ROLES, parseParisDateTime } from "@/lib/events";
 import { collabType, PROJECT_VIEW_ROLES } from "@/lib/projects";
 import { eurToCents, str } from "@/lib/form";
+import { notifyNotRetained, notifySolicitations, notifySpeakerApplication } from "@/lib/notifications";
 
 export type ActionState = { error?: string; ok?: string } | undefined;
 
@@ -64,6 +65,7 @@ export async function applyAsSpeaker(_: ActionState, form: FormData): Promise<Ac
   if (existing) return { error: "Vous avez déjà candidaté." };
   const app = await db.speakerApplication.create({ data: { eventId, practitionerId: p.id, message } });
   await audit(user.id, "speaker.apply", "SpeakerApplication", app.id, { eventId });
+  notifySpeakerApplication(eventId, p.id);
   revalidatePath("/interventions");
   return { ok: "Candidature envoyée." };
 }
@@ -83,10 +85,14 @@ export async function withdrawSpeaker(form: FormData) {
 export async function rejectSpeaker(form: FormData) {
   const orgId = str(form, "orgId");
   const { user } = await requireMembership(orgId, SPEAKER_ROLES);
-  const app = await db.speakerApplication.findFirst({ where: { id: str(form, "applicationId"), event: { organizationId: orgId }, status: "pending" } });
+  const app = await db.speakerApplication.findFirst({
+    where: { id: str(form, "applicationId"), event: { organizationId: orgId }, status: "pending" },
+    include: { event: { include: { organization: { select: { name: true } } } }, practitioner: { select: { userId: true } } },
+  });
   if (!app) return;
   await db.speakerApplication.update({ where: { id: app.id }, data: { status: "rejected" } });
   await audit(user.id, "speaker.reject", "SpeakerApplication", app.id);
+  notifyNotRetained(app.practitioner.userId, `Intervention — ${app.event.title}`, app.event.organization.name);
   revalidatePath(`/organisations/${orgId}/intervenants`);
 }
 
@@ -131,6 +137,7 @@ export async function retainSpeaker(_: ActionState, form: FormData): Promise<Act
   await db.speakerApplication.update({ where: { id: app.id }, data: { status: "retained", projectId: project.id } });
   await audit(user.id, "speaker.retain", "SpeakerApplication", app.id, { projectId: project.id });
   await audit(user.id, "project.create", "Project", project.id, { from: "speakercall", eventId: ev.id });
+  notifySolicitations(project.id, "honoraires");
   if (roles.some((r) => PROJECT_VIEW_ROLES.includes(r))) redirect(`/organisations/${orgId}/dossiers/${project.id}`);
   revalidatePath(`/organisations/${orgId}/intervenants`);
   return { ok: "Intervenant retenu : la proposition d'honoraires est envoyée à l'expert, le dossier est ouvert pour l'équipe projets." };

@@ -8,6 +8,9 @@ import { hashPassword, passwordProblem, verifyPassword } from "@/lib/password";
 import { blockedFor, clientIp, hit, reset } from "@/lib/rate-limit";
 import { safeNext } from "@/lib/safe-redirect";
 import { canBeExpert, isRpps, normalizeRpps, PROFESSIONS } from "@/lib/professions";
+import { sendLater } from "@/lib/mail";
+import { notifyPlatformAdmins } from "@/lib/notifications";
+import { consumeToken, findToken, issueToken } from "@/lib/tokens";
 import { str } from "@/lib/form";
 
 export type FormState = { error?: string; ok?: string } | undefined;
@@ -20,6 +23,22 @@ const SIGNIN_MAX_FAILURES_PER_EMAIL = 5;
 const SIGNIN_MAX_FAILURES_PER_IP = 30;
 const SIGNUP_WINDOW_MS = 60 * 60 * 1000;
 const SIGNUP_MAX_PER_IP = 10;
+const RESET_WINDOW_MS = 60 * 60 * 1000;
+const RESET_MAX_PER_EMAIL = 3;
+const RESET_MAX_PER_IP = 10;
+const VERIFY_RESEND_MAX = 3;
+
+/** Lien de confirmation d'adresse (valable 7 jours). */
+async function sendVerification(user: { id: string; email: string; firstName: string }) {
+  const token = await issueToken(user.id, "VERIFY_EMAIL");
+  sendLater({
+    to: user.email,
+    subject: "Confirmez votre adresse e-mail — KolBase",
+    text: `Bonjour ${user.firstName},\n\nConfirmez votre adresse pour recevoir les sollicitations, messages et rappels de KolBase. Le lien est valable 7 jours.\n\nSi vous n'avez pas créé de compte, ignorez ce message.`,
+    cta: { label: "Confirmer mon adresse", href: `/confirmer-email/${token}` },
+  });
+}
+
 const tooMany = (minutes: number) => ({ error: `Trop de tentatives. Réessayez dans ${minutes} minute${minutes > 1 ? "s" : ""}.` });
 
 export async function signUp(_: FormState, form: FormData): Promise<FormState> {
@@ -53,6 +72,7 @@ export async function signUp(_: FormState, form: FormData): Promise<FormState> {
   });
   hit(signupKey);
   await audit(user.id, "user.signup", "User", user.id);
+  await sendVerification(user);
   await createSession(user.id);
   redirect(safeNext(str(form, "next"), profession ? "/tableau-de-bord" : "/organisations/nouvelle"));
 }
@@ -94,6 +114,7 @@ export async function updateProfile(_: FormState, form: FormData): Promise<FormS
     data: { firstName, lastName, phone: str(form, "phone") || null, locale: str(form, "locale") === "en" ? "en" : "fr" },
   });
   let unlisted = false;
+  let rppsToCheck: string | null = null;
   if (user.practitioner) {
     const p = user.practitioner;
     const profession = str(form, "profession") || p.profession;
@@ -104,6 +125,7 @@ export async function updateProfile(_: FormState, form: FormData): Promise<FormS
       return { error: "Ce numéro RPPS est déjà associé à un autre compte. Contactez-nous s'il s'agit du vôtre." };
     // Un RPPS modifié doit être contrôlé à nouveau ; sans RPPS ou hors profession éligible, plus de référencement.
     const rppsChanged = rpps !== p.rpps;
+    if (rppsChanged && rpps) rppsToCheck = rpps;
     unlisted = p.listed && (!rpps || !canBeExpert(profession));
     await db.practitionerProfile.update({
       where: { userId: user.id },
@@ -118,6 +140,7 @@ export async function updateProfile(_: FormState, form: FormData): Promise<FormS
     });
   }
   await audit(user.id, "user.update_profile", "User", user.id, unlisted ? { unlisted: true } : undefined);
+  if (rppsToCheck) notifyPlatformAdmins(`RPPS à vérifier : ${firstName} ${lastName}`, `${firstName} ${lastName} a renseigné le RPPS ${rppsToCheck}.`, "/admin?onglet=praticiens");
   revalidatePath("/compte");
   return { ok: unlisted ? "Informations enregistrées. Votre référencement d'expert est suspendu (RPPS ou profession requis)." : "Informations enregistrées." };
 }
@@ -151,4 +174,74 @@ export async function setListed(_: FormState, form: FormData): Promise<FormState
   await audit(user.id, listed ? "practitioner.listed" : "practitioner.unlisted", "PractitionerProfile", user.practitioner.id);
   revalidatePath("/compte");
   return { ok: listed ? "Vous êtes référencé comme expert." : "Votre profil n'est plus référencé." };
+}
+
+// ─── Mot de passe oublié, confirmation d'adresse, préférences ──────────────
+
+/** Envoie un lien de réinitialisation (réponse identique que le compte existe ou non). */
+export async function requestPasswordReset(_: FormState, form: FormData): Promise<FormState> {
+  const email = str(form, "email").toLowerCase();
+  if (!emailOk(email)) return { error: "Adresse e-mail invalide." };
+  const ipKey = `reset:ip:${await clientIp()}`;
+  const emailKey = `reset:email:${email}`;
+  const wait = Math.max(blockedFor(ipKey, RESET_MAX_PER_IP, RESET_WINDOW_MS), blockedFor(emailKey, RESET_MAX_PER_EMAIL, RESET_WINDOW_MS));
+  if (wait) return tooMany(wait);
+  hit(ipKey);
+  hit(emailKey);
+  const user = await db.user.findUnique({ where: { email } });
+  if (user) {
+    const token = await issueToken(user.id, "RESET_PASSWORD");
+    sendLater({
+      to: user.email,
+      subject: "Réinitialiser votre mot de passe — KolBase",
+      text: `Bonjour ${user.firstName},\n\nVous avez demandé à réinitialiser votre mot de passe. Le lien est valable une heure et ne sert qu'une fois.\n\nSi vous n'êtes pas à l'origine de cette demande, ignorez ce message : votre mot de passe reste inchangé.`,
+      cta: { label: "Choisir un nouveau mot de passe", href: `/mot-de-passe/${token}` },
+    });
+    await audit(user.id, "user.reset_request", "User", user.id);
+  }
+  return { ok: "Si un compte existe avec cette adresse, un e-mail vient de vous être envoyé. Pensez à vérifier les indésirables." };
+}
+
+/** Nouveau mot de passe à partir du lien reçu : toutes les sessions sont fermées, puis l'utilisateur est connecté. */
+export async function resetPassword(_: FormState, form: FormData): Promise<FormState> {
+  const t = await findToken(str(form, "token"), "RESET_PASSWORD");
+  if (!t) return { error: "Ce lien n'est plus valable. Demandez-en un nouveau." };
+  const password = String(form.get("password") ?? "");
+  const pwErr = passwordProblem(password);
+  if (pwErr) return { error: pwErr };
+  if (password !== String(form.get("confirm") ?? "")) return { error: "Les deux mots de passe ne correspondent pas." };
+  if (!(await consumeToken(t.id, t.userId, "RESET_PASSWORD"))) return { error: "Ce lien n'est plus valable. Demandez-en un nouveau." };
+  await db.user.update({
+    where: { id: t.userId },
+    // Le lien reçu prouve aussi l'accès à la boîte mail.
+    data: { passwordHash: await hashPassword(password), ...(t.user.emailVerifiedAt ? {} : { emailVerifiedAt: new Date() }) },
+  });
+  await db.session.deleteMany({ where: { userId: t.userId } });
+  reset(`signin:email:${t.user.email}`);
+  await audit(t.userId, "user.reset_password", "User", t.userId);
+  await createSession(t.userId);
+  redirect("/tableau-de-bord");
+}
+
+/** Renvoie le lien de confirmation d'adresse. */
+export async function resendVerification(_: FormState): Promise<FormState> {
+  const user = await requireUser();
+  if (user.emailVerifiedAt) return { ok: "Votre adresse est déjà confirmée." };
+  const key = `verify:user:${user.id}`;
+  const wait = blockedFor(key, VERIFY_RESEND_MAX, RESET_WINDOW_MS);
+  if (wait) return tooMany(wait);
+  hit(key);
+  await sendVerification(user);
+  return { ok: `Lien envoyé à ${user.email}.` };
+}
+
+/** Préférence de notifications par e-mail (les e-mails de service partent toujours). */
+export async function updateNotifyPrefs(_: FormState, form: FormData): Promise<FormState> {
+  const user = await requireUser();
+  const email = form.get("email") === "1";
+  const prefs = user.notifyPrefs && typeof user.notifyPrefs === "object" ? (user.notifyPrefs as Record<string, unknown>) : {};
+  await db.user.update({ where: { id: user.id }, data: { notifyPrefs: { ...prefs, email } } });
+  await audit(user.id, "user.notify_prefs", "User", user.id, { email });
+  revalidatePath("/compte");
+  return { ok: email ? "Vous recevrez les notifications par e-mail." : "Vous ne recevrez plus de notifications par e-mail (hors e-mails de service)." };
 }

@@ -116,8 +116,10 @@ async function upsertUser(id: string, first: string, last: string, passwordHash:
   await db.user.upsert({
     where: { id },
     update: passwordHash ? { passwordHash } : {},
-    create: { id, email, firstName: first, lastName: last, passwordHash },
+    // Comptes fictifs : adresses considérées comme confirmées (aucun e-mail n'y est réellement distribué).
+    create: { id, email, firstName: first, lastName: last, passwordHash, emailVerifiedAt: new Date() },
   });
+  await db.user.updateMany({ where: { id, emailVerifiedAt: null }, data: { emailVerifiedAt: new Date() } });
 }
 
 async function main() {

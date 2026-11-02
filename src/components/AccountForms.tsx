@@ -1,7 +1,7 @@
 "use client";
 
 import { useActionState } from "react";
-import { changePassword, setListed, updateProfile } from "@/lib/auth-actions";
+import { changePassword, resendVerification, setListed, updateNotifyPrefs, updateProfile } from "@/lib/auth-actions";
 import { Notice } from "@/components/AuthForms";
 import { PROFESSIONS } from "@/lib/professions";
 
@@ -101,6 +101,32 @@ export function ListingForm({ listed, eligible, hasRpps }: { listed: boolean; el
       <button className={listed ? "btn ghost" : "btn"} disabled={pending}>
         {listed ? "Retirer mon référencement" : "Me référencer comme expert"}
       </button>
+    </form>
+  );
+}
+
+/** Adresse non confirmée : rappel et renvoi du lien. */
+export function EmailVerificationNotice({ email }: { email: string }) {
+  const [state, action, pending] = useActionState(resendVerification, undefined);
+  return (
+    <form action={action} className="notice warn">
+      Confirmez votre adresse <strong>{email}</strong> pour recevoir les sollicitations, messages et rappels : un lien vous a été envoyé.{" "}
+      {state?.ok || state?.error ? <span>{state.ok ?? state.error}</span> : <button className="link" disabled={pending}>Renvoyer le lien</button>}
+    </form>
+  );
+}
+
+export function NotificationsForm({ email }: { email: boolean }) {
+  const [state, action, pending] = useActionState(updateNotifyPrefs, undefined);
+  return (
+    <form action={action} className="card form">
+      <h2>Notifications</h2>
+      <Notice state={state} />
+      <label className="check">
+        <input type="checkbox" name="email" value="1" defaultChecked={email} /> Recevoir par e-mail les sollicitations, réponses, messages, candidatures et devis
+      </label>
+      <p className="hint">Les e-mails de service (mot de passe, confirmation d&apos;adresse, invitations) sont toujours envoyés.</p>
+      <button className="btn secondary" disabled={pending}>Enregistrer</button>
     </form>
   );
 }

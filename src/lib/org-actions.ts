@@ -10,6 +10,7 @@ import { parseSiren, sirenKeyOk } from "@/lib/siren";
 import type { FormState } from "@/lib/auth-actions";
 import { OrgKind, type OrgRole } from "@/generated/prisma/enums";
 import { eurToCents, str } from "@/lib/form";
+import { notifyInvitation, notifyPlatformAdmins } from "@/lib/notifications";
 
 const sha256 = (v: string) => createHash("sha256").update(v).digest("hex");
 const INVITE_DAYS = 14;
@@ -42,6 +43,7 @@ export async function createOrganization(_: FormState, form: FormData): Promise<
     },
   });
   await audit(user.id, "org.create", "Organization", org.id, { name, siren });
+  notifyPlatformAdmins(`Organisation à valider : ${name}`, `${user.firstName} ${user.lastName} a créé l'organisation « ${name} »${siren ? ` (SIREN ${siren}${check?.legalName ? `, ${check.legalName}` : ""})` : " sans SIREN"}.`, "/admin");
   redirect(`/organisations/${org.id}`);
 }
 
@@ -66,6 +68,7 @@ export async function updateOrganization(_: FormState, form: FormData): Promise<
     },
   });
   await audit(user.id, "org.update", "Organization", orgId, renamed ? { renamed: { from: org.name, to: name } } : undefined);
+  if (renamed) notifyPlatformAdmins(`Organisation renommée, à valider : ${name}`, `« ${org.name} » s'appelle désormais « ${name} » et doit être validée à nouveau.`, "/admin");
   revalidatePath(`/organisations/${orgId}`);
   revalidatePath(`/organisations/${orgId}/membres`);
   return { ok: renamed ? "Organisation mise à jour. Le nom ayant changé, KolBase doit la valider à nouveau." : "Organisation mise à jour." };
@@ -87,6 +90,7 @@ export async function submitSiren(_: FormState, form: FormData): Promise<FormSta
     data: { ...data, ...(resubmit ? { verification: "PENDING", verificationNote: null, ...(org.verification === "VERIFIED" ? { listed: false } : {}) } : {}) },
   });
   await audit(user.id, "org.siren", "Organization", orgId, { siren, found: lookup?.found ?? null });
+  if (resubmit) notifyPlatformAdmins(`Organisation à valider : ${org.name}`, `${org.name} a renseigné le SIREN ${siren}${lookup?.found ? ` (${lookup.name})` : ""}.`, "/admin");
   revalidatePath(`/organisations/${orgId}`);
   revalidatePath(`/organisations/${orgId}/membres`);
   return { ok: lookup?.found ? `SIREN reconnu : ${lookup.name}. Un administrateur KolBase va valider votre organisation.` : "SIREN enregistré (répertoire indisponible pour le moment). KolBase le vérifiera lors de la validation." };
@@ -111,8 +115,13 @@ export async function createInvitation(_: InviteState, form: FormData): Promise<
   await audit(user.id, "org.invite", "Invitation", inv.id, { role });
   revalidatePath(`/organisations/${orgId}`);
   revalidatePath(`/organisations/${orgId}/membres`);
-  const base = process.env.APP_URL ?? "";
-  return { ok: `Lien valable ${INVITE_DAYS} jours, à usage unique. Copiez-le maintenant : il ne sera plus affiché.`, link: `${base}/invitation/${token}` };
+  const link = `${process.env.APP_URL ?? ""}/invitation/${token}`;
+  const email = str(form, "email").toLowerCase();
+  if (email) notifyInvitation(email, org.name, `${user.firstName} ${user.lastName}`, link);
+  return {
+    ok: `${email ? `Invitation envoyée à ${email}. ` : ""}Lien valable ${INVITE_DAYS} jours, à usage unique. Copiez-le maintenant : il ne sera plus affiché.`,
+    link,
+  };
 }
 
 export async function revokeInvitation(form: FormData) {
