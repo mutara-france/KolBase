@@ -10,7 +10,7 @@ function Hidden({ level, viewer, label }: { level: VisLevel; viewer: Viewer; lab
   if (level === "masque") return null;
   return (
     <p className="hidden-note">
-      {viewer === "public" ? <Lock size={13} /> : <EyeOff size={13} />} {label} : réservé aux membres connectés.{" "}
+      {viewer === "public" ? <Lock size={13} /> : <EyeOff size={13} />} {label} : réservé aux organisations inscrites.{" "}
       {viewer === "public" && <Link href="/connexion">Se connecter</Link>}
     </p>
   );

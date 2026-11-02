@@ -1,6 +1,7 @@
 import "server-only";
 import { db } from "@/lib/db";
 import { ORG_KIND_LABEL } from "@/lib/orgs";
+import { canSee, kolVisibility } from "@/lib/visibility";
 import type { CallCardData, EventCardData, KolCardData, OrgCardData } from "@/components/PublicCards";
 
 export async function publicEvents(take?: number): Promise<EventCardData[]> {
@@ -13,6 +14,7 @@ export async function publicEvents(take?: number): Promise<EventCardData[]> {
   return events.map((e) => ({ ...e, registrations: e._count.registrations }));
 }
 
+/** Experts référencés tels qu'un visiteur non connecté peut les voir (réglages de visibilité appliqués). */
 export async function publicExperts(take?: number): Promise<KolCardData[]> {
   const ps = await db.practitionerProfile.findMany({
     where: { listed: true },
@@ -20,11 +22,17 @@ export async function publicExperts(take?: number): Promise<KolCardData[]> {
     orderBy: { listedAt: "desc" },
     take,
   });
-  return ps.map((p) => ({
-    id: p.id, name: `Dr ${p.user.firstName} ${p.user.lastName}`, specialty: p.specialty, subspecialty: p.subspecialty, profession: p.profession,
-    city: p.city, hospital: p.hospital, verified: p.rppsVerified, types: p.interventionTypes,
-    collaborations: p.projectLinks.length, organizations: new Set(p.projectLinks.map((l) => l.project.organizationId)).size,
-  }));
+  return ps.map((p) => {
+    const v = kolVisibility(p.visibility);
+    const contact = canSee(v.contact, "public");
+    const activity = canSee(v.historique, "public") && v.projets !== "masque";
+    return {
+      id: p.id, name: `Dr ${p.user.firstName} ${p.user.lastName}`, specialty: p.specialty, subspecialty: p.subspecialty, profession: p.profession,
+      city: contact ? p.city : null, hospital: contact ? p.hospital : null, verified: p.rppsVerified, types: p.interventionTypes,
+      collaborations: activity ? p.projectLinks.length : null,
+      organizations: activity ? new Set(p.projectLinks.map((l) => l.project.organizationId)).size : null,
+    };
+  });
 }
 
 export async function publicOrgs(take?: number): Promise<OrgCardData[]> {

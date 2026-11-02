@@ -76,7 +76,7 @@ export function EventCard({ ev, compact = false }: { ev: EventCardData; compact?
 
 export type KolCardData = {
   id: string; name: string; specialty: string | null; subspecialty: string | null; profession: string; city: string | null; hospital: string | null;
-  verified: boolean; types: string[]; collaborations: number; organizations: number;
+  verified: boolean; types: string[]; collaborations: number | null; organizations: number | null;
 };
 export function KolCard({ k }: { k: KolCardData }) {
   return (
@@ -91,7 +91,7 @@ export function KolCard({ k }: { k: KolCardData }) {
       <div className="tags mt-3 mb-3">{k.types.slice(0, 3).map((t) => <span key={t} className="tag tag-sm">{t}</span>)}</div>
       <div className="kol-foot">
         <span className="text-xs">
-          {k.collaborations > 0 ? <><span className="mono ink">{k.collaborations}</span> collaboration{k.collaborations > 1 ? "s" : ""}</> : "Nouveau sur KolBase"}
+          {k.collaborations == null ? null : k.collaborations > 0 ? <><span className="mono ink">{k.collaborations}</span> collaboration{k.collaborations > 1 ? "s" : ""}</> : "Nouveau sur KolBase"}
         </span>
         <span className="card-cta">Voir le profil <ChevronRight size={15} /></span>
       </div>

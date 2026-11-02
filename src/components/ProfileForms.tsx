@@ -3,7 +3,7 @@
 import { useActionState } from "react";
 import { addPublication, addStructure, importOrcid, updateKolVisibility, updateOrgVisibility } from "@/lib/profile-actions";
 import { Notice } from "@/components/AuthForms";
-import { COMPANY_VIS_FIELDS, KOL_VIS_FIELDS, PROJECT_VISIBILITY_LEVELS, VISIBILITY_LEVELS, type CompanyVisibility, type KolVisibility } from "@/lib/visibility";
+import { COMPANY_VIS_FIELDS, KOL_VIS_FIELDS, KOL_VISIBILITY_LEVELS, PROJECT_VISIBILITY_LEVELS, VISIBILITY_LEVELS, type CompanyVisibility, type KolVisibility } from "@/lib/visibility";
 
 function VisRow({ name, label, desc, value, levels }: { name: string; label: string; desc: string; value: string; levels: { id: string; label: string; hint: string }[] }) {
   return (
@@ -28,7 +28,7 @@ export function KolVisibilityForm({ v }: { v: KolVisibility }) {
       <h2>Visibilité de mon profil</h2>
       <p className="muted">Choisissez, information par information, qui peut la voir sur votre fiche publique.</p>
       <Notice state={state} />
-      {KOL_VIS_FIELDS.map((f) => <VisRow key={f.key} name={f.key} label={f.label} desc={f.desc} value={v[f.key]} levels={VISIBILITY_LEVELS} />)}
+      {KOL_VIS_FIELDS.map((f) => <VisRow key={f.key} name={f.key} label={f.label} desc={f.desc} value={v[f.key]} levels={KOL_VISIBILITY_LEVELS} />)}
       <VisRow name="projets" label="Collaborations" desc="Organisations et dossiers menés via KolBase." value={v.projets} levels={PROJECT_VISIBILITY_LEVELS} />
       <button className="btn" disabled={pending}>{pending ? "Enregistrement…" : "Enregistrer la visibilité"}</button>
     </form>
