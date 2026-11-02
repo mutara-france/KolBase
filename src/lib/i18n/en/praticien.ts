@@ -49,9 +49,8 @@ export const PRATICIEN: Record<string, string> = {
   "Se connecter pour accepter": "Sign in to accept",
   // Rôles dans une organisation
   "Administrateur": "Administrator",
-  "Éducation": "Education",
-  "Éducation et événements": "Education and events",
-  "Prestataire mandaté": "Appointed service provider",
+  "Projets": "Projects",
+  "Agence mandatée": "Mandated agency",
   "Relecture": "Review",
   "Conformité": "Compliance",
   "Membre de l'équipe": "Team member",
@@ -417,6 +416,8 @@ export const PRATICIEN: Record<string, string> = {
   "Version {n} soumise.": "Version {n} submitted.",
   // Documents
   "Aucun document déposé.": "No documents uploaded.",
+  "Déposer un document": "Upload a document",
+  "Étapes du dossier": "Case steps",
   "Convention signée": "Signed agreement",
   "Pièce": "Supporting document",
   "{n} Ko": "{n} KB",

@@ -62,14 +62,14 @@ const ORGS: { id: string; name: string; kind: OrgKind; sector: string; hq: strin
 // ─── Membres d'organisations ───────────────────────────────────────────────
 const STAFF: { id: string; first: string; last: string; org: string; roles: OrgRole[] }[] = [
   { id: "demo-u-claire", first: "Claire", last: "Morel", org: "demo-org-dentalys", roles: ["ADMIN"] },
-  { id: "demo-u-julien", first: "Julien", last: "Faure", org: "demo-org-dentalys", roles: ["EDUCATION"] },
-  { id: "demo-u-marc", first: "Marc", last: "Lefèvre", org: "demo-org-dentalys", roles: ["EVENEMENTS"] },
+  { id: "demo-u-julien", first: "Julien", last: "Faure", org: "demo-org-dentalys", roles: ["PROJETS"] },
+  { id: "demo-u-marc", first: "Marc", last: "Lefèvre", org: "demo-org-dentalys", roles: ["PROJETS"] },
   { id: "demo-u-sophie", first: "Sophie", last: "Bernard", org: "demo-org-dentalys", roles: ["CONFORMITE"] },
-  { id: "demo-u-nadia", first: "Nadia", last: "Haddad", org: "demo-org-dentalys", roles: ["RELECTURE"] },
-  { id: "demo-u-thomas", first: "Thomas", last: "Garnier", org: "demo-org-orthonova", roles: ["ADMIN", "CUMUL"] },
+  { id: "demo-u-nadia", first: "Nadia", last: "Haddad", org: "demo-org-dentalys", roles: ["CONFORMITE"] },
+  { id: "demo-u-thomas", first: "Thomas", last: "Garnier", org: "demo-org-orthonova", roles: ["ADMIN"] },
   { id: "demo-u-lea", first: "Léa", last: "Rousseau", org: "demo-org-orthonova", roles: ["CONFORMITE"] },
-  { id: "demo-u-pierre", first: "Pierre", last: "Vidal", org: "demo-org-cdra", roles: ["ADMIN", "CUMUL"] },
-  { id: "demo-u-anne", first: "Anne", last: "Chevalier", org: "demo-org-academie", roles: ["ADMIN", "CUMUL"] },
+  { id: "demo-u-pierre", first: "Pierre", last: "Vidal", org: "demo-org-cdra", roles: ["ADMIN"] },
+  { id: "demo-u-anne", first: "Anne", last: "Chevalier", org: "demo-org-academie", roles: ["ADMIN"] },
   { id: "demo-u-karim", first: "Karim", last: "Benali", org: "demo-org-mediane", roles: ["ADMIN"] },
   { id: "demo-u-karim", first: "Karim", last: "Benali", org: "demo-org-dentalys", roles: ["PRESTATAIRE"] },
   { id: "demo-u-ludovic", first: "Ludovic", last: "Perrin", org: "demo-sup-belleville", roles: ["ADMIN"] },
@@ -465,6 +465,63 @@ async function main() {
     });
   }
 
+  // Devis détaillés (lignes, TVA, validité, conditions) : complétés une fois, sans écraser une révision.
+  await db.quote.updateMany({
+    where: { rfqId: "demo-rfq-cocktail", supplierId: "demo-sup-belleville", conditions: null },
+    data: {
+      vatBp: 1000, validUntil: at(20, 18), conditions: "Acompte de 30 % à la commande ; annulation sans frais jusqu'à 7 jours avant.",
+      lines: [
+        { label: "Pause café d'accueil", qty: 60, unitCents: 600 },
+        { label: "Cocktail dînatoire 12 pièces, boissons comprises", qty: 60, unitCents: 3200 },
+        { label: "Service : 3 maîtres d'hôtel pendant 4 h", qty: 1, unitCents: 30000 },
+      ],
+    },
+  });
+  await db.quote.updateMany({
+    where: { rfqId: "demo-rfq-cocktail", supplierId: "demo-sup-tablesdusud", conditions: null },
+    data: {
+      vatBp: 1000, validUntil: at(10, 18), conditions: "Déplacement depuis Marseille inclus ; minimum de 50 couverts facturés.",
+      lines: [
+        { label: "Buffet dînatoire", qty: 60, unitCents: 4400 },
+        { label: "Frais de déplacement et logistique", qty: 1, unitCents: 30000 },
+      ],
+    },
+  });
+
+  // ─── Réunion du board rattachée à son dossier : la logistique se pilote depuis l'événement ───
+  await db.event.upsert({
+    where: { id: "demo-ev-board" },
+    update: {},
+    create: {
+      id: "demo-ev-board", organizationId: "demo-org-dentalys", projectId: "demo-prj-board", title: "Réunion du board implantologie", typeId: "table-ronde", therapeuticArea: "Implantologie",
+      description: "Réunion interne du comité consultatif, non publiée dans l'agenda.", startsAt: at(26, 9), durationMinutes: 420, format: "PRESENTIEL",
+      city: "Lyon", venue: "Espace Confluence (fictif)", capacity: 8, publishedAt: null, registrationOpen: false,
+    },
+  });
+  await db.rfq.upsert({
+    where: { id: "demo-rfq-board-salle" },
+    update: {},
+    create: {
+      id: "demo-rfq-board-salle", organizationId: "demo-org-dentalys", eventId: "demo-ev-board", category: "salle", city: "Lyon", headcount: 8, status: "sent",
+      needs: "Salle de réunion pour 8 personnes sur une journée, écran et visioconférence, pauses et déjeuner de travail sur place.",
+      deadline: at(5, 18), sentAt: at(-2), createdAt: at(-3), createdById: "demo-u-julien",
+      suppliers: { create: [{ supplierId: "demo-sup-confluence" }] },
+      quotes: {
+        create: [{
+          supplierId: "demo-sup-confluence", amountCents: 108000, vatBp: 2000, validUntil: at(21, 18), delay: "Salle bloquée 10 jours", createdAt: at(-1),
+          note: "Salle Saône, lumière naturelle, matériel de visioconférence inclus.",
+          conditions: "Acompte de 30 % à la commande ; annulation sans frais jusqu'à 7 jours avant.",
+          lines: [
+            { label: "Location de la salle Saône (journée)", qty: 1, unitCents: 52000 },
+            { label: "Pauses café (matin et après-midi)", qty: 8, unitCents: 1500 },
+            { label: "Déjeuner de travail", qty: 8, unitCents: 4000 },
+            { label: "Forfait technique : écran, visioconférence", qty: 1, unitCents: 12000 },
+          ],
+        }],
+      },
+    },
+  });
+
   // ─── Suivis (fil « Mes suivis ») ─────────────────────────────────────────
   const FOLLOWS: [string, string, "p" | "o"][] = [
     ["demo-u-claire", "demo-p-durand", "p"], ["demo-u-claire", "demo-p-nguyen", "p"], ["demo-u-claire", "demo-p-blanc", "p"],
@@ -491,7 +548,7 @@ async function main() {
     console.log(`${email} est administrateur des ${ORGS.length} organisations de démo.`);
   }
 
-  console.log(`Données de démo OK : ${ORGS.length} organisations, ${STAFF.length} rôles, ${PRACS.length} praticiens, ${EVENTS.length} événements, ${REGS.length} inscriptions, ${PROJECTS.length} dossiers, ${CALLS.length} opportunités, ${SPEAKER_CALLS.length} appels à intervenants, ${RFQS.length} demandes de devis.`);
+  console.log(`Données de démo OK : ${ORGS.length} organisations, ${STAFF.length} rôles, ${PRACS.length} praticiens, ${EVENTS.length + 1} événements, ${REGS.length} inscriptions, ${PROJECTS.length} dossiers, ${CALLS.length} opportunités, ${SPEAKER_CALLS.length} appels à intervenants, ${RFQS.length + 1} demandes de devis.`);
   if (!passwordHash) console.log("DEMO_PASSWORD non défini : les comptes de démo n'ont pas de mot de passe.");
 }
 

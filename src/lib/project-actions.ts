@@ -8,6 +8,7 @@ import { ORG_NOT_VERIFIED, isVerifiedOrg, requireMembership } from "@/lib/orgs";
 import { COMPLIANCE_ROLES } from "@/lib/events";
 import { collabType, PROJECT_ROLES, RECRUITING_STATUSES, recruitmentOpen, SOURCING_ROLES, PROJECT_VIEW_ROLES, TRANSITIONS, type TransitionKey } from "@/lib/projects";
 import { storageEnabled } from "@/lib/storage";
+import { fourEyes, projectAuthors } from "@/lib/four-eyes";
 import type { ProjectStatus } from "@/generated/prisma/client";
 import { complianceSettings, projectRegime } from "@/lib/compliance";
 import { missingSignedConventions } from "@/lib/project-documents";
@@ -155,6 +156,13 @@ export async function advanceProject(form: FormData) {
   if (key === "hors_france" && regime !== "hors_france") return;
 
   const note = str(form, "note");
+  // Validation par la conformité : contrôle à quatre yeux (pas d'auto-validation, sauf seul habilité et justification).
+  let selfValidated = false;
+  if (key === "validate") {
+    const rule = await fourEyes(await projectAuthors(projectId), orgId, user.id, COMPLIANCE_ROLES);
+    if (rule === "blocked" || (rule === "justify" && !note)) return;
+    selfValidated = rule === "justify";
+  }
   await db.project.update({
     where: { id: projectId },
     data: {
@@ -167,7 +175,7 @@ export async function advanceProject(form: FormData) {
   // Les experts ayant donné leur accord suivent le statut du dossier.
   await db.projectExpert.updateMany({ where: { projectId, status: { notIn: ["DECLINE", "ATT_EXPERTS"] } }, data: { status: t.to } });
   if (key === "abandon") await db.projectExpert.updateMany({ where: { projectId, status: "ATT_EXPERTS" }, data: { status: "DECLINE" } });
-  await audit(user.id, `project.${key}`, "Project", projectId, { from: project.status, to: t.to, note: note || undefined, ...(attest ? { attestation: "convention signée conservée hors KolBase" } : {}) });
+  await audit(user.id, `project.${key}`, "Project", projectId, { from: project.status, to: t.to, note: note || undefined, ...(attest ? { attestation: "convention signée conservée hors KolBase" } : {}), ...(selfValidated ? { selfValidated: true } : {}) });
   if (key === "submit" || key === "validate" || key === "block") notifyCompliance(projectId, key, user.id);
   revalidatePath(`/organisations/${orgId}/dossiers/${projectId}`);
 }

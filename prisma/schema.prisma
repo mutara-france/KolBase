@@ -236,13 +236,10 @@ model Invitation {
 
 // Rôles côté organisation (cf. ROLE_LABEL du prototype).
 enum OrgRole {
-  ADMIN
-  EDUCATION      // clinical
-  EVENEMENTS     // organisateur
-  CUMUL          // éducation + événements
-  PRESTATAIRE    // externe mandaté
-  RELECTURE      // mlr
-  CONFORMITE     // compliance
+  ADMIN          // équipe, fiche et réglages ; accès à tout
+  PROJETS        // experts, dossiers, événements, prestataires (ex-Éducation, Événements)
+  CONFORMITE     // validation, relecture des supports, déclarations (ex-Conformité, Relecture)
+  PRESTATAIRE    // client : agence mandatée (événements confiés) ; prestataire : membre de l'équipe
 }
 
 model Membership {
@@ -534,9 +531,17 @@ model Quote {
   rfq         Rfq          @relation(fields: [rfqId], references: [id], onDelete: Cascade)
   supplierId  String
   supplier    Organization @relation(fields: [supplierId], references: [id])
-  amountCents Int
+  amountCents Int          // total HT (somme des lignes quand le devis est détaillé)
   delay       String?
   note        String?
+  // Devis détaillé : lignes [{ label, qty, unitCents }], TVA en points de base (2000 = 20 %), validité, conditions, PDF.
+  lines       Json         @default("[]")
+  vatBp       Int          @default(2000)
+  validUntil  DateTime?
+  conditions  String?
+  fileKey     String?
+  fileName    String?
+  revision    Int          @default(1)
   status      QuoteStatus  @default(submitted)
   authorId    String?
   createdAt   DateTime     @default(now())

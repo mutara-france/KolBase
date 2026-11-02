@@ -247,3 +247,36 @@ export async function removeOrgLogo(form: FormData) {
   revalidatePath(`/organisations/${orgId}/membres`);
   revalidatePath(`/structures/${orgId}`);
 }
+
+/**
+ * Rôles d'un membre, cochés par un administrateur. Aucun rôle : la personne quitte l'organisation.
+ * Garde-fous : il reste toujours un administrateur ; une agence mandatée n'a pas de rôle interne.
+ */
+export async function setMemberRoles(_: FormState, form: FormData): Promise<FormState> {
+  const orgId = str(form, "orgId");
+  const { user, org } = await requireMembership(orgId, ["ADMIN"], { allowSupplier: true });
+  const memberId = str(form, "userId");
+  const allowed = invitableRoles(org.kind);
+  const wanted = form.get("remove") === "1" ? [] : [...new Set(form.getAll("role").map(String))].filter((r): r is OrgRole => allowed.includes(r as OrgRole));
+  if (org.kind !== "PRESTATAIRE" && wanted.includes("PRESTATAIRE") && wanted.length > 1)
+    return { error: "Une agence mandatée n'a pas de rôle interne : choisissez soit « Agence mandatée », soit des rôles de l'équipe." };
+  const current = await db.membership.findMany({ where: { organizationId: orgId, userId: memberId }, select: { role: true } });
+  if (current.length === 0) return { error: "Membre introuvable." };
+  const before = current.map((m) => m.role).sort();
+  const result = await db.$transaction(async (tx) => {
+    await tx.$queryRaw`SELECT 1 FROM "Organization" WHERE id = ${orgId} FOR UPDATE`;
+    if (!wanted.includes("ADMIN") && before.includes("ADMIN")) {
+      const otherAdmins = await tx.membership.count({ where: { organizationId: orgId, role: "ADMIN", userId: { not: memberId } } });
+      if (otherAdmins === 0) return "last-admin" as const;
+    }
+    await tx.membership.deleteMany({ where: { organizationId: orgId, userId: memberId, role: { notIn: wanted } } });
+    for (const role of wanted)
+      await tx.membership.upsert({ where: { userId_organizationId_role: { userId: memberId, organizationId: orgId, role } }, update: {}, create: { userId: memberId, organizationId: orgId, role } });
+    return "ok" as const;
+  });
+  if (result === "last-admin") return { error: "L'organisation doit garder au moins un administrateur." };
+  await audit(user.id, wanted.length ? "org.member_roles" : "org.member_remove", "Organization", orgId, { userId: memberId, from: before, to: wanted });
+  revalidatePath(`/organisations/${orgId}`);
+  revalidatePath(`/organisations/${orgId}/membres`);
+  return { ok: wanted.length ? "Rôles enregistrés." : "Membre retiré de l'organisation." };
+}

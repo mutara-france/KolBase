@@ -855,6 +855,108 @@ async function submitNewOrg(page, siren) {
   await ctx.close();
 }
 
+// ── Rôles simplifiés et contrôle à quatre yeux ─────────────────────────────
+{
+  const { ctx, page } = await session();
+  await login(page, "claire.morel@demo.kolbase.local");
+  await page.goto(`${BASE}/organisations/demo-org-dentalys/membres`);
+  const t = await text(page);
+  check("Rôles : quatre rôles décrits", ["Administrateur", "Projets", "Conformité", "Agence mandatée"].every((r) => t.includes(r)) && !t.includes("Éducation"));
+  const julien = page.locator('li.member-row:has-text("Julien Faure")');
+  await julien.locator('label:has-text("Conformité")').click();
+  await julien.locator('button:has-text("Enregistrer")').click();
+  await page.waitForTimeout(1200);
+  check("Rôles : cumul Projets + Conformité enregistré", (await julien.innerText()).includes("Rôles enregistrés."));
+  // Une agence mandatée n'a pas de rôle interne.
+  await julien.locator('label:has-text("Agence mandatée")').click();
+  await julien.locator('button:has-text("Enregistrer")').click();
+  await page.waitForTimeout(1200);
+  check("Rôles : agence mandatée non cumulable avec un rôle interne", (await julien.innerText()).includes("Une agence mandatée n'a pas de rôle interne"));
+  await page.reload();
+  // Julien a monté et soumis le symposium : il ne peut pas le valider, d'autres personnes habilitées existent.
+  const db = new pg.Client({ connectionString: process.env.DATABASE_URL });
+  await db.connect();
+  const before = (await db.query(`select status from "Project" where id='demo-prj-symposium'`)).rows[0].status;
+  await db.query(`update "Project" set status='EN_VALID' where id='demo-prj-symposium'`);
+  const j = await session();
+  await login(j.page, "julien.faure@demo.kolbase.local");
+  await j.page.goto(`${BASE}/organisations/demo-org-dentalys/dossiers/demo-prj-symposium`);
+  const jt = await text(j.page);
+  check("Quatre yeux : l'auteur du dossier ne peut pas le valider", (await j.page.locator('button:has-text("Valider")').count()) === 0 && jt.includes("Contrôle à quatre yeux"));
+  check("Quatre yeux : il peut encore le bloquer avec un motif", (await j.page.locator('button:has-text("Bloquer")').count()) === 1);
+  await j.ctx.close();
+  await db.query(`update "Project" set status=$1 where id='demo-prj-symposium'`, [before]);
+  const row = page.locator('li.member-row:has-text("Julien Faure")');
+  await row.locator('label:has-text("Conformité")').click();
+  await row.locator('button:has-text("Enregistrer")').click();
+  await page.waitForTimeout(1200);
+  const roles = (await db.query(`select role from "Membership" where "userId"='demo-u-julien' and "organizationId"='demo-org-dentalys' order by role`)).rows.map((r) => r.role);
+  check("Rôles : retour au seul rôle Projets", JSON.stringify(roles) === JSON.stringify(["PROJETS"]), roles.join(","));
+  await db.end();
+  await ctx.close();
+}
+
+// ── Prestataires : devis détaillé, révision, PDF, logistique de l'événement ─
+{
+  const pdf = Buffer.from("%PDF-1.4\n1 0 obj << /Type /Catalog >> endobj\ntrailer << /Root 1 0 R >>\n%%EOF\n");
+  const sup = await session();
+  await login(sup.page, "karim.benali@demo.kolbase.local");
+  await sup.page.goto(`${BASE}/organisations/demo-org-mediane/devis`);
+  const form = sup.page.locator('section.card:has-text("Live surgery") form:has(input[name="line_label"])');
+  await form.locator('input[name="line_label"]').nth(0).fill("Captation 2 caméras et régie");
+  await form.locator('input[name="line_unit"]').nth(0).fill("2400");
+  await form.locator('button:has-text("Ajouter une ligne")').click();
+  await form.locator('input[name="line_label"]').nth(1).fill("Retransmission en salle");
+  await form.locator('input[name="line_qty"]').nth(1).fill("2");
+  await form.locator('input[name="line_unit"]').nth(1).fill("450,50");
+  await form.locator('input[name="validUntil"]').fill(new Date(Date.now() + 20 * 864e5).toISOString().slice(0, 10));
+  await form.locator('input[name="conditions"]').fill("Acompte de 30 % à la commande.");
+  check("Devis détaillé : totaux HT et TTC calculés", /3\s301,00/.test(await form.innerText()) && /3\s961,20/.test(await form.innerText()));
+  await form.locator('input[name="file"]').setInputFiles({ name: "devis-mediane.pdf", mimeType: "application/pdf", buffer: pdf });
+  await form.locator('button:has-text("Envoyer le devis")').click();
+  await sup.page.waitForTimeout(1500);
+  await sup.page.reload();
+  check("Devis détaillé : envoyé", (await sup.page.locator('section.card:has-text("Live surgery") button:has-text("Réviser mon devis")').count()) === 1);
+  // Révision : la version 2 remplace la première.
+  await sup.page.locator('section.card:has-text("Live surgery") button:has-text("Réviser mon devis")').click();
+  const rev = sup.page.locator('section.card:has-text("Live surgery") form:has(input[name="line_label"])');
+  await rev.locator('input[name="line_unit"]').nth(0).fill("2200");
+  await rev.locator('button:has-text("Envoyer la version 2")').click();
+  await sup.page.waitForTimeout(1500);
+  check("E-mail au demandeur : devis révisé", !!(await waitMail("julien.faure@demo.kolbase.local", "Devis révisé")) || !!(await waitMail("claire.morel@demo.kolbase.local", "Devis révisé", 2000)));
+
+  const { ctx, page } = await session();
+  await login(page, "claire.morel@demo.kolbase.local");
+  await page.goto(`${BASE}/organisations/demo-org-dentalys/prestataires`);
+  const card = page.locator('section.card:has-text("Live surgery")');
+  const ct = await card.innerText();
+  check("Comparaison : TTC, version et validité affichés", /3\s721,20/.test(ct) && ct.includes("Version 2") && ct.includes("valable jusqu"), ct.slice(0, 300));
+  check("Comparaison : coût par participant", ct.includes("par participant"));
+  await card.locator('summary:has-text("Détail de l")').click();
+  check("Comparaison : lignes et conditions détaillées", (await card.innerText()).includes("Retransmission en salle") && (await card.innerText()).includes("Acompte de 30 %"));
+  const href = await card.locator('a:has-text("Devis signé (PDF)")').getAttribute("href");
+  const dl = await page.request.get(`${BASE}${href}`);
+  check("Devis PDF : téléchargeable par le demandeur", dl.ok() && Buffer.compare(await dl.body(), pdf) === 0);
+  const other = await session();
+  await login(other.page, "anne.chevalier@demo.kolbase.local");
+  check("Devis PDF : refusé à une autre organisation", (await other.page.request.get(`${BASE}${href}`)).status() === 404);
+  await other.ctx.close();
+  // Fiche de l'événement : la logistique et les besoins restants.
+  await page.goto(`${BASE}/organisations/demo-org-dentalys/evenements/demo-ev-live-surgery`);
+  const ev = await text(page);
+  check("Événement : carte « Logistique et prestataires »", ev.includes("Logistique et prestataires") && ev.includes("Audiovisuel et captation") && /3\s721,20/.test(ev));
+  await Promise.all([page.waitForURL(/onglet=nouvelle/), page.click('a.chip:has-text("Restauration et traiteur")')]);
+  check("Demande de devis préremplie : événement et catégorie", (await page.locator('select[name="eventId"]').inputValue()) === "demo-ev-live-surgery" && (await page.locator('button.chip.active').innerText()).includes("Restauration"));
+  // Dossier : l'événement rattaché et sa logistique.
+  await page.goto(`${BASE}/organisations/demo-org-dentalys/dossiers/demo-prj-board`);
+  const d = await text(page);
+  check("Dossier : événement rattaché et demandes de devis visibles", d.includes("Événement et logistique") && d.includes("Réunion du board implantologie") && d.includes("Salle et lieu de réception"));
+  await page.goto(`${BASE}/organisations/demo-org-dentalys/evenements/nouveau?dossier=demo-prj-symposium`);
+  check("Nouvel événement depuis un dossier : rattachement annoncé", (await text(page)).includes("rattaché au dossier « Symposium ADF") && (await page.locator('input[name="projectId"]').count()) === 1);
+  await ctx.close();
+  await sup.ctx.close();
+}
+
 // ── 4. Limitation des tentatives ───────────────────────────────────────────
 {
   const { ctx, page } = await session();

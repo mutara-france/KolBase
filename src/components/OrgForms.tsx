@@ -1,7 +1,7 @@
 "use client";
 
 import { useActionState, useState } from "react";
-import { createInvitation, createOrganization, removeOrgLogo, submitSiren, updateOrganization, updateExpertProfile, updateOrgLogo, type InviteState } from "@/lib/org-actions";
+import { createInvitation, createOrganization, removeOrgLogo, setMemberRoles, submitSiren, updateOrganization, updateExpertProfile, updateOrgLogo, type InviteState } from "@/lib/org-actions";
 import { Avatar } from "@/components/Avatar";
 import { Notice } from "@/components/AuthForms";
 import { useT } from "@/components/I18nProvider";
@@ -181,5 +181,29 @@ export function LogoForm({ orgId, name, src, verified }: { orgId: string; name: 
         </form>
       )}
     </section>
+  );
+}
+
+/** Rôles d'un membre : cases à cocher pour l'administrateur, enregistrées d'un coup (et retrait du membre). */
+export function MemberRolesForm({ orgId, userId, roles, options, canRemove }: { orgId: string; userId: string; roles: string[]; options: (Opt & { desc?: string })[]; canRemove: boolean }) {
+  const [state, action, pending] = useActionState(setMemberRoles, undefined);
+  return (
+    <form action={action} className="member-roles">
+      <input type="hidden" name="orgId" value={orgId} />
+      <input type="hidden" name="userId" value={userId} />
+      <div className="role-chips">
+        {options.map((o) => (
+          <label key={o.value} className="role-chip" title={o.desc}>
+            <input type="checkbox" name="role" value={o.value} defaultChecked={roles.includes(o.value)} />
+            <span>{o.label}</span>
+          </label>
+        ))}
+      </div>
+      <div className="actions">
+        <button className="btn small secondary" disabled={pending}>{pending ? "Enregistrement…" : "Enregistrer"}</button>
+        {canRemove && <button className="link danger" name="remove" value="1" disabled={pending}>Retirer de l&apos;organisation</button>}
+        {(state?.error || state?.ok) && <span className={`text-xs ${state?.error ? "error-text" : ""}`} role="status">{state?.error ?? state?.ok}</span>}
+      </div>
+    </form>
   );
 }

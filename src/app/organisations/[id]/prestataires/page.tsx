@@ -11,6 +11,9 @@ import { EVENT_MANAGER_ROLES, EVENT_ORGANIZER_ROLES, eventScope, formatDate, for
 import { QUOTE_STATUS, RFQ_STATUS, rfqDisplayStatus, SUPPLIER_CATEGORIES, supplierCategoryLabel } from "@/lib/suppliers";
 import { awardQuote, cancelRfq, sendRfq } from "@/lib/rfq-actions";
 import { endMandate } from "@/lib/event-actions";
+import { lineTotal, perParticipant, readLines, vatLabel, withVat } from "@/lib/quotes";
+import { complianceSettings } from "@/lib/compliance";
+import { logoSrc } from "@/lib/logos";
 
 export const metadata = { title: "Prestataires — KolBase" };
 
@@ -19,6 +22,7 @@ export default async function Page({ params, searchParams }: { params: Promise<{
   const { evenement, cat } = await searchParams;
   const onglet = (await searchParams).onglet ?? (evenement ? "nouvelle" : "demandes");
   const { org, user, roles } = await requireMembership(id, EVENT_MANAGER_ROLES);
+  const settings = complianceSettings(org.complianceSettings);
   const scope = eventScope(user, roles);
   const scoped = Object.keys(scope).length > 0;
   const isOrganizer = roles.some((r) => EVENT_ORGANIZER_ROLES.includes(r));
@@ -74,7 +78,7 @@ export default async function Page({ params, searchParams }: { params: Promise<{
               const kept = r.quotes.find((q) => q.status === "retained");
               const pending = r.suppliers.filter((s) => !r.quotes.some((q) => q.supplierId === s.supplierId));
               return (
-                <section key={r.id} className="card">
+                <section key={r.id} id={`rfq-${r.id}`} className="card">
                   <div className="card-head">
                     <div>
                       <div className="eyebrow-sm">{supplierCategoryLabel(r.category)}{r.city ? ` · ${r.city}` : ""}</div>
@@ -86,19 +90,52 @@ export default async function Page({ params, searchParams }: { params: Promise<{
                   <p>{r.needs}</p>
                   <div className="kv">
                     <div><span>Prestataires consultés</span><span>{r.suppliers.length}</span></div>
-                    <div><span>Devis reçus</span><span>{r.quotes.length}{r.quotes.length ? ` · dès ${formatEUR(r.quotes[0].amountCents)}` : ""}</span></div>
+                    <div><span>Devis reçus</span><span>{r.quotes.length}{r.quotes.length ? ` · dès ${formatEUR(r.quotes[0].amountCents)} HT` : ""}</span></div>
                     <div><span>Réponse attendue</span><span>{r.deadline ? formatDate(r.deadline) : "à définir"}</span></div>
                   </div>
                   {r.quotes.length > 0 && (
                     <div className="quotes">
-                      {r.quotes.map((q) => (
+                      {r.quotes.map((q) => {
+                        const lines = readLines(q.lines);
+                        const ttc = withVat(q.amountCents, q.vatBp);
+                        const pp = perParticipant(r.category, ttc, r.headcount, settings);
+                        const expired = q.validUntil && q.validUntil < new Date();
+                        return (
                         <div key={q.id} className={`quote${q.amountCents === best ? " best" : ""}`}>
-                          <Avatar name={q.supplier.name} size={30} square />
+                          <Avatar name={q.supplier.name} size={30} square src={logoSrc(q.supplier)} />
                           <div style={{ flex: 1, minWidth: 0 }}>
-                            <div><strong>{q.supplier.name}</strong>{q.amountCents === best && <span className="pill ok"> Meilleure offre</span>}{q.status !== "submitted" && <span className={`pill ${q.status === "retained" ? "ok" : "done"}`}> {QUOTE_STATUS[q.status]}</span>}</div>
-                            <div className="muted">{[q.delay, q.note].filter(Boolean).join(" · ")}</div>
+                            <div>
+                              <strong>{q.supplier.name}</strong>
+                              {q.amountCents === best && <span className="pill ok"> Meilleure offre</span>}
+                              {q.status !== "submitted" && <span className={`pill ${q.status === "retained" ? "ok" : "done"}`}> {QUOTE_STATUS[q.status]}</span>}
+                              {q.revision > 1 && <span className="pill"> Version {q.revision}</span>}
+                            </div>
+                            <div className="muted">
+                              {[
+                                `${formatEUR(ttc)} TTC (TVA ${vatLabel(q.vatBp)})`,
+                                q.validUntil ? `${expired ? "expiré le" : "valable jusqu'au"} ${formatDate(q.validUntil)}` : null,
+                                q.delay,
+                              ].filter(Boolean).join(" · ")}
+                            </div>
+                            {pp && (
+                              <div className={`text-xs ${pp.over ? "warn-text" : "muted"}`}>
+                                ≈ {pp.each.toLocaleString("fr-FR", { maximumFractionDigits: 2 })} € TTC par participant
+                                {pp.limit && (pp.over ? ` · au-dessus du seuil d'un ${pp.limit.what} (${pp.limit.max} € TTC) : autorisation de l'Ordre à prévoir pour les professionnels de santé` : ` · sous le seuil d'un ${pp.limit.what} (${pp.limit.max} € TTC)`)}
+                              </div>
+                            )}
+                            {(q.note || q.conditions || lines.length > 0 || q.fileKey) && (
+                              <details className="quote-detail">
+                                <summary>Détail de l&apos;offre{lines.length ? ` (${lines.length} ligne${lines.length > 1 ? "s" : ""})` : ""}</summary>
+                                {lines.length > 0 && (
+                                  <table><tbody>{lines.map((l, i) => <tr key={i}><td>{l.label}</td><td>{l.qty} × {formatEUR(l.unitCents)}</td><td>{formatEUR(lineTotal(l))}</td></tr>)}</tbody></table>
+                                )}
+                                {q.note && <p>{q.note}</p>}
+                                {q.conditions && <p className="muted">Conditions : {q.conditions}</p>}
+                                {q.fileKey && <a href={`/devis/${q.id}`} target="_blank" rel="noreferrer">Devis signé (PDF)</a>}
+                              </details>
+                            )}
                           </div>
-                          <span className="amount">{formatEUR(q.amountCents)}</span>
+                          <span className="amount">{formatEUR(q.amountCents)} <span className="text-xs muted">HT</span></span>
                           {r.status === "sent" && user.memberships.some((m) => m.organizationId === q.supplierId) && (
                             <span className="text-xs muted" title="Conflit d'intérêts : vous êtes membre de ce prestataire.">Retenu par un autre membre</span>
                           )}
@@ -110,7 +147,8 @@ export default async function Page({ params, searchParams }: { params: Promise<{
                             </form>
                           )}
                         </div>
-                      ))}
+                        );
+                      })}
                     </div>
                   )}
                   {r.status === "sent" && pending.length > 0 && (
@@ -147,6 +185,7 @@ export default async function Page({ params, searchParams }: { params: Promise<{
             suppliers={suppliers}
             events={events.map((e) => ({ id: e.id, label: `${formatDate(e.startsAt)} — ${e.title}`, city: e.city, capacity: e.capacity }))}
             defaultEventId={evenement}
+            defaultCategory={cat}
           />
         )}
 

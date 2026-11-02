@@ -9,7 +9,7 @@ import { intlLocale, type Locale } from "@/lib/i18n";
 type Opt = { value: string; label: string };
 type CatalogItem = { id: string; label: string; typical: number };
 
-export function NewEventForm({ orgId, types, formats, catalog }: { orgId: string; types: Opt[]; formats: Opt[]; catalog: readonly CatalogItem[] }) {
+export function NewEventForm({ orgId, types, formats, catalog, project }: { orgId: string; types: Opt[]; formats: Opt[]; catalog: readonly CatalogItem[]; project?: { id: string; title: string; area: string | null } }) {
   const [state, action, pending] = useActionState(createEvent, undefined);
   const [format, setFormat] = useState("PRESENTIEL");
   const [picked, setPicked] = useState<Record<string, boolean>>({});
@@ -18,10 +18,12 @@ export function NewEventForm({ orgId, types, formats, catalog }: { orgId: string
       <h1>Nouvel événement</h1>
       <Notice state={state} />
       <input type="hidden" name="orgId" value={orgId} />
-      <label>Titre<input name="title" required /></label>
+      {project && <input type="hidden" name="projectId" value={project.id} />}
+      {project && <p className="notice ok">Événement rattaché au dossier « {project.title} » : sa logistique (salle, traiteur, hébergement…) se pilote depuis la fiche de l&apos;événement.</p>}
+      <label>Titre<input name="title" required defaultValue={project?.title} /></label>
       <div className="row">
         <label>Type<select name="typeId">{types.map((t) => <option key={t.value} value={t.value}>{t.label}</option>)}</select></label>
-        <label>Domaine thérapeutique<input name="therapeuticArea" placeholder="Implantologie…" /></label>
+        <label>Domaine thérapeutique<input name="therapeuticArea" placeholder="Implantologie…" defaultValue={project?.area ?? undefined} /></label>
       </div>
       <label>Description<textarea name="description" rows={4} /></label>
       <div className="row">

@@ -1,3 +1,4 @@
+import { Check } from "lucide-react";
 import type { ProjectStatus } from "@/generated/prisma/client";
 import { PIPELINE, STATUS_LABEL, STATUS_TONE, fmvCheck } from "@/lib/projects";
 import { intlLocale } from "@/lib/i18n";
@@ -11,12 +12,22 @@ export async function StatusPill({ status }: { status: ProjectStatus }) {
 
 export async function Pipeline({ status }: { status: ProjectStatus }) {
   const { t } = await getT();
-  const idx = PIPELINE.indexOf(status === "ORDRE" ? "VALIDE" : status === "BLOQUE" ? "EN_VALID" : status);
+  const idx = PIPELINE.indexOf(status === "ORDRE" ? "VALIDE" : status === "BLOQUE" ? "EN_VALID" : status === "ATT_IND" ? "ATT_EXPERTS" : status);
+  const blocked = status === "BLOQUE" || status === "REFUS_ORDRE";
+  // Dossier terminé : toutes les étapes sont franchies.
+  const doneAll = status === "TERMINE";
   return (
-    <ol className="pipeline">
-      {PIPELINE.map((s, i) => (
-        <li key={s} className={i < idx ? "done" : i === idx ? "current" : ""}>{t(STATUS_LABEL[s])}</li>
-      ))}
+    <ol className="pipeline" aria-label={t("Étapes du dossier")}>
+      {PIPELINE.map((s, i) => {
+        const done = i < idx || (doneAll && i === idx);
+        const current = i === idx && !doneAll;
+        return (
+          <li key={s} className={done ? "done" : current ? `current${blocked ? " bad" : ""}` : ""} aria-current={current ? "step" : undefined}>
+            <span className="dot" aria-hidden>{done ? <Check size={13} strokeWidth={3} /> : i + 1}</span>
+            <span className="lbl">{t(STATUS_LABEL[s])}</span>
+          </li>
+        );
+      })}
     </ol>
   );
 }

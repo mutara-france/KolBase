@@ -1,5 +1,6 @@
 "use server";
 
+import { fourEyes } from "@/lib/four-eyes";
 import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import { db } from "@/lib/db";
@@ -132,8 +133,11 @@ export async function reviewMaterial(form: FormData) {
   const decision = str(form, "decision") === "approve" ? "approved" : "changes";
   const comment = str(form, "comment");
   if (decision === "changes" && !comment) return;
+  // Quatre yeux : on n'approuve pas un support que l'on a soi-même soumis (sauf seul habilité, avec justification).
+  const rule = decision === "approved" && v.submittedById ? await fourEyes(new Set([v.submittedById]), orgId, user.id, REVIEW_ROLES) : "ok";
+  if (rule === "blocked" || (rule === "justify" && !comment)) return;
   await db.materialVersion.update({ where: { id: v.id }, data: { status: decision, reviewerId: user.id, reviewComment: comment || null, reviewedAt: new Date() } });
-  await audit(user.id, decision === "approved" ? "material.approve" : "material.changes", "Project", v.material.projectId, { materialId: v.materialId, version: v.version, title: v.material.title, note: comment || undefined });
+  await audit(user.id, decision === "approved" ? "material.approve" : "material.changes", "Project", v.material.projectId, { materialId: v.materialId, version: v.version, title: v.material.title, note: comment || undefined, ...(rule === "justify" ? { selfApproved: true } : {}) });
   refresh(orgId, v.material.projectId);
   revalidatePath("/sollicitations", "layout");
 }
