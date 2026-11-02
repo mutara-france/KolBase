@@ -107,7 +107,7 @@ export async function submitQuote(_: ActionState, form: FormData): Promise<Actio
   if (!invite || invite.rfq.status !== "sent") return { error: "Cette demande n'accepte plus de devis." };
   const amountCents = eurToCents(str(form, "amount"), { allowZero: false });
   if (amountCents === null) return { error: "Indiquez le montant du devis." };
-  const data = { amountCents, delay: str(form, "delay") || null, note: str(form, "note") || null, authorId: user.id, status: "submitted" };
+  const data = { amountCents, delay: str(form, "delay") || null, note: str(form, "note") || null, authorId: user.id, status: "submitted" as const };
   const q = await db.quote.upsert({ where: { rfqId_supplierId: { rfqId, supplierId: orgId } }, update: data, create: { rfqId, supplierId: orgId, ...data } });
   if (invite.declined) await db.rfqSupplier.update({ where: { rfqId_supplierId: { rfqId, supplierId: orgId } }, data: { declined: false } });
   await audit(user.id, "quote.submit", "Quote", q.id, { rfqId, amountCents });

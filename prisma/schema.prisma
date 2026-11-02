@@ -328,7 +328,7 @@ model MaterialVersion {
   version       Int
   url           String?
   notes         String?
-  status        String    @default("submitted") // submitted | approved | changes
+  status        ReviewStatus @default(submitted)
   submittedById String
   reviewerId    String?
   reviewComment String?
@@ -388,7 +388,7 @@ model Expense {
   label       String
   amountCents Int
   date        DateTime
-  status      String   @default("draft")
+  status      ExpenseStatus @default(draft)
 }
 
 // ─── Événements, inscriptions, hospitalités ────────────────────────────────
@@ -443,7 +443,7 @@ model SpeakerApplication {
   practitionerId String
   practitioner   PractitionerProfile @relation(fields: [practitionerId], references: [id])
   message        String?
-  status         String              @default("pending") // pending | retained | rejected
+  status         ApplicationStatus   @default(pending)
   projectId      String?
   createdAt      DateTime            @default(now())
 
@@ -462,7 +462,7 @@ model Rfq {
   headcount      Int?
   needs          String
   deadline       DateTime?
-  status         String       @default("draft") // draft | sent | awarded | cancelled
+  status         RfqStatus    @default(draft)
   sentAt         DateTime?
   createdById    String?
   createdAt      DateTime     @default(now())
@@ -490,7 +490,7 @@ model Quote {
   amountCents Int
   delay       String?
   note        String?
-  status      String       @default("submitted") // submitted | retained | rejected
+  status      QuoteStatus  @default(submitted)
   authorId    String?
   createdAt   DateTime     @default(now())
   updatedAt   DateTime     @updatedAt
@@ -517,7 +517,7 @@ model Registration {
   event          Event    @relation(fields: [eventId], references: [id], onDelete: Cascade)
   userId         String
   user           User     @relation(fields: [userId], references: [id])
-  kind           String   @default("participant") // participant | speaker
+  kind           RegistrationKind @default(participant)
   profession     String?
   structure      String?
   createdAt      DateTime @default(now())
@@ -552,7 +552,7 @@ model OpenCall {
   budgetMaxCents Int?
   deadline       DateTime?
   description    String?
-  status         String       @default("open") // open | closed
+  status         OpenCallStatus @default(open)
   createdById    String?
   createdAt      DateTime     @default(now())
 
@@ -566,7 +566,7 @@ model Application {
   practitionerId String
   practitioner   PractitionerProfile @relation(fields: [practitionerId], references: [id])
   message        String?
-  status         String              @default("pending") // pending | retained | rejected
+  status         ApplicationStatus   @default(pending)
   projectId      String?             // dossier ouvert si la candidature est retenue
   createdAt      DateTime            @default(now())
 
@@ -586,4 +586,51 @@ model AuditLog {
   createdAt  DateTime @default(now())
 
   @@index([entityType, entityId])
+}
+
+// ─── Statuts (valeurs en minuscules, telles qu'elles étaient stockées en texte) ──
+
+// Candidature à un appel ouvert ou à un appel à intervenants.
+// declined : retenue, mais l'expert a décliné la proposition d'honoraires.
+enum ApplicationStatus {
+  pending
+  retained
+  rejected
+  declined
+}
+
+enum OpenCallStatus {
+  open
+  closed
+}
+
+enum RfqStatus {
+  draft
+  sent
+  awarded
+  cancelled
+}
+
+enum QuoteStatus {
+  submitted
+  retained
+  rejected
+}
+
+// Relecture d'une version de support.
+enum ReviewStatus {
+  submitted
+  approved
+  changes
+}
+
+enum ExpenseStatus {
+  draft
+  engagee
+  payee
+}
+
+enum RegistrationKind {
+  participant
+  speaker
 }

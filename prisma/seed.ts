@@ -9,7 +9,7 @@
  */
 import "dotenv/config";
 import { PrismaPg } from "@prisma/adapter-pg";
-import { PrismaClient, type OrgKind, type OrgRole, type ProjectStatus, type EventFormat } from "../src/generated/prisma/client";
+import { PrismaClient, type OrgKind, type OrgRole, type ProjectStatus, type EventFormat, type ExpenseStatus, type ApplicationStatus, type RfqStatus, type QuoteStatus } from "../src/generated/prisma/client";
 import { hashPassword } from "../src/lib/password";
 
 const db = new PrismaClient({ adapter: new PrismaPg({ connectionString: process.env.DATABASE_URL }) });
@@ -354,7 +354,7 @@ async function main() {
     ["demo-exp-4", "demo-prj-board", "Déplacements des experts", 61000, 20, "engagee"],
   ];
   for (const [id, projectId, label, amountCents, days, status] of EXPENSES)
-    await db.expense.upsert({ where: { id }, update: {}, create: { id, projectId, label, amountCents, date: at(days), status } });
+    await db.expense.upsert({ where: { id }, update: {}, create: { id, projectId, label, amountCents, date: at(days), status: status as ExpenseStatus } });
   await db.material.upsert({
     where: { id: "demo-mat-symposium" }, update: {},
     create: {
@@ -424,7 +424,7 @@ async function main() {
       await db.speakerApplication.upsert({
         where: { eventId_practitionerId: { eventId: c.event, practitionerId: pid } },
         update: {},
-        create: { eventId: c.event, practitionerId: pid, message, status: status ?? "pending", projectId, createdAt: at(-Math.floor(2 + Math.random() * 6)) },
+        create: { eventId: c.event, practitionerId: pid, message, status: (status ?? "pending") as ApplicationStatus, projectId, createdAt: at(-Math.floor(2 + Math.random() * 6)) },
       });
     }
   }
@@ -448,10 +448,10 @@ async function main() {
       where: { id: r.id },
       update: {},
       create: {
-        id: r.id, organizationId: r.org, eventId: r.event, category: r.category, needs: r.needs, deadline: at(r.deadline, 18), status: r.status,
+        id: r.id, organizationId: r.org, eventId: r.event, category: r.category, needs: r.needs, deadline: at(r.deadline, 18), status: r.status as RfqStatus,
         sentAt: at(-8), city: ev?.city, headcount: ev?.capacity, createdAt: at(-9),
         suppliers: { create: r.suppliers.map((supplierId) => ({ supplierId })) },
-        quotes: { create: r.quotes.map(([supplierId, eur, delay, note, status]) => ({ supplierId, amountCents: eur * 100, delay, note, status: status ?? "submitted", createdAt: at(-3) })) },
+        quotes: { create: r.quotes.map(([supplierId, eur, delay, note, status]) => ({ supplierId, amountCents: eur * 100, delay, note, status: (status ?? "submitted") as QuoteStatus, createdAt: at(-3) })) },
       },
     });
   }

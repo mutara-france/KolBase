@@ -7,10 +7,11 @@ import { requireUser } from "@/lib/auth";
 import { formatDate, formatEUR } from "@/lib/events";
 import { collabType } from "@/lib/projects";
 import { withdrawApplication } from "@/lib/opportunity-actions";
+import type { ApplicationStatus } from "@/generated/prisma/client";
 
 export const metadata = { title: "Opportunité — KolBase" };
 
-const APP_STATUS: Record<string, string> = {
+const APP_STATUS: Record<ApplicationStatus, string> = {
   pending: "Votre candidature est en cours d'examen.",
   retained: "Votre candidature a été retenue : l'organisation vous propose des honoraires, à accepter ou décliner dans « Sollicitations ».",
   rejected: "Votre candidature n'a pas été retenue.",

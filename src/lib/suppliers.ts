@@ -1,3 +1,5 @@
+import type { ApplicationStatus, QuoteStatus } from "@/generated/prisma/client";
+
 /** Catégories de prestataires (reprises du prototype). */
 export const SUPPLIER_CATEGORIES = [
   { id: "evenementiel", label: "Agence événementielle" },
@@ -23,6 +25,6 @@ export const RFQ_STATUS: Record<string, { label: string; tone: "done" | "electri
 /** Statut affiché : « Réponses reçues » dès qu'un devis est arrivé sur une demande envoyée. */
 export const rfqDisplayStatus = (r: { status: string; quotes: unknown[] }) => (r.status === "sent" && r.quotes.length > 0 ? "answered" : r.status);
 
-export const QUOTE_STATUS: Record<string, string> = { submitted: "Devis envoyé", retained: "Retenu", rejected: "Non retenu" };
+export const QUOTE_STATUS: Record<QuoteStatus, string> = { submitted: "Devis envoyé", retained: "Retenu", rejected: "Non retenu" };
 
-export const SPEAKER_STATUS: Record<string, string> = { pending: "À traiter", retained: "Retenu", rejected: "Non retenu", declined: "Honoraires déclinés" };
+export const SPEAKER_STATUS: Record<ApplicationStatus, string> = { pending: "À traiter", retained: "Retenu", rejected: "Non retenu", declined: "Honoraires déclinés" };

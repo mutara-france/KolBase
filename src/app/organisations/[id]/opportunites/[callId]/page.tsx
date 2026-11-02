@@ -1,4 +1,5 @@
 import Link from "next/link";
+import type { ApplicationStatus } from "@/generated/prisma/client";
 import { notFound } from "next/navigation";
 import { SiteHeader } from "@/components/SiteHeader";
 import { RetainForm } from "@/components/OpportunityForms";
@@ -10,7 +11,7 @@ import { rejectApplication, setOpenCallStatus } from "@/lib/opportunity-actions"
 
 export const metadata = { title: "Opportunité — KolBase" };
 
-const APP_STATUS: Record<string, string> = { pending: "À traiter", retained: "Retenue", rejected: "Non retenue", declined: "Honoraires déclinés" };
+const APP_STATUS: Record<ApplicationStatus, string> = { pending: "À traiter", retained: "Retenue", rejected: "Non retenue", declined: "Honoraires déclinés" };
 
 export default async function Page({ params }: { params: Promise<{ id: string; callId: string }> }) {
   const { id, callId } = await params;
