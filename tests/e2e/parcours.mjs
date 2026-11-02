@@ -957,6 +957,75 @@ async function submitNewOrg(page, siren) {
   await sup.ctx.close();
 }
 
+// ── Parcours cohérent : questions, décision, coûts reportés, réunion interne ─
+{
+  const db = new pg.Client({ connectionString: process.env.DATABASE_URL });
+  await db.connect();
+  const { ctx, page } = await session();
+  await login(page, "claire.morel@demo.kolbase.local");
+  await page.goto(`${BASE}/organisations/demo-org-dentalys`);
+  let t = await text(page);
+  check("Accueil : question d'un prestataire à traiter", t.includes("Question de Traiteur Belleville"));
+  check("Accueil : une réunion interne n'est pas un brouillon à publier", !t.includes("Brouillon à publier : Réunion du board"));
+  // Réponse à la question du traiteur, dans le fil privé de la demande.
+  await page.goto(`${BASE}/organisations/demo-org-dentalys/prestataires`);
+  const rfq = page.locator("section#rfq-demo-rfq-cocktail");
+  const thread = rfq.locator('details.rfq-thread:has-text("Traiteur Belleville")');
+  check("Demande : fil ouvert sur la question en attente", (await thread.getAttribute("open")) !== null && (await thread.innerText()).includes("options végétariennes"));
+  await thread.locator('textarea[name="body"]').fill("Oui : 10 couverts végétariens, dont 3 sans gluten.");
+  await thread.locator('button:has-text("Envoyer")').click();
+  check("E-mail au prestataire : message du demandeur", !!(await waitMail("ludovic.perrin@demo.kolbase.local", "Message de Dentalys Implants")));
+  // Offre expirée : non retenable.
+  await db.query(`update "Quote" set "validUntil" = now() - interval '1 day' where "rfqId"='demo-rfq-cocktail' and "supplierId"='demo-sup-tablesdusud'`);
+  await page.reload();
+  const sud = page.locator('section#rfq-demo-rfq-cocktail .quote:has-text("Les Tables du Sud")');
+  check("Devis expiré : non retenable", (await sud.locator('button:has-text("Retenir")').count()) === 0 && (await sud.innerText()).includes("Offre expirée"));
+  await page.locator('section#rfq-demo-rfq-cocktail .quote:has-text("Traiteur Belleville") button:has-text("Retenir")').click();
+  await page.waitForTimeout(1200);
+  check("E-mail au prestataire retenu", !!(await waitMail("ludovic.perrin@demo.kolbase.local", "Votre devis est retenu")));
+  // Le prestataire retenu voit la décision et le fil reste ouvert.
+  const sup = await session();
+  await login(sup.page, "ludovic.perrin@demo.kolbase.local");
+  await sup.page.goto(`${BASE}/organisations/demo-sup-belleville/devis`);
+  const st = await text(sup.page);
+  check("Prestataire : décision et échanges visibles", st.includes("a retenu votre devis") && st.includes("10 couverts végétariens"));
+  await sup.ctx.close();
+  // Le coût réel du devis retenu est reporté dans la valeur déclarée de l'hospitalité.
+  await page.goto(`${BASE}/organisations/demo-org-dentalys/evenements/demo-ev-soiree-implanto`);
+  const apply = page.locator("form.apply-benefit");
+  check("Événement : report du coût réel proposé", (await apply.count()) === 1);
+  const cocktail = await apply.locator('select[name="benefitId"] option', { hasText: "Cocktail" }).getAttribute("value");
+  await apply.locator('select[name="benefitId"]').selectOption(cocktail);
+  await apply.locator('input[name="value"]').fill("47,30");
+  await apply.locator('button:has-text("Mettre à jour")').click();
+  await page.waitForTimeout(1200);
+  t = await text(page);
+  check("Événement : valeur déclarée mise à jour", /Cocktail dînatoire\s*47,30\s€ TTC par personne/.test(t), t.match(/Cocktail dînatoire[^\n]*/)?.[0]);
+  const v = await db.query(`select rb."valueCents" from "RegistrationBenefit" rb join "Registration" r on r.id = rb."registrationId" join "EventBenefit" b on b.id = rb."benefitId" where r."eventId"='demo-ev-soiree-implanto' and b."catalogId"='cocktail' and r.declared = false`);
+  check("Inscriptions non déclarées : valeur alignée", v.rows.length > 0 && v.rows.every((r) => r.valueCents === 4730), JSON.stringify(v.rows));
+  // Réunion interne rattachée au dossier : devis retenu → budget du dossier.
+  await page.goto(`${BASE}/organisations/demo-org-dentalys/evenements/demo-ev-board`);
+  t = await text(page);
+  check("Réunion interne : ni publication ni inscriptions", t.includes("Réunion interne") && (await page.locator('button:has-text("Publier dans l\'agenda")').count()) === 0 && t.includes("Participants"));
+  await page.goto(`${BASE}/organisations/demo-org-dentalys/prestataires`);
+  await page.locator('section#rfq-demo-rfq-board-salle .quote:has-text("Espace Confluence") button:has-text("Retenir")').click();
+  await page.waitForTimeout(1200);
+  await page.goto(`${BASE}/organisations/demo-org-dentalys/dossiers/demo-prj-board`);
+  t = await text(page);
+  check("Dossier : devis retenu compté dans le budget", t.includes("Prestataires (devis retenus)") && t.includes("Salle et lieu de réception : Espace Confluence"));
+  await page.goto(`${BASE}/organisations/demo-org-dentalys/dossiers/demo-prj-redaction`);
+  check("Dossier de rédaction : pas de carte logistique", !(await text(page)).includes("Événement et logistique"));
+  // Listes : qui doit agir, montants, réunion interne.
+  await page.goto(`${BASE}/organisations/demo-org-dentalys/dossiers`);
+  t = await text(page);
+  check("Liste des dossiers : prochaine action et montants", t.includes("À faire : Conformité") || t.includes("À faire : Projets"));
+  await page.goto(`${BASE}/organisations/demo-org-dentalys/evenements`);
+  t = await text(page);
+  check("Liste des événements : réunion interne et logistique", t.includes("Réunion interne") && t.includes("À venir"));
+  await db.end();
+  await ctx.close();
+}
+
 // ── 4. Limitation des tentatives ───────────────────────────────────────────
 {
   const { ctx, page } = await session();

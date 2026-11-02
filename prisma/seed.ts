@@ -495,9 +495,10 @@ async function main() {
     create: {
       id: "demo-ev-board", organizationId: "demo-org-dentalys", projectId: "demo-prj-board", title: "Réunion du board implantologie", typeId: "table-ronde", therapeuticArea: "Implantologie",
       description: "Réunion interne du comité consultatif, non publiée dans l'agenda.", startsAt: at(26, 9), durationMinutes: 420, format: "PRESENTIEL",
-      city: "Lyon", venue: "Espace Confluence (fictif)", capacity: 8, publishedAt: null, registrationOpen: false,
+      city: "Lyon", venue: "Espace Confluence (fictif)", capacity: 8, publishedAt: null, registrationOpen: false, internal: true,
     },
   });
+  await db.event.updateMany({ where: { id: "demo-ev-board", internal: false, publishedAt: null }, data: { internal: true, registrationOpen: false } });
   await db.rfq.upsert({
     where: { id: "demo-rfq-board-salle" },
     update: {},
@@ -519,6 +520,16 @@ async function main() {
           ],
         }],
       },
+    },
+  });
+
+  // Question d'un prestataire sur une demande de devis, en attente de réponse.
+  await db.rfqMessage.upsert({
+    where: { id: "demo-rfqmsg-belleville" },
+    update: {},
+    create: {
+      id: "demo-rfqmsg-belleville", rfqId: "demo-rfq-cocktail", supplierId: "demo-sup-belleville", authorId: "demo-u-ludovic", fromSupplier: true, createdAt: at(-2),
+      body: "Bonjour, faut-il prévoir des options végétariennes et sans gluten ? Le service peut commencer dès 20 h 30 si la session se termine à l'heure.",
     },
   });
 

@@ -58,6 +58,8 @@ export const formatEUR = (cents: number) =>
 export const formatDateTime = (d: Date) =>
   d.toLocaleString("fr-FR", { timeZone: TZ, weekday: "long", day: "numeric", month: "long", year: "numeric", hour: "2-digit", minute: "2-digit" });
 
+export const formatTime = (d: Date) => d.toLocaleTimeString("fr-FR", { timeZone: TZ, hour: "2-digit", minute: "2-digit" });
+
 export const formatDate = (d: Date) => d.toLocaleDateString("fr-FR", { timeZone: TZ, day: "numeric", month: "short", year: "numeric" });
 
 /** Convertit une saisie « AAAA-MM-JJTHH:MM » (heure de Paris) en Date UTC. */

@@ -2,7 +2,7 @@
 
 import { useActionState, useState } from "react";
 import { Check, Plus, Send } from "lucide-react";
-import { createRfq, submitQuote, updateSupplierProfile } from "@/lib/rfq-actions";
+import { createRfq, postRfqMessage, submitQuote, updateSupplierProfile } from "@/lib/rfq-actions";
 import { createMandate } from "@/lib/event-actions";
 import { Notice } from "@/components/AuthForms";
 import { VAT_OPTIONS } from "@/lib/quotes";
@@ -194,6 +194,23 @@ export function MandateForm({ orgId, agencies }: { orgId: string; agencies: { id
       </label>
       <label>Périmètre (facultatif)<input name="scope" placeholder="Logistique des soirées scientifiques 2027…" /></label>
       <button className="btn" disabled={pending || agencies.length === 0}>{pending ? "…" : "Mandater"}</button>
+    </form>
+  );
+}
+
+/** Question ou réponse dans le fil privé d'une demande de devis (demandeur ↔ prestataire). */
+export function RfqMessageForm({ orgId, rfqId, supplierId, placeholder }: { orgId: string; rfqId: string; supplierId: string; placeholder: string }) {
+  const [state, action, pending] = useActionState(postRfqMessage, undefined);
+  return (
+    <form action={action} className="stack-sm" key={state?.ok ? Date.now() : "rfq-msg"}>
+      {state?.error && <Notice state={state} />}
+      <div className="composer">
+        <textarea name="body" rows={2} placeholder={placeholder} aria-label={placeholder} required maxLength={4000} />
+        <input type="hidden" name="orgId" value={orgId} />
+        <input type="hidden" name="rfqId" value={rfqId} />
+        <input type="hidden" name="supplierId" value={supplierId} />
+        <button className="btn small" disabled={pending}>{pending ? "Envoi…" : "Envoyer"}</button>
+      </div>
     </form>
   );
 }

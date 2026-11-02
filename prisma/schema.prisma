@@ -30,6 +30,7 @@ model User {
   memberships   Membership[]
   registrations Registration[]
   messages      Message[]
+  rfqMessages   RfqMessage[]
   auditLogs     AuditLog[]
   sessions      Session[]
   invitationsSent     Invitation[] @relation("invitedBy")
@@ -212,6 +213,7 @@ model Organization {
   rfqs             Rfq[]         @relation("rfqRequester")
   rfqInvites       RfqSupplier[]
   quotes           Quote[]
+  rfqMessages      RfqMessage[]
   followers        Follow[]
   agencyEvents     Event[]       @relation("agencyEvents")
 }
@@ -461,6 +463,8 @@ model Event {
   capacity         Int?
   registrationOpen Boolean      @default(true)
   publishedAt      DateTime?
+  // Réunion interne (board, comité…) : ni publication dans l'agenda, ni inscriptions en ligne.
+  internal         Boolean      @default(false)
   speakerCallOpen  Boolean      @default(false)
   speakerDeadline  DateTime?
   speakerSlots     Int?
@@ -513,6 +517,23 @@ model Rfq {
 
   suppliers RfqSupplier[]
   quotes    Quote[]
+  messages  RfqMessage[]
+}
+
+// Questions et échanges sur une demande de devis : un fil privé entre le demandeur et chaque prestataire consulté.
+model RfqMessage {
+  id         String       @id @default(cuid())
+  rfqId      String
+  rfq        Rfq          @relation(fields: [rfqId], references: [id], onDelete: Cascade)
+  supplierId String
+  supplier   Organization @relation(fields: [supplierId], references: [id])
+  authorId   String
+  author     User         @relation(fields: [authorId], references: [id])
+  fromSupplier Boolean    @default(false) // écrit par le prestataire (sinon par le demandeur)
+  body       String
+  createdAt  DateTime     @default(now())
+
+  @@index([rfqId, supplierId])
 }
 
 model RfqSupplier {

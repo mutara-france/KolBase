@@ -38,7 +38,9 @@ export async function createEvent(_: ActionState, form: FormData): Promise<Actio
   const projectId = str(form, "projectId");
   const project = projectId ? await db.project.findFirst({ where: { id: projectId, organizationId: orgId }, select: { id: true } }) : null;
 
-  const publish = form.get("publish") === "1";
+  // Réunion interne (board, comité) : jamais publiée, sans inscriptions en ligne.
+  const internal = form.get("internal") === "1";
+  const publish = !internal && form.get("publish") === "1";
   if (publish && !isVerifiedOrg(org)) return { error: `Publication impossible pour l'instant : ${ORG_NOT_VERIFIED} Enregistrez l'événement en brouillon.` };
   const event = await db.event.create({
     data: {
@@ -54,6 +56,8 @@ export async function createEvent(_: ActionState, form: FormData): Promise<Actio
       venue: format === "DISTANCIEL" ? null : str(form, "venue") || null,
       capacity: intOrNull(str(form, "capacity")),
       projectId: project?.id ?? null,
+      internal,
+      registrationOpen: !internal,
       publishedAt: publish ? new Date() : null,
       benefits: { create: benefits },
     },
@@ -69,13 +73,20 @@ export async function setEventFlag(form: FormData) {
   const { user, roles, org } = await requireMembership(orgId, EVENT_MANAGER_ROLES);
   const flag = str(form, "flag");
   if (flag === "publish" && !isVerifiedOrg(org)) return;
+  // Passer en réunion interne (ou l'ouvrir au public) relève de l'équipe organisatrice, pas d'une agence.
+  if ((flag === "internal" || flag === "public") && !roles.some((r) => EVENT_ORGANIZER_ROLES.includes(r))) return;
   const data =
     flag === "publish" ? { publishedAt: new Date() } :
     flag === "unpublish" ? { publishedAt: null } :
     flag === "open" ? { registrationOpen: true } :
-    flag === "close" ? { registrationOpen: false } : null;
+    flag === "close" ? { registrationOpen: false } :
+    // Réunion interne : retirée de l'agenda, inscriptions fermées ; « ouvrir au public » la rend publiable.
+    flag === "internal" ? { internal: true, publishedAt: null, registrationOpen: false } :
+    flag === "public" ? { internal: false, registrationOpen: true } : null;
   if (!data) return;
-  const { count } = await db.event.updateMany({ where: { id: eventId, organizationId: orgId, ...eventScope(user, roles) }, data });
+  // Une réunion interne n'est ni publiée ni ouverte aux inscriptions.
+  const onlyPublic = flag === "publish" || flag === "open" ? { internal: false } : {};
+  const { count } = await db.event.updateMany({ where: { id: eventId, organizationId: orgId, ...eventScope(user, roles), ...onlyPublic }, data });
   if (!count) return;
   await audit(user.id, `event.${flag}`, "Event", eventId);
   revalidatePath(`/organisations/${orgId}/evenements/${eventId}`);

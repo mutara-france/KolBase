@@ -4,7 +4,7 @@ import { SiteHeader } from "@/components/SiteHeader";
 import { SectionNav } from "@/components/SectionNav";
 import { orgTabs } from "@/lib/org-overview";
 import { Avatar } from "@/components/Avatar";
-import { MandateForm, NewRfqForm, SupplierLine } from "@/components/RfqForms";
+import { MandateForm, NewRfqForm, RfqMessageForm, SupplierLine } from "@/components/RfqForms";
 import { db } from "@/lib/db";
 import { requireMembership } from "@/lib/orgs";
 import { EVENT_MANAGER_ROLES, EVENT_ORGANIZER_ROLES, eventScope, formatDate, formatEUR } from "@/lib/events";
@@ -14,6 +14,7 @@ import { endMandate } from "@/lib/event-actions";
 import { lineTotal, perParticipant, readLines, vatLabel, withVat } from "@/lib/quotes";
 import { complianceSettings } from "@/lib/compliance";
 import { logoSrc } from "@/lib/logos";
+import { Thread } from "@/components/ProjectBits";
 
 export const metadata = { title: "Prestataires — KolBase" };
 
@@ -30,7 +31,12 @@ export default async function Page({ params, searchParams }: { params: Promise<{
   const [rfqs, suppliersRaw, events] = await Promise.all([
     db.rfq.findMany({
       where: { organizationId: id, ...(scoped ? { event: scope } : {}) },
-      include: { event: true, suppliers: { include: { supplier: true } }, quotes: { include: { supplier: true }, orderBy: { amountCents: "asc" } } },
+      include: {
+        event: true,
+        suppliers: { include: { supplier: true } },
+        quotes: { include: { supplier: true }, orderBy: { amountCents: "asc" } },
+        messages: { include: { author: { select: { firstName: true, lastName: true } } }, orderBy: { createdAt: "asc" } },
+      },
       orderBy: { createdAt: "desc" },
     }),
     db.organization.findMany({ where: { kind: "PRESTATAIRE", listed: true, NOT: { supplierCategories: { isEmpty: true } } }, orderBy: { name: "asc" } }),
@@ -139,7 +145,10 @@ export default async function Page({ params, searchParams }: { params: Promise<{
                           {r.status === "sent" && user.memberships.some((m) => m.organizationId === q.supplierId) && (
                             <span className="text-xs muted" title="Conflit d'intérêts : vous êtes membre de ce prestataire.">Retenu par un autre membre</span>
                           )}
-                          {r.status === "sent" && !user.memberships.some((m) => m.organizationId === q.supplierId) && (
+                          {r.status === "sent" && expired && !user.memberships.some((m) => m.organizationId === q.supplierId) && (
+                            <span className="text-xs warn-text" title="Une offre expirée n'engage plus le prestataire.">Offre expirée : demandez une version à jour</span>
+                          )}
+                          {r.status === "sent" && !expired && !user.memberships.some((m) => m.organizationId === q.supplierId) && (
                             <form action={awardQuote}>
                               <input type="hidden" name="orgId" value={id} />
                               <input type="hidden" name="quoteId" value={q.id} />
@@ -155,6 +164,29 @@ export default async function Page({ params, searchParams }: { params: Promise<{
                     <p className="muted">En attente de réponse : {pending.map((s) => s.supplier.name + (s.declined ? " (a décliné)" : "")).join(", ")}.</p>
                   )}
                   {r.status === "draft" && <p className="muted">Prestataires sélectionnés : {r.suppliers.map((s) => s.supplier.name).join(", ")}.</p>}
+                  {(r.status === "sent" || r.status === "awarded") && (
+                    <div className="rfq-threads">
+                      <span className="label">Questions et échanges</span>
+                      {r.suppliers.filter((s) => !s.declined || r.messages.some((m) => m.supplierId === s.supplierId)).map((s) => {
+                        const msgs = r.messages.filter((m) => m.supplierId === s.supplierId);
+                        const last = msgs.at(-1);
+                        const toAnswer = !!last?.fromSupplier;
+                        return (
+                          <details key={s.supplierId} className="rfq-thread" open={toAnswer}>
+                            <summary>
+                              <strong>{s.supplier.name}</strong>
+                              <span className="muted text-xs">{msgs.length ? `${msgs.length} message${msgs.length > 1 ? "s" : ""}` : "aucun message"}</span>
+                              {toAnswer && <span className="pill electric">Nouveau message</span>}
+                            </summary>
+                            <Thread messages={msgs} meId={user.id} />
+                            {(r.status === "sent" || r.quotes.some((q) => q.supplierId === s.supplierId && q.status === "retained")) && (
+                              <RfqMessageForm orgId={id} rfqId={r.id} supplierId={s.supplierId} placeholder={`Écrire à ${s.supplier.name}…`} />
+                            )}
+                          </details>
+                        );
+                      })}
+                    </div>
+                  )}
                   <div className="actions">
                     {r.status === "draft" && (
                       <form action={sendRfq}>

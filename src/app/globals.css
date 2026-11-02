@@ -721,26 +721,27 @@ body:has(.sidebar) .site-footer { padding: 24px 32px; }
 .quote-detail td:last-child { text-align: right; white-space: nowrap; }
 .warn-text { color: #9a5b00; }
 .logistics-list { list-style: none; margin: 8px 0 12px; padding: 0; display: flex; flex-direction: column; gap: 8px; }
-.logistics-list li { display: grid; grid-template-columns: 1fr auto auto; gap: 12px; align-items: center; padding: 12px 14px; border: 1px solid var(--line); border-radius: 14px; background: var(--bg); }
+.logistics-list li { padding: 12px 14px; border: 1px solid var(--line); border-radius: 14px; background: var(--bg); display: flex; flex-direction: column; gap: 10px; }
+.logistics-row { display: grid; grid-template-columns: 1fr auto auto; gap: 12px; align-items: center; }
 .logistics .chips { align-items: center; margin: 6px 0; gap: 8px; }
-@media (max-width: 640px) { .logistics-list li { grid-template-columns: 1fr; } }
+@media (max-width: 640px) { .logistics-row { grid-template-columns: 1fr; } }
 
 /* ─── Fiche dossier ─────────────────────────────────────────── */
-.dossier-hero { position: relative; overflow: hidden; display: flex; flex-direction: column; gap: 16px; background: #fff; border: 1px solid var(--line); border-radius: 22px; padding: 26px 28px 24px; }
-.dossier-hero::before { content: ""; position: absolute; inset: 0 0 auto 0; height: 5px; background: linear-gradient(90deg, var(--outremer), #5638f0 55%, #a85278); }
-.dossier-hero .hero-top { display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap; }
-.dossier-hero h1 { margin: 0; font-size: clamp(24px, 2.4vw, 32px); }
-.dossier-hero .lead { margin: -4px 0 0; color: var(--ink-soft); font-size: 14.5px; line-height: 1.6; max-width: 75ch; }
-.dossier-hero .pipeline { margin-top: 6px; padding-top: 18px; border-top: 1px solid var(--line); }
+.page-hero { position: relative; overflow: hidden; display: flex; flex-direction: column; gap: 16px; background: #fff; border: 1px solid var(--line); border-radius: 22px; padding: 26px 28px 24px; }
+.page-hero::before { content: ""; position: absolute; inset: 0 0 auto 0; height: 5px; background: linear-gradient(90deg, var(--outremer), #5638f0 55%, #a85278); }
+.page-hero .hero-top { display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap; }
+.page-hero h1 { margin: 0; font-size: clamp(24px, 2.4vw, 32px); }
+.page-hero .lead { margin: -4px 0 0; color: var(--ink-soft); font-size: 14.5px; line-height: 1.6; max-width: 75ch; }
+.page-hero .pipeline { margin-top: 6px; padding-top: 18px; border-top: 1px solid var(--line); }
 .facts { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 10px; margin: 0; }
 .facts > div { display: flex; flex-direction: column; gap: 4px; padding: 12px 14px; background: var(--bg-subtle); border: 1px solid var(--line); border-radius: 14px; min-width: 0; }
 .facts dt { display: flex; align-items: center; gap: 6px; font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.06em; color: var(--ink-soft); }
 .facts dt svg { color: var(--outremer); }
 .facts dd { margin: 0; font-family: var(--font-display); font-size: 17px; font-weight: 700; letter-spacing: -0.02em; color: var(--ink); }
 .facts dd small { display: block; margin-top: 2px; font-family: var(--font-body, inherit); font-size: 12px; font-weight: 400; letter-spacing: 0; color: var(--ink-soft); line-height: 1.4; }
-.dossier-grid { display: grid; grid-template-columns: minmax(0, 1fr) 340px; gap: 20px; align-items: start; }
-.dossier-main, .dossier-aside { display: flex; flex-direction: column; gap: 16px; min-width: 0; }
-@media (max-width: 1100px) { .dossier-grid { grid-template-columns: minmax(0, 1fr); } .dossier-aside { order: -1; } }
+.page-grid { display: grid; grid-template-columns: minmax(0, 1fr) 340px; gap: 20px; align-items: start; }
+.page-main, .page-aside { display: flex; flex-direction: column; gap: 16px; min-width: 0; }
+@media (max-width: 1100px) { .page-grid { grid-template-columns: minmax(0, 1fr); } .page-aside { order: -1; } }
 .block-head { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; flex-wrap: wrap; }
 .block-head h2 { margin: 0; font-size: 18px; }
 .next-step { border-color: #cfc8f5; background: linear-gradient(180deg, var(--tint), #fff 75%); display: flex; flex-direction: column; gap: 10px; }
@@ -785,13 +786,46 @@ body:has(.sidebar) .site-footer { padding: 24px 32px; }
 .audit-trail .when { font-size: 12px; color: var(--ink-soft); }
 .linked-events { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 10px; }
 .linked-events li { display: flex; flex-direction: column; gap: 4px; padding: 10px 12px; border: 1px solid var(--line); border-radius: 12px; }
-.dossier-aside .card { padding: 18px; }
-.dossier-main .table td:nth-child(2) { white-space: normal; min-width: 150px; }
-.dossier-main .table td form.inline { flex-direction: column; align-items: flex-start; gap: 2px; }
+.page-aside .card { padding: 18px; }
+.page-main .table td:nth-child(2) { white-space: normal; min-width: 150px; }
+.page-main .table td form.inline { flex-direction: column; align-items: flex-start; gap: 2px; }
 .terms .pill { white-space: normal; line-height: 1.4; }
 @media (max-width: 640px) {
-  .dossier-hero { padding: 22px 18px 18px; border-radius: 18px; }
+  .page-hero { padding: 22px 18px 18px; border-radius: 18px; }
   .facts { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .facts > div { padding: 10px 12px; }
   .facts dd { font-size: 15px; }
+}
+.apply-benefit { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; padding-top: 10px; border-top: 1px dashed var(--line); }
+.apply-benefit select, .apply-benefit input { font: inherit; font-size: 13px; padding: 6px 10px; border: 1px solid var(--line-strong); border-radius: 10px; background: #fff; }
+.apply-benefit input { width: 90px; }
+.apply-benefit .hint { flex-basis: 100%; }
+.rfq-threads { display: flex; flex-direction: column; gap: 8px; border-top: 1px solid var(--line); padding-top: 12px; margin-top: 4px; }
+.rfq-thread { border: 1px solid var(--line); border-radius: 14px; padding: 10px 14px; background: #fff; }
+.rfq-thread > summary { cursor: pointer; display: flex; align-items: center; gap: 8px; flex-wrap: wrap; list-style: none; }
+.rfq-thread > summary::-webkit-details-marker { display: none; }
+.rfq-thread > summary::before { content: "▸"; color: var(--outremer); font-size: 12px; }
+.rfq-thread[open] > summary::before { content: "▾"; }
+.rfq-thread[open] > summary { margin-bottom: 8px; }
+
+/* ─── Listes en lignes (dossiers, événements) ───────────────── */
+.row-list { display: flex; flex-direction: column; padding: 8px 20px; }
+.row-list > .section-title { margin: 12px 0 4px; }
+.row-item { display: grid; grid-template-columns: minmax(0, 1fr) minmax(170px, 260px) 150px; gap: 16px; align-items: center; padding: 14px 0; border-bottom: 1px solid var(--line); color: var(--ink); text-decoration: none !important; }
+.row-item:last-of-type { border-bottom: 0; }
+.row-item:hover .row-main strong { color: var(--outremer); }
+.row-item:has(.date-block) { grid-template-columns: 52px minmax(0, 1fr) minmax(170px, 260px) 110px; }
+.row-main { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
+.row-main strong { font-size: 15px; font-weight: 600; line-height: 1.35; }
+.row-status { display: flex; flex-direction: column; align-items: flex-start; gap: 4px; }
+.row-figures { display: flex; flex-direction: column; align-items: flex-end; gap: 2px; text-align: right; }
+.row-figures strong { font-family: var(--font-display); font-size: 15px; }
+.date-block { display: flex; flex-direction: column; align-items: center; justify-content: center; width: 52px; height: 52px; border-radius: 14px; background: var(--tint); color: var(--outremer); line-height: 1; }
+.date-block strong { font-family: var(--font-display); font-size: 19px; }
+.date-block small { font-size: 11px; text-transform: uppercase; letter-spacing: 0.04em; margin-top: 3px; }
+@media (max-width: 760px) {
+  .row-item, .row-item:has(.date-block) { grid-template-columns: minmax(0, 1fr) auto; gap: 8px 12px; }
+  .row-item .date-block { display: none; }
+  .row-status { grid-column: 1; }
+  .row-figures { grid-column: 2; grid-row: 1 / span 2; }
 }
