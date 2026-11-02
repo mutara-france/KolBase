@@ -11,6 +11,7 @@ import { canBeExpert, isRpps, normalizeRpps, PROFESSIONS } from "@/lib/professio
 import { sendLater } from "@/lib/mail";
 import { notifyPlatformAdmins } from "@/lib/notifications";
 import { consumeToken, findToken, issueToken } from "@/lib/tokens";
+import { anonymizeAccount, soleAdminOrgs } from "@/lib/account";
 import { str } from "@/lib/form";
 
 export type FormState = { error?: string; ok?: string } | undefined;
@@ -244,4 +245,18 @@ export async function updateNotifyPrefs(_: FormState, form: FormData): Promise<F
   await audit(user.id, "user.notify_prefs", "User", user.id, { email });
   revalidatePath("/compte");
   return { ok: email ? "Vous recevrez les notifications par e-mail." : "Vous ne recevrez plus de notifications par e-mail (hors e-mails de service)." };
+}
+
+/** Suppression du compte (anonymisation), après confirmation par le mot de passe. */
+export async function deleteAccount(_: FormState, form: FormData): Promise<FormState> {
+  const user = await requireUser();
+  if (form.get("confirm") !== "1") return { error: "Cochez la case de confirmation." };
+  if (!(await verifyPassword(String(form.get("password") ?? ""), user.passwordHash))) return { error: "Mot de passe incorrect." };
+  const blocking = await soleAdminOrgs(user.id);
+  if (blocking.length)
+    return { error: `Vous êtes le seul administrateur de ${blocking.join(", ")} : nommez d'abord un autre administrateur (Membres et réglages), ou retirez les autres membres.` };
+  const { kept } = await anonymizeAccount(user.id);
+  await audit(user.id, "user.delete", "User", user.id, { kept });
+  await destroySession();
+  redirect("/?compte=supprime");
 }

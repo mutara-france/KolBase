@@ -6,7 +6,7 @@ export default function Page() {
   return (
     <LegalPage
       title="Politique de confidentialité"
-      updated="octobre 2026"
+      updated="novembre 2026"
       sections={[
         ["Responsable de traitement", <p key="r">Mutara France, éditeur de KolBase — [coordonnées et contact du délégué à la protection des données à compléter].</p>],
         ["Données traitées", <ul key="d" className="plain">
@@ -22,8 +22,9 @@ export default function Page() {
         </ul>],
         ["Destinataires", <p key="dest">Les organisations avec lesquelles vous interagissez (inscription, sollicitation, candidature) et, pour les experts référencés, les membres d&apos;organisations consultant l&apos;annuaire. Les données ne sont jamais vendues.</p>],
         ["Durées de conservation", <p key="c">Données de compte : durée d&apos;utilisation du service, puis 3 ans. Conventions et données déclaratives : durée imposée par la réglementation applicable [à préciser avec votre conseil].</p>],
-        ["Vos droits", <p key="dr">Accès, rectification, effacement, limitation, opposition et portabilité, à exercer auprès de [contact à compléter]. Vous pouvez introduire une réclamation auprès de la CNIL. Les données publiées sur Transparence Santé relèvent de leur propre régime.</p>],
-        ["Hébergement et sécurité", <p key="h">Données hébergées dans l&apos;Union européenne (Francfort), chiffrées en transit. Les mots de passe sont hachés (scrypt) ; les jetons de session et d&apos;invitation ne sont stockés que sous forme hachée.</p>],
+        ["Vos droits", <p key="dr">Accès, rectification, effacement, limitation, opposition et portabilité. Depuis « Mon compte », vous pouvez télécharger vos données (format JSON), modifier votre profil et votre visibilité, couper les notifications par e-mail et supprimer votre compte. La suppression efface vos données personnelles ; seuls les éléments liés aux conventions et aux hospitalités déclarées (nom, profession, RPPS, ville, structure de facturation) sont conservés pour les obligations des organisations. Pour toute autre demande : [contact à compléter]. Vous pouvez introduire une réclamation auprès de la CNIL. Les données publiées sur Transparence Santé relèvent de leur propre régime.</p>],
+        ["Hébergement et sécurité", <p key="h">Données hébergées dans l&apos;Union européenne (Francfort), chiffrées en transit. Les mots de passe sont hachés (scrypt) ; les jetons de session, d&apos;invitation et les liens envoyés par e-mail ne sont stockés que sous forme hachée. Les polices de caractères sont servies par KolBase : aucune donnée de navigation n&apos;est transmise à un service tiers pour l&apos;affichage des pages.</p>],
+        ["Services tiers", <p key="t">Répertoire public des entreprises (contrôle du SIREN des organisations), ORCID (si vous connectez votre compte ORCID), prestataire d&apos;envoi d&apos;e-mails [à préciser]. Le numéro RPPS est contrôlé sur l&apos;Annuaire Santé public.</p>],
       ]}
     />
   );

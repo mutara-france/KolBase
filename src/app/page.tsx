@@ -12,7 +12,8 @@ import { publicCalls, publicCounts, publicEvents, publicExperts, publicOrgAgenda
 export const dynamic = "force-dynamic";
 
 /** Accueil — portail : recherche d'abord, puis le réseau (spécialités, agenda, praticiens, organisations, appels). */
-export default async function Home() {
+export default async function Home({ searchParams }: { searchParams: Promise<{ compte?: string }> }) {
+  const deleted = (await searchParams).compte === "supprime";
   const [events, experts, orgs, calls, n, specialties] = await Promise.all([
     publicEvents(3), publicExperts(4), publicOrgs(), publicCalls(2), publicCounts(), publicSpecialties(),
   ]);
@@ -29,6 +30,7 @@ export default async function Home() {
     <>
       <SiteHeader variant="public" />
       <main className="landing home">
+        {deleted && <p className="notice ok" role="status" style={{ margin: "16px auto", maxWidth: 1180 }}>Votre compte a été supprimé. Merci d&apos;avoir utilisé KolBase.</p>}
         <section className="home-hero" aria-labelledby="home-titre">
           <div className="home-wrap home-hero-inner">
             <div className="home-hero-text">

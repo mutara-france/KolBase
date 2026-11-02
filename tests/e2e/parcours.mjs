@@ -382,7 +382,70 @@ async function submitNewOrg(page, siren) {
   check("Ancien mot de passe refusé", (await text(again.page)).includes("E-mail ou mot de passe incorrect"));
   await login(again.page, "camille.nouvel@exemple.fr", "nouveau-mot-de-passe-2");
   check("Nouveau mot de passe accepté", !again.page.url().includes("/connexion"), again.page.url());
+
+  // ── RGPD : export et suppression du compte
+  const exp = await again.page.request.get(`${BASE}/compte/export`);
+  const data = await exp.json().catch(() => null);
+  check("Export : données du compte au format JSON", exp.ok() && data?.compte?.email === "camille.nouvel@exemple.fr" && !JSON.stringify(data).includes("passwordHash"));
+  await again.page.goto(`${BASE}/compte`);
+  const del = 'form:has(button:has-text("Supprimer définitivement"))';
+  await again.page.click('summary:has-text("Supprimer mon compte")');
+  await again.page.fill(`${del} input[name="password"]`, "mauvais-mot-de-passe-9");
+  await again.page.check(`${del} input[name="confirm"]`);
+  await again.page.click(`${del} button`);
+  await again.page.waitForTimeout(1000);
+  check("Suppression : mot de passe exigé", (await text(again.page)).includes("Mot de passe incorrect"));
+  // Le formulaire est réinitialisé après l'envoi (React 19) : on recoche la confirmation.
+  await again.page.fill(`${del} input[name="password"]`, "nouveau-mot-de-passe-2");
+  await again.page.check(`${del} input[name="confirm"]`);
+  await Promise.all([again.page.waitForURL(/compte=supprime/), again.page.click(`${del} button`)]);
+  check("Suppression : compte supprimé et déconnecté", (await again.page.locator("main").innerText()).includes("Votre compte a été supprimé"));
+  await login(again.page, "camille.nouvel@exemple.fr", "nouveau-mot-de-passe-2");
+  check("Suppression : connexion impossible", (await text(again.page)).includes("E-mail ou mot de passe incorrect"));
   await again.ctx.close();
+}
+{
+  const { ctx, page } = await session();
+  await login(page, "claire.morel@demo.kolbase.local");
+  await page.goto(`${BASE}/compte`);
+  const del = 'form:has(button:has-text("Supprimer définitivement"))';
+  await page.click('summary:has-text("Supprimer mon compte")');
+  await page.fill(`${del} input[name="password"]`, PW);
+  await page.check(`${del} input[name="confirm"]`);
+  await page.click(`${del} button`);
+  await page.waitForTimeout(1000);
+  check("Suppression : bloquée pour le seul administrateur d'une organisation", (await text(page)).includes("seul administrateur de Dentalys Implants"));
+  await ctx.close();
+
+  async function deleteAs(email) {
+    const m = await session();
+    await login(m.page, email);
+    await m.page.goto(`${BASE}/compte`);
+    await m.page.click('summary:has-text("Supprimer mon compte")');
+    const announced = await text(m.page);
+    await m.page.fill(`${del} input[name="password"]`, PW);
+    await m.page.check(`${del} input[name="confirm"]`);
+    await Promise.all([m.page.waitForURL(/compte=supprime/), m.page.click(`${del} button`)]);
+    await m.ctx.close();
+    return announced;
+  }
+  const db = new pg.Client({ connectionString: process.env.DATABASE_URL });
+  await db.connect();
+  const userRow = async (id) => (await db.query(`SELECT u."firstName", u.email, u."passwordHash", (SELECT count(*) FROM "ProjectExpert" pe JOIN "PractitionerProfile" p ON p.id = pe."practitionerId" WHERE p."userId" = u.id) AS links, (SELECT count(*) FROM "Registration" r WHERE r."userId" = u.id) AS regs FROM "User" u WHERE u.id = $1`, [id])).rows[0];
+
+  // Conventions signées : nom conservé pour les registres, le reste effacé.
+  check("Suppression : conservation annoncée (conventions)", (await deleteAs("linh.nguyen@demo.kolbase.local")).includes("restent attachés à vos"));
+  const linh = await userRow("demo-u-nguyen");
+  check("Anonymisation : nom conservé pour les conventions, adresse et mot de passe effacés", linh?.firstName === "Linh" && linh.email.endsWith("@kolbase.invalid") && linh.passwordHash === null && Number(linh.links) > 0, JSON.stringify(linh));
+  const pub = await (await browser.newContext()).newPage();
+  const fiche = await pub.goto(`${BASE}/experts/demo-p-nguyen`);
+  check("Anonymisation : fiche expert retirée", fiche?.status() === 404, String(fiche?.status()));
+
+  // Uniquement des inscriptions à venir : annulées, et le nom est effacé.
+  check("Suppression : effacement complet annoncé (inscriptions à venir)", (await deleteAs("manon.dubois@demo.kolbase.local")).includes("votre nom est également effacé"));
+  const manon = await userRow("demo-u-dubois");
+  check("Anonymisation : nom effacé, inscriptions à venir annulées", manon?.firstName === "Compte" && Number(manon.regs) === 0, JSON.stringify(manon));
+  await db.end();
 }
 
 // ── 4. Limitation des tentatives ───────────────────────────────────────────

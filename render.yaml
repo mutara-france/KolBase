@@ -34,7 +34,7 @@ services:
         generateValue: true
       - key: APP_URL
         sync: false
-      # Données fictives de démonstration (mettre à 0 avant l'ouverture au public).
+      # Données fictives de démonstration (mettre à 0 avant l'ouverture au public, puis npm run db:purge-demo).
       - key: SEED_DEMO
         value: "1"
       # Mot de passe commun des comptes de démo : à saisir dans le tableau de bord Render.

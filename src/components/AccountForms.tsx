@@ -1,7 +1,7 @@
 "use client";
 
 import { useActionState } from "react";
-import { changePassword, resendVerification, setListed, updateNotifyPrefs, updateProfile } from "@/lib/auth-actions";
+import { changePassword, deleteAccount, resendVerification, setListed, updateNotifyPrefs, updateProfile } from "@/lib/auth-actions";
 import { Notice } from "@/components/AuthForms";
 import { PROFESSIONS } from "@/lib/professions";
 
@@ -128,5 +128,34 @@ export function NotificationsForm({ email }: { email: boolean }) {
       <p className="hint">Les e-mails de service (mot de passe, confirmation d&apos;adresse, invitations) sont toujours envoyés.</p>
       <button className="btn secondary" disabled={pending}>Enregistrer</button>
     </form>
+  );
+}
+
+/** Mes données : export (portabilité) et suppression du compte (anonymisation). */
+export function MyDataCard({ keep }: { keep: { conventions: number; hospitalities: number } }) {
+  const [state, action, pending] = useActionState(deleteAccount, undefined);
+  const kept = keep.conventions + keep.hospitalities > 0;
+  return (
+    <section className="card form">
+      <h2>Mes données</h2>
+      <p className="muted">Téléchargez l&apos;ensemble des données de votre compte (profil, publications, inscriptions, collaborations, messages) au format JSON.</p>
+      <div className="actions"><a className="btn ghost" href="/compte/export">Télécharger mes données</a></div>
+      <details>
+        <summary>Supprimer mon compte</summary>
+        <form action={action} className="stack-sm">
+          <p className="muted">
+            La suppression est définitive : vous ne pourrez plus vous connecter, votre fiche est retirée, vos publications, coordonnées, suivis et candidatures en
+            attente sont effacés, vos inscriptions à venir annulées et vos sollicitations en attente déclinées.
+            {kept
+              ? ` Votre nom, votre profession, votre RPPS, votre ville et votre structure de facturation restent attachés à vos ${keep.conventions ? `${keep.conventions} convention(s)` : ""}${keep.conventions && keep.hospitalities ? " et " : ""}${keep.hospitalities ? `${keep.hospitalities} hospitalité(s)` : ""} : les organisations doivent les conserver (dispositif anti-cadeaux, Transparence Santé).`
+              : " Aucune convention ni hospitalité n'est attachée à votre compte : votre nom est également effacé."}
+          </p>
+          <Notice state={state} />
+          <label>Mot de passe<input name="password" type="password" autoComplete="current-password" required /></label>
+          <label className="check"><input type="checkbox" name="confirm" value="1" required /> Je comprends que la suppression est définitive.</label>
+          <button className="btn danger" disabled={pending}>{pending ? "Suppression…" : "Supprimer définitivement mon compte"}</button>
+        </form>
+      </details>
+    </section>
   );
 }
