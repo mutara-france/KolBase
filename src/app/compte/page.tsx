@@ -1,5 +1,6 @@
 import { SiteHeader } from "@/components/SiteHeader";
-import { EmailVerificationNotice, ListingForm, NotificationsForm, PasswordForm, ProfileForm } from "@/components/AccountForms";
+import { EmailVerificationNotice, ListingForm, MyDataCard, NotificationsForm, PasswordForm, ProfileForm } from "@/components/AccountForms";
+import { retentionReasons } from "@/lib/account";
 import Link from "next/link";
 import { ExpertProfileForm } from "@/components/OrgForms";
 import { requireUser } from "@/lib/auth";
@@ -120,6 +121,7 @@ export default async function Page({ searchParams }: { searchParams: Promise<{ a
         />
         <NotificationsForm email={wantsEmail(user)} />
         <PasswordForm email={user.email} />
+        <MyDataCard keep={await retentionReasons(user.id)} />
         <section className="card">
           <h2>Organisations</h2>
           <p className="muted">

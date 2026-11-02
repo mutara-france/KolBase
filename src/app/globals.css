@@ -215,6 +215,8 @@ main.narrow { max-width: 760px; }
 .btn.secondary { background: var(--tint); color: var(--outremer); border-color: transparent; }
 .btn.secondary:hover { background: #ddd6ff; }
 .btn.ghost { background: #fff; color: var(--ink); border-color: var(--line-strong); }
+.btn.danger { background: var(--danger); color: #fff; }
+.btn.danger:hover { filter: brightness(0.92); }
 .btn.ghost:hover { border-color: var(--ink); color: var(--ink); }
 .btn.white { background: #fff; color: var(--outremer); }
 .btn.white:hover { background: var(--tint); }
