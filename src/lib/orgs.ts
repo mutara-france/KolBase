@@ -29,8 +29,12 @@ export const INTERVENTION_TYPES = [
   "Étude clinique", "Webinaire", "Démonstration produit", "Relecture de supports",
 ];
 
-/** Vérifie que l'utilisateur courant est membre de l'organisation (et, si précisé, a l'un des rôles). */
-export async function requireMembership(orgId: string, roles?: OrgRole[]) {
+/**
+ * Vérifie que l'utilisateur courant est membre de l'organisation (et, si précisé, a l'un des rôles).
+ * `allowSupplier` : l'action concerne la gestion de l'organisation elle-même (membres, invitations, fiche)
+ * et vaut donc aussi pour une organisation prestataire.
+ */
+export async function requireMembership(orgId: string, roles?: OrgRole[], { allowSupplier = false }: { allowSupplier?: boolean } = {}) {
   const user = await requireUser();
   const memberships = user.memberships.filter((m) => m.organizationId === orgId);
   if (memberships.length === 0) notFound();
@@ -40,9 +44,16 @@ export async function requireMembership(orgId: string, roles?: OrgRole[]) {
   if (roles && !userRoles.some((r) => roles.includes(r))) redirect(`/organisations/${orgId}`);
   // Une organisation prestataire n'a que son tableau de bord, ses demandes de devis et ses membres :
   // les espaces réservés à des rôles (dossiers, événements, conformité…) concernent les organisations clientes.
-  if (roles && org.kind === "PRESTATAIRE") redirect(`/organisations/${orgId}`);
+  if (roles && org.kind === "PRESTATAIRE" && !allowSupplier) redirect(`/organisations/${orgId}`);
   return { user, org, roles: userRoles, isAdmin: userRoles.includes("ADMIN") };
 }
+
+/** Rôles proposés à l'invitation : une organisation prestataire n'a que des administrateurs et des membres d'équipe. */
+export const SUPPLIER_ROLES: OrgRole[] = ["ADMIN", "PRESTATAIRE"];
+export const invitableRoles = (kind: OrgKind): OrgRole[] => (kind === "PRESTATAIRE" ? SUPPLIER_ROLES : (Object.keys(ROLE_LABEL) as OrgRole[]));
+
+/** Libellé d'un rôle selon le type d'organisation (dans une agence, « Prestataire » désigne un membre de l'équipe). */
+export const roleLabel = (role: OrgRole, kind: OrgKind) => (kind === "PRESTATAIRE" && role === "PRESTATAIRE" ? "Membre de l'équipe" : ROLE_LABEL[role]);
 
 /** L'annuaire (sourcing) est réservé aux équipes Éducation, Cumul et aux administrateurs. Les autres voient l'annuaire public. */
 export async function requireDirectoryAccess() {

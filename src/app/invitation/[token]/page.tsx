@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { SiteHeader } from "@/components/SiteHeader";
 import { getCurrentUser } from "@/lib/auth";
-import { findInvitation, ROLE_LABEL } from "@/lib/orgs";
+import { findInvitation, roleLabel } from "@/lib/orgs";
 import { acceptInvitation } from "@/lib/org-actions";
 
 export const metadata = { title: "Invitation — KolBase" };
@@ -26,7 +26,7 @@ export default async function Page({ params }: { params: Promise<{ token: string
             <>
               <h1>Rejoindre {inv.organization.name}</h1>
               <p className="muted">
-                {inv.invitedBy.firstName} {inv.invitedBy.lastName} vous invite avec le rôle <strong>{ROLE_LABEL[inv.role]}</strong>.
+                {inv.invitedBy.firstName} {inv.invitedBy.lastName} vous invite avec le rôle <strong>{roleLabel(inv.role, inv.organization.kind)}</strong>.
               </p>
               {user ? (
                 <form action={acceptInvitation}>
