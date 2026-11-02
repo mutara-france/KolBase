@@ -69,6 +69,8 @@ export const TRANSITIONS = {
   revise: { from: ["BLOQUE"], to: "ACCORD", roles: "project", label: "Reprendre le dossier" },
   ordre: { from: ["VALIDE"], to: "ORDRE", roles: "project", label: "Demander l'autorisation à l'Ordre" },
   declaration: { from: ["VALIDE"], to: "SIGNATURE", roles: "project", label: "Déclaration simple → signature" },
+  // Experts exerçant tous hors de France : pas de démarche EPS, les règles du pays d'exercice s'appliquent.
+  hors_france: { from: ["VALIDE"], to: "SIGNATURE", roles: "project", label: "Hors France : obligations du pays vérifiées → signature" },
   ordre_ok: { from: ["ORDRE"], to: "SIGNATURE", roles: "project", label: "Autorisation obtenue" },
   ordre_ko: { from: ["ORDRE"], to: "REFUS_ORDRE", roles: "project", label: "Autorisation refusée" },
   signed: { from: ["SIGNATURE"], to: "SIGNE", roles: "project", label: "Convention signée" },

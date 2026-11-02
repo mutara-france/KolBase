@@ -15,7 +15,7 @@ export default async function Page({ searchParams }: { searchParams: Promise<Par
   const { q = "", type = "", ville = "", specialite = "", page: pageParam = "1" } = await searchParams;
   const [all, specialties] = await Promise.all([publicExperts(), publicSpecialties()]);
   const experts = all.filter((k) =>
-    matches(q, k.name, k.specialty, k.subspecialty, k.profession, k.city, k.hospital, ...k.types)
+    matches(q, k.name, k.specialty, k.subspecialty, k.profession, k.city, k.hospital, k.country, ...k.types)
     && (!type || k.types.includes(type))
     && matches(ville, k.city)
     && (!specialite || normalize(k.specialty) === normalize(specialite)),

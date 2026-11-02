@@ -266,3 +266,31 @@ describe("campagne de tests : entrées piégées", () => {
     expect(sniffLogo(new TextEncoder().encode("<svg onload=alert(1)>"))).toBeNull();
   });
 });
+
+describe("praticiens exerçant hors de France", () => {
+  const s = DEFAULT_COMPLIANCE;
+  it("identifiants : NPI (préfixe 80840), INAMI, autres pays", async () => {
+    const { isNpi, isInami, licenseRule } = await import("@/lib/countries");
+    expect(isNpi("1234567893")).toBe(true); // exemple de la CMS
+    expect(isNpi("1234567898")).toBe(false);
+    expect(isInami("31234567890")).toBe(true);
+    expect(isInami("3123456789")).toBe(false);
+    expect(licenseRule("ES").valid("Colegio de Dentistas de Madrid 12345")).toBe(true);
+    expect(licenseRule("ES").valid("12")).toBe(false);
+  });
+  it("régime : tous les experts hors de France → pas de démarche EPS", () => {
+    const be = { status: "ACCORD", feeCents: 500000, days: 1, country: "BE" };
+    const fr = { status: "ACCORD", feeCents: 500000, days: 1, country: "FR" };
+    expect(projectRegime(s, "journée", [be])?.regime).toBe("hors_france");
+    expect(projectRegime(s, "journée", [be, fr])?.regime).toBe("autorisation"); // l'expert français reste soumis au régime
+    expect(projectRegime(s, "journée", [{ ...be, country: "US" }, be])?.regime).toBe("hors_france");
+    expect(projectRegime(s, "journée", [{ status: "ACCORD", feeCents: 50000, days: 1 }])?.regime).toBe("declaration"); // pays absent = France
+  });
+  it("obligations et clause de convention selon le pays", async () => {
+    const { foreignObligations, conventionClause } = await import("@/lib/countries");
+    expect(foreignObligations("BE").join(" ")).toContain("betransparent.be");
+    expect(foreignObligations("US").join(" ")).toContain("Open Payments");
+    expect(conventionClause("FR")[0]).toContain("L.1453-1");
+    expect(conventionClause("BE")[0]).toContain("en Belgique");
+  });
+});

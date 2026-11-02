@@ -2,7 +2,7 @@ import Link from "next/link";
 import { ExternalLink } from "lucide-react";
 import { SiteHeader } from "@/components/SiteHeader";
 import { db } from "@/lib/db";
-import { requirePlatformAdmin } from "@/lib/platform";
+import { platformAdminEmails, requirePlatformAdmin } from "@/lib/platform";
 import { ORG_KIND_LABEL, VERIFICATION_LABEL } from "@/lib/org-roles";
 import { formatDate } from "@/lib/events";
 import { normalize } from "@/lib/search";
@@ -13,6 +13,7 @@ import { storageEnabled } from "@/lib/storage";
 import { orcidOAuth } from "@/lib/orcid";
 import { Avatar } from "@/components/Avatar";
 import { logoSrc } from "@/lib/logos";
+import { country, licenseRule, practicesInFrance, registryLink } from "@/lib/countries";
 
 export const metadata = { title: "Administration — KolBase" };
 export const dynamic = "force-dynamic";
@@ -33,7 +34,7 @@ export default async function Page({ searchParams }: { searchParams: Promise<{ o
       orderBy: { createdAt: "desc" },
     }),
     db.practitionerProfile.findMany({
-      where: { rpps: { not: null }, rppsVerified: false, rppsCheckedAt: null },
+      where: { OR: [{ rpps: { not: null } }, { licenseNumber: { not: null } }], rppsVerified: false, rppsCheckedAt: null },
       include: { user: { select: { email: true, firstName: true, lastName: true } } },
       orderBy: { updatedAt: "asc" },
     }),
@@ -61,7 +62,7 @@ export default async function Page({ searchParams }: { searchParams: Promise<{ o
         <h1>Administration KolBase</h1>
         <nav className="tabs">
           <Link href="?onglet=organisations" className={onglet === "organisations" ? "active" : ""}>Organisations ({pending.length} à valider)</Link>
-          <Link href="?onglet=praticiens" className={onglet === "praticiens" ? "active" : ""}>RPPS ({rppsQueue.length} à vérifier)</Link>
+          <Link href="?onglet=praticiens" className={onglet === "praticiens" ? "active" : ""}>Identités ({rppsQueue.length} à vérifier)</Link>
           <Link href="?onglet=lancement" className={onglet === "lancement" ? "active" : ""}>Lancement</Link>
         </nav>
 
@@ -147,31 +148,44 @@ export default async function Page({ searchParams }: { searchParams: Promise<{ o
             </section>
           ))}
 
-        {onglet === "lancement" && <LaunchChecklist demoOrgs={orgs.filter((x) => x.id.startsWith("demo-")).length} />}
+        {onglet === "lancement" && (
+          <LaunchChecklist
+            demoOrgs={orgs.filter((x) => x.id.startsWith("demo-")).length}
+            admins={await db.user.findMany({ where: { email: { in: platformAdminEmails() } }, select: { email: true, emailVerifiedAt: true } })}
+          />
+        )}
 
         {onglet === "praticiens" && (
           <>
             <p className="muted">
-              Contrôlez chaque numéro sur l&apos;<a href="https://annuaire.sante.fr/" target="_blank" rel="noreferrer">Annuaire Santé <ExternalLink size={12} /></a> :
+              Contrôlez chaque numéro sur le registre du pays d&apos;exercice (en France, l&apos;<a href="https://annuaire.sante.fr/" target="_blank" rel="noreferrer">Annuaire Santé <ExternalLink size={12} /></a>) :
               le nom, la profession et la situation d&apos;exercice doivent correspondre. Le badge « Identité vérifiée » s&apos;affiche dès la validation.
             </p>
-            {rppsQueue.length === 0 && <p className="muted">Aucun RPPS en attente.</p>}
-            {rppsQueue.map((p) => (
+            {rppsQueue.length === 0 && <p className="muted">Aucune identité en attente.</p>}
+            {rppsQueue.map((p) => {
+              const fr = practicesInFrance(p.country);
+              const id = (fr ? p.rpps : p.licenseNumber) ?? "";
+              const reg = registryLink(p.country);
+              return (
               <section key={p.id} className="card actions spread">
                 <span>
-                  <strong>{p.user.firstName} {p.user.lastName}</strong> · {p.profession}{p.city ? ` · ${p.city}` : ""}{p.listed ? " · expert référencé" : ""}
+                  <strong>{p.user.firstName} {p.user.lastName}</strong> · {p.profession}{p.city ? ` · ${p.city}` : ""} · {country(p.country).name}{p.listed ? " · expert référencé" : ""}
                   <br />
-                  <span className="muted">RPPS <span className="mono">{p.rpps}</span> · {p.user.email}</span>
+                  <span className="muted">
+                    {fr ? "RPPS" : licenseRule(p.country).label} <span className="mono">{id}</span> · {p.user.email}
+                    {reg.url && <> · <a href={reg.url} target="_blank" rel="noreferrer">{reg.label} <ExternalLink size={12} /></a></>}
+                  </span>
                 </span>
                 <form action={reviewRpps} className="inline wrap">
                   <input type="hidden" name="practitionerId" value={p.id} />
-                  <input type="hidden" name="rpps" value={p.rpps ?? ""} />
+                  <input type="hidden" name="identifier" value={id} />
                   <input name="note" placeholder="Motif (obligatoire pour refuser)" />
                   <button className="btn small" name="decision" value="verify">Valider</button>
                   <button className="btn ghost small" name="decision" value="reject">Refuser</button>
                 </form>
               </section>
-            ))}
+              );
+            })}
             {rppsDone.length > 0 && (
               <section className="card">
                 <h2>Derniers contrôles</h2>
@@ -180,7 +194,7 @@ export default async function Page({ searchParams }: { searchParams: Promise<{ o
                     <li key={p.id}>
                       <strong>{p.user.firstName} {p.user.lastName}</strong>
                       <span className="text-xs">
-                        RPPS {p.rpps} · {p.rppsVerified ? "validé" : `refusé${p.rppsCheckNote ? ` : ${p.rppsCheckNote}` : ""}`} le {formatDate(p.rppsCheckedAt!)}
+                        {practicesInFrance(p.country) ? `RPPS ${p.rpps}` : `${country(p.country).name} · ${p.licenseNumber}`} · {p.rppsVerified ? "validé" : `refusé${p.rppsCheckNote ? ` : ${p.rppsCheckNote}` : ""}`} le {formatDate(p.rppsCheckedAt!)}
                       </span>
                     </li>
                   ))}
@@ -195,9 +209,19 @@ export default async function Page({ searchParams }: { searchParams: Promise<{ o
 }
 
 /** État de la configuration en production (lecture seule) : ce qui reste à faire avant l'ouverture. */
-function LaunchChecklist({ demoOrgs }: { demoOrgs: number }) {
+function LaunchChecklist({ demoOrgs, admins }: { demoOrgs: number; admins: { email: string; emailVerifiedAt: Date | null }[] }) {
+  const unconfirmed = admins.filter((a) => !a.emailVerifiedAt).map((a) => a.email);
+  const missing = platformAdminEmails().filter((e) => !admins.some((a) => a.email.toLowerCase() === e));
   const legalGaps = missingLegal();
   const items: { ok: boolean; optional?: boolean; label: string; detail: string }[] = [
+    {
+      ok: missing.length === 0 && unconfirmed.length === 0,
+      label: "Administrateurs KolBase (PLATFORM_ADMIN_EMAILS)",
+      detail: [
+        missing.length ? `Sans compte : ${missing.join(", ")} (à créer sans tarder : une adresse listée et libre pourrait être prise).` : "",
+        unconfirmed.length ? `Adresse à confirmer : ${unconfirmed.join(", ")} (exigé dès que les e-mails sont configurés).` : "",
+      ].filter(Boolean).join(" ") || "Comptes créés et adresses confirmées.",
+    },
     { ok: !!process.env.APP_URL, label: "Adresse du site (APP_URL)", detail: process.env.APP_URL || "Non définie : les liens des e-mails et du plan du site sont incomplets." },
     { ok: mailEnabled(), label: "Envoi d'e-mails (SMTP_URL, MAIL_FROM)", detail: mailEnabled() ? `Expéditeur : ${process.env.MAIL_FROM ?? "par défaut"}` : "Non configuré : aucun e-mail n'est envoyé (mot de passe oublié, notifications)." },
     { ok: storageEnabled(), label: "Stockage des documents (S3_*)", detail: storageEnabled() ? `Compartiment : ${process.env.S3_BUCKET}` : "Non configuré : le dépôt de documents est désactivé." },

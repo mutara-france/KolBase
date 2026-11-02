@@ -6,6 +6,7 @@ import { db } from "@/lib/db";
 import { collabType } from "@/lib/projects";
 import { drPrefix } from "@/lib/professions";
 import { canSee, kolVisibility, type Viewer, type VisLevel } from "@/lib/visibility";
+import { country } from "@/lib/countries";
 
 function Hidden({ level, viewer, label }: { level: VisLevel; viewer: Viewer; label: string }) {
   if (level === "masque") return null;
@@ -38,7 +39,7 @@ export async function ExpertProfile({ id, viewer, solicitHref, userId = null }: 
       <section className="card profile-hero">
         <Avatar name={name} size={76} ring />
         <div className="grow">
-          <div className="eyebrow">KB-{p.id.slice(-4).toUpperCase()} · France</div>
+          <div className="eyebrow">KB-{p.id.slice(-4).toUpperCase()} · {country(p.country).name}</div>
           <h1 className="profile-name">{name} {p.rppsVerified && <span className="verif ok"><BadgeCheck size={13} /> Identité vérifiée</span>}</h1>
           <p className="text-sm">{[p.profession, p.specialty, p.subspecialty].filter(Boolean).join(" · ")}</p>
           <div className="tags mt-2">{p.interventionTypes.map((t) => <span key={t} className="tag">{t}</span>)}</div>

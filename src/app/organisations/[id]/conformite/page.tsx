@@ -8,7 +8,8 @@ import { db } from "@/lib/db";
 import { requireMembership } from "@/lib/orgs";
 import { COMPLIANCE_ROLES, formatDate, formatEUR } from "@/lib/events";
 import { collabType, STATUS_LABEL } from "@/lib/projects";
-import { complianceSettings, remunerationRegime, REGIME_LABEL, SETTING_FIELDS, type Regime } from "@/lib/compliance";
+import { complianceSettings, foreignRegime, remunerationRegime, REGIME_LABEL, SETTING_FIELDS, type Regime } from "@/lib/compliance";
+import { country, practicesInFrance } from "@/lib/countries";
 import { registerRows } from "@/lib/compliance-data";
 import { markProjectPublished } from "@/lib/compliance-actions";
 import { detectConflicts } from "@/lib/conflicts";
@@ -24,7 +25,7 @@ const TABS = [
 ] as const;
 
 function RegimePill({ regime, reason }: { regime: Regime; reason?: string }) {
-  return <span className={`pill ${regime === "autorisation" ? "wait" : "ok"}`} title={reason}>{REGIME_LABEL[regime]}</span>;
+  return <span className={`pill ${regime === "autorisation" ? "wait" : regime === "hors_france" ? "" : "ok"}`} title={reason}>{REGIME_LABEL[regime]}</span>;
 }
 
 export default async function Page({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: Promise<{ onglet?: string; annee?: string }> }) {
@@ -41,11 +42,12 @@ export default async function Page({ params, searchParams }: { params: Promise<{
   });
   const regimeOf = (p: (typeof projects)[number]) => {
     const unit = collabType(p.typeId)?.unit ?? "";
-    const rs = p.experts.map((e) => remunerationRegime(s, e.feeCents, e.days, unit));
+    const rs = p.experts.map((e) => (practicesInFrance(e.practitioner.country) ? remunerationRegime(s, e.feeCents, e.days, unit) : foreignRegime(e.practitioner.country)));
     return rs.find((r) => r.regime === "autorisation") ?? rs[0] ?? { regime: "declaration" as Regime, reason: "Aucun expert engagé" };
   };
   const total = (p: (typeof projects)[number]) => p.experts.reduce((x, e) => x + (e.feeCents ?? 0), 0);
-  const experts = (p: (typeof projects)[number]) => p.experts.map((e) => `Dr ${e.practitioner.user.lastName}`).join(", ") || "—";
+  const experts = (p: (typeof projects)[number]) =>
+    p.experts.map((e) => `Dr ${e.practitioner.user.lastName}${practicesInFrance(e.practitioner.country) ? "" : ` (${country(e.practitioner.country).name})`}`).join(", ") || "—";
   const dossier = (pid: string) => `/organisations/${id}/dossiers/${pid}`;
 
   const toValidate = projects.filter((p) => p.status === "EN_VALID");

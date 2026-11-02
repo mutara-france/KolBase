@@ -1,6 +1,7 @@
 import { db } from "@/lib/db";
 import { collabType } from "@/lib/projects";
-import { complianceSettings, hospitalityRegime, remunerationRegime, type Regime } from "@/lib/compliance";
+import { complianceSettings, foreignRegime, hospitalityRegime, remunerationRegime, type Regime } from "@/lib/compliance";
+import { practicesInFrance } from "@/lib/countries";
 import type { ProjectStatus } from "@/generated/prisma/client";
 
 export const REGISTER_STATUSES: ProjectStatus[] = ["VALIDE", "ORDRE", "SIGNATURE", "SIGNE", "TERMINE"];
@@ -11,6 +12,9 @@ export type RegisterRow = {
   lastName: string;
   firstName: string;
   rpps: string | null;
+  /** Pays d'exercice et identifiant hors France (INAMI, NPI…). */
+  country: string;
+  license: string | null;
   city: string | null;
   subject: string;
   nature: string;
@@ -42,19 +46,21 @@ export async function registerRows(orgId: string, year: number | null, rawSettin
   const rows: RegisterRow[] = [];
   for (const l of links) {
     const t = collabType(l.project.typeId);
-    const r = remunerationRegime(s, l.feeCents, l.days, t?.unit ?? "");
+    const c = l.practitioner.country;
+    const r = practicesInFrance(c) ? remunerationRegime(s, l.feeCents, l.days, t?.unit ?? "") : foreignRegime(c);
     rows.push({
       kind: "remuneration", date: l.project.updatedAt, lastName: l.practitioner.user.lastName, firstName: l.practitioner.user.firstName,
-      rpps: l.practitioner.rpps, city: l.practitioner.city, subject: l.project.title, nature: t?.label ?? l.project.typeId,
+      rpps: l.practitioner.rpps, country: c, license: l.practitioner.licenseNumber, city: l.practitioner.city, subject: l.project.title, nature: t?.label ?? l.project.typeId,
       amountCents: l.feeCents ?? 0, regime: r.regime, reason: r.reason, status: l.project.status,
       declared: l.project.declared, declarationRef: l.project.declarationRef, href: `/organisations/${orgId}/dossiers/${l.projectId}`,
     });
   }
   for (const g of regs) {
-    const r = hospitalityRegime(s, g.benefits.map((b) => ({ catalogId: b.benefit.catalogId, valueCents: b.valueCents })));
+    const c = g.user.practitioner?.country ?? "FR";
+    const r = practicesInFrance(c) ? hospitalityRegime(s, g.benefits.map((b) => ({ catalogId: b.benefit.catalogId, valueCents: b.valueCents }))) : foreignRegime(c);
     rows.push({
       kind: "hospitalite", date: g.event.startsAt, lastName: g.user.lastName, firstName: g.user.firstName,
-      rpps: g.user.practitioner?.rpps ?? null, city: g.user.practitioner?.city ?? null, subject: g.event.title,
+      rpps: g.user.practitioner?.rpps ?? null, country: c, license: g.user.practitioner?.licenseNumber ?? null, city: g.user.practitioner?.city ?? null, subject: g.event.title,
       nature: "Hospitalité : " + g.benefits.map((b) => b.benefit.label).join(", "),
       amountCents: g.benefits.reduce((x, b) => x + b.valueCents, 0), regime: r.regime, reason: r.reason, status: "",
       declared: g.declared, declarationRef: g.declarationRef, href: `/organisations/${orgId}/hospitalites`,

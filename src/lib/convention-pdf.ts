@@ -1,4 +1,5 @@
 import { drPrefix } from "@/lib/professions";
+import { conventionClause, country, licenseRule, practicesInFrance } from "@/lib/countries";
 import "server-only";
 import { readFile } from "node:fs/promises";
 import path from "node:path";
@@ -105,6 +106,10 @@ class Writer {
   }
 }
 
+/** « , n° RPPS … » en France, « , numéro INAMI … » (ou l'identifiant du pays) ailleurs. */
+const identifierText = (p: { rpps: string | null; country?: string; licenseNumber?: string | null }) =>
+  practicesInFrance(p.country) ? (p.rpps ? `, n° RPPS ${p.rpps}` : "") : p.licenseNumber ? `, ${licenseRule(p.country!).short} ${p.licenseNumber}` : "";
+
 const eur = (cents: number) => (cents / 100).toLocaleString("fr-FR", { style: "currency", currency: "EUR" });
 const dateFr = (d: Date) => d.toLocaleDateString("fr-FR", { timeZone: "Europe/Paris", day: "numeric", month: "long", year: "numeric" });
 
@@ -138,7 +143,7 @@ export type CollabConventionInput = {
   ref: string;
   statusLabel: string;
   org: { name: string; headquarters: string | null; contactEmail: string | null; policy: string | null };
-  expert: { firstName: string; lastName: string; email: string; profession: string; rpps: string | null; city: string | null; structure?: { name: string; legalForm: string; siren: string | null } | null };
+  expert: { firstName: string; lastName: string; email: string; profession: string; rpps: string | null; city: string | null; country?: string; licenseNumber?: string | null; structure?: { name: string; legalForm: string; siren: string | null } | null };
   project: { title: string; typeLabel: string; unit: string; therapeuticArea: string | null; description: string | null; ordreRef: string | null };
   link: { units: number | null; feeCents: number | null };
   fmv: { min: number; max: number; perUnit: number; verdict: "ok" | "above" | "below" } | null;
@@ -153,7 +158,7 @@ export async function buildCollaborationConvention(i: CollabConventionInput) {
   w.text("et", { color: MUTED });
   const e = i.expert;
   w.text(
-    `${drPrefix(e.profession)}${e.firstName} ${e.lastName}, ${e.profession}${e.city ? ` exerçant à ${e.city}` : ""}${e.rpps ? `, n° RPPS ${e.rpps}` : ""}, ${e.email}` +
+    `${drPrefix(e.profession)}${e.firstName} ${e.lastName}, ${e.profession}${e.city ? ` exerçant à ${e.city}` : ""}${practicesInFrance(e.country) ? "" : ` (${country(e.country).name})`}${identifierText(e)}, ${e.email}` +
       (e.structure ? `, agissant pour le compte de ${e.structure.name} (${e.structure.legalForm}${e.structure.siren ? `, SIREN ${e.structure.siren}` : ""})` : "") +
       ", ci-après « l'Expert ».",
   );
@@ -176,9 +181,11 @@ export async function buildCollaborationConvention(i: CollabConventionInput) {
   w.text("Les frais de déplacement et d'hébergement éventuellement pris en charge par l'Organisation sont limités au strict nécessaire à la prestation et font l'objet d'une déclaration distincte.", { color: MUTED });
 
   w.heading("Article 3 - Encadrement réglementaire");
-  w.text("La présente convention est conclue dans le respect des articles L.1453-1 et suivants du Code de la santé publique (dispositif dit « anti-cadeaux » et transparence des liens d'intérêts).");
-  w.text(i.project.ordreRef ? `Elle a été soumise à l'instance ordinale compétente : ${i.project.ordreRef}.` : "Elle est soumise, selon le montant en jeu, à déclaration ou à autorisation préalable auprès de l'instance ordinale compétente, avant son exécution.");
-  w.text("Son existence, son objet et les rémunérations versées sont rendus publics sur la base Transparence Santé, conformément à la réglementation.");
+  for (const line of conventionClause(e.country ?? "FR")) w.text(line);
+  if (practicesInFrance(e.country)) {
+    w.text(i.project.ordreRef ? `Elle a été soumise à l'instance ordinale compétente : ${i.project.ordreRef}.` : "Elle est soumise, selon le montant en jeu, à déclaration ou à autorisation préalable auprès de l'instance ordinale compétente, avant son exécution.");
+    w.text("Son existence, son objet et les rémunérations versées sont rendus publics sur la base Transparence Santé, conformément à la réglementation.");
+  }
 
   w.heading("Article 4 - Indépendance et confidentialité");
   w.text("L'Expert conserve une totale indépendance scientifique. Il s'engage à déclarer ses liens d'intérêts lors de toute intervention publique en lien avec l'Organisation, et à garder confidentielles les informations non publiques portées à sa connaissance.");
@@ -196,7 +203,7 @@ export async function buildCollaborationConvention(i: CollabConventionInput) {
 export type HospitalityConventionInput = {
   ref: string;
   org: { name: string; headquarters: string | null };
-  beneficiary: { firstName: string; lastName: string; email: string; profession: string | null; rpps: string | null; structure: string | null };
+  beneficiary: { firstName: string; lastName: string; email: string; profession: string | null; rpps: string | null; structure: string | null; country?: string; licenseNumber?: string | null };
   event: { title: string; startsAt: Date; city: string | null; venue: string | null; typeLabel: string };
   benefits: { label: string; valueCents: number }[];
   declared: boolean;
@@ -210,7 +217,7 @@ export async function buildHospitalityConvention(i: HospitalityConventionInput) 
   w.heading("Parties");
   w.text(`${i.org.name}${i.org.headquarters ? `, ${i.org.headquarters}` : ""}, organisateur, et`);
   const b = i.beneficiary;
-  w.text(`${b.firstName} ${b.lastName}${b.profession ? `, ${b.profession}` : ""}${b.rpps ? `, n° RPPS ${b.rpps}` : ""}${b.structure ? `, ${b.structure}` : ""} (${b.email}), bénéficiaire.`);
+  w.text(`${b.firstName} ${b.lastName}${b.profession ? `, ${b.profession}` : ""}${practicesInFrance(b.country) ? "" : ` (${country(b.country).name})`}${identifierText(b)}${b.structure ? `, ${b.structure}` : ""} (${b.email}), bénéficiaire.`);
 
   w.heading("Manifestation");
   w.rows([
@@ -226,7 +233,8 @@ export async function buildHospitalityConvention(i: HospitalityConventionInput) 
 
   w.heading("Engagements");
   w.text("L'hospitalité offerte est d'un niveau raisonnable, strictement limitée à l'objet scientifique ou professionnel de la manifestation, et ne s'étend pas aux personnes accompagnant le bénéficiaire.");
-  w.text("Conformément aux articles L.1453-1 et suivants du Code de la santé publique, la présente convention est déclarée à l'instance ordinale compétente et rendue publique sur la base Transparence Santé.");
+  if (practicesInFrance(b.country)) w.text("Conformément aux articles L.1453-1 et suivants du Code de la santé publique, la présente convention est déclarée à l'instance ordinale compétente et rendue publique sur la base Transparence Santé.");
+  else for (const line of conventionClause(b.country ?? "XX")) w.text(line.replace("L'Expert exerce", "Le bénéficiaire exerce"));
   w.text("Le bénéficiaire a accepté chacun de ces avantages individuellement lors de son inscription sur KolBase.", { color: MUTED });
 
   w.heading("Signatures");

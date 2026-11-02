@@ -12,7 +12,7 @@ export default function Page() {
         ["Responsable de traitement", <p key="r">{legal("editor")}, éditeur de KolBase, {legal("address")}. Contact pour vos données personnelles : {legal("privacyContact")}.</p>],
         ["Données traitées", <ul key="d" className="plain">
           <li>Compte : nom, prénom, e-mail, téléphone, mot de passe (stocké sous forme chiffrée irréversible).</li>
-          <li>Profil professionnel : profession, n° RPPS, lieu d&apos;exercice, spécialité, présentation, tarifs indicatifs.</li>
+          <li>Profil professionnel : profession, pays d&apos;exercice, n° RPPS ou identifiant professionnel étranger (INAMI, NPI…), lieu d&apos;exercice, spécialité, présentation, tarifs indicatifs.</li>
           <li>Activité : inscriptions aux événements, avantages acceptés, sollicitations, candidatures, messages, conventions.</li>
           <li>Journal technique des actions sensibles (traçabilité réglementaire).</li>
         </ul>],

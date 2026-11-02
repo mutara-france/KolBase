@@ -57,13 +57,14 @@ export async function reviewRpps(form: FormData) {
   const note = str(form, "note") || null;
   if (decision !== "verify" && decision !== "reject") return;
   if (decision === "reject" && !note) return;
-  const rpps = str(form, "rpps");
-  // Le RPPS contrôlé est celui affiché à l'administrateur : s'il a changé entre-temps, on ne valide rien.
+  const identifier = str(form, "identifier");
+  if (!identifier) return;
+  // L'identifiant contrôlé est celui affiché à l'administrateur : s'il a changé entre-temps, on ne valide rien.
   const { count } = await db.practitionerProfile.updateMany({
-    where: { id: practitionerId, rpps },
-    // Un RPPS refusé retire aussi le praticien de l'annuaire public (il pourra se référencer à nouveau avec un numéro corrigé).
+    where: { id: practitionerId, OR: [{ country: "FR", rpps: identifier }, { country: { not: "FR" }, licenseNumber: identifier }] },
+    // Un identifiant refusé retire aussi le praticien de l'annuaire public (il pourra se référencer à nouveau avec un numéro corrigé).
     data: { rppsVerified: decision === "verify", rppsCheckedAt: new Date(), rppsCheckNote: decision === "reject" ? note : null, ...(decision === "reject" ? { listed: false, listedAt: null } : {}) },
   });
-  if (count) await audit(admin.id, `platform.rpps_${decision}`, "PractitionerProfile", practitionerId, { rpps, note: note ?? undefined });
+  if (count) await audit(admin.id, `platform.rpps_${decision}`, "PractitionerProfile", practitionerId, { identifier, note: note ?? undefined });
   refresh();
 }

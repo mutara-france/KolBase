@@ -76,6 +76,8 @@ export function EventCard({ ev, compact = false }: { ev: EventCardData; compact?
 
 export type KolCardData = {
   id: string; name: string; specialty: string | null; subspecialty: string | null; profession: string; city: string | null; hospital: string | null;
+  /** Pays d'exercice (nom affiché) ; « France » par défaut. */
+  country?: string;
   verified: boolean; types: string[]; collaborations: number | null; organizations: number | null;
 };
 export function KolCard({ k }: { k: KolCardData }) {
@@ -87,7 +89,7 @@ export function KolCard({ k }: { k: KolCardData }) {
       </div>
       <h3 className="kol-name">{k.name}</h3>
       <p className="text-sm">{[k.specialty || k.profession, k.subspecialty].filter(Boolean).join(" · ")}</p>
-      <div className="meta-line mt-1"><MapPin size={13} /> {[k.city, k.hospital].filter(Boolean).join(" — ") || "France"}</div>
+      <div className="meta-line mt-1"><MapPin size={13} /> {[[k.city, k.hospital].filter(Boolean).join(" — "), k.country && k.country !== "France" ? k.country : null].filter(Boolean).join(" · ") || k.country || "France"}</div>
       <div className="tags mt-3 mb-3">{k.types.slice(0, 3).map((t) => <span key={t} className="tag tag-sm">{t}</span>)}</div>
       <div className="kol-foot">
         <span className="text-xs">

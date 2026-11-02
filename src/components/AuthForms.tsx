@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useActionState } from "react";
 import { requestPasswordReset, resetPassword, signIn, signUp, type FormState } from "@/lib/auth-actions";
 import { PROFESSIONS } from "@/lib/professions";
+import { COUNTRIES } from "@/lib/countries";
 
 export function Notice({ state }: { state: FormState }) {
   if (state?.error) return <p className="notice error" role="alert">{state.error}</p>;
@@ -46,6 +47,12 @@ export function SignUpForm({ next }: { next?: string }) {
           {PROFESSIONS.map((p) => <option key={p}>{p}</option>)}
           <option value="">Je représente une organisation</option>
         </select>
+      </label>
+      <label>Pays d&apos;exercice
+        <select name="country" defaultValue="FR">
+          {COUNTRIES.map((c) => <option key={c.code} value={c.code}>{c.name}</option>)}
+        </select>
+        <span className="hint">Hors de France, vous vous référencerez avec l&apos;identifiant professionnel de votre pays.</span>
       </label>
       <label>Mot de passe<input name="password" type="password" autoComplete="new-password" minLength={10} required />
         <span className="hint">10 caractères minimum, avec au moins une lettre et un chiffre.</span>

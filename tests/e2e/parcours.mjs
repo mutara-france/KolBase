@@ -279,6 +279,63 @@ const linkIn = (mail) => mail?.text.match(/https?:\/\/\S+/g)?.find((u) => !u.end
   await s2.ctx.close();
 }
 
+// ── Praticiens exerçant hors de France ─────────────────────────────────────
+{
+  const db = new pg.Client({ connectionString: process.env.DATABASE_URL });
+  await db.connect();
+  // Une praticienne passe en exercice en Belgique : identifiant INAMI au lieu du RPPS.
+  const ines = await session();
+  await login(ines.page, "ines.lambert@demo.kolbase.local");
+  await ines.page.goto(`${BASE}/compte`);
+  const infos = 'form:has(h2:has-text("Informations personnelles"))';
+  await ines.page.selectOption(`${infos} select[name="country"]`, "BE");
+  check("Belgique : le RPPS laisse place au numéro INAMI", (await ines.page.locator(`${infos} input[name="licenseNumber"]`).count()) === 1 && (await ines.page.locator(`${infos} input[name="rpps"]`).count()) === 0);
+  await ines.page.fill(`${infos} input[name="licenseNumber"]`, "1234");
+  await ines.page.click(`${infos} button:has-text("Enregistrer")`);
+  await ines.page.waitForTimeout(1000);
+  check("INAMI mal formé refusé", (await text(ines.page)).includes("Numéro INAMI invalide"));
+  await ines.page.selectOption(`${infos} select[name="country"]`, "BE");
+  await ines.page.fill(`${infos} input[name="licenseNumber"]`, "3 12345 67 890");
+  await ines.page.click(`${infos} button:has-text("Enregistrer")`);
+  await ines.page.waitForTimeout(1200);
+  const row = (await db.query(`SELECT country, "licenseNumber", rpps FROM "PractitionerProfile" WHERE id = 'demo-p-lambert'`)).rows[0];
+  check("INAMI enregistré, pays d'exercice Belgique", row.country === "BE" && row.licenseNumber === "31234567890" && row.rpps === null, JSON.stringify(row));
+  await ines.page.click('button:has-text("Me référencer comme expert")');
+  await ines.page.waitForTimeout(1200);
+  check("Praticienne belge référencée avec son INAMI", (await text(ines.page)).includes("Vous êtes référencé comme expert"));
+  const admin = await session();
+  await login(admin.page, "anne.chevalier@demo.kolbase.local");
+  await admin.page.goto(`${BASE}/admin?onglet=praticiens`);
+  const card = admin.page.locator('section.card:has-text("Inès Lambert")');
+  check("Admin : INAMI et pays affichés, lien vers l'INAMI", (await card.innerText()).includes("Numéro INAMI") && (await card.innerText()).includes("Belgique") && (await card.locator('a[href*="inami.fgov.be"]').count()) === 1);
+  await card.locator('button:has-text("Valider")').click();
+  await admin.page.waitForTimeout(1200);
+  await ines.page.goto(`${BASE}/experts?q=Belgique`);
+  check("Fiche publique : pays d'exercice et identité vérifiée", (await ines.page.locator('a.kol-card:has-text("Inès Lambert")').innerText()).includes("Belgique"));
+  await ines.ctx.close();
+  await admin.ctx.close();
+
+  // Dossier dont l'unique expert exerce en Belgique : ni déclaration ni autorisation EPS.
+  await db.query(`INSERT INTO "Project" (id, "organizationId", title, "typeId", status, "updatedAt") VALUES ('e2e-prj-be', 'demo-org-dentalys', 'Conférence à Bruxelles', 'pleniere', 'VALIDE', now())`);
+  await db.query(`INSERT INTO "ProjectExpert" (id, "projectId", "practitionerId", status, "feeCents", days) VALUES ('e2e-prj-be-x0', 'e2e-prj-be', 'demo-p-janssens', 'VALIDE', 300000, 1)`);
+  const claire = await session();
+  await login(claire.page, "claire.morel@demo.kolbase.local");
+  await claire.page.goto(`${BASE}/organisations/demo-org-dentalys/dossiers/e2e-prj-be`);
+  let t = await text(claire.page);
+  check("Dossier hors France : régime « Hors France », obligations belges rappelées", t.includes("Hors France") && t.includes("betransparent.be") && t.includes("Mdeon"));
+  check("Dossier hors France : pas de démarche auprès de l'Ordre", !t.includes("Demander l'autorisation à l'Ordre") && !t.includes("Déclaration simple"));
+  await claire.page.click('button:has-text("Hors France")');
+  await claire.page.waitForTimeout(1200);
+  const st = (await db.query(`SELECT status FROM "Project" WHERE id = 'e2e-prj-be'`)).rows[0].status;
+  check("Dossier hors France : passage direct à la signature", st === "SIGNATURE", st);
+  const pdf = await claire.ctx.request.get(`${BASE}/organisations/demo-org-dentalys/dossiers/e2e-prj-be/convention/e2e-prj-be-x0`);
+  check("Convention d'une experte belge générée", pdf.status() === 200 && pdf.headers()["content-type"] === "application/pdf");
+  await claire.ctx.close();
+  // Retour à l'état de départ pour la suite des parcours.
+  await db.query(`UPDATE "PractitionerProfile" SET country = 'FR', "licenseNumber" = NULL, listed = false, "listedAt" = NULL, "rppsVerified" = false, "rppsCheckedAt" = NULL WHERE id = 'demo-p-lambert'`);
+  await db.end();
+}
+
 // ── Mandats d'agence ───────────────────────────────────────────────────────
 {
   const agent = await session();

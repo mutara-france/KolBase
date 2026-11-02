@@ -26,8 +26,8 @@ const EMAIL_NOTICE = {
   "lien-invalide": ["error", "Ce lien de confirmation n'est plus valable. Demandez-en un nouveau ci-dessous."],
 } as const;
 
-export default async function Page({ searchParams }: { searchParams: Promise<{ annuaire?: string; orcid?: string; email?: string }> }) {
-  const { annuaire, orcid, email } = await searchParams;
+export default async function Page({ searchParams }: { searchParams: Promise<{ annuaire?: string; orcid?: string; email?: string; admin?: string }> }) {
+  const { annuaire, orcid, email, admin } = await searchParams;
   const emailNotice = email && email in EMAIL_NOTICE ? EMAIL_NOTICE[email as keyof typeof EMAIL_NOTICE] : null;
   const orcidNotice = orcid && orcid in ORCID_NOTICE ? ORCID_NOTICE[orcid as keyof typeof ORCID_NOTICE] : null;
   const user = await requireUser();
@@ -54,6 +54,7 @@ export default async function Page({ searchParams }: { searchParams: Promise<{ a
         )}
         {orcidNotice && <p className={`notice ${orcidNotice[0]}`}>{orcidNotice[1]}</p>}
         {emailNotice && <p className={`notice ${emailNotice[0]}`}>{emailNotice[1]}</p>}
+        {admin === "confirmer" && !user.emailVerifiedAt && <p className="notice warn">Confirmez votre adresse e-mail pour accéder à l&apos;administration KolBase.</p>}
         {!user.emailVerifiedAt && <EmailVerificationNotice email={user.email} />}
         {p && <ListingForm listed={p.listed} eligible={canBeExpert(p.profession)} hasRpps={!!p.rpps} />}
         {p?.listed && (
@@ -112,8 +113,8 @@ export default async function Page({ searchParams }: { searchParams: Promise<{ a
           practitioner={
             p
               ? {
-                  profession: p.profession, rpps: p.rpps, city: p.city, specialty: p.specialty, listed: p.listed,
-                  rppsStatus: !p.rpps ? "none" : p.rppsVerified ? "verified" : p.rppsCheckedAt ? "rejected" : "pending",
+                  profession: p.profession, rpps: p.rpps, country: p.country, licenseNumber: p.licenseNumber, city: p.city, specialty: p.specialty, listed: p.listed,
+                  rppsStatus: !(p.country === "FR" ? p.rpps : p.licenseNumber) ? "none" : p.rppsVerified ? "verified" : p.rppsCheckedAt ? "rejected" : "pending",
                   rppsNote: p.rppsCheckNote,
                 }
               : null

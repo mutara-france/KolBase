@@ -29,6 +29,7 @@ export async function loadCollabConvention(linkId: string, where: { organization
     expert: {
       firstName: link.practitioner.user.firstName, lastName: link.practitioner.user.lastName, email: link.practitioner.user.email,
       profession: link.practitioner.profession, rpps: link.practitioner.rpps, city: link.practitioner.city,
+      country: link.practitioner.country, licenseNumber: link.practitioner.licenseNumber,
       structure: s ? { name: s.name, legalForm: s.legalForm, siren: s.siren } : null,
     },
     project: { title: p.title, typeLabel: type?.label ?? p.typeId, unit: type?.unit ?? "unité", therapeuticArea: p.therapeuticArea, description: p.description, ordreRef: p.ordreRef },
@@ -47,7 +48,7 @@ export async function loadHospitalityConvention(registrationId: string, organiza
   return {
     ref: `KB-H-${r.id.slice(-8).toUpperCase()}`,
     org: { name: r.event.organization.name, headquarters: r.event.organization.headquarters },
-    beneficiary: { firstName: r.user.firstName, lastName: r.user.lastName, email: r.user.email, profession: r.profession, rpps: r.user.practitioner?.rpps ?? null, structure: r.structure },
+    beneficiary: { firstName: r.user.firstName, lastName: r.user.lastName, email: r.user.email, profession: r.profession, rpps: r.user.practitioner?.rpps ?? null, structure: r.structure, country: r.user.practitioner?.country ?? "FR", licenseNumber: r.user.practitioner?.licenseNumber ?? null },
     event: { title: r.event.title, startsAt: r.event.startsAt, city: r.event.city, venue: r.event.venue, typeLabel: eventTypeLabel(r.event.typeId) },
     benefits: r.benefits.map((b) => ({ label: b.benefit.label, valueCents: b.valueCents })),
     declared: r.declared,

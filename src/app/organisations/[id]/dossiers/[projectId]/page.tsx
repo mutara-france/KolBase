@@ -12,6 +12,8 @@ import { BudgetPanel, ConflictsPanel, DocumentsPanel, MaterialsPanel } from "@/c
 import { missingSignedConventions } from "@/lib/project-documents";
 import { REVIEW_ROLES } from "@/lib/projects";
 import { complianceSettings, projectRegime, REGIME_LABEL } from "@/lib/compliance";
+import { country, foreignObligations, practicesInFrance } from "@/lib/countries";
+import { drPrefix } from "@/lib/professions";
 
 export const metadata = { title: "Dossier — KolBase" };
 
@@ -56,12 +58,16 @@ export default async function Page({ params }: { params: Promise<{ id: string; p
   const isProject = roles.some((r) => PROJECT_ROLES.includes(r));
   const isCompliance = roles.some((r) => COMPLIANCE_ROLES.includes(r));
   const settings = complianceSettings(org.complianceSettings);
-  const regime = projectRegime(settings, type?.unit ?? "", project.experts);
+  const regime = projectRegime(settings, type?.unit ?? "", project.experts.map((e) => ({ ...e, country: e.practitioner.country })));
+  const foreignExperts = project.experts.filter((e) => e.status !== "DECLINE" && !practicesInFrance(e.practitioner.country));
   const unsigned = project.status === "SIGNATURE" ? await missingSignedConventions(projectId) : [];
   const available = (Object.keys(TRANSITIONS) as TransitionKey[]).filter((k) => {
     const t = TRANSITIONS[k];
     // Au-delà d'un seuil, la déclaration simple n'est pas possible : seule la demande d'autorisation est proposée.
-    if (k === "declaration" && regime?.regime === "autorisation") return false;
+    if (k === "declaration" && (regime?.regime === "autorisation" || regime?.regime === "hors_france")) return false;
+    // Experts exerçant tous hors de France : ni déclaration ni autorisation EPS, une étape dédiée.
+    if (k === "ordre" && regime?.regime === "hors_france") return false;
+    if (k === "hors_france" && regime?.regime !== "hors_france") return false;
     // Avec le stockage activé, « Convention signée » attend la convention signée de chaque expert engagé.
     if (k === "signed" && unsigned.length > 0) return false;
     return (t.from as readonly string[]).includes(project.status) && (t.roles === "compliance" ? isCompliance : isProject);
@@ -101,7 +107,12 @@ export default async function Page({ params }: { params: Promise<{ id: string; p
             {unsigned.length > 0 && (
               <p className="hint">Déposez la convention signée de {unsigned.join(", ")} (rubrique Documents) pour passer le dossier en « Signé ».</p>
             )}
-            {project.status === "VALIDE" && regime && (
+            {project.status === "VALIDE" && regime?.regime === "hors_france" && (
+              <p className="hint">
+                Régime : <span className="pill">{REGIME_LABEL.hors_france}</span> ({regime.reason}). Pas de démarche sur la plateforme EPS ; vérifiez les obligations du pays d&apos;exercice ci-dessous avant la signature.
+              </p>
+            )}
+            {project.status === "VALIDE" && regime && regime.regime !== "hors_france" && (
               <p className="hint">
                 Régime : <span className={`pill ${regime.regime === "autorisation" ? "wait" : "ok"}`}>{REGIME_LABEL[regime.regime]}</span>{" "}
                 ({regime.reason}).{" "}
@@ -114,6 +125,18 @@ export default async function Page({ params }: { params: Promise<{ id: string; p
           </section>
         )}
 
+        {foreignExperts.length > 0 && (
+          <section className="card stack-sm">
+            <h2>Experts exerçant hors de France</h2>
+            {foreignExperts.map((e) => (
+              <div key={e.id}>
+                <strong>{drPrefix(e.practitioner.profession)}{e.practitioner.user.firstName} {e.practitioner.user.lastName}</strong> · {country(e.practitioner.country).name}
+                <ul className="text-sm">{foreignObligations(e.practitioner.country).map((o) => <li key={o}>{o}</li>)}</ul>
+              </div>
+            ))}
+            <p className="text-xs muted">Repères donnés à titre indicatif, à faire valider par votre service juridique.</p>
+          </section>
+        )}
         {project.status === "ATT_IND" && <p className="notice warn">Proposition spontanée de l&apos;expert : acceptez-la pour ouvrir le circuit, ou déclinez-la.</p>}
         {project.description && <section className="card"><h2>Objet</h2><p>{project.description}</p></section>}
         <ConflictsPanel projectId={projectId} />

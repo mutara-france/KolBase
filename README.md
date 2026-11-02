@@ -69,11 +69,16 @@ Variables Render : `SEED_DEMO` (1 = actif, 0 = désactivé), `DEMO_PASSWORD` (mo
   sans sollicitation, publication ni page publique — jusqu'à sa validation par un administrateur KolBase.
   Changer son nom ou son SIREN relance la validation.
 - **Praticiens** : seuls les chirurgiens-dentistes, orthodontistes, chirurgiens oraux et stomatologues peuvent se
-  référencer comme experts, avec un numéro RPPS. Un administrateur KolBase le contrôle sur l'Annuaire Santé ;
-  le badge « Identité vérifiée » s'affiche ensuite.
+  référencer comme experts, avec un numéro RPPS (clé de Luhn contrôlée). Un administrateur KolBase le contrôle sur
+  l'Annuaire Santé ; le badge « Identité vérifiée » s'affiche ensuite.
+- **Praticiens exerçant hors de France** (`src/lib/countries.ts`) : pays d'exercice et identifiant du pays (INAMI en
+  Belgique, NPI aux États-Unis, n° d'Ordre ailleurs), contrôlé de la même façon. Un dossier dont tous les experts
+  exercent à l'étranger sort du circuit EPS (étape « Hors France ») ; le dossier, le registre et la convention
+  rappellent les règles du pays (Sunshine Act belge et visa Mdeon, Open Payments, code MedTech Europe).
 - **ORCID** : avec `ORCID_CLIENT_ID` / `ORCID_CLIENT_SECRET`, le praticien prouve son iD en se connectant à
   son compte ORCID avant d'importer ses publications.
-- **Administration** : page `/admin`, réservée aux comptes listés dans `PLATFORM_ADMIN_EMAILS`.
+- **Administration** : page `/admin`, réservée aux comptes listés dans `PLATFORM_ADMIN_EMAILS` (adresse confirmée
+  exigée dès que l'envoi d'e-mails est configuré).
 
 ## E-mails
 

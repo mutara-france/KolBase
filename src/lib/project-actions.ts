@@ -128,12 +128,16 @@ export async function advanceProject(form: FormData) {
   const t = TRANSITIONS[key];
   if (!t) return;
   const { user } = await requireMembership(orgId, t.roles === "compliance" ? COMPLIANCE_ROLES : PROJECT_ROLES);
-  const project = await db.project.findFirst({ where: { id: projectId, organizationId: orgId }, include: { experts: true, organization: { select: { complianceSettings: true } } } });
+  const project = await db.project.findFirst({ where: { id: projectId, organizationId: orgId }, include: { experts: { include: { practitioner: { select: { country: true } } } }, organization: { select: { complianceSettings: true } } } });
   if (!project || !(t.from as readonly string[]).includes(project.status)) return;
   // Convention signée : avec le stockage activé, la convention signée de chaque expert engagé doit être déposée.
   if (key === "signed" && (await missingSignedConventions(projectId)).length > 0) return;
-  // Un dossier au-delà des seuils d'autorisation ne peut pas passer par la déclaration simple.
-  if (key === "declaration" && projectRegime(complianceSettings(project.organization.complianceSettings), collabType(project.typeId)?.unit ?? "", project.experts)?.regime === "autorisation") return;
+  // Un dossier au-delà des seuils d'autorisation ne peut pas passer par la déclaration simple ;
+  // la voie « hors France » est réservée aux dossiers dont tous les experts exercent à l'étranger.
+  const regime = projectRegime(complianceSettings(project.organization.complianceSettings), collabType(project.typeId)?.unit ?? "", project.experts.map((e) => ({ ...e, country: e.practitioner.country })))?.regime;
+  if (key === "declaration" && (regime === "autorisation" || regime === "hors_france")) return;
+  if (key === "ordre" && regime === "hors_france") return;
+  if (key === "hors_france" && regime !== "hors_france") return;
 
   const note = str(form, "note");
   await db.project.update({

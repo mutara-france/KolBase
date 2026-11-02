@@ -83,6 +83,8 @@ export async function awardQuote(form: FormData) {
   const { user, roles } = await requireMembership(orgId, EVENT_MANAGER_ROLES);
   const quote = await db.quote.findFirst({ where: { id: str(form, "quoteId"), rfq: { organizationId: orgId, ...rfqScope(user, roles), status: "sent" } } });
   if (!quote) return;
+  // Conflit d'intérêts : un membre du prestataire (agence mandatée, par exemple) ne retient pas son propre devis.
+  if (user.memberships.some((m) => m.organizationId === quote.supplierId)) return;
   await db.$transaction([
     db.quote.update({ where: { id: quote.id }, data: { status: "retained" } }),
     db.quote.updateMany({ where: { rfqId: quote.rfqId, id: { not: quote.id } }, data: { status: "rejected" } }),

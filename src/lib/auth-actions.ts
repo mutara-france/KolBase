@@ -8,6 +8,7 @@ import { hashPassword, passwordProblem, verifyPassword } from "@/lib/password";
 import { blockedFor, clientIp, hit, reset } from "@/lib/rate-limit";
 import { safeNext } from "@/lib/safe-redirect";
 import { canBeExpert, isRpps, normalizeRpps, PROFESSIONS } from "@/lib/professions";
+import { country, isCountry, licenseRule, practicesInFrance } from "@/lib/countries";
 import { sendLater } from "@/lib/mail";
 import { notifyPlatformAdmins } from "@/lib/notifications";
 import { consumeToken, findToken, issueToken } from "@/lib/tokens";
@@ -48,8 +49,10 @@ export async function signUp(_: FormState, form: FormData): Promise<FormState> {
   const email = str(form, "email").toLowerCase();
   const password = String(form.get("password") ?? "");
   const profession = str(form, "profession");
+  const countryCode = str(form, "country") || "FR";
 
   if (!firstName || !lastName) return { error: "Indiquez votre prénom et votre nom." };
+  if (!isCountry(countryCode)) return { error: "Pays d'exercice invalide." };
   if (!emailOk(email)) return { error: "Adresse e-mail invalide." };
   const pwErr = passwordProblem(password);
   if (pwErr) return { error: pwErr };
@@ -68,7 +71,7 @@ export async function signUp(_: FormState, form: FormData): Promise<FormState> {
       firstName,
       lastName,
       passwordHash: await hashPassword(password),
-      practitioner: profession ? { create: { profession, languages: ["fr"] } } : undefined,
+      practitioner: profession ? { create: { profession, country: countryCode, languages: practicesInFrance(countryCode) ? ["fr"] : [] } } : undefined,
     },
   });
   hit(signupKey);
@@ -115,35 +118,52 @@ export async function updateProfile(_: FormState, form: FormData): Promise<FormS
     data: { firstName, lastName, phone: str(form, "phone") || null, locale: str(form, "locale") === "en" ? "en" : "fr" },
   });
   let unlisted = false;
-  let rppsToCheck: string | null = null;
+  let toCheck: string | null = null;
   if (user.practitioner) {
     const p = user.practitioner;
     const profession = str(form, "profession") || p.profession;
     if (!(PROFESSIONS as readonly string[]).includes(profession) && profession !== p.profession) return { error: "Profession invalide." };
-    const rpps = normalizeRpps(str(form, "rpps")) || null;
-    if (rpps && !isRpps(rpps)) return { error: "Numéro RPPS invalide : 11 chiffres, le dernier étant une clé de contrôle. Vérifiez la saisie (un numéro INAMI ou une licence étrangère ne convient pas)." };
-    if (rpps && rpps !== p.rpps && (await db.practitionerProfile.findFirst({ where: { rpps, NOT: { id: p.id } } })))
-      return { error: "Ce numéro RPPS est déjà associé à un autre compte. Contactez-nous s'il s'agit du vôtre." };
-    // Un RPPS modifié doit être contrôlé à nouveau ; sans RPPS ou hors profession éligible, plus de référencement.
-    const rppsChanged = rpps !== p.rpps;
-    if (rppsChanged && rpps) rppsToCheck = rpps;
-    unlisted = p.listed && (!rpps || !canBeExpert(profession));
+    const countryCode = str(form, "country") || p.country;
+    if (!isCountry(countryCode)) return { error: "Pays d'exercice invalide." };
+    const inFrance = practicesInFrance(countryCode);
+    // En France, le RPPS ; ailleurs, l'identifiant du pays d'exercice (INAMI, NPI, n° d'Ordre…).
+    let rpps: string | null = null;
+    let license: string | null = null;
+    if (inFrance) {
+      rpps = normalizeRpps(str(form, "rpps")) || null;
+      if (rpps && !isRpps(rpps)) return { error: "Numéro RPPS invalide : 11 chiffres, le dernier étant une clé de contrôle. Vérifiez la saisie. Si vous exercez hors de France, choisissez votre pays d'exercice." };
+      if (rpps && rpps !== p.rpps && (await db.practitionerProfile.findFirst({ where: { rpps, NOT: { id: p.id } } })))
+        return { error: "Ce numéro RPPS est déjà associé à un autre compte. Contactez-nous s'il s'agit du vôtre." };
+    } else {
+      const rule = licenseRule(countryCode);
+      license = rule.normalize(str(form, "licenseNumber", 120)) || null;
+      if (license && !rule.valid(license)) return { error: rule.error };
+      if (license && (await db.practitionerProfile.findFirst({ where: { country: countryCode, licenseNumber: license, NOT: { id: p.id } } })))
+        return { error: "Cet identifiant professionnel est déjà associé à un autre compte. Contactez-nous s'il s'agit du vôtre." };
+    }
+    const identifier = inFrance ? rpps : license;
+    // Un identifiant modifié doit être contrôlé à nouveau ; sans identifiant ou hors profession éligible, plus de référencement.
+    const idChanged = countryCode !== p.country || rpps !== p.rpps || license !== p.licenseNumber;
+    if (idChanged && identifier) toCheck = inFrance ? `RPPS ${identifier}` : `${licenseRule(countryCode).label} ${identifier} (${country(countryCode).name})`;
+    unlisted = p.listed && (!identifier || !canBeExpert(profession));
     await db.practitionerProfile.update({
       where: { userId: user.id },
       data: {
         profession,
+        country: countryCode,
         rpps,
+        licenseNumber: license,
         city: str(form, "city") || null,
         specialty: str(form, "specialty") || null,
-        ...(rppsChanged ? { rppsVerified: false, rppsCheckedAt: null, rppsCheckNote: null } : {}),
+        ...(idChanged ? { rppsVerified: false, rppsCheckedAt: null, rppsCheckNote: null } : {}),
         ...(unlisted ? { listed: false, listedAt: null } : {}),
       },
     });
   }
   await audit(user.id, "user.update_profile", "User", user.id, unlisted ? { unlisted: true } : undefined);
-  if (rppsToCheck) notifyPlatformAdmins(`RPPS à vérifier : ${firstName} ${lastName}`, `${firstName} ${lastName} a renseigné le RPPS ${rppsToCheck}.`, "/admin?onglet=praticiens");
+  if (toCheck) notifyPlatformAdmins(`Identité à vérifier : ${firstName} ${lastName}`, `${firstName} ${lastName} a renseigné : ${toCheck}.`, "/admin?onglet=praticiens");
   revalidatePath("/compte");
-  return { ok: unlisted ? "Informations enregistrées. Votre référencement d'expert est suspendu (RPPS ou profession requis)." : "Informations enregistrées." };
+  return { ok: unlisted ? "Informations enregistrées. Votre référencement d'expert est suspendu (identifiant professionnel ou profession requis)." : "Informations enregistrées." };
 }
 
 export async function changePassword(_: FormState, form: FormData): Promise<FormState> {
@@ -167,9 +187,16 @@ export async function setListed(_: FormState, form: FormData): Promise<FormState
   const listed = form.get("listed") === "1";
   if (listed && !canBeExpert(user.practitioner.profession))
     return { error: "Le référencement comme expert est réservé aux chirurgiens-dentistes, orthodontistes, chirurgiens oraux et stomatologues." };
-  if (listed && !user.practitioner.rpps) return { error: "Renseignez d'abord votre numéro RPPS dans « Informations personnelles » : KolBase le vérifie pour afficher le badge « Identité vérifiée »." };
-  if (listed && !user.practitioner.rppsVerified && user.practitioner.rppsCheckedAt)
-    return { error: "Votre numéro RPPS n'a pas pu être vérifié : corrigez-le dans « Informations personnelles » pour vous référencer à nouveau." };
+  const p = user.practitioner;
+  const identifier = practicesInFrance(p.country) ? p.rpps : p.licenseNumber;
+  if (listed && !identifier)
+    return {
+      error: practicesInFrance(p.country)
+        ? "Renseignez d'abord votre numéro RPPS dans « Informations personnelles » : KolBase le vérifie pour afficher le badge « Identité vérifiée »."
+        : `Renseignez d'abord votre ${licenseRule(p.country).short} dans « Informations personnelles » : KolBase le vérifie pour afficher le badge « Identité vérifiée ».`,
+    };
+  if (listed && !p.rppsVerified && p.rppsCheckedAt)
+    return { error: "Votre identifiant professionnel n'a pas pu être vérifié : corrigez-le dans « Informations personnelles » pour vous référencer à nouveau." };
   await db.practitionerProfile.update({
     where: { userId: user.id },
     data: { listed, listedAt: listed ? new Date() : null },

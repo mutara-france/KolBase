@@ -3,6 +3,7 @@ import { db } from "@/lib/db";
 import { ORG_KIND_LABEL } from "@/lib/orgs";
 import { canSee, kolVisibility } from "@/lib/visibility";
 import { logoSrc } from "@/lib/logos";
+import { country } from "@/lib/countries";
 import type { CallCardData, EventCardData, KolCardData, OrgCardData } from "@/components/PublicCards";
 
 export async function publicEvents(take?: number): Promise<EventCardData[]> {
@@ -29,7 +30,7 @@ export async function publicExperts(take?: number): Promise<KolCardData[]> {
     const activity = canSee(v.historique, "public") && v.projets !== "masque";
     return {
       id: p.id, name: `Dr ${p.user.firstName} ${p.user.lastName}`, specialty: p.specialty, subspecialty: p.subspecialty, profession: p.profession,
-      city: contact ? p.city : null, hospital: contact ? p.hospital : null, verified: p.rppsVerified, types: p.interventionTypes,
+      city: contact ? p.city : null, hospital: contact ? p.hospital : null, country: country(p.country).name, verified: p.rppsVerified, types: p.interventionTypes,
       collaborations: activity ? p.projectLinks.length : null,
       organizations: activity ? new Set(p.projectLinks.map((l) => l.project.organizationId)).size : null,
     };

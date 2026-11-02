@@ -1,20 +1,25 @@
 "use client";
 
-import { useActionState } from "react";
+import { useActionState, useState } from "react";
 import { changePassword, deleteAccount, resendVerification, setListed, updateNotifyPrefs, updateProfile } from "@/lib/auth-actions";
 import { Notice } from "@/components/AuthForms";
 import { PROFESSIONS } from "@/lib/professions";
+import { COUNTRIES, licenseRule } from "@/lib/countries";
 
 type Props = {
   user: { firstName: string; lastName: string; email: string; phone: string | null; locale: string };
   practitioner: {
-    profession: string; rpps: string | null; city: string | null; specialty: string | null; listed: boolean;
+    profession: string; rpps: string | null; country: string; licenseNumber: string | null; city: string | null; specialty: string | null; listed: boolean;
     rppsStatus: "none" | "pending" | "verified" | "rejected"; rppsNote: string | null;
   } | null;
 };
 
 export function ProfileForm({ user, practitioner }: Props) {
   const [state, action, pending] = useActionState(updateProfile, undefined);
+  const [countryCode, setCountryCode] = useState(practitioner?.country ?? "FR");
+  const rule = countryCode === "FR" ? null : licenseRule(countryCode);
+  // Le numéro saisi n'est conservé que si le pays d'exercice n'a pas changé.
+  const sameCountry = countryCode === practitioner?.country;
   return (
     <form action={action} className="card form">
       <h2>Informations personnelles</h2>
@@ -36,14 +41,24 @@ export function ProfileForm({ user, practitioner }: Props) {
                 {[...new Set([...PROFESSIONS, practitioner.profession])].map((p) => <option key={p}>{p}</option>)}
               </select>
             </label>
-            <label>N° RPPS<input name="rpps" inputMode="numeric" pattern="[0-9 ]{11,14}" title="11 chiffres" defaultValue={practitioner.rpps ?? ""} />
-              <span className="hint">
-                {practitioner.rppsStatus === "verified" && "Vérifié par KolBase : badge « Identité vérifiée » affiché."}
-                {practitioner.rppsStatus === "pending" && "En cours de vérification par KolBase sur l'Annuaire Santé."}
-                {practitioner.rppsStatus === "rejected" && `Non validé${practitioner.rppsNote ? ` : ${practitioner.rppsNote}` : ""}. Corrigez le numéro pour une nouvelle vérification.`}
-                {practitioner.rppsStatus === "none" && "Nécessaire pour être référencé comme expert ; vérifié par KolBase."}
-              </span>
+            <label>Pays d&apos;exercice
+              <select name="country" value={countryCode} onChange={(e) => setCountryCode(e.target.value)}>
+                {COUNTRIES.map((c) => <option key={c.code} value={c.code}>{c.name}</option>)}
+              </select>
+              <span className="hint">Si vous exercez aussi en France, choisissez la France et indiquez votre RPPS.</span>
             </label>
+          </div>
+          <div className="row">
+            {rule ? (
+              <label key={`lic-${countryCode}`}>{rule.label}<input name="licenseNumber" maxLength={120} defaultValue={sameCountry ? practitioner.licenseNumber ?? "" : ""} />
+                <span className="hint">{rule.hint}</span>
+                <IdStatus p={practitioner} show={sameCountry} />
+              </label>
+            ) : (
+              <label key="rpps">N° RPPS<input name="rpps" inputMode="numeric" pattern="[0-9 ]{11,14}" title="11 chiffres" defaultValue={sameCountry ? practitioner.rpps ?? "" : ""} />
+                <IdStatus p={practitioner} show={sameCountry} />
+              </label>
+            )}
           </div>
           <div className="row">
             <label>Ville d&apos;exercice<input name="city" defaultValue={practitioner.city ?? ""} /></label>
@@ -53,6 +68,19 @@ export function ProfileForm({ user, practitioner }: Props) {
       )}
       <button className="btn" disabled={pending}>{pending ? "Enregistrement…" : "Enregistrer"}</button>
     </form>
+  );
+}
+
+/** État de la vérification de l'identifiant professionnel (RPPS ou identifiant étranger). */
+function IdStatus({ p, show }: { p: NonNullable<Props["practitioner"]>; show: boolean }) {
+  const status = show ? p.rppsStatus : "none";
+  return (
+    <span className="hint">
+      {status === "verified" && "Vérifié par KolBase : badge « Identité vérifiée » affiché."}
+      {status === "pending" && "En cours de vérification par KolBase."}
+      {status === "rejected" && `Non validé${p.rppsNote ? ` : ${p.rppsNote}` : ""}. Corrigez le numéro pour une nouvelle vérification.`}
+      {status === "none" && "Nécessaire pour être référencé comme expert ; vérifié par KolBase."}
+    </span>
   );
 }
 
