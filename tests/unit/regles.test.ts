@@ -209,9 +209,15 @@ describe("e-mails", () => {
     expect(html).toContain("Bonjour &lt;Dr&gt; &amp; co");
     expect(html).toContain('href="https://kolbase.example.fr/sollicitations/x"');
   });
-  it("aucun envoi vers les adresses de démonstration", async () => {
+  it("aucun envoi vers les adresses de démonstration (sauf levée explicite pour les tests)", async () => {
     const { isReservedAddress } = await import("@/lib/mail");
+    const saved = process.env.MAIL_DELIVER_RESERVED;
+    delete process.env.MAIL_DELIVER_RESERVED;
     expect(isReservedAddress("anne.chevalier@demo.kolbase.local")).toBe(true);
     expect(isReservedAddress("contact@exemple.fr")).toBe(false);
+    process.env.MAIL_DELIVER_RESERVED = "1";
+    expect(isReservedAddress("anne.chevalier@demo.kolbase.local")).toBe(false);
+    if (saved === undefined) delete process.env.MAIL_DELIVER_RESERVED;
+    else process.env.MAIL_DELIVER_RESERVED = saved;
   });
 });
