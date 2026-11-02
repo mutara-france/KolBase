@@ -128,7 +128,8 @@ export async function revokeInvitation(form: FormData) {
   const orgId = str(form, "orgId");
   const { user } = await requireMembership(orgId, ["ADMIN"], { allowSupplier: true });
   const id = str(form, "invitationId");
-  await db.invitation.updateMany({ where: { id, organizationId: orgId, acceptedAt: null }, data: { revokedAt: new Date() } });
+  const { count } = await db.invitation.updateMany({ where: { id, organizationId: orgId, acceptedAt: null }, data: { revokedAt: new Date() } });
+  if (!count) return;
   await audit(user.id, "org.invite_revoke", "Invitation", id);
   revalidatePath(`/organisations/${orgId}`);
   revalidatePath(`/organisations/${orgId}/membres`);

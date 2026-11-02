@@ -45,7 +45,8 @@ export async function setSpeakerCallOpen(form: FormData) {
   const { user } = await requireMembership(orgId, EVENT_ORGANIZER_ROLES);
   const eventId = str(form, "eventId");
   const open = str(form, "open") === "1";
-  await db.event.updateMany({ where: { id: eventId, organizationId: orgId }, data: { speakerCallOpen: open } });
+  const { count } = await db.event.updateMany({ where: { id: eventId, organizationId: orgId }, data: { speakerCallOpen: open } });
+  if (!count) return;
   await audit(user.id, open ? "speakercall.reopen" : "speakercall.close", "Event", eventId);
   revalidatePath(`/organisations/${orgId}/intervenants`);
 }

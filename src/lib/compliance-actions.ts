@@ -32,10 +32,11 @@ export async function markProjectPublished(form: FormData) {
   const { user } = await requireMembership(orgId, COMPLIANCE_ROLES);
   const projectId = str(form, "projectId");
   const undo = form.get("undo") === "1";
-  await db.project.updateMany({
+  const { count } = await db.project.updateMany({
     where: { id: projectId, organizationId: orgId },
     data: undo ? { declared: false, declarationRef: null, declaredAt: null } : { declared: true, declarationRef: str(form, "ref") || null, declaredAt: new Date() },
   });
+  if (!count) return;
   await audit(user.id, undo ? "project.unpublish" : "project.publish", "Project", projectId, { ref: str(form, "ref") || undefined });
   revalidatePath(`/organisations/${orgId}/conformite`);
 }

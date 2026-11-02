@@ -15,6 +15,8 @@ export async function createSession(userId: string) {
   const expiresAt = new Date(Date.now() + SESSION_DAYS * 864e5);
   const userAgent = (await headers()).get("user-agent")?.slice(0, 255) ?? null;
   await db.session.create({ data: { tokenHash: sha256(token), userId, expiresAt, userAgent } });
+  // Ménage : sessions expirées de ce compte.
+  await db.session.deleteMany({ where: { userId, expiresAt: { lt: new Date() } } });
   (await cookies()).set(COOKIE, token, {
     httpOnly: true,
     secure: process.env.NODE_ENV === "production",
