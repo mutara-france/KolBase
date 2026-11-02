@@ -1,7 +1,7 @@
 import { SiteHeader } from "@/components/SiteHeader";
 import { EditOrgForm, InviteForm } from "@/components/OrgForms";
 import { db } from "@/lib/db";
-import { ORG_KIND_LABEL, ROLE_LABEL, requireMembership } from "@/lib/orgs";
+import { ORG_KIND_LABEL, invitableRoles, requireMembership, roleLabel } from "@/lib/orgs";
 import { removeMembership, revokeInvitation } from "@/lib/org-actions";
 import Link from "next/link";
 import { redirect } from "next/navigation";
@@ -23,7 +23,8 @@ export default async function Page({ params }: { params: Promise<{ id: string }>
       ? db.invitation.findMany({ where: { organizationId: id, acceptedAt: null, revokedAt: null, expiresAt: { gt: new Date() } }, orderBy: { createdAt: "desc" } })
       : Promise.resolve([]),
   ]);
-  const roleOpts = Object.entries(ROLE_LABEL).map(([value, label]) => ({ value, label }));
+  const roleOpts = invitableRoles(org.kind).map((value) => ({ value, label: roleLabel(value, org.kind) }));
+  const isSupplier = org.kind === "PRESTATAIRE";
 
   return (
     <>
@@ -32,7 +33,7 @@ export default async function Page({ params }: { params: Promise<{ id: string }>
         <div>
           <p className="muted"><Link href={`/organisations/${id}`}>{org.name}</Link> / Membres et réglages</p>
           <h1>Membres et réglages</h1>
-          <p className="muted">{ORG_KIND_LABEL[org.kind]} · vos rôles : {roles.map((r) => ROLE_LABEL[r]).join(", ")}</p>
+          <p className="muted">{ORG_KIND_LABEL[org.kind]} · vos rôles : {roles.map((r) => roleLabel(r, org.kind)).join(", ")}</p>
         </div>
 
         <section className="card">
@@ -44,7 +45,7 @@ export default async function Page({ params }: { params: Promise<{ id: string }>
                 <tr key={m.id}>
                   <td>{m.user.firstName} {m.user.lastName}{m.userId === user.id && " (vous)"}</td>
                   <td>{m.user.email}</td>
-                  <td>{ROLE_LABEL[m.role]}</td>
+                  <td>{roleLabel(m.role, org.kind)}</td>
                   <td>{fmt(m.createdAt)}</td>
                   {isAdmin && (
                     <td>
@@ -74,7 +75,7 @@ export default async function Page({ params }: { params: Promise<{ id: string }>
                   <tbody>
                     {invitations.map((i) => (
                       <tr key={i.id}>
-                        <td>{ROLE_LABEL[i.role]}</td>
+                        <td>{roleLabel(i.role, org.kind)}</td>
                         <td>{i.email ?? "—"}</td>
                         <td>{fmt(i.expiresAt)}</td>
                         <td>
@@ -90,7 +91,8 @@ export default async function Page({ params }: { params: Promise<{ id: string }>
                 </table>
               </section>
             )}
-            <OrgVisibilityForm orgId={id} v={companyVisibility(org.visibility)} listed={org.listed} />
+            {/* Le référencement d'un prestataire se règle avec sa fiche prestataire (page Demandes de devis). */}
+            {!isSupplier && <OrgVisibilityForm orgId={id} v={companyVisibility(org.visibility)} listed={org.listed} />}
             <EditOrgForm org={{ id: org.id, name: org.name, sector: org.sector, headquarters: org.headquarters, contactEmail: org.contactEmail, about: org.about, policy: org.policy, areas: org.areas }} />
           </>
         )}

@@ -34,7 +34,7 @@ export default async function Page({ searchParams }: { searchParams: Promise<Par
           <div className="page-band-inner">
             <span className="kicker">Réseau vérifié</span>
             <h1>Experts référencés</h1>
-            <p>{all.length} praticiens ont choisi d&apos;être visibles. Les coordonnées, tarifs et la recherche avancée sont réservés aux membres connectés.</p>
+            <p>{all.length} praticiens ont choisi d&apos;être visibles. Chaque praticien choisit ce qu&apos;il rend public ; la recherche avancée est réservée aux organisations inscrites.</p>
           </div>
         </section>
         <section className="public-section">

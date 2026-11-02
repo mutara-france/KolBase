@@ -71,7 +71,7 @@ export function InviteForm({ orgId, roles }: { orgId: string; roles: Opt[] }) {
       <input type="hidden" name="orgId" value={orgId} />
       <div className="row">
         <label>Rôle
-          <select name="role" defaultValue="EDUCATION">{roles.map((r) => <option key={r.value} value={r.value}>{r.label}</option>)}</select>
+          <select name="role" defaultValue={roles.find((r) => r.value !== "ADMIN")?.value}>{roles.map((r) => <option key={r.value} value={r.value}>{r.label}</option>)}</select>
         </label>
         <label>E-mail (mémo, facultatif)<input name="email" type="email" /></label>
       </div>

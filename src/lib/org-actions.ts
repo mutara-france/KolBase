@@ -5,9 +5,9 @@ import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import { db } from "@/lib/db";
 import { audit, requireUser } from "@/lib/auth";
-import { requireMembership } from "@/lib/orgs";
+import { invitableRoles, requireMembership } from "@/lib/orgs";
 import type { FormState } from "@/lib/auth-actions";
-import { OrgKind, OrgRole } from "@/generated/prisma/enums";
+import { OrgKind, type OrgRole } from "@/generated/prisma/enums";
 
 const str = (f: FormData, k: string) => String(f.get(k) ?? "").trim();
 const sha256 = (v: string) => createHash("sha256").update(v).digest("hex");
@@ -37,7 +37,7 @@ export async function createOrganization(_: FormState, form: FormData): Promise<
 
 export async function updateOrganization(_: FormState, form: FormData): Promise<FormState> {
   const orgId = str(form, "orgId");
-  const { user } = await requireMembership(orgId, ["ADMIN"]);
+  const { user } = await requireMembership(orgId, ["ADMIN"], { allowSupplier: true });
   const name = str(form, "name");
   if (!name) return { error: "Le nom est obligatoire." };
   await db.organization.update({
@@ -60,9 +60,9 @@ export async function updateOrganization(_: FormState, form: FormData): Promise<
 
 export async function createInvitation(_: InviteState, form: FormData): Promise<InviteState> {
   const orgId = str(form, "orgId");
-  const { user } = await requireMembership(orgId, ["ADMIN"]);
+  const { user, org } = await requireMembership(orgId, ["ADMIN"], { allowSupplier: true });
   const role = str(form, "role") as OrgRole;
-  if (!Object.values(OrgRole).includes(role)) return { error: "Rôle invalide." };
+  if (!invitableRoles(org.kind).includes(role)) return { error: "Rôle invalide." };
   const token = randomBytes(24).toString("base64url");
   const inv = await db.invitation.create({
     data: {
@@ -83,7 +83,7 @@ export async function createInvitation(_: InviteState, form: FormData): Promise<
 
 export async function revokeInvitation(form: FormData) {
   const orgId = str(form, "orgId");
-  const { user } = await requireMembership(orgId, ["ADMIN"]);
+  const { user } = await requireMembership(orgId, ["ADMIN"], { allowSupplier: true });
   const id = str(form, "invitationId");
   await db.invitation.updateMany({ where: { id, organizationId: orgId, acceptedAt: null }, data: { revokedAt: new Date() } });
   await audit(user.id, "org.invite_revoke", "Invitation", id);
@@ -93,7 +93,7 @@ export async function revokeInvitation(form: FormData) {
 
 export async function removeMembership(form: FormData) {
   const orgId = str(form, "orgId");
-  const { user } = await requireMembership(orgId, ["ADMIN"]);
+  const { user } = await requireMembership(orgId, ["ADMIN"], { allowSupplier: true });
   const id = str(form, "membershipId");
   const m = await db.membership.findFirst({ where: { id, organizationId: orgId } });
   if (!m) return;

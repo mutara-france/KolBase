@@ -4,6 +4,7 @@ import { NewProjectForm } from "@/components/ProjectForms";
 import { db } from "@/lib/db";
 import { requireMembership } from "@/lib/orgs";
 import { COLLAB_TYPES, SOURCING_ROLES } from "@/lib/projects";
+import { canSee, kolVisibility } from "@/lib/visibility";
 
 export const metadata = { title: "Nouveau dossier — KolBase" };
 
@@ -26,12 +27,16 @@ export default async function Page({ params, searchParams }: { params: Promise<{
           orgId={id}
           types={COLLAB_TYPES}
           preselected={expert && experts.some((e) => e.id === expert) ? [expert] : []}
-          experts={experts.map((e) => ({
-            id: e.id,
-            name: `Dr ${e.user.firstName} ${e.user.lastName}`,
-            detail: [e.specialty || e.profession, e.city].filter(Boolean).join(" · "),
-            dayRateCents: e.dayRateCents,
-          }))}
+          experts={experts.map((e) => {
+            // Réglages de visibilité du praticien, vus par un membre d'organisation.
+            const v = kolVisibility(e.visibility);
+            return {
+              id: e.id,
+              name: `Dr ${e.user.firstName} ${e.user.lastName}`,
+              detail: [e.specialty || e.profession, canSee(v.contact, "membre") ? e.city : null].filter(Boolean).join(" · "),
+              dayRateCents: canSee(v.tarif, "membre") ? e.dayRateCents : null,
+            };
+          })}
         />
       </main>
     </>

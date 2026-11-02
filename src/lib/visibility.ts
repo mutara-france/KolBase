@@ -1,12 +1,25 @@
 /** Visibilité des profils, champ par champ (reprise du prototype). */
 export type VisLevel = "public" | "industriels" | "masque";
 export type ProjVisLevel = "nominatif" | "agrege" | "masque";
-export type Viewer = "public" | "membre" | "proprietaire";
+/**
+ * Qui regarde :
+ * - public : visiteur non connecté ;
+ * - connecte : compte connecté sans organisation cliente (praticien, prestataire…) ;
+ * - membre : niveau « industriels » accessible (fiche expert : voir kolViewer ; page d'organisation : tout compte connecté) ;
+ * - proprietaire : le praticien lui-même, ou un membre de l'organisation.
+ */
+export type Viewer = "public" | "connecte" | "membre" | "proprietaire";
 
 export const VISIBILITY_LEVELS: { id: VisLevel; label: string; hint: string }[] = [
   { id: "public", label: "Public", hint: "visible sans connexion" },
   { id: "industriels", label: "Membres connectés", hint: "réservé aux comptes connectés" },
   { id: "masque", label: "Masqué", hint: "visible de vous seul" },
+];
+/** Sur une fiche expert, le niveau intermédiaire est réservé aux organisations (et non à tout compte connecté). */
+export const KOL_VISIBILITY_LEVELS: typeof VISIBILITY_LEVELS = [
+  VISIBILITY_LEVELS[0],
+  { id: "industriels", label: "Organisations", hint: "réservé aux membres des organisations inscrites (industriels, sociétés savantes…)" },
+  VISIBILITY_LEVELS[2],
 ];
 export const PROJECT_VISIBILITY_LEVELS: { id: ProjVisLevel; label: string; hint: string }[] = [
   { id: "nominatif", label: "Détail nominatif", hint: "noms des partenaires et intitulés" },
@@ -50,6 +63,18 @@ export function companyVisibility(raw: unknown): CompanyVisibility {
   const out = { ...DEFAULT_COMPANY_VISIBILITY };
   for (const f of COMPANY_VIS_FIELDS) if (isLevel(r[f.key])) out[f.key] = r[f.key] as VisLevel;
   return out;
+}
+
+type ViewerUser = { practitioner?: { id: string } | null; memberships: { organization: { kind: string } }[] } | null;
+
+/**
+ * Visiteur d'une fiche expert. Le niveau « industriels » est réservé aux membres d'une organisation cliente
+ * (hors prestataires) : l'inscription étant libre, « tout compte connecté » reviendrait à rendre l'information publique.
+ */
+export function kolViewer(user: ViewerUser, practitionerId: string): Viewer {
+  if (!user) return "public";
+  if (user.practitioner?.id === practitionerId) return "proprietaire";
+  return user.memberships.some((m) => m.organization.kind !== "PRESTATAIRE") ? "membre" : "connecte";
 }
 
 export function canSee(level: VisLevel, viewer: Viewer) {

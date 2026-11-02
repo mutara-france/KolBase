@@ -6,6 +6,8 @@ import { Avatar } from "@/components/Avatar";
 import { db } from "@/lib/db";
 import { requireDirectoryAccess } from "@/lib/orgs";
 import type { Prisma } from "@/generated/prisma/client";
+import { matches } from "@/lib/search";
+import { canSee, kolVisibility } from "@/lib/visibility";
 
 export const metadata = { title: "Annuaire des experts — KolBase" };
 
@@ -23,12 +25,24 @@ export default async function Page({ searchParams }: { searchParams: Promise<{ q
     });
   }
   if (ville.trim()) and.push({ city: { contains: ville.trim(), mode: "insensitive" } });
-  const experts = await db.practitionerProfile.findMany({
+  const candidates = await db.practitionerProfile.findMany({
     where: { AND: and },
     include: { user: { select: { firstName: true, lastName: true } } },
     orderBy: { listedAt: "desc" },
-    take: 100,
+    take: 300,
   });
+  // La requête ci-dessus cherche aussi dans la ville et l'établissement : on retire ensuite les praticiens
+  // qui ne correspondent que par des champs qu'ils ont masqués, et on n'affiche que ce qui est visible.
+  const experts = candidates
+    .map((e) => {
+      const contact = canSee(kolVisibility(e.visibility).contact, "membre");
+      return { ...e, city: contact ? e.city : null, hospital: contact ? e.hospital : null };
+    })
+    .filter((e) =>
+      matches(q, e.user.firstName, e.user.lastName, e.specialty, e.subspecialty, e.bio, e.hospital, e.profession, ...e.interventionTypes)
+      && matches(ville, e.city),
+    )
+    .slice(0, 100);
 
   const orgId = await currentSourcingOrg();
   const sectionTabs = orgId ? await orgTabs("praticiens", orgId) : [];

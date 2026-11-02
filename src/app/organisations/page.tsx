@@ -2,7 +2,7 @@ import Link from "next/link";
 import { SiteHeader } from "@/components/SiteHeader";
 import { Avatar } from "@/components/Avatar";
 import { requireUser } from "@/lib/auth";
-import { ORG_KIND_LABEL, ROLE_LABEL } from "@/lib/orgs";
+import { ORG_KIND_LABEL, roleLabel } from "@/lib/orgs";
 
 export const metadata = { title: "Mes organisations — KolBase" };
 
@@ -11,7 +11,7 @@ export default async function Page() {
   const byOrg = new Map<string, { name: string; kind: keyof typeof ORG_KIND_LABEL; roles: string[] }>();
   for (const m of user.memberships) {
     const e = byOrg.get(m.organizationId) ?? { name: m.organization.name, kind: m.organization.kind, roles: [] };
-    e.roles.push(ROLE_LABEL[m.role]);
+    e.roles.push(roleLabel(m.role, m.organization.kind));
     byOrg.set(m.organizationId, e);
   }
   return (
