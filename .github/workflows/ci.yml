@@ -37,6 +37,9 @@ jobs:
       ORCID_PUB_API_URL: http://localhost:3997/v3.0
       ORCID_CLIENT_ID: test
       ORCID_CLIENT_SECRET: test
+      SMTP_URL: smtp://localhost:2525
+      MAIL_FROM: KolBase <test@kolbase.fr>
+      MAIL_DELIVER_RESERVED: "1"
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4

@@ -1,5 +1,5 @@
 import { SiteHeader } from "@/components/SiteHeader";
-import { ListingForm, PasswordForm, ProfileForm } from "@/components/AccountForms";
+import { EmailVerificationNotice, ListingForm, NotificationsForm, PasswordForm, ProfileForm } from "@/components/AccountForms";
 import Link from "next/link";
 import { ExpertProfileForm } from "@/components/OrgForms";
 import { requireUser } from "@/lib/auth";
@@ -9,6 +9,7 @@ import { KolVisibilityForm, OrcidImportForm, PublicationForm, StructureForm } fr
 import { kolVisibility } from "@/lib/visibility";
 import { canBeExpert } from "@/lib/professions";
 import { orcidOAuth } from "@/lib/orcid";
+import { wantsEmail } from "@/lib/notifications";
 import { removePublication, removeStructure } from "@/lib/profile-actions";
 
 export const metadata = { title: "Mon compte — KolBase" };
@@ -19,8 +20,14 @@ const ORCID_NOTICE = {
   pris: ["error", "Cet iD ORCID est déjà associé à un autre praticien. Contactez-nous s'il s'agit du vôtre."],
 } as const;
 
-export default async function Page({ searchParams }: { searchParams: Promise<{ annuaire?: string; orcid?: string }> }) {
-  const { annuaire, orcid } = await searchParams;
+const EMAIL_NOTICE = {
+  confirme: ["ok", "Adresse e-mail confirmée. Merci !"],
+  "lien-invalide": ["error", "Ce lien de confirmation n'est plus valable. Demandez-en un nouveau ci-dessous."],
+} as const;
+
+export default async function Page({ searchParams }: { searchParams: Promise<{ annuaire?: string; orcid?: string; email?: string }> }) {
+  const { annuaire, orcid, email } = await searchParams;
+  const emailNotice = email && email in EMAIL_NOTICE ? EMAIL_NOTICE[email as keyof typeof EMAIL_NOTICE] : null;
   const orcidNotice = orcid && orcid in ORCID_NOTICE ? ORCID_NOTICE[orcid as keyof typeof ORCID_NOTICE] : null;
   const user = await requireUser();
   const p = user.practitioner;
@@ -45,6 +52,8 @@ export default async function Page({ searchParams }: { searchParams: Promise<{ a
           <p className="notice error">L&apos;annuaire est réservé aux membres d&apos;une organisation et aux experts référencés.</p>
         )}
         {orcidNotice && <p className={`notice ${orcidNotice[0]}`}>{orcidNotice[1]}</p>}
+        {emailNotice && <p className={`notice ${emailNotice[0]}`}>{emailNotice[1]}</p>}
+        {!user.emailVerifiedAt && <EmailVerificationNotice email={user.email} />}
         {p && <ListingForm listed={p.listed} eligible={canBeExpert(p.profession)} hasRpps={!!p.rpps} />}
         {p?.listed && (
           <div className="actions" style={{ marginTop: 0 }}>
@@ -109,6 +118,7 @@ export default async function Page({ searchParams }: { searchParams: Promise<{ a
               : null
           }
         />
+        <NotificationsForm email={wantsEmail(user)} />
         <PasswordForm email={user.email} />
         <section className="card">
           <h2>Organisations</h2>

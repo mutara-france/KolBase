@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useActionState } from "react";
-import { signIn, signUp, type FormState } from "@/lib/auth-actions";
+import { requestPasswordReset, resetPassword, signIn, signUp, type FormState } from "@/lib/auth-actions";
 import { PROFESSIONS } from "@/lib/professions";
 
 export function Notice({ state }: { state: FormState }) {
@@ -21,6 +21,7 @@ export function SignInForm({ next }: { next?: string }) {
       <label>E-mail<input name="email" type="email" autoComplete="email" required /></label>
       <label>Mot de passe<input name="password" type="password" autoComplete="current-password" required /></label>
       <button className="btn" disabled={pending}>{pending ? "Connexion…" : "Se connecter"}</button>
+      <p className="muted"><Link href="/mot-de-passe-oublie">Mot de passe oublié ?</Link></p>
       <p className="muted">Pas encore de compte ? <Link href="/inscription">Créer un compte</Link></p>
     </form>
   );
@@ -52,6 +53,40 @@ export function SignUpForm({ next }: { next?: string }) {
       <label className="check"><input type="checkbox" name="cgu" required /> J&apos;accepte les <Link href="/cgu" target="_blank">conditions d&apos;utilisation</Link> et la <Link href="/confidentialite" target="_blank">politique de confidentialité</Link>.</label>
       <button className="btn" disabled={pending}>{pending ? "Création…" : "Créer mon compte"}</button>
       <p className="muted">Déjà inscrit ? <Link href="/connexion">Se connecter</Link></p>
+    </form>
+  );
+}
+
+export function ForgotPasswordForm() {
+  const [state, action, pending] = useActionState(requestPasswordReset, undefined);
+  return (
+    <form action={action} className="card form">
+      <h1>Mot de passe oublié</h1>
+      <p className="muted">Indiquez l&apos;adresse de votre compte : vous recevrez un lien pour choisir un nouveau mot de passe, valable une heure.</p>
+      <Notice state={state} />
+      {!state?.ok && (
+        <>
+          <label>E-mail<input name="email" type="email" autoComplete="email" required /></label>
+          <button className="btn" disabled={pending}>{pending ? "Envoi…" : "Recevoir le lien"}</button>
+        </>
+      )}
+      <p className="muted"><Link href="/connexion">Retour à la connexion</Link></p>
+    </form>
+  );
+}
+
+export function ResetPasswordForm({ token, email }: { token: string; email: string }) {
+  const [state, action, pending] = useActionState(resetPassword, undefined);
+  return (
+    <form action={action} className="card form">
+      <h1>Nouveau mot de passe</h1>
+      <p className="muted">Compte : <strong>{email}</strong>. Vos autres sessions seront fermées.</p>
+      <Notice state={state} />
+      <input type="hidden" name="token" value={token} />
+      <label>Nouveau mot de passe<input name="password" type="password" autoComplete="new-password" minLength={10} required /></label>
+      <label>Confirmation<input name="confirm" type="password" autoComplete="new-password" minLength={10} required /></label>
+      <p className="hint">10 caractères au moins, dont une lettre et un chiffre.</p>
+      <button className="btn" disabled={pending}>{pending ? "Enregistrement…" : "Enregistrer et me connecter"}</button>
     </form>
   );
 }

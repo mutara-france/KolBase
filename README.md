@@ -75,6 +75,18 @@ Variables Render : `SEED_DEMO` (1 = actif, 0 = désactivé), `DEMO_PASSWORD` (mo
   son compte ORCID avant d'importer ses publications.
 - **Administration** : page `/admin`, réservée aux comptes listés dans `PLATFORM_ADMIN_EMAILS`.
 
+## E-mails
+
+Envoi par SMTP (`SMTP_URL`, `MAIL_FROM`), après la réponse au navigateur : une panne d'envoi ne bloque jamais
+une action. Sans `SMTP_URL`, le contenu des e-mails est écrit dans les journaux du serveur. Aucun e-mail ne part
+vers les adresses réservées (`.local`, `.test`…), donc vers les comptes de démonstration.
+
+- **Service** (toujours envoyés) : mot de passe oublié (lien d'une heure, à usage unique), confirmation
+  d'adresse à l'inscription (7 jours), invitation à rejoindre une organisation quand l'adresse est connue.
+- **Notifications** (désactivables dans Mon compte) : sollicitation et proposition d'honoraires, réponse de
+  l'expert, messages, proposition spontanée, candidatures (reçue, non retenue), circuit de conformité,
+  demandes de devis et devis reçus ; organisations et RPPS à valider pour les administrateurs KolBase.
+
 ## Feuille de route
 
 1. Authentification (e-mail + mot de passe, puis Pro Santé Connect)

@@ -8,6 +8,7 @@ import { ORG_NOT_VERIFIED, isVerifiedOrg, requireMembership } from "@/lib/orgs";
 import { parseParisDateTime } from "@/lib/events";
 import { collabType, SOURCING_ROLES } from "@/lib/projects";
 import { eurToCents, str } from "@/lib/form";
+import { notifyApplication, notifyNotRetained, notifySolicitations } from "@/lib/notifications";
 
 export type ActionState = { error?: string; ok?: string } | undefined;
 
@@ -66,6 +67,7 @@ export async function applyToCall(_: ActionState, form: FormData): Promise<Actio
   if (existing) return { error: "Vous avez déjà candidaté." };
   const app = await db.application.create({ data: { openCallId: callId, practitionerId: user.practitioner.id, message } });
   await audit(user.id, "application.create", "Application", app.id, { callId });
+  notifyApplication(callId, user.practitioner.id);
   revalidatePath(`/opportunites/${callId}`);
   return { ok: "Candidature envoyée." };
 }
@@ -86,10 +88,11 @@ export async function rejectApplication(form: FormData) {
   const orgId = str(form, "orgId");
   const { user } = await requireMembership(orgId, SOURCING_ROLES);
   const appId = str(form, "applicationId");
-  const app = await db.application.findFirst({ where: { id: appId, openCall: { organizationId: orgId }, status: "pending" } });
+  const app = await db.application.findFirst({ where: { id: appId, openCall: { organizationId: orgId }, status: "pending" }, include: { openCall: { include: { organization: { select: { name: true } } } }, practitioner: { select: { userId: true } } } });
   if (!app) return;
   await db.application.update({ where: { id: app.id }, data: { status: "rejected" } });
   await audit(user.id, "application.reject", "Application", app.id);
+  notifyNotRetained(app.practitioner.userId, app.openCall.title, app.openCall.organization.name);
   revalidatePath(`/organisations/${orgId}/opportunites/${app.openCallId}`);
 }
 
@@ -133,5 +136,6 @@ export async function retainApplication(_: ActionState, form: FormData): Promise
   await db.application.update({ where: { id: app.id }, data: { status: "retained", projectId: project.id } });
   await audit(user.id, "application.retain", "Application", app.id, { projectId: project.id });
   await audit(user.id, "project.create", "Project", project.id, { from: "opencall", callId: app.openCallId });
+  notifySolicitations(project.id, "honoraires");
   redirect(`/organisations/${orgId}/dossiers/${project.id}`);
 }

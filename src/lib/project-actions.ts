@@ -10,6 +10,7 @@ import { collabType, PROJECT_ROLES, SOURCING_ROLES, PROJECT_VIEW_ROLES, TRANSITI
 import type { ProjectStatus } from "@/generated/prisma/client";
 import { complianceSettings, projectRegime } from "@/lib/compliance";
 import { eurToCents, str } from "@/lib/form";
+import { notifyCompliance, notifyExpertAnswer, notifyMessage, notifySolicitations } from "@/lib/notifications";
 
 export type ActionState = { error?: string; ok?: string } | undefined;
 
@@ -55,6 +56,7 @@ export async function createProject(_: ActionState, form: FormData): Promise<Act
     });
   }
   await audit(user.id, "project.create", "Project", project.id, { experts: expertIds.length });
+  notifySolicitations(project.id);
   redirect(`/organisations/${orgId}/dossiers/${project.id}`);
 }
 
@@ -92,6 +94,7 @@ export async function respondToSolicitation(_: ActionState, form: FormData): Pro
     await db.application.updateMany({ where: { projectId: link.projectId, practitionerId: link.practitionerId, status: "retained" }, data: { status: "declined" } });
   }
   await audit(user.id, answer === "accept" ? "solicitation.accept" : "solicitation.decline", "ProjectExpert", link.id, { projectId: link.projectId });
+  notifyExpertAnswer(link.id, answer === "accept");
   revalidatePath(`/sollicitations/${link.id}`);
   return { ok: answer === "accept" ? "Accord de principe envoyé. L'organisation va préparer la convention." : "Sollicitation déclinée." };
 }
@@ -109,6 +112,7 @@ export async function postMessage(_: ActionState, form: FormData): Promise<Actio
   const isOrg = user.memberships.some((m) => m.organizationId === link.project.organizationId && PROJECT_VIEW_ROLES.includes(m.role));
   if (!isExpert && !isOrg) return { error: "Accès refusé." };
   await db.message.create({ data: { projectId: link.projectId, projectExpertId: link.id, authorId: user.id, body } });
+  notifyMessage(link.id, user.id);
   revalidatePath(`/sollicitations/${link.id}`);
   revalidatePath(`/organisations/${link.project.organizationId}/dossiers/${link.projectId}`);
   return { ok: "Message envoyé." };
@@ -140,5 +144,6 @@ export async function advanceProject(form: FormData) {
   await db.projectExpert.updateMany({ where: { projectId, status: { notIn: ["DECLINE", "ATT_EXPERTS"] } }, data: { status: t.to } });
   if (key === "abandon") await db.projectExpert.updateMany({ where: { projectId, status: "ATT_EXPERTS" }, data: { status: "DECLINE" } });
   await audit(user.id, `project.${key}`, "Project", projectId, { from: project.status, to: t.to, note: note || undefined });
+  if (key === "submit" || key === "validate" || key === "block") notifyCompliance(projectId, key, user.id);
   revalidatePath(`/organisations/${orgId}/dossiers/${projectId}`);
 }

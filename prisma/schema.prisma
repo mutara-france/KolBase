@@ -21,6 +21,7 @@ model User {
   phone        String?
   locale       String    @default("fr")
   notifyPrefs  Json      @default("{}")
+  emailVerifiedAt DateTime? // adresse confirmée par le lien reçu par e-mail
   followsSeenAt DateTime?
   createdAt    DateTime  @default(now())
   updatedAt    DateTime  @updatedAt
@@ -34,6 +35,26 @@ model User {
   invitationsSent     Invitation[] @relation("invitedBy")
   invitationsAccepted Invitation[] @relation("acceptedBy")
   follows             Follow[]
+  authTokens          AuthToken[]
+}
+
+enum AuthTokenPurpose {
+  RESET_PASSWORD
+  VERIFY_EMAIL
+}
+
+// Jeton à usage unique envoyé par e-mail (réinitialisation du mot de passe, confirmation d'adresse) : seul son hash est stocké.
+model AuthToken {
+  id        String           @id @default(cuid())
+  userId    String
+  user      User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  purpose   AuthTokenPurpose
+  tokenHash String           @unique
+  expiresAt DateTime
+  usedAt    DateTime?
+  createdAt DateTime         @default(now())
+
+  @@index([userId])
 }
 
 // Suivi d'un expert ou d'une organisation : alimente le fil « Mes suivis ».

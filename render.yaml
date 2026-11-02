@@ -53,3 +53,10 @@ services:
         sync: false
       - key: ORCID_CLIENT_SECRET
         sync: false
+      # E-mails (mot de passe oublié, confirmation d'adresse, notifications) : accès SMTP du prestataire
+      # d'envoi (Brevo, Postmark…), ex. smtps://identifiant:motdepasse@smtp-relay.brevo.com:465,
+      # et expéditeur d'un domaine dont les DNS (SPF, DKIM) sont configurés chez ce prestataire.
+      - key: SMTP_URL
+        sync: false
+      - key: MAIL_FROM
+        sync: false

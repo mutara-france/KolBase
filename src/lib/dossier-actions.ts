@@ -7,6 +7,7 @@ import { audit, requireUser } from "@/lib/auth";
 import { requireMembership } from "@/lib/orgs";
 import { collabType, MATERIAL_KINDS, PROJECT_ROLES, REVIEW_ROLES } from "@/lib/projects";
 import { eurToCents, str } from "@/lib/form";
+import { notifyProposal } from "@/lib/notifications";
 
 export type ActionState = { error?: string; ok?: string } | undefined;
 const okUrl = (u: string) => !u || /^https?:\/\/\S+$/i.test(u);
@@ -154,5 +155,6 @@ export async function proposeCollaboration(_: ActionState, form: FormData): Prom
   });
   await db.message.create({ data: { projectId: project.id, projectExpertId: project.experts[0].id, authorId: user.id, body: message } });
   await audit(user.id, "project.propose", "Project", project.id, { orgId });
+  notifyProposal(project.id);
   redirect(`/sollicitations/${project.experts[0].id}`);
 }
