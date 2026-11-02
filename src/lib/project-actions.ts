@@ -9,6 +9,7 @@ import { COMPLIANCE_ROLES } from "@/lib/events";
 import { collabType, PROJECT_ROLES, SOURCING_ROLES, PROJECT_VIEW_ROLES, TRANSITIONS, type TransitionKey } from "@/lib/projects";
 import type { ProjectStatus } from "@/generated/prisma/client";
 import { complianceSettings, projectRegime } from "@/lib/compliance";
+import { missingSignedConventions } from "@/lib/project-documents";
 import { eurToCents, str } from "@/lib/form";
 import { notifyCompliance, notifyExpertAnswer, notifyMessage, notifySolicitations } from "@/lib/notifications";
 
@@ -128,6 +129,8 @@ export async function advanceProject(form: FormData) {
   const { user } = await requireMembership(orgId, t.roles === "compliance" ? COMPLIANCE_ROLES : PROJECT_ROLES);
   const project = await db.project.findFirst({ where: { id: projectId, organizationId: orgId }, include: { experts: true, organization: { select: { complianceSettings: true } } } });
   if (!project || !(t.from as readonly string[]).includes(project.status)) return;
+  // Convention signée : avec le stockage activé, la convention signée de chaque expert engagé doit être déposée.
+  if (key === "signed" && (await missingSignedConventions(projectId)).length > 0) return;
   // Un dossier au-delà des seuils d'autorisation ne peut pas passer par la déclaration simple.
   if (key === "declaration" && projectRegime(complianceSettings(project.organization.complianceSettings), collabType(project.typeId)?.unit ?? "", project.experts)?.regime === "autorisation") return;
 

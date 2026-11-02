@@ -40,6 +40,11 @@ jobs:
       SMTP_URL: smtp://localhost:2525
       MAIL_FROM: KolBase <test@kolbase.fr>
       MAIL_DELIVER_RESERVED: "1"
+      S3_ENDPOINT: http://localhost:3996
+      S3_BUCKET: kolbase-test
+      S3_ACCESS_KEY_ID: test
+      S3_SECRET_ACCESS_KEY: test
+      S3_FORCE_PATH_STYLE: "1"
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4

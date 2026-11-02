@@ -7,7 +7,7 @@ import { db } from "@/lib/db";
 import { requireUser } from "@/lib/auth";
 import { formatEUR } from "@/lib/events";
 import { collabType } from "@/lib/projects";
-import { MaterialsPanel } from "@/components/DossierSections";
+import { DocumentsPanel, MaterialsPanel } from "@/components/DossierSections";
 
 export const metadata = { title: "Sollicitation — KolBase" };
 
@@ -56,6 +56,7 @@ export default async function Page({ params }: { params: Promise<{ linkId: strin
         {!["ATT_EXPERTS", "DECLINE"].includes(link.status) && !abandoned && p.status !== "ATT_IND" && (
           <MaterialsPanel orgId={p.organizationId} projectId={p.id} canSubmit canReview={false} />
         )}
+        {!["ATT_EXPERTS", "DECLINE"].includes(link.status) && !abandoned && <DocumentsPanel projectId={p.id} linkId={link.id} canUpload />}
         <section className="card">
           <h2>Échanges avec {p.organization.name}</h2>
           <Thread messages={link.messages} meId={user.id} />

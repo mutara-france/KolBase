@@ -1,10 +1,13 @@
-import { AlertTriangle, ExternalLink, Info, ShieldAlert, Wallet } from "lucide-react";
+import { AlertTriangle, ExternalLink, FileText, Info, ShieldAlert, Wallet } from "lucide-react";
 import { db } from "@/lib/db";
 import { detectConflicts } from "@/lib/conflicts";
 import { formatDate, formatEUR } from "@/lib/events";
 import { MATERIAL_KINDS, MATERIAL_STATUS } from "@/lib/projects";
 import { reviewMaterial, updateExpense } from "@/lib/dossier-actions";
-import { BudgetForm, ExpenseForm, MaterialForm, VersionForm } from "@/components/DossierForms";
+import { BudgetForm, DocumentUploadForm, ExpenseForm, MaterialForm, VersionForm } from "@/components/DossierForms";
+import { deleteDocument } from "@/lib/document-actions";
+import { storageEnabled } from "@/lib/storage";
+import { drPrefix } from "@/lib/professions";
 
 export async function ConflictsPanel({ projectId }: { projectId: string }) {
   const conflicts = await detectConflicts(projectId);
@@ -119,6 +122,54 @@ export async function MaterialsPanel({ orgId, projectId, canSubmit, canReview }:
           );
         })}
       </div>
+    </section>
+  );
+}
+
+const KIND_LABEL = { CONVENTION_SIGNEE: "Convention signée", PIECE: "Pièce" } as const;
+const fileSize = (n: number) => (n < 1024 * 1024 ? `${Math.max(1, Math.round(n / 1024))} Ko` : `${(n / 1024 / 1024).toFixed(1).replace(".", ",")} Mo`);
+
+/**
+ * Documents du dossier. Côté organisation : tous les documents, dépôt pour un expert ou pour tout le dossier.
+ * Côté expert (`linkId`) : les documents qui le concernent, et dépôt de sa convention signée ou d'une pièce.
+ */
+export async function DocumentsPanel({ projectId, linkId, canUpload }: { projectId: string; linkId?: string; canUpload: boolean }) {
+  const project = await db.project.findUnique({
+    where: { id: projectId },
+    include: {
+      documents: { where: linkId ? { projectExpertId: linkId } : {}, orderBy: { createdAt: "desc" } },
+      experts: { where: { status: { notIn: ["ATT_EXPERTS", "DECLINE"] } }, include: { practitioner: { include: { user: { select: { firstName: true, lastName: true } } } } } },
+    },
+  });
+  if (!project) return null;
+  const enabled = storageEnabled();
+  const expertName = new Map(project.experts.map((e) => [e.id, `${drPrefix(e.practitioner.profession)}${e.practitioner.user.firstName} ${e.practitioner.user.lastName}`]));
+  const locked = ["SIGNE", "TERMINE"].includes(project.status);
+  return (
+    <section className="card stack-sm">
+      <h2 className="section-title"><FileText size={15} /> Documents</h2>
+      {project.documents.length === 0 ? <p className="muted">Aucun document déposé.</p> : (
+        <ul className="pub-list">
+          {project.documents.map((d) => (
+            <li key={d.id} className="flex-between">
+              <span>
+                <a href={`/documents/${d.id}`}><strong>{d.name}</strong></a>
+                <span className="text-xs">
+                  {KIND_LABEL[d.kind]}{d.projectExpertId && !linkId ? ` · ${expertName.get(d.projectExpertId) ?? "expert"}` : ""} · {fileSize(d.size)} · {formatDate(d.createdAt)}
+                </span>
+              </span>
+              {canUpload && !(d.kind === "CONVENTION_SIGNEE" && locked) && (
+                <form action={deleteDocument}><input type="hidden" name="documentId" value={d.id} /><button className="link danger">Retirer</button></form>
+              )}
+            </li>
+          ))}
+        </ul>
+      )}
+      {canUpload && (enabled ? (
+        <DocumentUploadForm projectId={projectId} ownLinkId={linkId} experts={project.experts.map((e) => ({ id: e.id, name: expertName.get(e.id)! }))} />
+      ) : (
+        <p className="hint">Le dépôt de documents sera disponible une fois le stockage configuré.</p>
+      ))}
     </section>
   );
 }

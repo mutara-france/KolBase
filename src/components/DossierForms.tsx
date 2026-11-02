@@ -3,6 +3,7 @@
 import { useActionState, useState } from "react";
 import { addExpense, addMaterial, addMaterialVersion, proposeCollaboration, setBudget } from "@/lib/dossier-actions";
 import { Notice } from "@/components/AuthForms";
+import { uploadDocument } from "@/lib/document-actions";
 
 type Hidden = { orgId: string; projectId: string };
 const H = ({ orgId, projectId }: Hidden) => (<><input type="hidden" name="orgId" value={orgId} /><input type="hidden" name="projectId" value={projectId} /></>);
@@ -95,6 +96,36 @@ export function ProposeForm({ orgId, orgName, types, defaultFee }: { orgId: stri
       <p className="hint">Référence : {type.fmv[0].toLocaleString("fr-FR")} à {type.fmv[1].toLocaleString("fr-FR")} € HT par {type.unit}.</p>
       <label>Votre proposition<textarea name="message" rows={4} required minLength={30} placeholder="Objectif, public, format, dates possibles…" /></label>
       <button className="btn" disabled={pending}>{pending ? "Envoi…" : "Envoyer la proposition"}</button>
+    </form>
+  );
+}
+
+/** Dépôt d'un document de dossier (pièce, ou convention signée d'un expert). */
+export function DocumentUploadForm({ projectId, experts, ownLinkId }: { projectId: string; experts: { id: string; name: string }[]; ownLinkId?: string }) {
+  const [state, action, pending] = useActionState(uploadDocument, undefined);
+  return (
+    <form action={action} className="form stack-sm" key={state?.ok ? Date.now() : "doc"}>
+      <Notice state={state} />
+      <input type="hidden" name="projectId" value={projectId} />
+      <div className="row">
+        <label>Document
+          <select name="kind" defaultValue="PIECE">
+            <option value="PIECE">Pièce du dossier</option>
+            <option value="CONVENTION_SIGNEE">Convention signée</option>
+          </select>
+        </label>
+        {ownLinkId ? <input type="hidden" name="linkId" value={ownLinkId} /> : (
+          <label>Expert concerné
+            <select name="linkId" defaultValue="">
+              <option value="">— tout le dossier —</option>
+              {experts.map((e) => <option key={e.id} value={e.id}>{e.name}</option>)}
+            </select>
+          </label>
+        )}
+      </div>
+      <label>Fichier<input type="file" name="file" required accept=".pdf,.jpg,.jpeg,.png,.docx,.xlsx,.pptx" /></label>
+      <p className="hint">PDF, image ou document bureautique, 10 Mo au maximum.</p>
+      <button className="btn secondary" disabled={pending}>{pending ? "Envoi…" : "Déposer"}</button>
     </form>
   );
 }

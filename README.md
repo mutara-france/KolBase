@@ -87,6 +87,15 @@ vers les adresses réservées (`.local`, `.test`…), donc vers les comptes de d
   l'expert, messages, proposition spontanée, candidatures (reçue, non retenue), circuit de conformité,
   demandes de devis et devis reçus ; organisations et RPPS à valider pour les administrateurs KolBase.
 
+## Documents des dossiers
+
+Avec un stockage objet S3 compatible (`S3_ENDPOINT`, `S3_REGION`, `S3_BUCKET`, `S3_ACCESS_KEY_ID`,
+`S3_SECRET_ACCESS_KEY`), l'équipe d'un dossier et ses experts déposent des pièces (PDF, images, documents
+bureautiques, 10 Mo au maximum). La **convention signée** de chaque expert engagé est alors exigée pour passer
+le dossier en « Signé », et ne peut plus être retirée ensuite. Le compartiment reste privé : les fichiers ne
+sont servis que par KolBase (`/documents/<id>`), après contrôle des droits (équipe de l'organisation ou expert
+concerné). Sans ces variables, le dépôt est désactivé et le circuit de signature reste celui d'avant.
+
 ## Données personnelles
 
 Depuis « Mon compte » : téléchargement des données du compte (JSON) et suppression du compte. La suppression

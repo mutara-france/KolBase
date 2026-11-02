@@ -199,6 +199,69 @@ const linkIn = (mail) => mail?.text.match(/https?:\/\/\S+/g)?.find((u) => !u.end
   await ctx.close();
 }
 
+// ── Documents des dossiers : convention signée exigée, accès contrôlé ───────
+{
+  const pdf = Buffer.from("%PDF-1.4\n1 0 obj << /Type /Catalog >> endobj\ntrailer << /Root 1 0 R >>\n%%EOF\n");
+  const { ctx, page } = await session();
+  await login(page, "anne.chevalier@demo.kolbase.local");
+  const dossier = `${BASE}/organisations/demo-org-academie/dossiers/demo-prj-formation`;
+  await page.goto(dossier);
+  let t = await text(page);
+  check("Signature : « Convention signée » attend la convention de l'expert", (await page.locator('button:has-text("Convention signée")').count()) === 0 && t.includes("Déposez la convention signée de Dr Mathieu Roux"));
+  const upload = 'form:has(input[name="file"])';
+  await page.selectOption(`${upload} select[name="kind"]`, "CONVENTION_SIGNEE");
+  await page.setInputFiles(`${upload} input[name="file"]`, { name: "faux.pdf", mimeType: "application/pdf", buffer: Buffer.from("pas un pdf") });
+  await page.click(`${upload} button:has-text("Déposer")`);
+  await page.waitForTimeout(1200);
+  check("Dépôt : faux PDF refusé", (await text(page)).includes("n'est pas un PDF valide"));
+  await page.selectOption(`${upload} select[name="kind"]`, "CONVENTION_SIGNEE");
+  await page.setInputFiles(`${upload} input[name="file"]`, { name: "convention-roux-signée.pdf", mimeType: "application/pdf", buffer: pdf });
+  await page.click(`${upload} button:has-text("Déposer")`);
+  await page.waitForTimeout(1200);
+  check("Dépôt : convention signée sans expert refusée", (await text(page)).includes("Indiquez l'expert signataire"));
+  await page.selectOption(`${upload} select[name="kind"]`, "CONVENTION_SIGNEE");
+  const roux = await page.locator(`${upload} select[name="linkId"] option`, { hasText: "Roux" }).getAttribute("value");
+  await page.selectOption(`${upload} select[name="linkId"]`, roux);
+  await page.setInputFiles(`${upload} input[name="file"]`, { name: "convention-roux-signée.pdf", mimeType: "application/pdf", buffer: pdf });
+  await page.click(`${upload} button:has-text("Déposer")`);
+  await page.waitForTimeout(1500);
+  await page.reload();
+  t = await text(page);
+  check("Dépôt : convention signée enregistrée", t.includes("convention-roux-signée.pdf") && t.includes("Convention signée · Dr Mathieu Roux"));
+  const href = await page.locator('a:has-text("convention-roux-signée.pdf")').getAttribute("href");
+  const dl = await page.request.get(`${BASE}${href}`);
+  check("Téléchargement : fichier identique, en pièce jointe", dl.ok() && Buffer.compare(await dl.body(), pdf) === 0 && (dl.headers()["content-disposition"] ?? "").startsWith("attachment"));
+  check("Signature : « Convention signée » disponible une fois la convention déposée", (await page.locator('button:has-text("Convention signée")').count()) === 1);
+
+  const other = await session();
+  await login(other.page, "julien.faure@demo.kolbase.local");
+  const forbidden = await other.page.request.get(`${BASE}${href}`);
+  check("Téléchargement : refusé à une autre organisation", forbidden.status() === 404, String(forbidden.status()));
+  await other.ctx.close();
+
+  const expert = await session();
+  await login(expert.page, "mathieu.roux@demo.kolbase.local");
+  await expert.page.goto(`${BASE}/sollicitations`);
+  await Promise.all([expert.page.waitForURL(/\/sollicitations\/[^/]+$/), expert.page.click('a:has-text("Formation DPC endodontie")')]);
+  check("Expert : voit sa convention signée", (await text(expert.page)).includes("convention-roux-signée.pdf"));
+  const own = await expert.page.request.get(`${BASE}${href}`);
+  check("Expert : peut la télécharger", own.ok());
+  await expert.page.setInputFiles('form:has(input[name="file"]) input[name="file"]', { name: "programme-tp.pdf", mimeType: "application/pdf", buffer: pdf });
+  await expert.page.click('form:has(input[name="file"]) button:has-text("Déposer")');
+  await expert.page.waitForTimeout(1500);
+  check("Expert : dépôt d'une pièce", (await text(expert.page)).includes("Document déposé"));
+  await expert.ctx.close();
+
+  await page.reload();
+  check("Organisation : voit la pièce déposée par l'expert", (await text(page)).includes("programme-tp.pdf"));
+  await page.click('button:has-text("Convention signée")');
+  await page.waitForTimeout(1500);
+  await page.reload();
+  const signed = await page.locator('li:has-text("convention-roux-signée.pdf")').innerText();
+  check("Dossier signé : la convention signée ne peut plus être retirée", !signed.includes("Retirer") && (await text(page)).includes("Signé"));
+  await ctx.close();
+}
+
 // ── Conformité : au-delà des seuils, pas de déclaration simple ─────────────
 {
   const { ctx, page } = await session();

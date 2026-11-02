@@ -60,3 +60,15 @@ services:
         sync: false
       - key: MAIL_FROM
         sync: false
+      # Documents des dossiers : stockage objet S3 compatible, compartiment privé hébergé dans l'UE
+      # (Scaleway, OVHcloud…). Sans ces variables, le dépôt de documents est désactivé.
+      - key: S3_ENDPOINT
+        sync: false
+      - key: S3_REGION
+        sync: false
+      - key: S3_BUCKET
+        sync: false
+      - key: S3_ACCESS_KEY_ID
+        sync: false
+      - key: S3_SECRET_ACCESS_KEY
+        sync: false

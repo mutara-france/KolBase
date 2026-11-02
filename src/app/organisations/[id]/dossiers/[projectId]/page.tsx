@@ -8,7 +8,8 @@ import { requireMembership } from "@/lib/orgs";
 import { COMPLIANCE_ROLES, formatEUR } from "@/lib/events";
 import { collabType, PROJECT_ROLES, PROJECT_VIEW_ROLES, STATUS_LABEL, TRANSITIONS, type TransitionKey } from "@/lib/projects";
 import { advanceProject } from "@/lib/project-actions";
-import { BudgetPanel, ConflictsPanel, MaterialsPanel } from "@/components/DossierSections";
+import { BudgetPanel, ConflictsPanel, DocumentsPanel, MaterialsPanel } from "@/components/DossierSections";
+import { missingSignedConventions } from "@/lib/project-documents";
 import { REVIEW_ROLES } from "@/lib/projects";
 import { complianceSettings, projectRegime, REGIME_LABEL } from "@/lib/compliance";
 
@@ -56,10 +57,13 @@ export default async function Page({ params }: { params: Promise<{ id: string; p
   const isCompliance = roles.some((r) => COMPLIANCE_ROLES.includes(r));
   const settings = complianceSettings(org.complianceSettings);
   const regime = projectRegime(settings, type?.unit ?? "", project.experts);
+  const unsigned = project.status === "SIGNATURE" ? await missingSignedConventions(projectId) : [];
   const available = (Object.keys(TRANSITIONS) as TransitionKey[]).filter((k) => {
     const t = TRANSITIONS[k];
     // Au-delà d'un seuil, la déclaration simple n'est pas possible : seule la demande d'autorisation est proposée.
     if (k === "declaration" && regime?.regime === "autorisation") return false;
+    // Avec le stockage activé, « Convention signée » attend la convention signée de chaque expert engagé.
+    if (k === "signed" && unsigned.length > 0) return false;
     return (t.from as readonly string[]).includes(project.status) && (t.roles === "compliance" ? isCompliance : isProject);
   });
   const needsNote = (k: TransitionKey) => k === "block" || k === "validate" || k === "ordre";
@@ -80,7 +84,7 @@ export default async function Page({ params }: { params: Promise<{ id: string; p
         {project.complianceNote && <p className={`notice ${project.status === "BLOQUE" ? "error" : "ok"}`}>Conformité : {project.complianceNote}</p>}
         {project.ordreRef && <p className="muted">Demande à l&apos;Ordre : {project.ordreRef}</p>}
 
-        {available.length > 0 && (
+        {(available.length > 0 || unsigned.length > 0) && (
           <section className="card">
             <h2>Prochaine étape</h2>
             <div className="transitions">
@@ -94,6 +98,9 @@ export default async function Page({ params }: { params: Promise<{ id: string; p
                 </form>
               ))}
             </div>
+            {unsigned.length > 0 && (
+              <p className="hint">Déposez la convention signée de {unsigned.join(", ")} (rubrique Documents) pour passer le dossier en « Signé ».</p>
+            )}
             {project.status === "VALIDE" && regime && (
               <p className="hint">
                 Régime : <span className={`pill ${regime.regime === "autorisation" ? "wait" : "ok"}`}>{REGIME_LABEL[regime.regime]}</span>{" "}
@@ -111,6 +118,7 @@ export default async function Page({ params }: { params: Promise<{ id: string; p
         {project.description && <section className="card"><h2>Objet</h2><p>{project.description}</p></section>}
         <ConflictsPanel projectId={projectId} />
         <MaterialsPanel orgId={id} projectId={projectId} canSubmit={isProject} canReview={roles.some((r) => REVIEW_ROLES.includes(r))} />
+        <DocumentsPanel projectId={projectId} canUpload={isProject || isCompliance} />
         <BudgetPanel orgId={id} projectId={projectId} canEdit={isProject} />
 
         {project.experts.map((e) => (
