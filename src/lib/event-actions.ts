@@ -79,7 +79,7 @@ export async function setEventAgency(form: FormData) {
   const eventId = str(form, "eventId");
   const { user } = await requireMembership(orgId, EVENT_ORGANIZER_ROLES);
   const agencyId = str(form, "agencyId") || null;
-  if (agencyId && !(await db.mandate.findFirst({ where: { mandatorId: orgId, agencyId } }))) return;
+  if (agencyId && !(await db.mandate.findFirst({ where: { mandatorId: orgId, agencyId, OR: [{ endsAt: null }, { endsAt: { gt: new Date() } }] } }))) return;
   await db.event.updateMany({ where: { id: eventId, organizationId: orgId }, data: { agencyId } });
   await audit(user.id, "event.agency", "Event", eventId, { agencyId });
   revalidatePath(`/organisations/${orgId}/evenements/${eventId}`);
@@ -150,4 +150,37 @@ export async function markDeclared(form: FormData) {
   });
   await audit(user.id, declared ? "registration.declare" : "registration.undeclare", "Registration", reg.id, { ref });
   revalidatePath(`/organisations/${orgId}/hospitalites`);
+}
+
+// ─── Mandats d'agence ──────────────────────────────────────────────────────
+
+/** Mandats en cours (non terminés) d'une organisation. */
+const activeMandate = (now = new Date()) => ({ OR: [{ endsAt: null }, { endsAt: { gt: now } }] });
+
+/** Mandater une agence prestataire référencée : on pourra ensuite lui confier des événements. */
+export async function createMandate(_: ActionState, form: FormData): Promise<ActionState> {
+  const orgId = str(form, "orgId");
+  const { user } = await requireMembership(orgId, EVENT_ORGANIZER_ROLES);
+  const agencyId = str(form, "agencyId");
+  const agency = await db.organization.findFirst({ where: { id: agencyId, kind: "PRESTATAIRE", listed: true } });
+  if (!agency) return { error: "Choisissez une agence référencée." };
+  if (await db.mandate.findFirst({ where: { mandatorId: orgId, agencyId, ...activeMandate() } })) return { error: `${agency.name} est déjà mandatée.` };
+  const m = await db.mandate.create({ data: { mandatorId: orgId, agencyId, scope: str(form, "scope") || null } });
+  await audit(user.id, "mandate.create", "Mandate", m.id, { agencyId });
+  revalidatePath(`/organisations/${orgId}/prestataires`);
+  return { ok: `${agency.name} est mandatée. Confiez-lui des événements depuis leur fiche, et invitez ses collaborateurs avec le rôle « Prestataire mandaté ».` };
+}
+
+/** Fin de mandat : l'agence perd l'accès aux événements qui lui étaient confiés. */
+export async function endMandate(form: FormData) {
+  const orgId = str(form, "orgId");
+  const { user } = await requireMembership(orgId, EVENT_ORGANIZER_ROLES);
+  const m = await db.mandate.findFirst({ where: { id: str(form, "mandateId"), mandatorId: orgId, ...activeMandate() } });
+  if (!m) return;
+  await db.$transaction([
+    db.mandate.update({ where: { id: m.id }, data: { endsAt: new Date() } }),
+    db.event.updateMany({ where: { organizationId: orgId, agencyId: m.agencyId }, data: { agencyId: null } }),
+  ]);
+  await audit(user.id, "mandate.end", "Mandate", m.id, { agencyId: m.agencyId });
+  revalidatePath(`/organisations/${orgId}/prestataires`);
 }

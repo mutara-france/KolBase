@@ -24,7 +24,7 @@ export default async function Page({ params }: { params: Promise<{ id: string; e
   const totalCents = event.registrations.reduce((s, r) => s + r.benefits.reduce((x, b) => x + b.valueCents, 0), 0);
   const withBenefits = event.registrations.filter((r) => r.benefits.length > 0).length;
 
-  const agencies = isOrganizer ? await db.mandate.findMany({ where: { mandatorId: id }, include: { agency: { select: { id: true, name: true } } } }) : [];
+  const agencies = isOrganizer ? await db.mandate.findMany({ where: { mandatorId: id, OR: [{ endsAt: null }, { endsAt: { gt: new Date() } }] }, include: { agency: { select: { id: true, name: true } } } }) : [];
   const AgencyForm = () =>
     agencies.length === 0 ? null : (
       <form action={setEventAgency} className="inline wrap">
