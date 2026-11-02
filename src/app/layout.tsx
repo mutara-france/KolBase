@@ -10,6 +10,8 @@ import "@fontsource/ibm-plex-mono/latin-400.css";
 import "@fontsource/ibm-plex-mono/latin-500.css";
 import "./globals.css";
 import { SiteFooter } from "@/components/SiteFooter";
+import { I18nProvider } from "@/components/I18nProvider";
+import { getLocale } from "@/lib/i18n/server";
 
 export const metadata: Metadata = {
   title: "KolBase — praticiens × organisations",
@@ -17,15 +19,18 @@ export const metadata: Metadata = {
     "KolBase met en relation les chirurgiens-dentistes et les organisations du secteur : industriels, sociétés savantes, associations, organismes de formation.",
 };
 
-export default function RootLayout({ children }: { children: React.ReactNode }) {
+export default async function RootLayout({ children }: { children: React.ReactNode }) {
+  const locale = await getLocale();
   return (
-    <html lang="fr">
+    <html lang={locale}>
       <head>
         <meta name="theme-color" content="#0E0066" />
       </head>
       <body>
-        <div className="page">{children}</div>
-        <SiteFooter />
+        <I18nProvider locale={locale}>
+          <div className="page">{children}</div>
+          <SiteFooter />
+        </I18nProvider>
       </body>
     </html>
   );

@@ -1,5 +1,6 @@
 "use server";
 
+import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import { db } from "@/lib/db";
@@ -14,6 +15,7 @@ import { notifyPlatformAdmins } from "@/lib/notifications";
 import { consumeToken, findToken, issueToken } from "@/lib/tokens";
 import { anonymizeAccount, soleAdminOrgs } from "@/lib/account";
 import { MAX_NAME, str } from "@/lib/form";
+import { getLocale, LOCALE_COOKIE } from "@/lib/i18n/server";
 
 export type FormState = { error?: string; ok?: string } | undefined;
 
@@ -71,6 +73,8 @@ export async function signUp(_: FormState, form: FormData): Promise<FormState> {
       firstName,
       lastName,
       passwordHash: await hashPassword(password),
+      // Langue utilisée pendant l'inscription : elle sert ensuite pour l'interface et les e-mails.
+      locale: await getLocale(),
       practitioner: profession ? { create: { profession, country: countryCode, languages: practicesInFrance(countryCode) ? ["fr"] : [] } } : undefined,
     },
   });
@@ -113,10 +117,13 @@ export async function updateProfile(_: FormState, form: FormData): Promise<FormS
   const firstName = str(form, "firstName", MAX_NAME);
   const lastName = str(form, "lastName", MAX_NAME);
   if (!firstName || !lastName) return { error: "Prénom et nom sont obligatoires." };
+  const locale = str(form, "locale") === "en" ? "en" : "fr";
   await db.user.update({
     where: { id: user.id },
-    data: { firstName, lastName, phone: str(form, "phone") || null, locale: str(form, "locale") === "en" ? "en" : "fr" },
+    data: { firstName, lastName, phone: str(form, "phone") || null, locale },
   });
+  // La langue choisie s'applique aussi à cet appareil (le sélecteur de langue pose le même cookie).
+  if (locale !== user.locale) (await cookies()).set(LOCALE_COOKIE, locale, { path: "/", maxAge: 365 * 24 * 3600, sameSite: "lax", httpOnly: true, secure: process.env.NODE_ENV === "production" });
   let unlisted = false;
   let toCheck: string | null = null;
   if (user.practitioner) {

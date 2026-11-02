@@ -30,8 +30,9 @@ export function ProfileForm({ user, practitioner }: Props) {
       </div>
       <div className="row">
         <label>Téléphone<input name="phone" type="tel" defaultValue={user.phone ?? ""} /></label>
-        {/* Interface disponible en français uniquement pour l'instant : la préférence est conservée telle quelle. */}
-        <input type="hidden" name="locale" value={user.locale} />
+        <label>Langue de l&apos;interface et des e-mails
+          <select name="locale" defaultValue={user.locale}><option value="fr">Français</option><option value="en">English</option></select>
+        </label>
       </div>
       {practitioner && (
         <>

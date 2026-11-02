@@ -665,3 +665,12 @@ body:has(.sidebar) .site-footer { padding: 24px 32px; }
 .pager { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-top: 24px; }
 .avatar.logo { background: #fff; border: 1px solid var(--line); overflow: hidden; padding: 3px; }
 .avatar.logo img { width: 100%; height: 100%; object-fit: contain; display: block; }
+
+/* Sélecteur de langue */
+.locale-switch { display: inline-flex; border: 1px solid var(--line-strong); border-radius: 999px; overflow: hidden; }
+.locale-switch button { font: inherit; font-size: 12px; font-weight: 600; padding: 4px 10px; background: transparent; border: 0; color: var(--ink-soft); cursor: pointer; }
+.locale-switch button[aria-pressed="true"] { background: var(--outremer); color: #fff; cursor: default; }
+.locale-switch button:focus-visible { outline: 2px solid var(--outremer); outline-offset: -2px; }
+.locale-switch.on-dark { border-color: rgba(255, 255, 255, 0.35); }
+.locale-switch.on-dark button { color: rgba(255, 255, 255, 0.85); }
+.locale-switch.on-dark button[aria-pressed="true"] { background: #fff; color: var(--outremer); }
