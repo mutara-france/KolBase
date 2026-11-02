@@ -121,6 +121,7 @@ const linkIn = (mail) => mail?.text.match(/https?:\/\/\S+/g)?.find((u) => !u.end
   await login(p2, "ines.lambert@demo.kolbase.local");
   await p2.goto(link);
   check("Invitation : rôle affiché « Membre de l'équipe »", (await text(p2)).includes("Membre de l'équipe"));
+  check("Invitation nominative : refusée à un autre compte", (await text(p2)).includes("Cette invitation est destinée à nouvelle.recrue@exemple.fr") && (await p2.locator('button:has-text("Accepter l\'invitation")').count()) === 0);
   await c2.close();
   await ctx.close();
 }
@@ -774,6 +775,71 @@ async function submitNewOrg(page, siren) {
   const pdf = await claire.ctx.request.get(`${BASE}/organisations/demo-org-dentalys/dossiers/demo-prj-board/convention/demo-prj-board-x1?lang=en`);
   check("Convention : version anglaise disponible", pdf.status() === 200 && (pdf.headers()["content-disposition"] ?? "").includes("-en.pdf"));
   await claire.ctx.close();
+}
+
+// ── Audit : confidentialité, recrutement clos, seuils réglementaires, suspension, suivis ─────
+{
+  const db = new pg.Client({ connectionString: process.env.DATABASE_URL });
+  await db.connect();
+  const now = new Date();
+  // Dossier confidentiel d'OrthoNova avec la même experte, dans le même domaine que le comité Dentalys.
+  await db.query(`INSERT INTO "Project" (id, "organizationId", title, "typeId", "therapeuticArea", status, "updatedAt") VALUES ('audit-prj-ortho', 'demo-org-orthonova', 'Projet secret aligneurs', 'board', 'Implantologie', 'ACCORD', $1)`, [now]);
+  await db.query(`INSERT INTO "ProjectExpert" (id, "projectId", "practitionerId", status, "feeCents") VALUES ('audit-pe-ortho', 'audit-prj-ortho', 'demo-p-durand', 'ACCORD', 100000)`);
+  // Dossier Dentalys déjà signé, avec un expert resté sans réponse.
+  await db.query(`INSERT INTO "Project" (id, "organizationId", title, "typeId", status, "updatedAt") VALUES ('audit-prj-signe', 'demo-org-dentalys', 'Dossier déjà signé', 'board', 'SIGNE', $1)`, [now]);
+  await db.query(`INSERT INTO "ProjectExpert" (id, "projectId", "practitionerId", status, "feeCents") VALUES ('audit-pe-late', 'audit-prj-signe', 'demo-p-blanc', 'ATT_EXPERTS', 150000)`);
+
+  const claire = await session();
+  await login(claire.page, "claire.morel@demo.kolbase.local");
+  await claire.page.goto(`${BASE}/organisations/demo-org-dentalys/dossiers/demo-prj-board`);
+  let t = await text(claire.page);
+  check("Conflits : signal anonyme, sans nom ni titre d'un autre dossier", t.includes("Collaboration en cours avec une autre organisation") && !t.includes("Projet secret aligneurs") && !t.includes("OrthoNova"));
+  await claire.ctx.close();
+
+  const blanc = await session();
+  await login(blanc.page, "nicolas.blanc@demo.kolbase.local");
+  await blanc.page.goto(`${BASE}/sollicitations/audit-pe-late`);
+  t = await text(blanc.page);
+  check("Recrutement clos : plus d'acceptation après la signature du dossier", t.includes("Le recrutement de ce dossier est clos") && (await blanc.page.locator('button:has-text("Accepter")').count()) === 0);
+  await blanc.ctx.close();
+
+  // Seuils : la conformité ne peut pas relever un seuil réglementaire (contrôle serveur, au-delà du champ du navigateur).
+  const sophie = await session();
+  await login(sophie.page, "sophie.bernard@demo.kolbase.local");
+  await sophie.page.goto(`${BASE}/organisations/demo-org-dentalys/conformite?onglet=parametres`);
+  await sophie.page.evaluate(() => document.querySelectorAll("input[max]").forEach((i) => i.removeAttribute("max")));
+  await sophie.page.fill('input[name="remunerationHourlyMax"]', "1000");
+  await sophie.page.click('form:has(input[name="remunerationHourlyMax"]) button.btn');
+  await sophie.page.waitForTimeout(800);
+  t = await text(sophie.page);
+  const saved = (await db.query(`SELECT "complianceSettings" AS s FROM "Organization" WHERE id = 'demo-org-dentalys'`)).rows[0].s;
+  check("Seuils réglementaires : impossible de relever le taux horaire", t.includes("au maximum (seuil réglementaire") && (saved?.remunerationHourlyMax ?? 200) <= 200, JSON.stringify(saved));
+  await sophie.ctx.close();
+
+  // Organisation suspendue : ses événements ne sont plus accessibles par lien direct.
+  await db.query(`UPDATE "Organization" SET verification = 'PENDING' WHERE id = 'demo-org-cdra'`);
+  const anon = await browser.newContext();
+  const ev = await anon.request.get(`${BASE}/evenements/demo-ev-journee-cdra`);
+  check("Organisation suspendue : événement inaccessible", ev.status() === 404, String(ev.status()));
+  await anon.close();
+  await db.query(`UPDATE "Organization" SET verification = 'VERIFIED' WHERE id = 'demo-org-cdra'`);
+
+  // Suivis : une publication réservée aux organisations n'apparaît pas pour un simple compte praticien.
+  await db.query(`UPDATE "PractitionerProfile" SET visibility = visibility || '{"publications":"industriels"}' WHERE id = 'demo-p-durand'`);
+  await db.query(`INSERT INTO "Publication" (id, "practitionerId", title) VALUES ('audit-pub', 'demo-p-durand', 'Publication réservée aux organisations')`);
+  await db.query(`INSERT INTO "Follow" (id, "userId", "practitionerId") VALUES ('audit-follow', 'demo-u-robert', 'demo-p-durand') ON CONFLICT DO NOTHING`);
+  const hugo = await session();
+  await login(hugo.page, "hugo.robert@demo.kolbase.local");
+  await hugo.page.goto(`${BASE}/suivis`);
+  check("Suivis : publication réservée masquée à un compte sans organisation", !(await text(hugo.page)).includes("Publication réservée aux organisations"));
+  await hugo.ctx.close();
+
+  await db.query(`DELETE FROM "Follow" WHERE id = 'audit-follow'`);
+  await db.query(`DELETE FROM "Publication" WHERE id = 'audit-pub'`);
+  await db.query(`UPDATE "PractitionerProfile" SET visibility = visibility - 'publications' WHERE id = 'demo-p-durand'`);
+  await db.query(`DELETE FROM "ProjectExpert" WHERE id IN ('audit-pe-ortho', 'audit-pe-late')`);
+  await db.query(`DELETE FROM "Project" WHERE id IN ('audit-prj-ortho', 'audit-prj-signe')`);
+  await db.end();
 }
 
 // ── 4. Limitation des tentatives ───────────────────────────────────────────

@@ -49,7 +49,9 @@ export async function sendMail(m: Mail): Promise<boolean> {
   const { text, html } = renderMail(m);
   const t = transport();
   if (!t) {
-    console.info(`[e-mail non envoyé : SMTP_URL absent] À : ${m.to} — ${m.subject}\n${text}`);
+    // En production, le contenu n'est jamais journalisé : il peut contenir un lien de réinitialisation ou d'invitation.
+    const body = process.env.NODE_ENV === "production" ? "(contenu masqué)" : `\n${text}`;
+    console.info(`[e-mail non envoyé : SMTP_URL absent] À : ${m.to} — ${m.subject} ${body}`);
     return false;
   }
   await t.sendMail({ from: FROM(), to: m.to, subject: m.subject, text, html });

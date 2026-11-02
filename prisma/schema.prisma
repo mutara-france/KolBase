@@ -302,6 +302,9 @@ model Project {
   budgetCents     Int?
   declarationRef  String?   // référence de publication Transparence Santé
   declaredAt      DateTime?
+  // Signature attestée sans convention déposée (stockage de documents non configuré) : qui et quand.
+  signatureAttestedAt   DateTime?
+  signatureAttestedById String?
   createdAt       DateTime      @default(now())
   updatedAt       DateTime      @updatedAt
 

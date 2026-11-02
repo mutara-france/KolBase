@@ -17,7 +17,8 @@ services:
     region: frankfurt
     plan: starter
     branch: main
-    autoDeployTrigger: commit
+    # Déploiement seulement quand les vérifications GitHub (CI) du commit ont réussi.
+    autoDeployTrigger: checksPass
     buildCommand: npm ci && npm run build
     # Migrations versionnées (prisma/migrations) + données de démo si SEED_DEMO=1.
     preDeployCommand: npm run deploy:prepare
@@ -30,8 +31,6 @@ services:
         fromDatabase:
           name: kolbase-db
           property: connectionString
-      - key: AUTH_SECRET
-        generateValue: true
       - key: APP_URL
         sync: false
       # Données fictives de démonstration (mettre à 0 avant l'ouverture au public, puis npm run db:purge-demo).

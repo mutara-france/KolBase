@@ -25,12 +25,12 @@ export function FmvBadge({ typeId, feeCents, units }: { typeId: string; feeCents
   const c = fmvCheck(typeId, feeCents, units);
   if (!c) return null;
   const txt = `${Math.round(c.perUnit).toLocaleString("fr-FR")} €/${c.unit}`;
-  if (c.verdict === "ok") return <span className="pill ok" title={`Fourchette ${c.min}–${c.max} €`}>{txt} · dans la fourchette</span>;
-  return (
-    <span className="pill bad" title={`Fourchette ${c.min}–${c.max} €`}>
-      {txt} · {c.verdict === "above" ? "au-dessus" : "en dessous"} de la fourchette ({c.min.toLocaleString("fr-FR")}–{c.max.toLocaleString("fr-FR")} €)
-    </span>
-  );
+  // Repère indicatif interne (non réglementaire, non sourcé) : il éclaire la discussion, il ne vaut pas conformité.
+  const range = `${c.min.toLocaleString("fr-FR")}–${c.max.toLocaleString("fr-FR")} €`;
+  const title = `Repère indicatif KolBase : ${range} par ${c.unit}. Ce n'est pas un seuil réglementaire.`;
+  if (c.verdict === "ok") return <span className="pill" title={title}>{txt} · dans le repère indicatif</span>;
+  if (c.verdict === "below") return <span className="pill" title={title}>{txt} · sous le repère indicatif ({range})</span>;
+  return <span className="pill wait" title={title}>{txt} · au-dessus du repère indicatif ({range}) : justification à documenter</span>;
 }
 
 type Msg = { id: string; body: string; createdAt: Date; author: { firstName: string; lastName: string }; authorId: string };

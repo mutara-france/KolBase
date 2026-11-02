@@ -199,18 +199,7 @@ export async function buildCollaborationConventionForSignature(i: CollabConventi
     [t("Nature"), t(i.project.typeLabel)],
     [t("Volume"), `${units} ${unit}${units > 1 ? "s" : ""}`],
     [t("Honoraires"), i.link.feeCents != null ? t("{montant} HT, forfaitaires et définitifs", { montant: eur(locale, i.link.feeCents) }) : t("À définir")],
-    ...(i.fmv
-      ? ([[
-          t("Juste contrepartie"),
-          t("{prix} € HT par {unite} - référence {min} à {max} € ({verdict})", {
-            prix: Math.round(i.fmv.perUnit).toLocaleString(intlLocale(locale)),
-            unite: unit,
-            min: i.fmv.min.toLocaleString(intlLocale(locale)),
-            max: i.fmv.max.toLocaleString(intlLocale(locale)),
-            verdict: t(i.fmv.verdict === "ok" ? "conforme" : i.fmv.verdict === "above" ? "au-dessus, justification requise" : "en dessous"),
-          }),
-        ]] as [string, string][])
-      : []),
+    // Le repère indicatif de KolBase n'a pas sa place dans le contrat : la juste contrepartie est documentée par l'organisation.
     [t("Paiement"), t("Par virement, à 30 jours après réalisation de la prestation et réception de la facture.")],
   ]);
   w.text(t("Les frais de déplacement et d'hébergement éventuellement pris en charge par l'Organisation sont limités au strict nécessaire à la prestation et font l'objet d'une déclaration distincte."), { color: MUTED });

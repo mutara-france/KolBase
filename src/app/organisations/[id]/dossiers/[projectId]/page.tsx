@@ -6,7 +6,8 @@ import { MessageForm } from "@/components/ProjectForms";
 import { db } from "@/lib/db";
 import { requireMembership } from "@/lib/orgs";
 import { COMPLIANCE_ROLES, formatEUR } from "@/lib/events";
-import { collabType, PROJECT_ROLES, PROJECT_VIEW_ROLES, STATUS_LABEL, TRANSITIONS, type TransitionKey } from "@/lib/projects";
+import { collabType, PROJECT_ROLES, PROJECT_VIEW_ROLES, recruitmentOpen, STATUS_LABEL, TRANSITIONS, type TransitionKey } from "@/lib/projects";
+import { storageEnabled } from "@/lib/storage";
 import { advanceProject } from "@/lib/project-actions";
 import { BudgetPanel, ConflictsPanel, ConventionSignatureBlock, DocumentsPanel, MaterialsPanel } from "@/components/DossierSections";
 import { missingSignedConventions } from "@/lib/project-documents";
@@ -68,6 +69,10 @@ export default async function Page({ params }: { params: Promise<{ id: string; p
   const regime = projectRegime(settings, type?.unit ?? "", project.experts.map((e) => ({ ...e, country: e.practitioner.country })));
   const foreignExperts = project.experts.filter((e) => e.status !== "DECLINE" && !practicesInFrance(e.practitioner.country));
   const unsigned = project.status === "SIGNATURE" ? await missingSignedConventions(projectId) : [];
+  // Sans stockage de documents, la convention signée ne peut pas être déposée : une attestation explicite est demandée.
+  const attestable = unsigned.length > 0 && !storageEnabled();
+  const attester = project.signatureAttestedById ? await db.user.findUnique({ where: { id: project.signatureAttestedById }, select: { firstName: true, lastName: true } }) : null;
+  const closed = !recruitmentOpen(project.status);
   const available = (Object.keys(TRANSITIONS) as TransitionKey[]).filter((k) => {
     const t = TRANSITIONS[k];
     // Au-delà d'un seuil, la déclaration simple n'est pas possible : seule la demande d'autorisation est proposée.
@@ -75,12 +80,15 @@ export default async function Page({ params }: { params: Promise<{ id: string; p
     // Experts exerçant tous hors de France : ni déclaration ni autorisation EPS, une étape dédiée.
     if (k === "ordre" && regime?.regime === "hors_france") return false;
     if (k === "hors_france" && regime?.regime !== "hors_france") return false;
-    // Avec le stockage activé, « Convention signée » attend la convention signée de chaque expert engagé.
-    if (k === "signed" && unsigned.length > 0) return false;
+    // « Convention signée » attend la convention signée (ou la signature électronique) de chaque expert engagé ;
+    // sans stockage configuré, l'étape reste proposée mais exige une attestation.
+    if (k === "signed" && unsigned.length > 0 && !attestable) return false;
     return (t.from as readonly string[]).includes(project.status) && (t.roles === "compliance" ? isCompliance : isProject);
   });
   const needsNote = (k: TransitionKey) => k === "block" || k === "validate" || k === "ordre";
-  const total = project.experts.filter((e) => e.status !== "DECLINE").reduce((s, e) => s + (e.feeCents ?? 0), 0);
+  // Engagé = experts ayant accepté ; les honoraires proposés sans réponse sont indiqués à part.
+  const total = project.experts.filter((e) => e.status !== "DECLINE" && e.status !== "ATT_EXPERTS").reduce((s, e) => s + (e.feeCents ?? 0), 0);
+  const proposed = closed ? 0 : project.experts.filter((e) => e.status === "ATT_EXPERTS").reduce((s, e) => s + (e.feeCents ?? 0), 0);
 
   return (
     <>
@@ -90,12 +98,17 @@ export default async function Page({ params }: { params: Promise<{ id: string; p
         <div>
           <StatusPill status={project.status} />
           <h1>{project.title}</h1>
-          <p className="muted">{type?.label ?? project.typeId}{project.therapeuticArea ? ` · ${project.therapeuticArea}` : ""} · engagement total {formatEUR(total)} HT</p>
+          <p className="muted">{type?.label ?? project.typeId}{project.therapeuticArea ? ` · ${project.therapeuticArea}` : ""} · engagé {formatEUR(total)} HT{proposed > 0 ? ` · ${formatEUR(proposed)} HT proposés, sans réponse` : ""}</p>
         </div>
         <Pipeline status={project.status} />
 
         {project.complianceNote && <p className={`notice ${project.status === "BLOQUE" ? "error" : "ok"}`}>Conformité : {project.complianceNote}</p>}
         {project.ordreRef && <p className="muted">Demande à l&apos;Ordre : {project.ordreRef}</p>}
+        {project.signatureAttestedAt && (
+          <p className="notice warn">
+            Signature attestée par {attester ? `${attester.firstName} ${attester.lastName}` : "un membre de l'organisation"} le {project.signatureAttestedAt.toLocaleDateString("fr-FR", { timeZone: "Europe/Paris" })} : convention signée conservée hors de KolBase, non déposée.
+          </p>
+        )}
 
         {(available.length > 0 || unsigned.length > 0) && (
           <section className="card">
@@ -107,13 +120,23 @@ export default async function Page({ params }: { params: Promise<{ id: string; p
                   <input type="hidden" name="projectId" value={projectId} />
                   <input type="hidden" name="transition" value={k} />
                   {needsNote(k) && <input name="note" placeholder={k === "ordre" ? "Réf. de la demande" : "Commentaire"} required={k === "block"} />}
+                  {k === "signed" && attestable && (
+                    <label className="check text-sm">
+                      <input type="checkbox" name="attest" value="1" required /> J&apos;atteste que la convention de {unsigned.join(", ")} est signée par les deux parties et conservée par l&apos;organisation.
+                    </label>
+                  )}
                   <button className={k === "abandon" || k === "block" || k === "ordre_ko" ? "btn ghost" : "btn"}>{TRANSITIONS[k].label}</button>
                 </form>
               ))}
             </div>
-            {unsigned.length > 0 && (
+            {unsigned.length > 0 && !attestable && (
               <p className="hint">
                 Déposez la convention signée de {unsigned.join(", ")} (rubrique Documents){signatureEnabled() ? " ou faites-la signer électroniquement (fiche de l'expert ci-dessous)" : ""} pour passer le dossier en « Signé ».
+              </p>
+            )}
+            {attestable && (
+              <p className="hint">
+                Le dépôt de documents n&apos;est pas encore activé sur KolBase{signatureEnabled() ? " (la signature électronique reste possible depuis la fiche de l'expert)" : ""} : passer en « Signé » exige votre attestation, enregistrée à votre nom avec la date.
               </p>
             )}
             {project.status === "VALIDE" && regime?.regime === "hors_france" && (
@@ -158,7 +181,7 @@ export default async function Page({ params }: { params: Promise<{ id: string; p
             <div className="actions spread">
               <h2><Link href={`/annuaire/${e.practitionerId}`}>Dr {e.practitioner.user.firstName} {e.practitioner.user.lastName}</Link></h2>
               <span className={`pill ${e.status === "DECLINE" ? "done" : e.status === "ATT_EXPERTS" ? "wait" : "ok"}`}>
-                {e.status === "ATT_EXPERTS" ? "Réponse attendue" : e.status === "DECLINE" ? "A décliné" : STATUS_LABEL[e.status]}
+                {e.status === "ATT_EXPERTS" ? (closed ? "Sans réponse, recrutement clos" : "Réponse attendue") : e.status === "DECLINE" ? "A décliné" : STATUS_LABEL[e.status]}
               </span>
             </div>
             <p className="muted">

@@ -4,7 +4,7 @@ import { safeNext } from "@/lib/safe-redirect";
 import { eurToCents, intOrNull, unitsOrNull } from "@/lib/form";
 import { sniffLogo } from "@/lib/logos";
 import { complianceSettings, DEFAULT_COMPLIANCE, hospitalityRegime, projectRegime, remunerationRegime } from "@/lib/compliance";
-import { fmvCheck, TRANSITIONS } from "@/lib/projects";
+import { fmvCheck, recruitmentOpen, TRANSITIONS } from "@/lib/projects";
 import { csvEscape, eventScope, parseParisDateTime, toCSV } from "@/lib/events";
 import { orgNavItems, orgSectionTabs, itemMatches } from "@/lib/nav";
 import { toIcs } from "@/lib/ics";
@@ -85,7 +85,7 @@ describe("régime anti-cadeaux", () => {
     expect(hospitalityRegime(s, [{ catalogId: "cocktail", valueCents: 5500 }]).regime).toBe("autorisation");
   });
   it("paramètres d'organisation : valeurs invalides ignorées", () => {
-    expect(complianceSettings({ hospitalityMealMax: 60, cumulAlert: -1 })).toEqual({ ...DEFAULT_COMPLIANCE, hospitalityMealMax: 60 });
+    expect(complianceSettings({ hospitalityMealMax: 40, cumulAlert: -1 })).toEqual({ ...DEFAULT_COMPLIANCE, hospitalityMealMax: 40 });
   });
 });
 
@@ -311,5 +311,42 @@ describe("traductions", () => {
     expect(en.html).toContain('lang="en"');
     expect(en.text).toContain("Manage your notifications");
     expect(renderMail({ to: "x@y.fr", subject: "s", text: "Bonjour" }).text).toContain("Gérer vos notifications");
+  });
+});
+
+describe("audit : garde-fous", () => {
+  it("seuils réglementaires : plus stricts possible, jamais plus souples", () => {
+    expect(complianceSettings({ remunerationHourlyMax: 1000 }).remunerationHourlyMax).toBe(200);
+    expect(complianceSettings({ remunerationHourlyMax: 150 }).remunerationHourlyMax).toBe(150);
+    expect(complianceSettings({ hospitalityMealMax: 80 }).hospitalityMealMax).toBe(50);
+    expect(complianceSettings({ declarationDays: 2 }).declarationDays).toBe(8);
+    expect(complianceSettings({ declarationDays: 15 }).declarationDays).toBe(15);
+    expect(complianceSettings({ cumulAlert: 50000 }).cumulAlert).toBe(50000);
+  });
+  it("dates impossibles refusées", () => {
+    expect(parseParisDateTime("2026-02-31T10:00")).toBeNull();
+    expect(parseParisDateTime("2026-04-31T10:00")).toBeNull();
+    expect(parseParisDateTime("2026-05-10T25:00")).toBeNull();
+    expect(parseParisDateTime("2028-02-29T10:00")?.toISOString()).toBe("2028-02-29T09:00:00.000Z");
+  });
+  it("montants bornés (représentables en centimes)", () => {
+    expect(eurToCents("1e20")).toBeNull();
+    expect(eurToCents("10000001")).toBeNull();
+    expect(eurToCents("9 999 999,99")).toBe(999999999);
+  });
+  it("recrutement : ouvert jusqu'à la soumission à la conformité", () => {
+    expect(recruitmentOpen("ATT_EXPERTS")).toBe(true);
+    expect(recruitmentOpen("ACCORD")).toBe(true);
+    expect(recruitmentOpen("EN_VALID")).toBe(false);
+    expect(recruitmentOpen("SIGNE")).toBe(false);
+  });
+  it("régime : une sollicitation sans réponse ne pèse pas une fois un expert engagé", () => {
+    const s = DEFAULT_COMPLIANCE;
+    const experts = [
+      { status: "ACCORD", feeCents: 150000, days: 1 },
+      { status: "ATT_EXPERTS", feeCents: 500000, days: 1 },
+    ];
+    expect(projectRegime(s, "journée", experts)?.regime).toBe("declaration");
+    expect(projectRegime(s, "journée", [experts[1]])?.regime).toBe("autorisation");
   });
 });

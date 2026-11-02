@@ -318,11 +318,9 @@ export const PUBLIC: Record<string, string> = {
   "Non. Un compte suffit. Le référencement comme expert est un choix distinct, activable depuis « Mon compte ».":
     "No. An account is enough. Being listed as an expert is a separate choice, which you can turn on from “My account”.",
   "Que deviennent les avantages acceptés à un événement ?": "What happens to benefits accepted at an event?",
-  "Chaque prestation acceptée (repas, nuitée, transport…) est valorisée, fait l'objet d'une convention d'hospitalité et est publiée sur Transparence Santé.":
-    "Each item of hospitality accepted (meals, overnight stay, travel…) is valued, covered by a hospitality agreement and published on Transparence Santé.",
+  "Chaque prestation acceptée (repas, nuitée, transport…) est valorisée et fait l'objet d'une convention d'hospitalité ; l'organisation la déclare ensuite sur Transparence Santé, à partir de l'export préparé par KolBase.": "Each item of hospitality accepted (meals, overnight stay, travel…) is valued and covered by a hospitality agreement; the organisation then declares it on Transparence Santé, using the export prepared by KolBase.",
   "Comment une organisation sollicite-t-elle un expert ?": "How does an organisation send a collaboration request to an expert?",
-  "Depuis l'annuaire ou une opportunité : elle ouvre un dossier, propose des honoraires vérifiés face aux références de juste contrepartie, puis le dossier suit le circuit de conformité.":
-    "From the directory or an opportunity: it opens a collaboration file and proposes fees checked against fair market value benchmarks; the file then goes through the compliance workflow.",
+  "Depuis l'annuaire ou une opportunité : elle ouvre un dossier, propose des honoraires comparés à un repère indicatif, puis le dossier suit le circuit de conformité.": "From the directory or an opportunity: it opens a file, proposes fees compared with an indicative benchmark, then the file goes through the compliance process.",
   "Mes données sont-elles publiques ?": "Is my data public?",
   "Seuls les experts référencés apparaissent sur le site public, avec des informations limitées. Coordonnées et tarifs sont réservés aux membres connectés.":
     "Only listed experts appear on the public site, with limited information. Contact details and rates are reserved for signed-in members.",

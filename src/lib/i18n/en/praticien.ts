@@ -209,7 +209,7 @@ export const PRATICIEN: Record<string, string> = {
   "Votre profil est visible dans l'annuaire et sur le site public. Les organisations peuvent vous solliciter ; chaque collaboration fera l'objet d'une convention déclarée.": "Your profile is visible in the directory and on the public website. Organisations can send you collaboration requests; each collaboration will be covered by a declared agreement.",
   "Votre profil apparaît dans l'annuaire des experts et sur le site public.": "Your profile appears in the expert directory and on the public website.",
   "Vous recevez des sollicitations et accédez aux opportunités.": "You receive collaboration requests and gain access to opportunities.",
-  "Toute rémunération ou avantage reçu sera conventionné et publié sur Transparence Santé.": "Any payment or benefit received will be covered by an agreement and published on Transparence Santé (the French public transparency register).",
+  "Toute rémunération ou avantage reçu fera l'objet d'une convention, que l'organisation déclare sur Transparence Santé.": "Any payment or benefit received will be covered by an agreement, which the organisation declares on Transparence Santé (the French public transparency register).",
   "Prérequis : renseignez votre numéro RPPS": "Prerequisite: enter your RPPS number",
   "(Informations personnelles, plus bas).": "(Personal details, below).",
   "Retirer mon référencement": "Remove my listing",
@@ -580,4 +580,9 @@ export const PRATICIEN: Record<string, string> = {
   "Signature refusée": "Signature declined",
   "Demande expirée": "Request expired",
   "Demande annulée": "Request cancelled",
+  // Audit : recrutement clos, invitations nominatives, versions concurrentes
+  "Le recrutement de ce dossier est clos : l'organisation doit vous solliciter de nouveau.": "Recruitment for this file is closed: the organisation needs to send you a new request.",
+  "Cette invitation est destinée à {email}. Connectez-vous avec cette adresse (vous êtes connecté en tant que {current}).": "This invitation is for {email}. Sign in with that address (you are signed in as {current}).",
+  "Confirmez d'abord votre adresse e-mail avec le lien reçu à l'inscription (il peut être renvoyé depuis « Mon compte »), puis revenez sur cette page.": "First confirm your email address with the link sent when you signed up (you can resend it from “My account”), then come back to this page.",
+  "Une autre version vient d'être soumise : rechargez la page.": "Another version has just been submitted: reload the page.",
 };

@@ -66,6 +66,9 @@ export function parseParisDateTime(value: string): Date | null {
   if (!m) return null;
   const [y, mo, d, h, mi] = m.slice(1).map(Number);
   const asUtc = Date.UTC(y, mo - 1, d, h, mi);
+  // Date impossible (31 février, 25 h…) : refusée plutôt que reportée au mois suivant.
+  const check = new Date(asUtc);
+  if (check.getUTCFullYear() !== y || check.getUTCMonth() !== mo - 1 || check.getUTCDate() !== d || check.getUTCHours() !== h || check.getUTCMinutes() !== mi) return null;
   // Décalage de Paris à cet instant (gère heure d'été / d'hiver).
   const parts = new Intl.DateTimeFormat("en-US", { timeZone: TZ, hour12: false, year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit" })
     .formatToParts(new Date(asUtc))

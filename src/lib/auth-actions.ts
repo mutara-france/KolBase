@@ -15,6 +15,7 @@ import { notifyPlatformAdmins } from "@/lib/notifications";
 import { consumeToken, findToken, issueToken } from "@/lib/tokens";
 import { anonymizeAccount, soleAdminOrgs } from "@/lib/account";
 import { MAX_NAME, str } from "@/lib/form";
+import { normalize } from "@/lib/search";
 import { getLocale, getT, LOCALE_COOKIE } from "@/lib/i18n/server";
 import { makeT, type T } from "@/lib/i18n";
 
@@ -125,14 +126,12 @@ export async function updateProfile(_: FormState, form: FormData): Promise<FormS
   const locale = str(form, "locale") === "en" ? "en" : "fr";
   // Messages dans la langue de la page affichée après l'enregistrement (la langue choisie, si elle a changé).
   const t = locale !== user.locale ? makeT(locale) : (await getT()).t;
-  await db.user.update({
-    where: { id: user.id },
-    data: { firstName, lastName, phone: str(form, "phone") || null, locale },
-  });
-  // La langue choisie s'applique aussi à cet appareil (le sélecteur de langue pose le même cookie).
-  if (locale !== user.locale) (await cookies()).set(LOCALE_COOKIE, locale, { path: "/", maxAge: 365 * 24 * 3600, sameSite: "lax", httpOnly: true, secure: process.env.NODE_ENV === "production" });
+  const userData = { firstName, lastName, phone: str(form, "phone") || null, locale };
+
+  // Toutes les vérifications d'abord : une erreur n'enregistre rien (pas de sauvegarde partielle).
   let unlisted = false;
   let toCheck: string | null = null;
+  let practitionerData: Record<string, unknown> | null = null;
   if (user.practitioner) {
     const p = user.practitioner;
     const profession = str(form, "profession") || p.profession;
@@ -158,22 +157,31 @@ export async function updateProfile(_: FormState, form: FormData): Promise<FormS
     const identifier = inFrance ? rpps : license;
     // Un identifiant modifié doit être contrôlé à nouveau ; sans identifiant ou hors profession éligible, plus de référencement.
     const idChanged = countryCode !== p.country || rpps !== p.rpps || license !== p.licenseNumber;
-    if (idChanged && identifier) toCheck = inFrance ? `RPPS ${identifier}` : `${licenseRule(countryCode).label} ${identifier} (${country(countryCode).name})`;
+    // Le badge « Identité vérifiée » porte sur un nom, une profession et un identifiant : changer l'un d'eux relance le contrôle
+    // (une simple correction de casse ou d'accent ne compte pas).
+    const identityChanged =
+      normalize(firstName) !== normalize(user.firstName) || normalize(lastName) !== normalize(user.lastName) || profession !== p.profession;
+    const recheck = idChanged || (identityChanged && (p.rppsVerified || !!p.rppsCheckedAt));
+    if (recheck && identifier) toCheck = inFrance ? `RPPS ${identifier}` : `${licenseRule(countryCode).label} ${identifier} (${country(countryCode).name})`;
     unlisted = p.listed && (!identifier || !canBeExpert(profession));
-    await db.practitionerProfile.update({
-      where: { userId: user.id },
-      data: {
-        profession,
-        country: countryCode,
-        rpps,
-        licenseNumber: license,
-        city: str(form, "city") || null,
-        specialty: str(form, "specialty") || null,
-        ...(idChanged ? { rppsVerified: false, rppsCheckedAt: null, rppsCheckNote: null } : {}),
-        ...(unlisted ? { listed: false, listedAt: null } : {}),
-      },
-    });
+    practitionerData = {
+      profession,
+      country: countryCode,
+      rpps,
+      licenseNumber: license,
+      city: str(form, "city") || null,
+      specialty: str(form, "specialty") || null,
+      ...(recheck ? { rppsVerified: false, rppsCheckedAt: null, rppsCheckNote: null } : {}),
+      ...(unlisted ? { listed: false, listedAt: null } : {}),
+    };
   }
+
+  await db.$transaction([
+    db.user.update({ where: { id: user.id }, data: userData }),
+    ...(practitionerData ? [db.practitionerProfile.update({ where: { userId: user.id }, data: practitionerData })] : []),
+  ]);
+  // La langue choisie s'applique aussi à cet appareil (le sélecteur de langue pose le même cookie).
+  if (locale !== user.locale) (await cookies()).set(LOCALE_COOKIE, locale, { path: "/", maxAge: 365 * 24 * 3600, sameSite: "lax", httpOnly: true, secure: process.env.NODE_ENV === "production" });
   await audit(user.id, "user.update_profile", "User", user.id, unlisted ? { unlisted: true } : undefined);
   if (toCheck) notifyPlatformAdmins(`Identité à vérifier : ${firstName} ${lastName}`, `${firstName} ${lastName} a renseigné : ${toCheck}.`, "/admin?onglet=praticiens");
   revalidatePath("/compte");

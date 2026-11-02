@@ -37,8 +37,12 @@ export function reset(key: string) {
   store.delete(key);
 }
 
-/** Adresse IP du client telle que transmise par le proxy de Render. */
+/** Adresse IP du client, telle que transmise par Cloudflare et le proxy de Render. */
 export async function clientIp() {
   const h = await headers();
-  return h.get("x-forwarded-for")?.split(",")[0]?.trim() || h.get("x-real-ip") || "inconnue";
+  // Render passe par Cloudflare, qui écrit lui-même True-Client-IP / CF-Connecting-IP (non falsifiables par le client).
+  // X-Forwarded-For n'est pas nettoyé par Render (il est seulement complété) : sa première valeur peut être inventée par
+  // le client ; on retient donc la dernière, ajoutée par le proxy.
+  const xff = h.get("x-forwarded-for")?.split(",").map((s) => s.trim()).filter(Boolean) ?? [];
+  return h.get("true-client-ip")?.trim() || h.get("cf-connecting-ip")?.trim() || xff[xff.length - 1] || h.get("x-real-ip") || "inconnue";
 }

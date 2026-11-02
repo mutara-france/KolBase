@@ -7,7 +7,7 @@ import { audit } from "@/lib/auth";
 import { ORG_NOT_VERIFIED, isVerifiedOrg, requireMembership } from "@/lib/orgs";
 import { EVENT_MANAGER_ROLES, eventScope, parseParisDateTime } from "@/lib/events";
 import { SUPPLIER_CATEGORIES } from "@/lib/suppliers";
-import { eurToCents, str } from "@/lib/form";
+import { eurToCents, intOrNull, str } from "@/lib/form";
 import { notifyQuote, notifyRfqSent } from "@/lib/notifications";
 
 export type ActionState = { error?: string; ok?: string } | undefined;
@@ -39,7 +39,7 @@ export async function createRfq(_: ActionState, form: FormData): Promise<ActionS
   const deadlineRaw = str(form, "deadline");
   const deadline = deadlineRaw ? parseParisDateTime(`${deadlineRaw}T23:59`) : null;
   if (deadlineRaw && (!deadline || deadline < new Date())) return { error: "Date de réponse invalide ou passée." };
-  const headcount = Number(str(form, "headcount")) || event?.capacity || null;
+  const headcount = intOrNull(str(form, "headcount")) || event?.capacity || null;
   const send = str(form, "intent") === "send";
   if (send && !isVerifiedOrg(org)) return { error: `Envoi impossible pour l'instant : ${ORG_NOT_VERIFIED} Enregistrez la demande en brouillon.` };
 
@@ -85,11 +85,15 @@ export async function awardQuote(form: FormData) {
   if (!quote) return;
   // Conflit d'intérêts : un membre du prestataire (agence mandatée, par exemple) ne retient pas son propre devis.
   if (user.memberships.some((m) => m.organizationId === quote.supplierId)) return;
-  await db.$transaction([
-    db.quote.update({ where: { id: quote.id }, data: { status: "retained" } }),
-    db.quote.updateMany({ where: { rfqId: quote.rfqId, id: { not: quote.id } }, data: { status: "rejected" } }),
-    db.rfq.update({ where: { id: quote.rfqId }, data: { status: "awarded" } }),
-  ]);
+  // La demande n'est attribuée qu'une fois : deux décisions simultanées ne retiennent pas deux devis.
+  const awarded = await db.$transaction(async (tx) => {
+    const { count } = await tx.rfq.updateMany({ where: { id: quote.rfqId, status: "sent" }, data: { status: "awarded" } });
+    if (count === 0) return false;
+    await tx.quote.update({ where: { id: quote.id }, data: { status: "retained" } });
+    await tx.quote.updateMany({ where: { rfqId: quote.rfqId, id: { not: quote.id } }, data: { status: "rejected" } });
+    return true;
+  });
+  if (!awarded) return;
   await audit(user.id, "rfq.award", "Rfq", quote.rfqId, { quoteId: quote.id, supplierId: quote.supplierId, amountCents: quote.amountCents });
   revalidatePath(`/organisations/${orgId}/prestataires`);
 }

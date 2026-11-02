@@ -112,7 +112,11 @@ export async function addMaterialVersion(_: ActionState, form: FormData): Promis
   if (!okUrl(url)) return { error: t("Le lien doit commencer par http:// ou https://.") };
   if (!url && !str(form, "notes")) return { error: t("Indiquez un lien ou décrivez les modifications.") };
   const version = (material.versions[0]?.version ?? 0) + 1;
-  await db.materialVersion.create({ data: { materialId, version, url: url || null, notes: str(form, "notes") || null, submittedById: user.id } });
+  // Deux envois simultanés : la contrainte d'unicité (support, version) n'en garde qu'un ; l'autre reçoit un message clair.
+  const created = await db.materialVersion
+    .create({ data: { materialId, version, url: url || null, notes: str(form, "notes") || null, submittedById: user.id } })
+    .then(() => true, () => false);
+  if (!created) return { error: t("Une autre version vient d'être soumise : rechargez la page.") };
   await audit(user.id, "material.submit", "Project", material.projectId, { materialId, version, title: material.title });
   revalidatePath(`/organisations/${project.organizationId}/dossiers/${material.projectId}`);
   revalidatePath("/sollicitations", "layout");

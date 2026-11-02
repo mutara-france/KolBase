@@ -5,7 +5,7 @@ import { Pipeline, StatusPill, Thread } from "@/components/ProjectBits";
 import { MessageForm, RespondForm } from "@/components/ProjectForms";
 import { db } from "@/lib/db";
 import { requireUser } from "@/lib/auth";
-import { collabType } from "@/lib/projects";
+import { collabType, recruitmentOpen } from "@/lib/projects";
 import { DocumentsPanel, ExpertSignatureBlock, MaterialsPanel } from "@/components/DossierSections";
 import { fmtEur, intlLocale } from "@/lib/i18n";
 import { getT } from "@/lib/i18n/server";
@@ -30,6 +30,8 @@ export default async function Page({ params }: { params: Promise<{ linkId: strin
   const p = link.project;
   const type = collabType(p.typeId);
   const abandoned = p.status === "DECLINE";
+  // Sollicitation restée sans réponse alors que le dossier a avancé : le recrutement est clos.
+  const closed = link.status === "ATT_EXPERTS" && !abandoned && !recruitmentOpen(p.status);
   const { t, locale } = await getT();
   const num = (n: number) => n.toLocaleString(intlLocale(locale));
   // Unité de prestation (« journée », « séance »…) : le pluriel français ajoute un « s », l'anglais a sa propre clé.
@@ -42,7 +44,7 @@ export default async function Page({ params }: { params: Promise<{ linkId: strin
       <main className="narrow stack">
         <p className="muted"><Link href="/sollicitations">{t("Mes sollicitations")}</Link></p>
         <div>
-          <StatusPill status={abandoned ? "DECLINE" : p.status === "ATT_IND" ? "ATT_IND" : link.status} />
+          <StatusPill status={abandoned || closed ? "DECLINE" : p.status === "ATT_IND" ? "ATT_IND" : link.status} />
           <h1>{p.title}</h1>
           <p className="muted">{p.organization.name} · {type ? t(type.label) : p.typeId}{p.therapeuticArea ? ` · ${t(p.therapeuticArea)}` : ""}</p>
         </div>
@@ -60,7 +62,8 @@ export default async function Page({ params }: { params: Promise<{ linkId: strin
         )}
         {link.status !== "ATT_EXPERTS" && link.status !== "DECLINE" && !abandoned && <ExpertSignatureBlock linkId={link.id} signature={link.signature} email={user.email} />}
         {p.description && <section className="card"><h2>{t("Objet")}</h2><p>{p.description}</p></section>}
-        {link.status === "ATT_EXPERTS" && !abandoned && (
+        {closed && <p className="notice warn">{t("Le recrutement de ce dossier est clos : l'organisation doit vous solliciter de nouveau.")}</p>}
+        {link.status === "ATT_EXPERTS" && !abandoned && !closed && (
           <section className="card highlight"><h2>{t("Votre réponse")}</h2><RespondForm linkId={link.id} /></section>
         )}
         {abandoned && <p className="notice error">{t("Ce dossier a été abandonné par l'organisation.")}</p>}

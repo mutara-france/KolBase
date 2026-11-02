@@ -96,7 +96,7 @@ export async function registerToEvent(_: ActionState, form: FormData): Promise<A
   const { t } = await getT();
   const eventId = str(form, "eventId");
   const event = await db.event.findFirst({
-    where: { id: eventId, publishedAt: { not: null } },
+    where: { id: eventId, publishedAt: { not: null }, organization: { verification: "VERIFIED" } },
     include: { benefits: true, _count: { select: { registrations: true } } },
   });
   if (!event) return { error: t("Événement introuvable.") };
@@ -138,9 +138,10 @@ export async function registerToEvent(_: ActionState, form: FormData): Promise<A
 export async function cancelRegistration(form: FormData) {
   const user = await requireUser();
   const eventId = str(form, "eventId");
-  const reg = await db.registration.findUnique({ where: { eventId_userId: { eventId, userId: user.id } } });
-  // Une inscription déjà déclarée ne peut plus être annulée en ligne.
-  if (reg && !reg.declared) {
+  const reg = await db.registration.findUnique({ where: { eventId_userId: { eventId, userId: user.id } }, include: { event: { select: { startsAt: true } } } });
+  // Une inscription déjà déclarée, ou dont l'événement a commencé, ne peut plus être annulée en ligne :
+  // les avantages éventuellement reçus doivent rester traçables (correction par l'organisateur).
+  if (reg && !reg.declared && reg.event.startsAt > new Date()) {
     await db.registration.delete({ where: { id: reg.id } });
     await audit(user.id, "registration.cancel", "Registration", reg.id, { eventId });
   }

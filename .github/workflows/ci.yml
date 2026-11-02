@@ -26,7 +26,6 @@ jobs:
           --health-cmd pg_isready --health-interval 5s --health-timeout 5s --health-retries 12
     env:
       DATABASE_URL: postgresql://kolbase:kolbase@localhost:5432/kolbase
-      AUTH_SECRET: ci
       APP_URL: http://localhost:3000
       DEMO_PASSWORD: demo-ci-mot-de-passe-1
       NEXT_TELEMETRY_DISABLED: "1"

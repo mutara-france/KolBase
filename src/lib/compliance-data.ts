@@ -33,7 +33,7 @@ export async function registerRows(orgId: string, year: number | null, rawSettin
   const range = year ? { gte: new Date(Date.UTC(year, 0, 1)), lt: new Date(Date.UTC(year + 1, 0, 1)) } : undefined;
 
   const links = await db.projectExpert.findMany({
-    where: { project: { organizationId: orgId, status: { in: REGISTER_STATUSES }, ...(range ? { updatedAt: range } : {}) }, status: { not: "DECLINE" } },
+    where: { project: { organizationId: orgId, status: { in: REGISTER_STATUSES }, ...(range ? { updatedAt: range } : {}) }, status: { notIn: ["DECLINE", "ATT_EXPERTS"] } },
     include: { project: true, practitioner: { include: { user: { select: { firstName: true, lastName: true } } } } },
     orderBy: { project: { updatedAt: "desc" } },
   });
