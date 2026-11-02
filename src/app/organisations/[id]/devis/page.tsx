@@ -1,3 +1,6 @@
+import { BookForm, OfferForm, PhotoForm } from "@/components/BookForms";
+import { removeSupplierOffer, removeSupplierPhoto } from "@/lib/book-actions";
+import { delayLabel, EQUIPMENT, OFFER_UNITS, PHOTO_MAX, photoSrc, readCapacities, supplierBook } from "@/lib/supplier-book";
 import { aiEnabled } from "@/lib/ai";
 import Link from "next/link";
 import { redirect } from "next/navigation";
@@ -38,7 +41,12 @@ export default async function Page({ params, searchParams }: { params: Promise<{
   const current = invites.filter((i) => (i.rfq.status === "sent" && !i.declined) || (i.rfq.status === "awarded" && i.rfq.quotes[0]?.status === "retained" && (!i.rfq.event || i.rfq.event.startsAt >= new Date())));
   const shown = onglet === "en-cours" ? current : invites;
   const won = invites.filter((i) => i.rfq.quotes[0]?.status === "retained");
-  const tabs = [["en-cours", `En cours (${current.length})`], ["toutes", `Toutes (${invites.length})`], ["fiche", "Fiche prestataire"]] as const;
+  const tabs = [["en-cours", `En cours (${current.length})`], ["toutes", `Toutes (${invites.length})`], ["fiche", "Mon book"]] as const;
+  const book = onglet === "fiche" ? await supplierBook(id, true) : null;
+  const [photos, offers] = await Promise.all([
+    onglet === "fiche" ? db.organizationPhoto.findMany({ where: { organizationId: id }, select: { id: true, caption: true, createdAt: true }, orderBy: { position: "asc" } }) : Promise.resolve([]),
+    db.supplierOffer.findMany({ where: { organizationId: id }, orderBy: { createdAt: "asc" } }),
+  ]);
 
   return (
     <>
@@ -55,13 +63,77 @@ export default async function Page({ params, searchParams }: { params: Promise<{
           {tabs.map(([k, l]) => <Link key={k} href={`?onglet=${k}`} className={k === onglet ? "active" : ""}>{l}</Link>)}
         </nav>
 
-        {onglet === "fiche" ? (
-          <SupplierProfileForm
-            orgId={id}
-            categories={SUPPLIER_CATEGORIES.map((c) => ({ id: c.id, label: c.label }))}
-            current={{ categories: org.supplierCategories, coverage: org.coverage ?? "", listed: org.listed }}
-            canEdit={isAdmin}
-          />
+        {onglet === "fiche" && book ? (
+          <>
+            <section className="card stack-sm">
+              <div className="card-head">
+                <div>
+                  <h2>Vos indicateurs</h2>
+                  <p className="muted">Calculés à partir de votre activité sur KolBase ; les organisations voient la note, le délai et le taux de réponse.</p>
+                </div>
+                <Link className="btn ghost" href={`/structures/${id}`}>Voir ma page publique</Link>
+              </div>
+              <dl className="hero-facts">
+                <div><dt>Note moyenne</dt><dd>{book.rating != null ? `${book.rating.toFixed(1).replace(".", ",")} / 5` : "—"}<small>{book.reviews.length} avis vérifié{book.reviews.length > 1 ? "s" : ""}</small></dd></div>
+                <div><dt>Taux de réponse</dt><dd>{book.responseRate != null ? `${book.responseRate} %` : "—"}<small>{book.answered} devis sur {book.invites} demandes</small></dd></div>
+                <div><dt>Délai de réponse</dt><dd>{delayLabel(book.delayHours) ?? "—"}<small>médian</small></dd></div>
+                <div><dt>Prestations</dt><dd>{book.retained}<small>retenues via KolBase</small></dd></div>
+              </dl>
+              {book.market.map((m) => (
+                <p key={m.category} className={`text-sm ${m.mine > m.median * 1.15 ? "warn-text" : ""}`}>
+                  {supplierCategoryLabel(m.category)} : votre prix médian est de {m.mine.toLocaleString("fr-FR", { maximumFractionDigits: 2 })} € TTC par participant, pour une médiane de {m.median.toLocaleString("fr-FR", { maximumFractionDigits: 2 })} € sur {m.count} devis de la catégorie (données anonymisées).
+                </p>
+              ))}
+            </section>
+            <SupplierProfileForm
+              orgId={id}
+              categories={SUPPLIER_CATEGORIES.map((c) => ({ id: c.id, label: c.label }))}
+              current={{ categories: org.supplierCategories, coverage: org.coverage ?? "", listed: org.listed }}
+              canEdit={isAdmin}
+            />
+            {isAdmin && (
+              <>
+                <BookForm orgId={id} capacities={readCapacities(org.capacities)} equipment={org.equipment} options={EQUIPMENT} accessible={org.accessible} priceHint={org.priceHint ?? ""} />
+                <section className="card stack-sm">
+                  <h2>Photos ({photos.length}/{PHOTO_MAX})</h2>
+                  <p className="muted">Vos salles, vos réalisations : les photos apparaissent en tête de votre page publique.</p>
+                  {photos.length > 0 && (
+                    <div className="gallery">
+                      {photos.map((ph) => (
+                        <figure key={ph.id}>
+                          {/* eslint-disable-next-line @next/next/no-img-element */}
+                          <img src={photoSrc(ph)} alt={ph.caption ?? ""} loading="lazy" />
+                          <figcaption>
+                            <span>{ph.caption ?? "Sans légende"}</span>
+                            <form action={removeSupplierPhoto}><input type="hidden" name="orgId" value={id} /><input type="hidden" name="photoId" value={ph.id} /><button className="link danger">Retirer</button></form>
+                          </figcaption>
+                        </figure>
+                      ))}
+                    </div>
+                  )}
+                  {photos.length < PHOTO_MAX && <PhotoForm orgId={id} />}
+                </section>
+                <section className="card stack-sm">
+                  <h2>Catalogue de forfaits</h2>
+                  <p className="muted">Vos prestations courantes et leur prix : vous les ajoutez en un clic à vos devis, et les organisations voient vos prix « à partir de ».</p>
+                  {offers.length > 0 && (
+                    <ul className="offer-list">
+                      {offers.map((o) => (
+                        <li key={o.id}>
+                          <span>{o.label}</span>
+                          <span className="actions">
+                            <strong>{formatEUR(o.unitCents)} HT</strong> <span className="muted text-sm">{OFFER_UNITS[o.unit as keyof typeof OFFER_UNITS] ?? o.unit}</span>
+                            <form action={removeSupplierOffer}><input type="hidden" name="orgId" value={id} /><input type="hidden" name="offerId" value={o.id} /><button className="link danger">Retirer</button></form>
+                          </span>
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                  <OfferForm orgId={id} units={OFFER_UNITS} />
+                </section>
+              </>
+            )}
+          </>
         ) : (
           <>
             {shown.length === 0 && <div className="card empty"><Receipt size={22} /><p className="muted">Aucune demande {onglet === "en-cours" ? "en cours" : "reçue"}.</p></div>}
@@ -95,6 +167,7 @@ export default async function Page({ params, searchParams }: { params: Promise<{
                         orgId={id}
                         rfqId={r.id}
                         category={r.category}
+                        offers={offers.map((o) => ({ label: o.label, unit: o.unit, unitCents: o.unitCents }))}
                         ai={aiEnabled()}
                         headcount={r.headcount}
                         uploads={storageEnabled()}

@@ -9,7 +9,7 @@ import { Avatar } from "@/components/Avatar";
 import { AiDraft } from "@/components/AiDraft";
 
 type Cat = { id: string; label: string };
-type Supplier = { id: string; name: string; categories: string[]; city: string | null; coverage: string | null; about: string | null; since: number };
+type Supplier = { id: string; name: string; categories: string[]; city: string | null; coverage: string | null; about: string | null; since: number; rating?: number | null; reviews?: number };
 type EventOpt = { id: string; label: string; city: string | null; capacity: number | null };
 
 export function SupplierLine({ s, catLabel, selected, onToggle }: { s: Supplier; catLabel: string; selected?: boolean; onToggle?: () => void }) {
@@ -17,8 +17,11 @@ export function SupplierLine({ s, catLabel, selected, onToggle }: { s: Supplier;
     <div className={`supplier${selected ? " selected" : ""}`}>
       <Avatar name={s.name} size={38} square />
       <div className="supplier-body">
-        <div><strong>{s.name}</strong> <span className="pill electric">Référencé</span></div>
-        <div className="muted">{catLabel}{s.coverage ? ` · ${s.coverage}` : s.city ? ` · ${s.city}` : ""} · référencé depuis {s.since}</div>
+        <div>
+          <strong>{s.name}</strong> <span className="pill electric">Référencé</span>
+          {s.rating != null && <span className="rating"> ★ {s.rating.toFixed(1).replace(".", ",")} <span className="muted text-xs">({s.reviews} avis)</span></span>}
+        </div>
+        <div className="muted">{catLabel}{s.coverage ? ` · ${s.coverage}` : s.city ? ` · ${s.city}` : ""} · référencé depuis {s.since} · <a href={`/structures/${s.id}`} target="_blank" rel="noreferrer">voir le book</a></div>
         {!onToggle && s.about && <p>{s.about}</p>}
       </div>
       {onToggle && (
@@ -99,7 +102,7 @@ const LINE_EXAMPLE: Record<string, string> = {
 };
 
 /** Devis du prestataire : détail ligne par ligne (total calculé), TVA, validité, conditions et PDF signé. */
-export function QuoteForm({ orgId, rfqId, category, current, headcount, uploads, ai = false }: { orgId: string; rfqId: string; category: string; current?: QuoteCurrent; headcount: number | null; uploads: boolean; ai?: boolean }) {
+export function QuoteForm({ orgId, rfqId, category, current, headcount, uploads, ai = false, offers = [] }: { orgId: string; rfqId: string; category: string; current?: QuoteCurrent; headcount: number | null; uploads: boolean; ai?: boolean; offers?: { label: string; unit: string; unitCents: number }[] }) {
   const [state, action, pending] = useActionState(submitQuote, undefined);
   const [open, setOpen] = useState(!current);
   // Un ancien devis au montant global devient une ligne « Forfait », modifiable comme les autres.
@@ -133,7 +136,26 @@ export function QuoteForm({ orgId, rfqId, category, current, headcount, uploads,
             <button type="button" className="link danger" aria-label="Retirer la ligne" onClick={() => setRows((rs) => (rs.length > 1 ? rs.filter((x) => x.key !== r.key) : [{ key: Date.now(), label: "", qty: "1", unit: "" }]))}>×</button>
           </div>
         ))}
-        <button type="button" className="link" onClick={() => setRows((rs) => [...rs, { key: Date.now(), label: "", qty: "1", unit: "" }])}><Plus size={13} /> Ajouter une ligne</button>
+        <div className="actions">
+          <button type="button" className="link" onClick={() => setRows((rs) => [...rs, { key: Date.now(), label: "", qty: "1", unit: "" }])}><Plus size={13} /> Ajouter une ligne</button>
+          {offers.length > 0 && (
+            <select
+              aria-label="Ajouter depuis mon catalogue"
+              value=""
+              onChange={(e) => {
+                const o = offers[Number(e.target.value)];
+                if (!o) return;
+                // Forfait « par personne » : quantité = participants attendus.
+                const qty = o.unit === "personne" && headcount ? String(headcount) : "1";
+                const row = { key: Date.now(), label: o.label, qty, unit: String(o.unitCents / 100).replace(".", ",") };
+                setRows((rs) => (rs.length === 1 && !rs[0].label && !rs[0].unit ? [row] : [...rs, row]));
+              }}
+            >
+              <option value="">+ Depuis mon catalogue…</option>
+              {offers.map((o, i) => <option key={i} value={i}>{o.label} ({(o.unitCents / 100).toLocaleString("fr-FR")} € HT)</option>)}
+            </select>
+          )}
+        </div>
       </div>
       <div className="row">
         <label>TVA

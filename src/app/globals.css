@@ -848,3 +848,20 @@ body:has(.sidebar) .site-footer { padding: 24px 32px; }
 .copy-block { white-space: pre-wrap; font-size: 13px; background: var(--bg-subtle); border: 1px solid var(--line); border-radius: 12px; padding: 12px 14px; margin: 8px 0 0; user-select: all; }
 .payment-row { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; padding: 10px 14px; border-radius: 14px; border: 1px dashed var(--line); }
 .payment-row input[name=amount] { width: 110px; }
+.stars { display: inline-flex; gap: 4px; }
+.stars label, .form .stars label { cursor: pointer; color: var(--line-strong); display: inline-flex; flex: none; position: relative; }
+.stars label:focus-within { outline: 2px solid var(--outremer); outline-offset: 2px; border-radius: 4px; }
+.stars label input { position: absolute; opacity: 0; width: 1px; height: 1px; }
+.stars label.on, .stars label:hover { color: #e0a100; }
+.stars label.on svg { fill: #e0a100; }
+.rating { display: inline-flex; align-items: center; gap: 4px; color: #b07d00; font-weight: 600; font-size: 13px; }
+.rating svg { fill: #e0a100; color: #e0a100; }
+.stat-value .rating { font-size: inherit; font-weight: inherit; color: var(--ink); gap: 6px; }
+.gallery { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 10px; }
+.gallery figure { margin: 0; border-radius: 14px; overflow: hidden; border: 1px solid var(--line); background: var(--bg-subtle); }
+.gallery img { width: 100%; height: 150px; object-fit: cover; display: block; }
+.gallery figcaption { font-size: 12px; color: var(--ink-soft); padding: 6px 10px; display: flex; justify-content: space-between; gap: 8px; align-items: center; }
+.offer-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
+.offer-list li { display: flex; justify-content: space-between; gap: 12px; padding: 8px 12px; border: 1px solid var(--line); border-radius: 12px; font-size: 14px; align-items: center; }
+.offer-list li .actions { margin-top: 0; flex-wrap: nowrap; white-space: nowrap; }
+.review { padding: 12px 14px; border: 1px solid var(--line); border-radius: 14px; display: flex; flex-direction: column; gap: 4px; }

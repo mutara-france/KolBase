@@ -540,6 +540,50 @@ async function main() {
     },
   });
 
+  // ─── Book des prestataires : capacités, équipements, tarifs indicatifs, prestations passées et avis ───
+  const BOOKS: { id: string; capacities: Record<string, number>; equipment: string[]; accessible: boolean; priceHint: string; offers: [string, number, string][] }[] = [
+    { id: "demo-sup-belleville", capacities: { cocktail: 300, banquet: 180 }, equipment: [], accessible: true, priceHint: "Cocktail à partir de 32 € HT par personne",
+      offers: [["Pause café d'accueil", 600, "personne"], ["Cocktail dînatoire 12 pièces, boissons comprises", 3200, "personne"], ["Déjeuner assis, 3 plats", 3800, "personne"], ["Maître d'hôtel (4 h)", 10000, "forfait"]] },
+    { id: "demo-sup-confluence", capacities: { seats: 200, cocktail: 250 }, equipment: ["Vidéoprojecteur et écran", "Sonorisation et micros", "Visioconférence", "Captation vidéo", "Salles de sous-commission", "Wi-Fi"], accessible: true, priceHint: "Salle d'atelier à partir de 520 € HT la journée",
+      offers: [["Salle d'atelier (journée)", 52000, "jour"], ["Amphithéâtre 200 places (journée)", 240000, "jour"], ["Forfait technique : écran, visioconférence", 12000, "forfait"]] },
+    { id: "demo-sup-rivegauche", capacities: { rooms: 80 }, equipment: ["Wi-Fi", "Restauration sur place", "Parking"], accessible: true, priceHint: "Chambre à partir de 118 € HT la nuit",
+      offers: [["Chambre individuelle, petit-déjeuner inclus", 11800, "nuit"]] },
+    { id: "demo-sup-navette", capacities: {}, equipment: [], accessible: true, priceHint: "Navette 50 places à partir de 690 € HT",
+      offers: [["Navette 50 places, aller-retour gare", 69000, "forfait"]] },
+  ];
+  for (const b of BOOKS) {
+    await db.organization.updateMany({ where: { id: b.id, priceHint: null }, data: { capacities: b.capacities, equipment: b.equipment, accessible: b.accessible, priceHint: b.priceHint } });
+    if ((await db.supplierOffer.count({ where: { organizationId: b.id } })) === 0)
+      await db.supplierOffer.createMany({ data: b.offers.map(([label, unitCents, unit]) => ({ organizationId: b.id, label, unitCents, unit })) });
+  }
+  // Prestations de l'édition précédente : cocktail et navette évalués, déjeuner des intervenants encore à évaluer.
+  const PAST_RFQS: { id: string; category: string; supplier: string; eur: number; needs: string; note: string; review?: [number, string] }[] = [
+    { id: "demo-rfq-passe-cocktail", category: "restauration", supplier: "demo-sup-belleville", eur: 1850, needs: "Cocktail dînatoire pour 50 personnes à l'issue de la soirée.",
+      note: "Cocktail 12 pièces, boissons sans alcool et vin, service compris.", review: [5, "Service ponctuel et discret, quantités justes, options végétariennes appréciées."] },
+    { id: "demo-rfq-passe-navette", category: "transport", supplier: "demo-sup-navette", eur: 690, needs: "Navette aller-retour entre la gare Part-Dieu et l'hôtel pour 40 personnes.",
+      note: "Navette 50 places, départ 18 h 30 et retour 23 h.", review: [4, "Chauffeur à l'heure, véhicule confortable ; prévoir un panneau d'accueil plus visible en gare."] },
+    { id: "demo-rfq-passe-dejeuner", category: "restauration", supplier: "demo-sup-belleville", eur: 420, needs: "Déjeuner de travail des intervenants avant la soirée, 10 personnes.",
+      note: "Déjeuner assis, 3 plats, servi en salle de préparation." },
+  ];
+  for (const r of PAST_RFQS) {
+    await db.rfq.upsert({
+      where: { id: r.id },
+      update: {},
+      create: {
+        id: r.id, organizationId: "demo-org-dentalys", eventId: "demo-ev-passe", category: r.category, needs: r.needs, city: "Lyon", headcount: 50, status: "awarded",
+        deadline: at(-55, 18), sentAt: at(-60), createdAt: at(-61), createdById: "demo-u-julien",
+        suppliers: { create: [{ supplierId: r.supplier }] },
+        quotes: { create: [{ supplierId: r.supplier, amountCents: r.eur * 100, vatBp: r.category === "restauration" ? 1000 : 2000, delay: "Confirmé", note: r.note, status: "retained", createdAt: at(-57) }] },
+      },
+    });
+    if (r.review)
+      await db.supplierReview.upsert({
+        where: { rfqId: r.id },
+        update: {},
+        create: { rfqId: r.id, supplierId: r.supplier, clientId: "demo-org-dentalys", authorId: "demo-u-julien", rating: r.review[0], comment: r.review[1], createdAt: at(-35) },
+      });
+  }
+
   // ─── Suivis (fil « Mes suivis ») ─────────────────────────────────────────
   const FOLLOWS: [string, string, "p" | "o"][] = [
     ["demo-u-claire", "demo-p-durand", "p"], ["demo-u-claire", "demo-p-nguyen", "p"], ["demo-u-claire", "demo-p-blanc", "p"],

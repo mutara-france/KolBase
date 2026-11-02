@@ -1,3 +1,4 @@
+import { ReviewForm } from "@/components/BookForms";
 import { aiEnabled } from "@/lib/ai";
 import Link from "next/link";
 import { Check, Info, Receipt, Send, X } from "lucide-react";
@@ -37,6 +38,7 @@ export default async function Page({ params, searchParams }: { params: Promise<{
         suppliers: { include: { supplier: true } },
         quotes: { include: { supplier: true }, orderBy: { amountCents: "asc" } },
         messages: { include: { author: { select: { firstName: true, lastName: true } } }, orderBy: { createdAt: "asc" } },
+        review: true,
       },
       orderBy: { createdAt: "desc" },
     }),
@@ -50,7 +52,12 @@ export default async function Page({ params, searchParams }: { params: Promise<{
         orderBy: { startsAt: "desc" },
       })
     : [];
-  const suppliers = suppliersRaw.map((s) => ({ id: s.id, name: s.name, categories: s.supplierCategories, city: s.headquarters, coverage: s.coverage, about: s.about, since: s.createdAt.getFullYear() }));
+  const ratings = await db.supplierReview.groupBy({ by: ["supplierId"], _avg: { rating: true }, _count: { _all: true } });
+  const ratingOf = (sid: string) => ratings.find((r) => r.supplierId === sid);
+  const suppliers = suppliersRaw.map((s) => ({
+    id: s.id, name: s.name, categories: s.supplierCategories, city: s.headquarters, coverage: s.coverage, about: s.about, since: s.createdAt.getFullYear(),
+    rating: ratingOf(s.id)?._avg.rating ?? null, reviews: ratingOf(s.id)?._count._all ?? 0,
+  }));
   const awarded = rfqs.filter((r) => r.status === "awarded");
   const engaged = awarded.reduce((s, r) => s + (r.quotes.find((q) => q.status === "retained")?.amountCents ?? 0), 0);
   const list = cat ? suppliers.filter((s) => s.categories.includes(cat)) : suppliers;
@@ -204,6 +211,11 @@ export default async function Page({ params, searchParams }: { params: Promise<{
                     )}
                     {kept && <span className="pill ok"><Check size={12} /> Attribué à {kept.supplier.name} — {formatEUR(kept.amountCents)}</span>}
                   </div>
+                  {kept && r.status === "awarded" && isOrganizer && (!r.event || r.event.startsAt < new Date()) && (
+                    r.review
+                      ? <p className="text-sm muted">Votre avis : <span className="rating">{"★".repeat(r.review.rating)}</span> {r.review.comment ? `« ${r.review.comment} »` : ""}</p>
+                      : <ReviewForm orgId={id} rfqId={r.id} supplier={kept.supplier.name} />
+                  )}
                 </section>
               );
             })}

@@ -1203,6 +1203,74 @@ async function submitNewOrg(page, siren) {
   await ctx.close();
 }
 
+// ── Book prestataire : page publique, catalogue, photos, avis vérifiés ────
+{
+  const anon = await session();
+  await anon.page.goto(`${BASE}/structures/demo-sup-belleville`);
+  let t = await text(anon.page);
+  check("Book public : indicateurs, capacités et tarifs", t.includes("Délai de réponse médian") && t.includes("300 personnes en cocktail") && t.includes("Tarifs indicatifs") && /Cocktail dînatoire 12 pièces[\s\S]*32,00\s€ HT/.test(t));
+  check("Book public : avis vérifié et référence", t.includes("Service ponctuel et discret") && t.includes("Références") && t.includes("Restauration"));
+  await anon.ctx.close();
+
+  // Le prestataire enrichit son book : prestation au catalogue et photo.
+  const sup = await session();
+  await login(sup.page, "ludovic.perrin@demo.kolbase.local");
+  await sup.page.goto(`${BASE}/organisations/demo-sup-belleville/devis?onglet=fiche`);
+  t = await text(sup.page);
+  check("Mon book : indicateurs, photos et catalogue", /taux de réponse/i.test(t) && t.includes("Photos (0/8)") && t.includes("Catalogue de forfaits"));
+  const offer = sup.page.locator("form.offer-form");
+  await offer.locator('input[name="label"]').fill("Mignardises sucrées (3 pièces)");
+  await offer.locator('input[name="price"]').fill("4,50");
+  await offer.locator('button:has-text("Ajouter au catalogue")').click();
+  await sup.page.waitForTimeout(1200);
+  check("Mon book : prestation ajoutée au catalogue", (await text(sup.page)).includes("Mignardises sucrées (3 pièces)"));
+  const png = Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==", "base64");
+  const photoForm = sup.page.locator("form.photo-form");
+  await photoForm.locator('input[name="photo"]').setInputFiles({ name: "salle.png", mimeType: "image/png", buffer: png });
+  await photoForm.locator('input[name="caption"]').fill("Buffet en salle Saône");
+  await photoForm.locator('button:has-text("Ajouter la photo")').click();
+  await sup.page.waitForTimeout(1500);
+  const src = await sup.page.locator(".gallery img").first().getAttribute("src");
+  check("Mon book : photo ajoutée", !!src && src.startsWith("/photos/"), src ?? "");
+  const pub = await session();
+  const res = await pub.ctx.request.get(`${BASE}${src}`);
+  check("Photo du book : publique pour un prestataire référencé", res.ok() && res.headers()["content-type"] === "image/png");
+  await pub.ctx.close();
+  // Le catalogue préremplit une ligne de devis (quantité = participants attendus).
+  const pgc = new pg.Client({ connectionString: process.env.DATABASE_URL });
+  await pgc.connect();
+  await pgc.query(`insert into "Rfq" (id, "organizationId", "eventId", category, needs, status, "sentAt", headcount, city) values ('e2e-rfq-book', 'demo-org-dentalys', 'demo-ev-soiree-implanto', 'restauration', 'Pause de l''après-midi, 60 personnes.', 'sent', now(), 60, 'Lyon')`);
+  await pgc.query(`insert into "RfqSupplier" ("rfqId", "supplierId") values ('e2e-rfq-book', 'demo-sup-belleville')`);
+  await pgc.end();
+  await sup.page.goto(`${BASE}/organisations/demo-sup-belleville/devis`);
+  const qf = sup.page.locator("section:has-text(\"Pause de l'après-midi\") form.quote-form");
+  const pick = qf.locator('select[aria-label="Ajouter depuis mon catalogue"]');
+  const optVal = await pick.locator("option", { hasText: "Mignardises sucrées" }).getAttribute("value");
+  await pick.selectOption(optVal);
+  const lastLabel = qf.locator('input[name="line_label"]').last();
+  const qty = await qf.locator('input[name="line_qty"]').last().inputValue();
+  check("Devis : ligne préremplie depuis le catalogue", (await lastLabel.inputValue()) === "Mignardises sucrées (3 pièces)" && qty === "60" && (await qf.locator('input[name="line_unit"]').last().inputValue()) === "4,5", qty);
+  await sup.ctx.close();
+
+  // L'organisation évalue une prestation passée ; le prestataire est prévenu.
+  const { ctx, page } = await session();
+  await login(page, "julien.faure@demo.kolbase.local");
+  await page.goto(`${BASE}/organisations/demo-org-dentalys/prestataires`);
+  check("Avis déjà laissé visible sur la demande", (await page.locator("section#rfq-demo-rfq-passe-cocktail").innerText()).includes("Votre avis"));
+  check("Pas d'avis possible avant la prestation", (await page.locator("section#rfq-demo-rfq-board-salle form.review-form").count()) === 0);
+  const rv = page.locator("section#rfq-demo-rfq-passe-dejeuner form.review-form");
+  await rv.locator('.stars label').nth(3).click();
+  await rv.locator('textarea[name="comment"]').fill("Déjeuner servi à l'heure, intervenants ravis.");
+  await rv.locator('button:has-text("Publier l\'avis")').click();
+  await page.waitForTimeout(1200);
+  check("Avis publié", (await page.locator("section#rfq-demo-rfq-passe-dejeuner").innerText()).includes("Votre avis"));
+  check("E-mail au prestataire : nouvel avis", !!(await waitMail("ludovic.perrin@demo.kolbase.local", "Nouvel avis de Dentalys Implants : 4/5")));
+  await page.goto(`${BASE}/organisations/demo-org-dentalys/prestataires?onglet=annuaire`);
+  t = await text(page);
+  check("Annuaire : note moyenne et lien vers le book", /Traiteur Belleville[\s\S]{0,40}★ 4,5/.test(t) && (await page.locator('a[href="/structures/demo-sup-belleville"]').count()) > 0);
+  await ctx.close();
+}
+
 // ── 4. Limitation des tentatives ───────────────────────────────────────────
 {
   const { ctx, page } = await session();
