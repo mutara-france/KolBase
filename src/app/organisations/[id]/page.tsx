@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { notFound } from "next/navigation";
 import { SiteHeader } from "@/components/SiteHeader";
 import { CreateMenu, DashHead, DashStats, Timeline, TodoGroups, todayLabel, type TimelineItem } from "@/components/Dashboard";
@@ -13,7 +14,7 @@ const plural = (n: number, one: string, many: string) => `${n} ${n > 1 ? many : 
 /** Accueil d'une organisation : ce qui attend une action, puis ce qui arrive. Le reste est dans les rubriques. */
 export default async function Page({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
-  const { user } = await requireMembership(id);
+  const { user, isAdmin } = await requireMembership(id);
   const o = await orgOverview(id);
   if (!o) notFound();
   const { org, can, todos, projects, events, calls, hosp, rfqs } = o;
@@ -83,6 +84,14 @@ export default async function Page({ params }: { params: Promise<{ id: string }>
       <SiteHeader />
       <main className="stack dash">
         <DashHead kicker={`${todayLabel()} · ${org.name}`} title={`Bonjour ${user.firstName}.`} lede={lede} action={<CreateMenu items={create} />} />
+        {org.verification !== "VERIFIED" && (
+          <p className={`notice ${org.verification === "REJECTED" ? "error" : "warn"}`}>
+            {org.verification === "REJECTED"
+              ? `KolBase n'a pas validé votre organisation${org.verificationNote ? ` : ${org.verificationNote}` : ""}.`
+              : "Votre organisation est en attente de validation par KolBase. D'ici là, elle ne peut ni solliciter de praticiens, ni publier."}{" "}
+            {isAdmin ? <Link href={`${base}/membres`}>{org.siren ? "Voir la demande" : "Renseigner le SIREN"}</Link> : "Un administrateur de l'organisation peut compléter la demande."}
+          </p>
+        )}
         <DashStats stats={stats} />
         <div className={`dash-layout${timeline.length ? "" : " single"}`}>
           <section className="card dash-card" aria-labelledby="a-faire">

@@ -96,6 +96,9 @@ model PractitionerProfile {
   speakerApplications SpeakerApplication[]
   followers     Follow[]
   orcidSyncedAt DateTime?
+  orcidVerified Boolean   @default(false) // iD obtenu par connexion au compte ORCID
+  rppsCheckedAt DateTime? // contrôle du RPPS par un administrateur KolBase (validé ou refusé)
+  rppsCheckNote String?   // motif d'un refus
 }
 
 // Publication scientifique déclarée par le praticien.
@@ -128,6 +131,13 @@ model PractitionerStructure {
   since          DateTime?
 }
 
+// Validation des organisations par KolBase (SIREN contrôlé, puis validation par un administrateur).
+enum OrgVerification {
+  PENDING
+  VERIFIED
+  REJECTED
+}
+
 enum OrgKind {
   INDUSTRIEL
   SOCIETE_SAVANTE
@@ -154,6 +164,15 @@ model Organization {
   // Prestataires référencés : catégories de prestation et zone couverte.
   supplierCategories String[] @default([])
   coverage           String?
+  // Identité légale et validation par KolBase.
+  siren              String?
+  legalName          String?          // dénomination officielle (API Recherche d'entreprises)
+  sirenActive        Boolean?         // entreprise active selon l'API (null : contrôle impossible)
+  sirenCheckedAt     DateTime?
+  verification       OrgVerification  @default(PENDING)
+  verifiedAt         DateTime?
+  verifiedById       String?
+  verificationNote   String?
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
 

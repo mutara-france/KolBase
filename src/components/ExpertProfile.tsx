@@ -4,6 +4,7 @@ import { Avatar } from "@/components/Avatar";
 import { FollowButton } from "@/components/FollowButton";
 import { db } from "@/lib/db";
 import { collabType } from "@/lib/projects";
+import { drPrefix } from "@/lib/professions";
 import { canSee, kolVisibility, type Viewer, type VisLevel } from "@/lib/visibility";
 
 function Hidden({ level, viewer, label }: { level: VisLevel; viewer: Viewer; label: string }) {
@@ -29,7 +30,7 @@ export async function ExpertProfile({ id, viewer, solicitHref, userId = null }: 
   });
   if (!p) return null;
   const v = kolVisibility(p.visibility);
-  const name = `Dr ${p.user.firstName} ${p.user.lastName}`;
+  const name = `${drPrefix(p.profession)}${p.user.firstName} ${p.user.lastName}`;
   const orgs = [...new Map(p.projectLinks.map((l) => [l.project.organization.id, l.project.organization.name])).values()];
 
   return (
@@ -78,7 +79,7 @@ export async function ExpertProfile({ id, viewer, solicitHref, userId = null }: 
               <dt>Ville</dt><dd>{p.city ?? "—"}</dd>
               <dt>Établissement</dt><dd>{p.hospital ?? "—"}</dd>
               <dt><Languages size={12} /> Langues</dt><dd>{p.languages.join(", ") || "—"}</dd>
-              {p.orcid && (<><dt>ORCID</dt><dd><a href={`https://orcid.org/${p.orcid}`} target="_blank" rel="noreferrer">{p.orcid}</a></dd></>)}
+              {p.orcid && (<><dt>ORCID</dt><dd><a href={`https://orcid.org/${p.orcid}`} target="_blank" rel="noreferrer">{p.orcid}</a>{p.orcidVerified && <span className="verif ok small"> <BadgeCheck size={12} /> vérifié</span>}</dd></>)}
             </dl>
           ) : <Hidden level={v.contact} viewer={viewer} label="Coordonnées" />}
         </section>

@@ -9,6 +9,8 @@ import { countFor, orgMenuLinks, orgNavItems, type ShellItem, type ShellSpace } 
 import { orgOverview } from "@/lib/org-overview";
 import { SOURCING_ROLES } from "@/lib/projects";
 import { unseenFollowCount } from "@/lib/follows";
+import { drPrefix } from "@/lib/professions";
+import { isPlatformAdmin } from "@/lib/platform";
 import type { OrgKind, OrgRole } from "@/generated/prisma/client";
 
 /**
@@ -86,11 +88,12 @@ export async function SiteHeader({ variant = "app", section }: { variant?: "app"
 
   return (
     <AppShell
-      user={{ name: `${p ? "Dr " : ""}${fullName}`, initials: initialsOf(fullName), color: avatarColor(fullName) }}
+      user={{ name: `${drPrefix(p?.profession)}${fullName}`, initials: initialsOf(fullName), color: avatarColor(fullName) }}
       spaces={spaces}
       initialSpace={initialSpace ? decodeURIComponent(initialSpace) : undefined}
       activeKey={section}
       bell={showBell ? { count: followCount } : null}
+      admin={isPlatformAdmin(user)}
     />
   );
 }

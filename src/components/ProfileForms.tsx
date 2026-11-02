@@ -49,13 +49,25 @@ export function OrgVisibilityForm({ orgId, v, listed }: { orgId: string; v: Comp
   );
 }
 
-export function OrcidImportForm({ orcid, syncedAt }: { orcid: string | null; syncedAt: string | null }) {
+export function OrcidImportForm({ orcid, syncedAt, oauth, verified }: { orcid: string | null; syncedAt: string | null; oauth: boolean; verified: boolean }) {
   const [state, action, pending] = useActionState(importOrcid, undefined);
+  // Connexion ORCID activée : l'iD est prouvé en se connectant à son compte, puis importé sans saisie.
+  if (oauth && !verified)
+    return (
+      <div className="form orcid-form">
+        <p className="muted">Connectez votre compte ORCID pour importer vos publications : KolBase vérifie ainsi que l&apos;iD est bien le vôtre.</p>
+        <a className="btn secondary" href="/compte/orcid">Connecter mon compte ORCID</a>
+      </div>
+    );
   return (
     <form action={action} className="form orcid-form">
       <Notice state={state} />
       <div className="row">
-        <label>Identifiant ORCID<input name="orcid" defaultValue={orcid ?? ""} placeholder="0000-0000-0000-0000" /></label>
+        {oauth ? (
+          <p style={{ alignSelf: "end" }}>ORCID <strong className="mono">{orcid}</strong> <span className="pill ok">vérifié</span></p>
+        ) : (
+          <label>Identifiant ORCID<input name="orcid" defaultValue={orcid ?? ""} placeholder="0000-0000-0000-0000" /></label>
+        )}
         <button className="btn secondary" disabled={pending} style={{ alignSelf: "end" }}>{pending ? "Import…" : "Importer depuis ORCID"}</button>
       </div>
       <p className="hint">Récupère les travaux publics de votre profil ORCID, sans doublon.{syncedAt ? ` Dernier import : ${syncedAt}.` : ""}</p>

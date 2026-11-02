@@ -30,12 +30,15 @@ export function AppShell({
   initialSpace,
   activeKey,
   bell,
+  admin = false,
 }: {
   user: ShellUser;
   spaces: ShellSpace[];
   initialSpace?: string;
   activeKey?: string;
   bell: { count: number } | null;
+  /** Administrateur de la plateforme KolBase : lien vers l'administration. */
+  admin?: boolean;
 }) {
   const path = usePathname();
   const space = resolveSpace(spaces, path, initialSpace);
@@ -61,7 +64,7 @@ export function AppShell({
               {bell.count > 0 && <span className="icon-badge" aria-hidden>{bell.count}</span>}
             </Link>
           )}
-          <AccountMenu user={user} space={space} spaces={spaces} />
+          <AccountMenu user={user} space={space} spaces={spaces} admin={admin} />
         </div>
       </header>
 
@@ -142,7 +145,7 @@ function SpaceSwitch({ space, spaces }: { space: ShellSpace; spaces: ShellSpace[
 }
 
 /** Menu sous l'avatar : réglages de l'espace, compte, aide, déconnexion. */
-function AccountMenu({ user, space, spaces }: { user: ShellUser; space?: ShellSpace; spaces: ShellSpace[] }) {
+function AccountMenu({ user, space, spaces, admin }: { user: ShellUser; space?: ShellSpace; spaces: ShellSpace[]; admin: boolean }) {
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
   useEffect(() => {
@@ -210,6 +213,7 @@ function AccountMenu({ user, space, spaces }: { user: ShellUser; space?: ShellSp
           )}
           <Link href="/organisations" role="menuitem"><Building2 size={18} strokeWidth={1.8} aria-hidden />Mes organisations</Link>
           <Link href="/aide" role="menuitem"><CircleHelp size={18} strokeWidth={1.8} aria-hidden />Aide</Link>
+          {admin && <Link href="/admin" role="menuitem"><ShieldCheck size={18} strokeWidth={1.8} aria-hidden />Administration KolBase</Link>}
           <hr />
           <form action={signOut}>
             <button type="submit" role="menuitem"><LogOut size={18} strokeWidth={1.8} aria-hidden />Se déconnecter</button>

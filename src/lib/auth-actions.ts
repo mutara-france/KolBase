@@ -7,6 +7,7 @@ import { audit, createSession, destroyOtherSessions, destroySession, requireUser
 import { hashPassword, passwordProblem, verifyPassword } from "@/lib/password";
 import { blockedFor, clientIp, hit, reset } from "@/lib/rate-limit";
 import { safeNext } from "@/lib/safe-redirect";
+import { canBeExpert, isRpps, normalizeRpps, PROFESSIONS } from "@/lib/professions";
 import { str } from "@/lib/form";
 
 export type FormState = { error?: string; ok?: string } | undefined;
@@ -33,6 +34,7 @@ export async function signUp(_: FormState, form: FormData): Promise<FormState> {
   const pwErr = passwordProblem(password);
   if (pwErr) return { error: pwErr };
   if (!form.get("cgu")) return { error: "Vous devez accepter les conditions d'utilisation." };
+  if (profession && !(PROFESSIONS as readonly string[]).includes(profession)) return { error: "Profession invalide." };
   const signupKey = `signup:ip:${await clientIp()}`;
   const wait = blockedFor(signupKey, SIGNUP_MAX_PER_IP, SIGNUP_WINDOW_MS);
   if (wait) return tooMany(wait);
@@ -91,20 +93,33 @@ export async function updateProfile(_: FormState, form: FormData): Promise<FormS
     where: { id: user.id },
     data: { firstName, lastName, phone: str(form, "phone") || null, locale: str(form, "locale") === "en" ? "en" : "fr" },
   });
+  let unlisted = false;
   if (user.practitioner) {
+    const p = user.practitioner;
+    const profession = str(form, "profession") || p.profession;
+    if (!(PROFESSIONS as readonly string[]).includes(profession) && profession !== p.profession) return { error: "Profession invalide." };
+    const rpps = normalizeRpps(str(form, "rpps")) || null;
+    if (rpps && !isRpps(rpps)) return { error: "Le numéro RPPS comporte 11 chiffres." };
+    if (rpps && rpps !== p.rpps && (await db.practitionerProfile.findFirst({ where: { rpps, NOT: { id: p.id } } })))
+      return { error: "Ce numéro RPPS est déjà associé à un autre compte. Contactez-nous s'il s'agit du vôtre." };
+    // Un RPPS modifié doit être contrôlé à nouveau ; sans RPPS ou hors profession éligible, plus de référencement.
+    const rppsChanged = rpps !== p.rpps;
+    unlisted = p.listed && (!rpps || !canBeExpert(profession));
     await db.practitionerProfile.update({
       where: { userId: user.id },
       data: {
-        profession: str(form, "profession") || user.practitioner.profession,
-        rpps: str(form, "rpps") || null,
+        profession,
+        rpps,
         city: str(form, "city") || null,
         specialty: str(form, "specialty") || null,
+        ...(rppsChanged ? { rppsVerified: false, rppsCheckedAt: null, rppsCheckNote: null } : {}),
+        ...(unlisted ? { listed: false, listedAt: null } : {}),
       },
     });
   }
-  await audit(user.id, "user.update_profile", "User", user.id);
+  await audit(user.id, "user.update_profile", "User", user.id, unlisted ? { unlisted: true } : undefined);
   revalidatePath("/compte");
-  return { ok: "Informations enregistrées." };
+  return { ok: unlisted ? "Informations enregistrées. Votre référencement d'expert est suspendu (RPPS ou profession requis)." : "Informations enregistrées." };
 }
 
 export async function changePassword(_: FormState, form: FormData): Promise<FormState> {
@@ -126,6 +141,9 @@ export async function setListed(_: FormState, form: FormData): Promise<FormState
   const user = await requireUser();
   if (!user.practitioner) return { error: "Cette option est réservée aux comptes praticiens." };
   const listed = form.get("listed") === "1";
+  if (listed && !canBeExpert(user.practitioner.profession))
+    return { error: "Le référencement comme expert est réservé aux chirurgiens-dentistes, orthodontistes, chirurgiens oraux et stomatologues." };
+  if (listed && !user.practitioner.rpps) return { error: "Renseignez d'abord votre numéro RPPS dans « Informations personnelles » : KolBase le vérifie pour afficher le badge « Identité vérifiée »." };
   await db.practitionerProfile.update({
     where: { userId: user.id },
     data: { listed, listedAt: listed ? new Date() : null },

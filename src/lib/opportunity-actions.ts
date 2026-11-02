@@ -4,7 +4,7 @@ import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import { db } from "@/lib/db";
 import { audit, requireUser } from "@/lib/auth";
-import { requireMembership } from "@/lib/orgs";
+import { ORG_NOT_VERIFIED, isVerifiedOrg, requireMembership } from "@/lib/orgs";
 import { parseParisDateTime } from "@/lib/events";
 import { collabType, SOURCING_ROLES } from "@/lib/projects";
 import { eurToCents, str } from "@/lib/form";
@@ -13,7 +13,8 @@ export type ActionState = { error?: string; ok?: string } | undefined;
 
 export async function createOpenCall(_: ActionState, form: FormData): Promise<ActionState> {
   const orgId = str(form, "orgId");
-  const { user } = await requireMembership(orgId, SOURCING_ROLES);
+  const { user, org } = await requireMembership(orgId, SOURCING_ROLES);
+  if (!isVerifiedOrg(org)) return { error: ORG_NOT_VERIFIED };
   const title = str(form, "title");
   const typeId = str(form, "typeId");
   if (!title) return { error: "Le titre est obligatoire." };
@@ -44,8 +45,9 @@ export async function createOpenCall(_: ActionState, form: FormData): Promise<Ac
 export async function setOpenCallStatus(form: FormData) {
   const orgId = str(form, "orgId");
   const callId = str(form, "callId");
-  const { user } = await requireMembership(orgId, SOURCING_ROLES);
+  const { user, org } = await requireMembership(orgId, SOURCING_ROLES);
   const status = str(form, "status") === "closed" ? "closed" : "open";
+  if (status === "open" && !isVerifiedOrg(org)) return;
   await db.openCall.updateMany({ where: { id: callId, organizationId: orgId }, data: { status } });
   await audit(user.id, `opencall.${status}`, "OpenCall", callId);
   revalidatePath(`/organisations/${orgId}/opportunites/${callId}`);

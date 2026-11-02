@@ -65,16 +65,17 @@ export function companyVisibility(raw: unknown): CompanyVisibility {
   return out;
 }
 
-type ViewerUser = { practitioner?: { id: string } | null; memberships: { organization: { kind: string } }[] } | null;
+type ViewerUser = { practitioner?: { id: string } | null; memberships: { organization: { kind: string; verification: string } }[] } | null;
 
 /**
  * Visiteur d'une fiche expert. Le niveau « industriels » est réservé aux membres d'une organisation cliente
- * (hors prestataires) : l'inscription étant libre, « tout compte connecté » reviendrait à rendre l'information publique.
+ * (hors prestataires) validée par KolBase : l'inscription et la création d'organisation étant libres,
+ * tout autre choix reviendrait à rendre l'information publique.
  */
 export function kolViewer(user: ViewerUser, practitionerId: string): Viewer {
   if (!user) return "public";
   if (user.practitioner?.id === practitionerId) return "proprietaire";
-  return user.memberships.some((m) => m.organization.kind !== "PRESTATAIRE") ? "membre" : "connecte";
+  return user.memberships.some((m) => m.organization.kind !== "PRESTATAIRE" && m.organization.verification === "VERIFIED") ? "membre" : "connecte";
 }
 
 export function canSee(level: VisLevel, viewer: Viewer) {

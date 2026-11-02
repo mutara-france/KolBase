@@ -5,7 +5,8 @@ import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import { db } from "@/lib/db";
 import { audit, requireUser } from "@/lib/auth";
-import { invitableRoles, requireMembership } from "@/lib/orgs";
+import { invitableRoles, requireMembership, SIREN_REQUIRED, sirenFields } from "@/lib/orgs";
+import { parseSiren, sirenKeyOk } from "@/lib/siren";
 import type { FormState } from "@/lib/auth-actions";
 import { OrgKind, type OrgRole } from "@/generated/prisma/enums";
 import { eurToCents, str } from "@/lib/form";
@@ -21,29 +22,41 @@ export async function createOrganization(_: FormState, form: FormData): Promise<
   const kind = str(form, "kind") as OrgKind;
   if (!name) return { error: "Indiquez le nom de l'organisation." };
   if (!Object.values(OrgKind).includes(kind)) return { error: "Type d'organisation invalide." };
+  const sirenInput = str(form, "siren");
+  const siren = sirenInput ? parseSiren(sirenInput) : null;
+  if (!sirenInput && SIREN_REQUIRED.includes(kind)) return { error: "Indiquez le SIREN (ou le SIRET) de l'organisation : KolBase le vérifie avant d'ouvrir les sollicitations." };
+  if (sirenInput && (!siren || !sirenKeyOk(siren))) return { error: "SIREN invalide : 9 chiffres (ou SIRET de 14 chiffres), vérifiez la saisie." };
+  const check = siren ? await sirenFields(siren) : null;
+  if (check?.lookup && !check.lookup.found) return { error: "Ce SIREN est introuvable dans le répertoire des entreprises." };
+  if (check?.lookup?.found && check.lookup.active === false) return { error: `L'entreprise ${check.lookup.name} est fermée selon le répertoire des entreprises.` };
+  const { lookup: _lookup, ...sirenData } = check ?? { lookup: null };
   const org = await db.organization.create({
     data: {
       name,
       kind,
+      ...sirenData,
       sector: str(form, "sector") || null,
       headquarters: str(form, "headquarters") || null,
       contactEmail: str(form, "contactEmail") || null,
       members: { create: { userId: user.id, role: "ADMIN" } },
     },
   });
-  await audit(user.id, "org.create", "Organization", org.id, { name });
+  await audit(user.id, "org.create", "Organization", org.id, { name, siren });
   redirect(`/organisations/${org.id}`);
 }
 
 export async function updateOrganization(_: FormState, form: FormData): Promise<FormState> {
   const orgId = str(form, "orgId");
-  const { user } = await requireMembership(orgId, ["ADMIN"], { allowSupplier: true });
+  const { user, org } = await requireMembership(orgId, ["ADMIN"], { allowSupplier: true });
   const name = str(form, "name");
   if (!name) return { error: "Le nom est obligatoire." };
+  // Changer le nom d'une organisation validée relance la validation (usurpation d'un nom connu).
+  const renamed = org.verification === "VERIFIED" && name !== org.name;
   await db.organization.update({
     where: { id: orgId },
     data: {
       name,
+      ...(renamed ? { verification: "PENDING", verificationNote: `Nom modifié : « ${org.name} » → « ${name} »`, listed: false } : {}),
       sector: str(form, "sector") || null,
       headquarters: str(form, "headquarters") || null,
       contactEmail: str(form, "contactEmail") || null,
@@ -52,10 +65,31 @@ export async function updateOrganization(_: FormState, form: FormData): Promise<
       areas: str(form, "areas").split(",").map((a) => a.trim()).filter(Boolean),
     },
   });
-  await audit(user.id, "org.update", "Organization", orgId);
+  await audit(user.id, "org.update", "Organization", orgId, renamed ? { renamed: { from: org.name, to: name } } : undefined);
   revalidatePath(`/organisations/${orgId}`);
   revalidatePath(`/organisations/${orgId}/membres`);
-  return { ok: "Organisation mise à jour." };
+  return { ok: renamed ? "Organisation mise à jour. Le nom ayant changé, KolBase doit la valider à nouveau." : "Organisation mise à jour." };
+}
+
+/** SIREN de l'organisation : contrôlé auprès du répertoire, puis soumis à la validation de KolBase. */
+export async function submitSiren(_: FormState, form: FormData): Promise<FormState> {
+  const orgId = str(form, "orgId");
+  const { user, org } = await requireMembership(orgId, ["ADMIN"], { allowSupplier: true });
+  const siren = parseSiren(str(form, "siren"));
+  if (!siren || !sirenKeyOk(siren)) return { error: "SIREN invalide : 9 chiffres (ou SIRET de 14 chiffres), vérifiez la saisie." };
+  const { lookup, ...data } = await sirenFields(siren);
+  if (lookup && !lookup.found) return { error: "Ce SIREN est introuvable dans le répertoire des entreprises." };
+  if (lookup?.found && lookup.active === false) return { error: `L'entreprise ${lookup.name} est fermée selon le répertoire des entreprises.` };
+  // Un SIREN modifié sur une organisation validée repasse en validation.
+  const resubmit = org.verification !== "VERIFIED" || org.siren !== siren;
+  await db.organization.update({
+    where: { id: orgId },
+    data: { ...data, ...(resubmit ? { verification: "PENDING", verificationNote: null, ...(org.verification === "VERIFIED" ? { listed: false } : {}) } : {}) },
+  });
+  await audit(user.id, "org.siren", "Organization", orgId, { siren, found: lookup?.found ?? null });
+  revalidatePath(`/organisations/${orgId}`);
+  revalidatePath(`/organisations/${orgId}/membres`);
+  return { ok: lookup?.found ? `SIREN reconnu : ${lookup.name}. Un administrateur KolBase va valider votre organisation.` : "SIREN enregistré (répertoire indisponible pour le moment). KolBase le vérifiera lors de la validation." };
 }
 
 export async function createInvitation(_: InviteState, form: FormData): Promise<InviteState> {
@@ -137,6 +171,8 @@ export async function updateExpertProfile(_: FormState, form: FormData): Promise
       hospital: str(form, "hospital") || null,
       subspecialty: str(form, "subspecialty") || null,
       orcid: str(form, "orcid") || null,
+      // Un iD saisi à la main n'est plus celui prouvé par la connexion ORCID.
+      ...((str(form, "orcid") || null) !== user.practitioner.orcid ? { orcidVerified: false } : {}),
       languages: str(form, "languages").split(",").map((l) => l.trim()).filter(Boolean),
       interventionTypes: form.getAll("interventionTypes").map(String),
       dayRateCents: rateNum,

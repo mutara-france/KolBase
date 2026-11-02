@@ -63,7 +63,7 @@ export default async function Page({ params }: { params: Promise<{ id: string; e
           </p>
         </div>
         <div className="actions">
-          {event.publishedAt ? <Flag flag="unpublish" label="Retirer de l'agenda" ghost /> : <Flag flag="publish" label="Publier dans l'agenda" />}
+          {event.publishedAt ? <Flag flag="unpublish" label="Retirer de l'agenda" ghost /> : org.verification === "VERIFIED" ? <Flag flag="publish" label="Publier dans l'agenda" /> : <span className="muted">Publication possible une fois l&apos;organisation validée par KolBase.</span>}
           {event.registrationOpen ? <Flag flag="close" label="Fermer les inscriptions" ghost /> : <Flag flag="open" label="Rouvrir les inscriptions" ghost />}
         </div>
         {isOrganizer ? (

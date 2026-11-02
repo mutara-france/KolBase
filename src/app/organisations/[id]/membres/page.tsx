@@ -1,5 +1,5 @@
 import { SiteHeader } from "@/components/SiteHeader";
-import { EditOrgForm, InviteForm } from "@/components/OrgForms";
+import { EditOrgForm, InviteForm, VerificationCard } from "@/components/OrgForms";
 import { db } from "@/lib/db";
 import { ORG_KIND_LABEL, invitableRoles, requireMembership, roleLabel } from "@/lib/orgs";
 import { removeMembership, revokeInvitation } from "@/lib/org-actions";
@@ -35,6 +35,8 @@ export default async function Page({ params }: { params: Promise<{ id: string }>
           <h1>Membres et réglages</h1>
           <p className="muted">{ORG_KIND_LABEL[org.kind]} · vos rôles : {roles.map((r) => roleLabel(r, org.kind)).join(", ")}</p>
         </div>
+
+        <VerificationCard orgId={id} canEdit={isAdmin} v={{ status: org.verification, siren: org.siren, legalName: org.legalName, note: org.verificationNote }} />
 
         <section className="card">
           <h2>Membres ({members.length})</h2>

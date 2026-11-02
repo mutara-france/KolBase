@@ -4,7 +4,7 @@ import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import { db } from "@/lib/db";
 import { audit, requireUser } from "@/lib/auth";
-import { requireMembership } from "@/lib/orgs";
+import { ORG_NOT_VERIFIED, isVerifiedOrg, requireMembership } from "@/lib/orgs";
 import { EVENT_ORGANIZER_ROLES, parseParisDateTime } from "@/lib/events";
 import { collabType, PROJECT_VIEW_ROLES } from "@/lib/projects";
 import { eurToCents, str } from "@/lib/form";
@@ -16,7 +16,8 @@ const SPEAKER_ROLES = EVENT_ORGANIZER_ROLES;
 /** Ouvre (ou met à jour) l'appel à intervenants d'un événement de l'organisation. */
 export async function openSpeakerCall(_: ActionState, form: FormData): Promise<ActionState> {
   const orgId = str(form, "orgId");
-  const { user } = await requireMembership(orgId, EVENT_ORGANIZER_ROLES);
+  const { user, org } = await requireMembership(orgId, EVENT_ORGANIZER_ROLES);
+  if (!isVerifiedOrg(org)) return { error: ORG_NOT_VERIFIED };
   const eventId = str(form, "eventId");
   const event = await db.event.findFirst({ where: { id: eventId, organizationId: orgId } });
   if (!event) return { error: "Choisissez un événement." };

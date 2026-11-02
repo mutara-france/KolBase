@@ -3,8 +3,8 @@
 import { revalidatePath } from "next/cache";
 import { db } from "@/lib/db";
 import { audit, requireUser } from "@/lib/auth";
-import { requireMembership } from "@/lib/orgs";
-import { fetchOrcidWorks, normTitle, ORCID_RE } from "@/lib/orcid";
+import { ORG_NOT_VERIFIED, isVerifiedOrg, requireMembership } from "@/lib/orgs";
+import { fetchOrcidWorks, normTitle, ORCID_RE, orcidOAuth } from "@/lib/orcid";
 import { COMPANY_VIS_FIELDS, KOL_VIS_FIELDS, companyVisibility, kolVisibility } from "@/lib/visibility";
 import { str } from "@/lib/form";
 
@@ -24,7 +24,8 @@ export async function updateKolVisibility(_: ActionState, form: FormData): Promi
 
 export async function updateOrgVisibility(_: ActionState, form: FormData): Promise<ActionState> {
   const orgId = str(form, "orgId");
-  const { user } = await requireMembership(orgId, ["ADMIN"]);
+  const { user, org } = await requireMembership(orgId, ["ADMIN"]);
+  if (form.get("listed") === "1" && !isVerifiedOrg(org)) return { error: `Page publique indisponible pour l'instant : ${ORG_NOT_VERIFIED}` };
   const raw: Record<string, string> = {};
   for (const f of COMPANY_VIS_FIELDS) raw[f.key] = str(form, f.key);
   const visibility = companyVisibility(raw);
@@ -57,7 +58,9 @@ export async function importOrcid(_: ActionState, form: FormData): Promise<Actio
   const user = await requireUser();
   const p = user.practitioner;
   if (!p) return { error: "Réservé aux praticiens." };
-  const orcid = (str(form, "orcid") || p.orcid || "").toUpperCase().replace(/^HTTPS?:\/\/ORCID\.ORG\//i, "");
+  // Avec la connexion ORCID activée, seul l'iD prouvé par le praticien peut être importé.
+  if (orcidOAuth() && !p.orcidVerified) return { error: "Connectez d'abord votre compte ORCID : l'import ne porte que sur votre propre iD." };
+  const orcid = (orcidOAuth() ? p.orcid ?? "" : str(form, "orcid") || p.orcid || "").toUpperCase().replace(/^HTTPS?:\/\/ORCID\.ORG\//i, "");
   if (!ORCID_RE.test(orcid)) return { error: "Identifiant ORCID invalide (format 0000-0000-0000-0000)." };
   let works;
   try {
@@ -72,7 +75,7 @@ export async function importOrcid(_: ActionState, form: FormData): Promise<Actio
   if (fresh.length) {
     await db.publication.createMany({ data: fresh.map((w) => ({ practitionerId: p.id, title: w.title, journal: w.journal, year: w.year, doi: w.doi, keywords: [], source: "orcid" })) });
   }
-  await db.practitionerProfile.update({ where: { id: p.id }, data: { orcid, orcidSyncedAt: new Date() } });
+  await db.practitionerProfile.update({ where: { id: p.id }, data: { orcid, orcidSyncedAt: new Date(), ...(orcid !== p.orcid ? { orcidVerified: false } : {}) } });
   await audit(user.id, "orcid.import", "PractitionerProfile", p.id, { found: works.length, imported: fresh.length });
   revalidatePath("/compte");
   return { ok: works.length === 0 ? "Aucune publication publique sur ce profil ORCID." : `${fresh.length} publication${fresh.length > 1 ? "s" : ""} importée${fresh.length > 1 ? "s" : ""} (${works.length - fresh.length} déjà présente${works.length - fresh.length > 1 ? "s" : ""}).` };
