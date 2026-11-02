@@ -7,15 +7,9 @@ import { audit, requireUser } from "@/lib/auth";
 import { requireMembership } from "@/lib/orgs";
 import { BENEFIT_CATALOG, COMPLIANCE_ROLES, EVENT_MANAGER_ROLES, EVENT_ORGANIZER_ROLES, eventScope, EVENT_TYPES, parseParisDateTime } from "@/lib/events";
 import { EventFormat } from "@/generated/prisma/enums";
+import { eurToCents, intOrNull, str } from "@/lib/form";
 
 export type ActionState = { error?: string; ok?: string } | undefined;
-
-const str = (f: FormData, k: string) => String(f.get(k) ?? "").trim();
-const intOrNull = (v: string) => (v && Number.isFinite(Number(v)) ? Math.max(0, Math.round(Number(v))) : null);
-const eurToCents = (v: string) => {
-  const n = Number(v.replace(",", "."));
-  return Number.isFinite(n) && n >= 0 ? Math.round(n * 100) : null;
-};
 
 export async function createEvent(_: ActionState, form: FormData): Promise<ActionState> {
   const orgId = str(form, "orgId");

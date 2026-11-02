@@ -6,9 +6,9 @@ import { audit, requireUser } from "@/lib/auth";
 import { requireMembership } from "@/lib/orgs";
 import { fetchOrcidWorks, normTitle, ORCID_RE } from "@/lib/orcid";
 import { COMPANY_VIS_FIELDS, KOL_VIS_FIELDS, companyVisibility, kolVisibility } from "@/lib/visibility";
+import { str } from "@/lib/form";
 
 export type ActionState = { error?: string; ok?: string } | undefined;
-const str = (f: FormData, k: string) => String(f.get(k) ?? "").trim();
 
 export async function updateKolVisibility(_: ActionState, form: FormData): Promise<ActionState> {
   const user = await requireUser();

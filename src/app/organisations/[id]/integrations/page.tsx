@@ -7,8 +7,8 @@ import { COMPLIANCE_ROLES } from "@/lib/events";
 
 export const metadata = { title: "Intégrations — KolBase" };
 
-type Integration = { name: string; icon: typeof Link2; status: "actif" | "export" | "a-configurer"; detail: string; scope: string; action?: { href: string; label: string; download?: boolean } };
-const STATUS = { actif: { label: "Actif", tone: "ok" }, export: { label: "Par export", tone: "electric" }, "a-configurer": { label: "À configurer", tone: "done" } } as const;
+type Integration = { name: string; icon: typeof Link2; status: "actif" | "export" | "prevu"; detail: string; scope: string; action?: { href: string; label: string; download?: boolean } };
+const STATUS = { actif: { label: "Actif", tone: "ok" }, export: { label: "Par export", tone: "electric" }, prevu: { label: "Prévu", tone: "done" } } as const;
 
 export default async function Page({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
@@ -35,13 +35,13 @@ export default async function Page({ params }: { params: Promise<{ id: string }>
       action: isCompliance ? { href: `/organisations/${id}/conformite?onglet=transparence`, label: "Ouvrir l'espace conformité" } : undefined,
     },
     {
-      name: "Signature électronique", icon: FileSignature, status: "a-configurer",
-      detail: "Envoi des conventions en signature (Yousign, DocuSign…) et retour automatique du statut « signé » dans le dossier. Nécessite un compte chez le prestataire de signature et sa clé d'API.",
+      name: "Signature électronique", icon: FileSignature, status: "prevu",
+      detail: "Pas encore disponible. À terme : envoi des conventions en signature (Yousign, DocuSign…) et retour automatique du statut « signé » dans le dossier. En attendant, la convention se télécharge en PDF depuis le dossier.",
       scope: "Conventions de collaboration et d'hospitalité",
     },
     {
-      name: "CRM (Veeva, Salesforce…)", icon: Link2, status: "a-configurer",
-      detail: "Synchronisation des experts et des interactions avec votre CRM. Nécessite un accès API fourni par votre équipe informatique.",
+      name: "CRM (Veeva, Salesforce…)", icon: Link2, status: "prevu",
+      detail: "Pas encore disponible. À terme : synchronisation des experts et des interactions avec votre CRM. En attendant, les registres et listes d'inscrits s'exportent en CSV.",
       scope: "Experts, dossiers et interactions",
     },
   ];
@@ -68,7 +68,7 @@ export default async function Page({ params }: { params: Promise<{ id: string }>
         </div>
         <div className="info-note">
           <Info size={15} />
-          <span>Les connecteurs « À configurer » demandent un contrat et des identifiants propres à votre organisation : contactez-nous pour les activer.</span>
+          <span>Les connecteurs « Prévu » ne sont pas encore disponibles. Dites-nous lesquels vous seraient utiles en priorité.</span>
         </div>
       </main>
     </>

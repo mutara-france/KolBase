@@ -6,9 +6,9 @@ import { audit } from "@/lib/auth";
 import { requireMembership } from "@/lib/orgs";
 import { COMPLIANCE_ROLES } from "@/lib/events";
 import { SETTING_FIELDS, complianceSettings } from "@/lib/compliance";
+import { str } from "@/lib/form";
 
 export type ActionState = { error?: string; ok?: string } | undefined;
-const str = (f: FormData, k: string) => String(f.get(k) ?? "").trim();
 
 export async function updateComplianceSettings(_: ActionState, form: FormData): Promise<ActionState> {
   const orgId = str(form, "orgId");
