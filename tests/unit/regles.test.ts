@@ -7,9 +7,11 @@ import { fmvCheck, TRANSITIONS } from "@/lib/projects";
 import { csvEscape, eventScope, parseParisDateTime, toCSV } from "@/lib/events";
 import { orgNavItems, orgSectionTabs, itemMatches } from "@/lib/nav";
 import { toIcs } from "@/lib/ics";
-import { invitableRoles, roleLabel } from "@/lib/org-roles";
+import { invitableRoles, isVerifiedOrg, roleLabel } from "@/lib/org-roles";
+import { parseSiren, readSirenResponse, sirenKeyOk } from "@/lib/siren";
+import { canBeExpert, drPrefix, isRpps, normalizeRpps } from "@/lib/professions";
 
-const member = (kind: string) => ({ organizationId: "o1", organization: { kind } });
+const member = (kind: string, verification = "VERIFIED") => ({ organizationId: "o1", organization: { kind, verification } });
 
 describe("visibilité des fiches expert", () => {
   it("le niveau « industriels » est réservé aux membres d'une organisation cliente", () => {
@@ -18,6 +20,7 @@ describe("visibilité des fiches expert", () => {
     expect(kolViewer({ practitioner: { id: "p2" }, memberships: [] }, "p1")).toBe("connecte");
     expect(kolViewer({ practitioner: null, memberships: [member("PRESTATAIRE")] }, "p1")).toBe("connecte");
     expect(kolViewer({ practitioner: null, memberships: [member("INDUSTRIEL")] }, "p1")).toBe("membre");
+    expect(kolViewer({ practitioner: null, memberships: [member("INDUSTRIEL", "PENDING")] }, "p1")).toBe("connecte");
   });
 
   it("canSee applique les trois niveaux", () => {
@@ -163,5 +166,36 @@ describe("seuils d'autorisation de l'arrêté du 7 août 2020", () => {
     expect(projectRegime(s, "intervention", experts)?.regime).toBe("autorisation");
     expect(projectRegime(s, "intervention", experts.slice(0, 1))?.regime).toBe("declaration");
     expect(projectRegime(s, "intervention", [experts[2]])).toBeNull();
+  });
+});
+
+describe("vérification des identités", () => {
+  it("SIREN : saisie et clé de contrôle", () => {
+    expect(parseSiren("542 051 180")).toBe("542051180");
+    expect(parseSiren("54205118000066")).toBe("542051180");
+    expect(parseSiren("12345")).toBeNull();
+    expect(sirenKeyOk("542051180")).toBe(true);
+    expect(sirenKeyOk("542051181")).toBe(false);
+    expect(sirenKeyOk("356000000")).toBe(true);
+  });
+  it("lecture de la réponse du répertoire des entreprises", () => {
+    expect(readSirenResponse("542051180", { results: [{ siren: "542051180", nom_complet: "TOTALENERGIES SE", etat_administratif: "A", siege: { libelle_commune: "COURBEVOIE" } }] }))
+      .toEqual({ found: true, name: "TOTALENERGIES SE", active: true, city: "COURBEVOIE" });
+    expect(readSirenResponse("542051180", { results: [{ siren: "999999999" }] })).toEqual({ found: false });
+    expect(readSirenResponse("542051180", { results: [{ siren: "542051180", nom_raison_sociale: "X", etat_administratif: "C" }] })).toMatchObject({ found: true, active: false });
+  });
+  it("seuls les praticiens diplômés sont experts et docteurs", () => {
+    expect(canBeExpert("Chirurgien-dentiste")).toBe(true);
+    expect(canBeExpert("Assistant(e) dentaire")).toBe(false);
+    expect(drPrefix("Médecin stomatologue")).toBe("Dr ");
+    expect(drPrefix("Étudiant(e) en odontologie")).toBe("");
+  });
+  it("RPPS : 11 chiffres", () => {
+    expect(isRpps(normalizeRpps("10 0012 3456 7"))).toBe(true);
+    expect(isRpps("1234")).toBe(false);
+  });
+  it("organisation validée", () => {
+    expect(isVerifiedOrg({ verification: "VERIFIED" })).toBe(true);
+    expect(isVerifiedOrg({ verification: "PENDING" })).toBe(false);
   });
 });

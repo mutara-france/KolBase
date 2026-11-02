@@ -62,6 +62,19 @@ en local, et versionner le dossier de migration créé.
 Variables Render : `SEED_DEMO` (1 = actif, 0 = désactivé), `DEMO_PASSWORD` (mot de passe commun des comptes
 `@demo.kolbase.local`), `DEMO_ADMIN_EMAILS` (comptes réels à rendre administrateurs des organisations de démo).
 
+## Validation des organisations et des praticiens
+
+- **Organisations** : à la création, le SIREN (obligatoire pour un industriel, un organisme de formation ou un
+  prestataire) est contrôlé dans le répertoire public des entreprises. L'organisation reste « en attente » —
+  sans sollicitation, publication ni page publique — jusqu'à sa validation par un administrateur KolBase.
+  Changer son nom ou son SIREN relance la validation.
+- **Praticiens** : seuls les chirurgiens-dentistes, orthodontistes, chirurgiens oraux et stomatologues peuvent se
+  référencer comme experts, avec un numéro RPPS. Un administrateur KolBase le contrôle sur l'Annuaire Santé ;
+  le badge « Identité vérifiée » s'affiche ensuite.
+- **ORCID** : avec `ORCID_CLIENT_ID` / `ORCID_CLIENT_SECRET`, le praticien prouve son iD en se connectant à
+  son compte ORCID avant d'importer ses publications.
+- **Administration** : page `/admin`, réservée aux comptes listés dans `PLATFORM_ADMIN_EMAILS`.
+
 ## Feuille de route
 
 1. Authentification (e-mail + mot de passe, puis Pro Santé Connect)
