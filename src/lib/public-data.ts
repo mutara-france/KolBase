@@ -1,6 +1,8 @@
 import "server-only";
 import { db } from "@/lib/db";
 import { ORG_KIND_LABEL } from "@/lib/orgs";
+import { orgFamily } from "@/lib/org-roles";
+import { supplierCategoryLabel } from "@/lib/suppliers";
 import { canSee, companyVisibility, kolVisibility } from "@/lib/visibility";
 import { logoSrc } from "@/lib/logos";
 import { country } from "@/lib/countries";
@@ -47,7 +49,8 @@ export async function publicOrgs(take?: number): Promise<OrgCardData[]> {
   return os.map((o) => {
     const v = companyVisibility(o.visibility);
     return {
-      id: o.id, name: o.name, logo: logoSrc(o), kind: ORG_KIND_LABEL[o.kind], sector: o.sector, about: o.about, hq: o.headquarters,
+      id: o.id, name: o.name, logo: logoSrc(o), kind: ORG_KIND_LABEL[o.kind], family: orgFamily(o.kind),
+      categories: o.supplierCategories.map(supplierCategoryLabel), coverage: o.coverage, sector: o.sector, about: o.about, hq: o.headquarters,
       areas: canSee(v.areas, "public") ? o.areas : [], openCalls: canSee(v.projets, "public") ? o._count.openCalls : 0, collaborations: o._count.projects,
     };
   });
@@ -57,13 +60,13 @@ export async function publicCalls(take?: number): Promise<CallCardData[]> {
   const now = new Date();
   const cs = await db.openCall.findMany({
     where: { status: "open", OR: [{ deadline: null }, { deadline: { gte: now } }], organization: { verification: "VERIFIED" } },
-    include: { organization: { select: { name: true, visibility: true } } },
+    include: { organization: { select: { id: true, name: true, visibility: true, logoUpdatedAt: true } } },
     orderBy: [{ deadline: "asc" }, { createdAt: "desc" }],
   });
   // Pages publiques : seulement les organisations qui affichent leurs appels publiquement (réglage « Appels ouverts ») ;
   // les praticiens connectés voient tous les appels ouverts dans « Opportunités ».
   const visible = cs.filter((c) => canSee(companyVisibility(c.organization.visibility).projets, "public"));
-  return visible.slice(0, take).map((c) => ({ id: c.id, title: c.title, specialty: c.specialty, typeId: c.typeId, poster: c.organization.name, deadline: c.deadline, description: c.description, budgetMinCents: c.budgetMinCents, budgetMaxCents: c.budgetMaxCents, open: true }));
+  return visible.slice(0, take).map((c) => ({ id: c.id, title: c.title, specialty: c.specialty, typeId: c.typeId, poster: c.organization.name, posterLogo: logoSrc(c.organization), deadline: c.deadline, description: c.description, budgetMinCents: c.budgetMinCents, budgetMaxCents: c.budgetMaxCents, open: true }));
 }
 
 export async function publicCounts() {
