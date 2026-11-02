@@ -177,7 +177,7 @@ export async function submitQuote(_: ActionState, form: FormData): Promise<Actio
     lines.push({ label: labels[i], qty, unitCents });
   }
   const amountCents = lines.length ? linesTotal(lines) : eurToCents(str(form, "amount"), { allowZero: false });
-  if (!amountCents) return { error: "Indiquez le montant du devis, ou détaillez-le ligne par ligne." };
+  if (!amountCents) return { error: "Détaillez votre offre ligne par ligne : désignation, quantité et prix unitaire." };
   if (amountCents > 1_000_000_000) return { error: "Montant trop élevé." };
   const vatBp = Number(str(form, "vat") || "2000");
   if (!isVatBp(vatBp)) return { error: "Taux de TVA invalide." };

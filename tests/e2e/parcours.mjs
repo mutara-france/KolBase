@@ -111,6 +111,7 @@ const linkIn = (mail) => mail?.text.match(/https?:\/\/\S+/g)?.find((u) => !u.end
   check("Prestataire : l'admin peut générer une invitation", link.includes("/invitation/"), link);
   const invitationMail = await waitMail("nouvelle.recrue@exemple.fr", "vous invite à rejoindre Agence Médiane");
   check("Invitation envoyée par e-mail avec le lien", linkIn(invitationMail) === link, linkIn(invitationMail) ?? "aucun e-mail");
+  await page.goto(`${BASE}/organisations/demo-org-mediane/membres?onglet=organisation`);
   await page.fill('form:has(h2:has-text("Fiche de l")) input[name="sector"]', "Logistique événementielle et congrès");
   await page.click('form:has(h2:has-text("Fiche de l")) button:has-text("Enregistrer")');
   await page.waitForTimeout(1500);
@@ -433,6 +434,12 @@ const linkIn = (mail) => mail?.text.match(/https?:\/\/\S+/g)?.find((u) => !u.end
   await page.click('button:has-text("Mandater")');
   await page.waitForTimeout(1200);
   check("Mandats : nouvelle agence mandatée", (await text(page)).includes("Traiteur Belleville est mandatée"));
+  // Le mandat suffit : l'équipe de l'agence accède à l'espace du client, sans invitation.
+  const lud = await session();
+  await login(lud.page, "ludovic.perrin@demo.kolbase.local");
+  const r = await lud.page.goto(`${BASE}/organisations/demo-org-dentalys/evenements`);
+  check("Mandat : accès de l'équipe de l'agence sans invitation", r?.status() === 200 && (await text(lud.page)).includes("Événements confiés"), String(r?.status()));
+  await lud.ctx.close();
   await page.goto(`${BASE}/organisations/demo-org-dentalys/prestataires?onglet=agences`);
   await page.locator('section.card:has-text("Agence Médiane") button:has-text("Mettre fin au mandat")').click();
   await page.waitForTimeout(1200);
@@ -483,7 +490,7 @@ async function submitNewOrg(page, siren) {
   check("Organisation validée : annuaire accessible", page.url().endsWith("/annuaire"), page.url());
   await page.goto(`${BASE}/experts/demo-p-martin`);
   check("Organisation validée : tarif des experts visible", (await text(page)).includes("Tarif journalier indicatif"));
-  await page.goto(`${orgUrl}/membres`);
+  await page.goto(`${orgUrl}/membres?onglet=organisation`);
   await page.fill('form:has(h2:has-text("Fiche de l")) input[name="name"]', "Straumann France");
   await page.click('form:has(h2:has-text("Fiche de l")) button:has-text("Enregistrer")');
   await page.waitForTimeout(1500);
@@ -702,7 +709,7 @@ async function submitNewOrg(page, siren) {
   const db = new pg.Client({ connectionString: process.env.DATABASE_URL });
   await db.connect();
   await login(page, "claire.morel@demo.kolbase.local");
-  await page.goto(`${BASE}/organisations/demo-org-dentalys/membres`);
+  await page.goto(`${BASE}/organisations/demo-org-dentalys/membres?onglet=organisation`);
   // PNG 1×1 valide, puis un « logo » SVG déguisé en PNG (refusé sur son contenu).
   const png = Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==", "base64");
   await page.setInputFiles('input[name="logo"]', { name: "faux.png", mimeType: "image/png", buffer: Buffer.from("<svg onload=alert(1)>") });
@@ -861,17 +868,17 @@ async function submitNewOrg(page, siren) {
   await login(page, "claire.morel@demo.kolbase.local");
   await page.goto(`${BASE}/organisations/demo-org-dentalys/membres`);
   const t = await text(page);
-  check("Rôles : quatre rôles décrits", ["Administrateur", "Projets", "Conformité", "Agence mandatée"].every((r) => t.includes(r)) && !t.includes("Éducation"));
+  check("Rôles : trois rôles internes décrits, agences par mandat", ["Administrateur", "Projets", "Conformité", "Agences mandatées (", "Gérer les mandats"].every((r) => t.includes(r)) && !t.includes("Éducation"));
+  check("Rôles : plus de rôle « Agence mandatée » à l'invitation", !(await page.locator('select[name="role"] option').allInnerTexts()).includes("Agence mandatée"));
   const julien = page.locator('li.member-row:has-text("Julien Faure")');
   await julien.locator('label:has-text("Conformité")').click();
-  await julien.locator('button:has-text("Enregistrer")').click();
-  await page.waitForTimeout(1200);
-  check("Rôles : cumul Projets + Conformité enregistré", (await julien.innerText()).includes("Rôles enregistrés."));
-  // Une agence mandatée n'a pas de rôle interne.
-  await julien.locator('label:has-text("Agence mandatée")').click();
-  await julien.locator('button:has-text("Enregistrer")').click();
-  await page.waitForTimeout(1200);
-  check("Rôles : agence mandatée non cumulable avec un rôle interne", (await julien.innerText()).includes("Une agence mandatée n'a pas de rôle interne"));
+  await page.waitForTimeout(1500);
+  check("Rôles : cumul Projets + Conformité enregistré aussitôt", (await julien.innerText()).includes("Rôles enregistrés."));
+  // Décocher le dernier rôle ne retire pas la personne.
+  const nadia = page.locator('li.member-row:has-text("Nadia Haddad")');
+  await nadia.locator('label:has-text("Conformité")').click();
+  await page.waitForTimeout(1500);
+  check("Rôles : aucun rôle refusé, case rétablie", (await nadia.innerText()).includes("Gardez au moins un rôle") && (await nadia.locator('input[value="CONFORMITE"]').isChecked()));
   await page.reload();
   // Julien a monté et soumis le symposium : il ne peut pas le valider, d'autres personnes habilitées existent.
   const db = new pg.Client({ connectionString: process.env.DATABASE_URL });
@@ -888,8 +895,7 @@ async function submitNewOrg(page, siren) {
   await db.query(`update "Project" set status=$1 where id='demo-prj-symposium'`, [before]);
   const row = page.locator('li.member-row:has-text("Julien Faure")');
   await row.locator('label:has-text("Conformité")').click();
-  await row.locator('button:has-text("Enregistrer")').click();
-  await page.waitForTimeout(1200);
+  await page.waitForTimeout(1500);
   const roles = (await db.query(`select role from "Membership" where "userId"='demo-u-julien' and "organizationId"='demo-org-dentalys' order by role`)).rows.map((r) => r.role);
   check("Rôles : retour au seul rôle Projets", JSON.stringify(roles) === JSON.stringify(["PROJETS"]), roles.join(","));
   await db.end();
@@ -1024,6 +1030,31 @@ async function submitNewOrg(page, siren) {
   check("Liste des événements : réunion interne et logistique", t.includes("Réunion interne") && t.includes("À venir"));
   await db.end();
   await ctx.close();
+}
+
+// ── Simplification : conformité sur un niveau, formulaire de devis, agences ─
+{
+  const db = new pg.Client({ connectionString: process.env.DATABASE_URL });
+  await db.connect();
+  const m = await db.query(`select count(*)::int n from "Membership" m join "Organization" o on o.id = m."organizationId" where o.kind <> 'PRESTATAIRE' and m.role = 'PRESTATAIRE'`);
+  check("Agences : plus aucun rattachement individuel « Agence mandatée »", m.rows[0].n === 0, String(m.rows[0].n));
+  await db.end();
+  const { ctx, page } = await session();
+  await login(page, "sophie.bernard@demo.kolbase.local");
+  await page.goto(`${BASE}/organisations/demo-org-dentalys/conformite`);
+  const tabs = await page.locator("nav.section-nav").innerText();
+  check("Conformité : un seul niveau d'onglets, relecture comprise", tabs.includes("Supports à relire") && tabs.includes("Transparence Santé") && (await page.locator("main nav.tabs").count()) === 0, tabs.replace(/\n/g, " | "));
+  await page.click('nav.section-nav a:has-text("Supports à relire")');
+  await page.waitForURL(/\/relecture/);
+  check("Relecture : rangée dans la conformité", (await page.locator("nav.section-nav a[aria-current=page]").innerText()).includes("Supports à relire"));
+  await ctx.close();
+  const sup = await session();
+  await login(sup.page, "karim.benali@demo.kolbase.local");
+  await sup.page.goto(`${BASE}/organisations/demo-org-mediane/devis?onglet=toutes`);
+  const f = sup.page.locator('section.card:has-text("Live surgery") form:has(input[name="line_label"])');
+  if ((await f.count()) === 0) await sup.page.locator('section.card:has-text("Live surgery") button:has-text("Réviser mon devis")').click();
+  check("Devis : exemple adapté à la catégorie, une seule façon de chiffrer", (await f.locator('input[name="line_label"]').first().getAttribute("placeholder")) === "Captation 2 caméras et régie" && (await f.locator('input[name="amount"]').count()) === 0);
+  await sup.ctx.close();
 }
 
 // ── 4. Limitation des tentatives ───────────────────────────────────────────

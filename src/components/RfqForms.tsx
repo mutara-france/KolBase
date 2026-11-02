@@ -85,12 +85,29 @@ type Row = { key: number; label: string; qty: string; unit: string };
 const eur = (n: number) => n.toLocaleString("fr-FR", { style: "currency", currency: "EUR" });
 const num = (v: string) => { const n = Number(v.replace(/\s/g, "").replace(",", ".")); return Number.isFinite(n) ? n : 0; };
 
+/** Exemple de ligne selon la prestation demandée. */
+const LINE_EXAMPLE: Record<string, string> = {
+  salle: "Location de la salle (journée)",
+  restauration: "Cocktail dînatoire 12 pièces",
+  hebergement: "Chambre single, petit-déjeuner inclus (nuit)",
+  transport: "Navette gare – lieu, aller-retour",
+  audiovisuel: "Captation 2 caméras et régie",
+  impression: "Kakémono 85 × 200 cm",
+  communication: "Conception du programme",
+  evenementiel: "Coordination sur place (journée)",
+};
+
 /** Devis du prestataire : détail ligne par ligne (total calculé), TVA, validité, conditions et PDF signé. */
-export function QuoteForm({ orgId, rfqId, current, headcount, uploads }: { orgId: string; rfqId: string; current?: QuoteCurrent; headcount: number | null; uploads: boolean }) {
+export function QuoteForm({ orgId, rfqId, category, current, headcount, uploads }: { orgId: string; rfqId: string; category: string; current?: QuoteCurrent; headcount: number | null; uploads: boolean }) {
   const [state, action, pending] = useActionState(submitQuote, undefined);
   const [open, setOpen] = useState(!current);
+  // Un ancien devis au montant global devient une ligne « Forfait », modifiable comme les autres.
   const [rows, setRows] = useState<Row[]>(
-    current?.lines.length ? current.lines.map((l, i) => ({ key: i, label: l.label, qty: String(l.qty), unit: l.unit })) : [{ key: 0, label: "", qty: "1", unit: "" }],
+    current?.lines.length
+      ? current.lines.map((l, i) => ({ key: i, label: l.label, qty: String(l.qty), unit: l.unit }))
+      : current?.amount
+        ? [{ key: 0, label: "Forfait", qty: "1", unit: current.amount }]
+        : [{ key: 0, label: "", qty: "1", unit: "" }],
   );
   const [vat, setVat] = useState(current?.vatBp ?? 2000);
   if (!open) return <button type="button" className="btn ghost small" onClick={() => setOpen(true)}>Réviser mon devis</button>;
@@ -108,7 +125,7 @@ export function QuoteForm({ orgId, rfqId, current, headcount, uploads }: { orgId
         <div className="quote-line head" role="row"><span>Désignation</span><span>Qté</span><span>Prix unitaire HT</span><span>Total HT</span><span /></div>
         {rows.map((r) => (
           <div key={r.key} className="quote-line" role="row">
-            <input name="line_label" value={r.label} onChange={(e) => update(r.key, { label: e.target.value })} placeholder="Cocktail dînatoire 12 pièces" aria-label="Désignation" />
+            <input name="line_label" value={r.label} onChange={(e) => update(r.key, { label: e.target.value })} placeholder={LINE_EXAMPLE[category] ?? "Désignation de la prestation"} aria-label="Désignation" />
             <input name="line_qty" value={r.qty} onChange={(e) => update(r.key, { qty: e.target.value })} inputMode="decimal" aria-label="Quantité" />
             <input name="line_unit" value={r.unit} onChange={(e) => update(r.key, { unit: e.target.value })} inputMode="decimal" placeholder="0,00" aria-label="Prix unitaire HT" />
             <span className="mono">{eur(num(r.qty) * num(r.unit))}</span>
@@ -117,9 +134,6 @@ export function QuoteForm({ orgId, rfqId, current, headcount, uploads }: { orgId
         ))}
         <button type="button" className="link" onClick={() => setRows((rs) => [...rs, { key: Date.now(), label: "", qty: "1", unit: "" }])}><Plus size={13} /> Ajouter une ligne</button>
       </div>
-      {!detailed && (
-        <label>Ou montant global (€ HT)<input name="amount" inputMode="decimal" defaultValue={current?.lines.length ? "" : current?.amount} /></label>
-      )}
       <div className="row">
         <label>TVA
           <select name="vat" value={vat} onChange={(e) => setVat(Number(e.target.value))}>
@@ -183,7 +197,7 @@ export function MandateForm({ orgId, agencies }: { orgId: string; agencies: { id
   return (
     <form action={action} className="card form">
       <h2>Mandater une agence</h2>
-      <p className="muted">Une agence mandatée gère les événements que vous lui confiez : ses collaborateurs, invités avec le rôle « Agence mandatée », ne voient que ces événements.</p>
+      <p className="muted">Une agence mandatée gère les événements que vous lui confiez. Son équipe y accède avec son propre compte KolBase, sans invitation, et ne voit que ces événements ; l&apos;accès cesse à la fin du mandat.</p>
       <Notice state={state} />
       <input type="hidden" name="orgId" value={orgId} />
       <label>Agence

@@ -27,13 +27,13 @@ export default async function Page({ params, searchParams }: { params: Promise<{
   const shown = onglet === "a-relire" ? toReview : projects;
   const tabs = [["a-relire", `À relire (${toReview.reduce((s, p) => s + pending(p), 0)})`], ["tous", `Tous les supports (${projects.reduce((s, p) => s + p.materials.length, 0)})`]] as const;
 
-  const sectionTabs = await orgTabs("dossiers", id);
+  const sectionTabs = await orgTabs("conformite", id);
   return (
     <>
       <SiteHeader />
       <main className="stack">
-        <SectionNav tabs={sectionTabs} active="relecture" label="Rubrique Dossiers" />
-        <h1>Revue documentaire</h1>
+        <SectionNav tabs={sectionTabs} active="relecture" label="Rubrique Conformité" />
+        <h1>Supports à relire</h1>
         <p className="muted">Supports soumis par les experts et les équipes : approuvez-les ou demandez des modifications avant toute diffusion.</p>
         <nav className="tabs">
           {tabs.map(([k, l]) => <Link key={k} href={`?onglet=${k}`} className={k === onglet ? "active" : ""}>{l}</Link>)}

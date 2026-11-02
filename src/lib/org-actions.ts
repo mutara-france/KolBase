@@ -258,8 +258,8 @@ export async function setMemberRoles(_: FormState, form: FormData): Promise<Form
   const memberId = str(form, "userId");
   const allowed = invitableRoles(org.kind);
   const wanted = form.get("remove") === "1" ? [] : [...new Set(form.getAll("role").map(String))].filter((r): r is OrgRole => allowed.includes(r as OrgRole));
-  if (org.kind !== "PRESTATAIRE" && wanted.includes("PRESTATAIRE") && wanted.length > 1)
-    return { error: "Une agence mandatée n'a pas de rôle interne : choisissez soit « Agence mandatée », soit des rôles de l'équipe." };
+  // Décocher tous les rôles ne retire pas la personne : le retrait passe par le bouton dédié.
+  if (wanted.length === 0 && form.get("remove") !== "1") return { error: "Gardez au moins un rôle, ou retirez la personne de l'organisation." };
   const current = await db.membership.findMany({ where: { organizationId: orgId, userId: memberId }, select: { role: true } });
   if (current.length === 0) return { error: "Membre introuvable." };
   const before = current.map((m) => m.role).sort();

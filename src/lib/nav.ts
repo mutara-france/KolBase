@@ -46,7 +46,7 @@ export function orgNavItems(orgId: string, roles: OrgRole[], kind: string): Shel
   if (has(roles, SOURCING_ROLES))
     items.push({ key: "praticiens", href: "/annuaire", label: "Praticiens", icon: "Users", match: [`${base}/opportunites`] });
   if (has(roles, PROJECT_VIEW_ROLES))
-    items.push({ key: "dossiers", href: `${base}/dossiers`, label: "Dossiers", icon: "Folder", match: [`${base}/relecture`] });
+    items.push({ key: "dossiers", href: `${base}/dossiers`, label: "Dossiers", icon: "Folder" });
   if (has(roles, EVENT_MANAGER_ROLES))
     items.push({
       key: "evenements",
@@ -56,7 +56,7 @@ export function orgNavItems(orgId: string, roles: OrgRole[], kind: string): Shel
       icon: "CalendarDays",
       match: [`${base}/intervenants`, `${base}/prestataires`],
     });
-  if (has(roles, COMPLIANCE_ROLES)) items.push({ key: "conformite", href: `${base}/conformite`, label: "Conformité", icon: "ShieldCheck", match: [`${base}/hospitalites`] });
+  if (has(roles, COMPLIANCE_ROLES)) items.push({ key: "conformite", href: `${base}/conformite`, label: "Conformité", icon: "ShieldCheck", match: [`${base}/hospitalites`, `${base}/relecture`] });
   return items;
 }
 
@@ -83,19 +83,22 @@ export function orgSectionTabs(section: OrgSectionKey, orgId: string, roles: Org
           has(roles, SOURCING_ROLES) && { key: "appels", href: `${base}/opportunites`, label: "Appels publiés" },
         ]
       : section === "dossiers"
-        ? [
-            has(roles, PROJECT_VIEW_ROLES) && { key: "dossiers", href: `${base}/dossiers`, label: "Dossiers" },
-            has(roles, REVIEW_ROLES) && { key: "relecture", href: `${base}/relecture`, label: "Relecture" },
-          ]
+        ? [has(roles, PROJECT_VIEW_ROLES) && { key: "dossiers", href: `${base}/dossiers`, label: "Dossiers" }]
         : section === "evenements"
           ? [
               has(roles, EVENT_MANAGER_ROLES) && { key: "evenements", href: `${base}/evenements`, label: has(roles, EVENT_ORGANIZER_ROLES) ? "Événements" : "Événements confiés" },
               has(roles, EVENT_ORGANIZER_ROLES) && { key: "intervenants", href: `${base}/intervenants`, label: "Appels à intervenants" },
               has(roles, EVENT_MANAGER_ROLES) && { key: "prestataires", href: `${base}/prestataires`, label: "Prestataires et devis" },
             ]
-          : [
-              has(roles, COMPLIANCE_ROLES) && { key: "conformite", href: `${base}/conformite`, label: "Conventions et transparence" },
+          : // Espace conformité : un seul niveau d'onglets, de la validation à la publication.
+            [
+              has(roles, COMPLIANCE_ROLES) && { key: "a-valider", href: `${base}/conformite`, label: "À valider" },
+              has(roles, REVIEW_ROLES) && { key: "relecture", href: `${base}/relecture`, label: "Supports à relire" },
+              has(roles, COMPLIANCE_ROLES) && { key: "autorisations", href: `${base}/conformite?onglet=autorisations`, label: "Autorisations" },
               has(roles, COMPLIANCE_ROLES) && { key: "hospitalites", href: `${base}/hospitalites`, label: "Hospitalités" },
+              has(roles, COMPLIANCE_ROLES) && { key: "registre", href: `${base}/conformite?onglet=registre`, label: "Registre des conventions" },
+              has(roles, COMPLIANCE_ROLES) && { key: "transparence", href: `${base}/conformite?onglet=transparence`, label: "Transparence Santé" },
+              has(roles, COMPLIANCE_ROLES) && { key: "parametres", href: `${base}/conformite?onglet=parametres`, label: "Paramètres" },
             ];
   return tabs.filter((t): t is SectionTab => !!t);
 }

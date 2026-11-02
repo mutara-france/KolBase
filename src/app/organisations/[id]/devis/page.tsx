@@ -94,6 +94,7 @@ export default async function Page({ params, searchParams }: { params: Promise<{
                       <QuoteForm
                         orgId={id}
                         rfqId={r.id}
+                        category={r.category}
                         headcount={r.headcount}
                         uploads={storageEnabled()}
                         current={q ? {

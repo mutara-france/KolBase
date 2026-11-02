@@ -138,6 +138,11 @@ describe("navigation et rôles", () => {
     expect(orgNavItems("o", ["CONFORMITE"], "INDUSTRIEL").map((i) => i.key)).toEqual(["accueil", "dossiers", "conformite"]);
     expect(orgNavItems("o", ["PROJETS"], "INDUSTRIEL").map((i) => i.key)).toEqual(["accueil", "praticiens", "dossiers", "evenements"]);
   });
+  it("la relecture des supports est rangée dans la conformité, sur un seul niveau d'onglets", () => {
+    expect(orgSectionTabs("dossiers", "o", ["ADMIN"], "INDUSTRIEL").map((t) => t.key)).toEqual(["dossiers"]);
+    expect(orgSectionTabs("conformite", "o", ["CONFORMITE"], "INDUSTRIEL").map((t) => t.key)).toEqual(["a-valider", "relecture", "autorisations", "hospitalites", "registre", "transparence", "parametres"]);
+    expect(orgSectionTabs("conformite", "o", ["PROJETS"], "INDUSTRIEL")).toEqual([]);
+  });
   it("correspondance des chemins", () => {
     expect(itemMatches({ href: "/organisations/o", exact: true }, "/organisations/o/dossiers")).toBe(false);
     expect(itemMatches({ href: "/organisations/o/dossiers" }, "/organisations/o/dossiers/p1")).toBe(true);
@@ -147,7 +152,7 @@ describe("navigation et rôles", () => {
     expect(invitableRoles("INDUSTRIEL")).toContain("CONFORMITE");
     expect(roleLabel("PRESTATAIRE", "PRESTATAIRE")).toBe("Membre de l'équipe");
     expect(roleLabel("PRESTATAIRE", "INDUSTRIEL")).toBe("Agence mandatée");
-    expect(invitableRoles("INDUSTRIEL")).toEqual(["ADMIN", "PROJETS", "CONFORMITE", "PRESTATAIRE"]);
+    expect(invitableRoles("INDUSTRIEL")).toEqual(["ADMIN", "PROJETS", "CONFORMITE"]);
   });
 });
 
