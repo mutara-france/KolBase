@@ -1,7 +1,7 @@
 /** Génération de calendriers iCalendar (RFC 5545) : import dans Outlook, Google Agenda, Apple Calendrier. */
 export type IcsEvent = { uid: string; start: Date; minutes: number | null; title: string; location?: string | null; description?: string | null; url?: string };
 
-const esc = (s: string) => s.replace(/\\/g, "\\\\").replace(/;/g, "\;").replace(/,/g, "\\,").replace(/\r?\n/g, "\\n");
+const esc = (s: string) => s.replace(/\\/g, "\\\\").replace(/;/g, "\\;").replace(/,/g, "\\,").replace(/\r?\n/g, "\\n");
 const stamp = (d: Date) => d.toISOString().replace(/[-:]/g, "").replace(/\.\d{3}/, "");
 
 // Repli des lignes à 75 octets (continuation par une espace).

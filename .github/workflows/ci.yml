@@ -1,0 +1,68 @@
+# Vérifications automatiques de chaque pull request et de chaque commit sur main.
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  verifier:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_USER: kolbase
+          POSTGRES_PASSWORD: kolbase
+          POSTGRES_DB: kolbase
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd pg_isready --health-interval 5s --health-timeout 5s --health-retries 12
+    env:
+      DATABASE_URL: postgresql://kolbase:kolbase@localhost:5432/kolbase
+      AUTH_SECRET: ci
+      APP_URL: http://localhost:3000
+      DEMO_PASSWORD: demo-ci-mot-de-passe-1
+      NEXT_TELEMETRY_DISABLED: "1"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npx prisma generate
+
+      - name: Types
+        run: npm run lint
+      - name: Tests unitaires
+        run: npm test
+
+      - name: Migrations
+        run: npx prisma migrate deploy
+      - name: Migrations conformes au schéma Prisma
+        run: npx prisma migrate diff --from-config-datasource --to-schema prisma/schema.prisma --exit-code
+      - name: Données de démonstration
+        run: npm run db:seed
+
+      - name: Build
+        run: npm run build
+      - name: Dépendances de production (vulnérabilités hautes ou critiques)
+        run: npm audit --omit=dev --audit-level=high
+
+      - name: Navigateur de test
+        run: npx playwright install --with-deps chromium
+      - name: Parcours de bout en bout
+        run: |
+          npm start > next.log 2>&1 &
+          for i in $(seq 1 60); do curl -sf http://localhost:3000/api/health && break; sleep 1; done
+          BASE=http://localhost:3000 npm run test:e2e
+      - name: Journal du serveur (en cas d'échec)
+        if: failure()
+        run: tail -n 200 next.log || true

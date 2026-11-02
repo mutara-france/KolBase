@@ -7,14 +7,10 @@ import { audit, requireUser } from "@/lib/auth";
 import { requireMembership } from "@/lib/orgs";
 import { EVENT_ORGANIZER_ROLES, parseParisDateTime } from "@/lib/events";
 import { collabType, PROJECT_VIEW_ROLES } from "@/lib/projects";
+import { eurToCents, str } from "@/lib/form";
 
 export type ActionState = { error?: string; ok?: string } | undefined;
 
-const str = (f: FormData, k: string) => String(f.get(k) ?? "").trim();
-const eurToCents = (v: string) => {
-  const n = Number(v.replace(/\s/g, "").replace(",", "."));
-  return v && Number.isFinite(n) && n >= 0 ? Math.round(n * 100) : null;
-};
 const SPEAKER_ROLES = EVENT_ORGANIZER_ROLES;
 
 /** Ouvre (ou met à jour) l'appel à intervenants d'un événement de l'organisation. */

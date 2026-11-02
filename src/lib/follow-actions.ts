@@ -4,8 +4,7 @@ import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import { db } from "@/lib/db";
 import { getCurrentUser } from "@/lib/auth";
-
-const str = (f: FormData, k: string) => String(f.get(k) ?? "").trim();
+import { str } from "@/lib/form";
 
 /** Suivre / ne plus suivre un expert (type=practitioner) ou une organisation (type=organization). */
 export async function toggleFollow(form: FormData) {

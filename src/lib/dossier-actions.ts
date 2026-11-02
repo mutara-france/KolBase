@@ -6,13 +6,9 @@ import { db } from "@/lib/db";
 import { audit, requireUser } from "@/lib/auth";
 import { requireMembership } from "@/lib/orgs";
 import { collabType, MATERIAL_KINDS, PROJECT_ROLES, REVIEW_ROLES } from "@/lib/projects";
+import { eurToCents, str } from "@/lib/form";
 
 export type ActionState = { error?: string; ok?: string } | undefined;
-const str = (f: FormData, k: string) => String(f.get(k) ?? "").trim();
-const eurToCents = (v: string) => {
-  const n = Number(v.replace(/\s/g, "").replace(",", "."));
-  return v && Number.isFinite(n) && n >= 0 ? Math.round(n * 100) : null;
-};
 const okUrl = (u: string) => !u || /^https?:\/\/\S+$/i.test(u);
 
 async function loadProjectForOrg(orgId: string, projectId: string) {

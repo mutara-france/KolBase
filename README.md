@@ -21,6 +21,19 @@ npm run dev                   # http://localhost:3000
 
 Santé de l'application : `GET /api/health`.
 
+## Tests
+
+```bash
+npm run lint                  # vérification des types
+npm test                      # tests unitaires (règles de visibilité, conformité, rôles, montants…)
+# parcours de bout en bout : base chargée avec la démo, application lancée
+BASE=http://localhost:3000 DEMO_PASSWORD=… DATABASE_URL=… npm run test:e2e
+```
+
+Chaque pull request passe par GitHub Actions (`.github/workflows/ci.yml`) : types, tests unitaires,
+migrations appliquées à un PostgreSQL 17 neuf puis comparées au schéma Prisma (une migration oubliée
+fait échouer la vérification), données de démo, build, audit des dépendances et parcours de bout en bout.
+
 ## Modèle de données
 
 Voir `prisma/schema.prisma`. Principes repris du prototype :

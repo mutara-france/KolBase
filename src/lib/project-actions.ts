@@ -8,14 +8,9 @@ import { requireMembership } from "@/lib/orgs";
 import { COMPLIANCE_ROLES } from "@/lib/events";
 import { collabType, PROJECT_ROLES, SOURCING_ROLES, PROJECT_VIEW_ROLES, TRANSITIONS, type TransitionKey } from "@/lib/projects";
 import type { ProjectStatus } from "@/generated/prisma/client";
+import { eurToCents, str } from "@/lib/form";
 
 export type ActionState = { error?: string; ok?: string } | undefined;
-
-const str = (f: FormData, k: string) => String(f.get(k) ?? "").trim();
-const eurToCents = (v: string) => {
-  const n = Number(v.replace(/\s/g, "").replace(",", "."));
-  return v && Number.isFinite(n) && n >= 0 ? Math.round(n * 100) : null;
-};
 
 export async function createProject(_: ActionState, form: FormData): Promise<ActionState> {
   const orgId = str(form, "orgId");

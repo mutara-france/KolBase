@@ -8,8 +8,8 @@ import { audit, requireUser } from "@/lib/auth";
 import { invitableRoles, requireMembership } from "@/lib/orgs";
 import type { FormState } from "@/lib/auth-actions";
 import { OrgKind, type OrgRole } from "@/generated/prisma/enums";
+import { eurToCents, str } from "@/lib/form";
 
-const str = (f: FormData, k: string) => String(f.get(k) ?? "").trim();
 const sha256 = (v: string) => createHash("sha256").update(v).digest("hex");
 const INVITE_DAYS = 14;
 
@@ -128,9 +128,8 @@ export async function acceptInvitation(form: FormData) {
 export async function updateExpertProfile(_: FormState, form: FormData): Promise<FormState> {
   const user = await requireUser();
   if (!user.practitioner) return { error: "Réservé aux praticiens." };
-  const rate = str(form, "dayRate").replace(",", ".");
-  const rateNum = rate ? Math.round(Number(rate) * 100) : null;
-  if (rateNum !== null && (!Number.isFinite(rateNum) || rateNum < 0)) return { error: "Tarif journalier invalide." };
+  const rateNum = eurToCents(str(form, "dayRate"));
+  if (str(form, "dayRate") && rateNum === null) return { error: "Tarif journalier invalide." };
   await db.practitionerProfile.update({
     where: { userId: user.id },
     data: {

@@ -1,0 +1,151 @@
+// Parcours de bout en bout sur les données de démo (droits, visibilité, connexion).
+// Prérequis : base migrée et chargée (npm run db:seed avec DEMO_PASSWORD), application lancée.
+// Usage : BASE=http://localhost:3000 DEMO_PASSWORD=… DATABASE_URL=… npm run test:e2e
+import { chromium } from "playwright";
+import pg from "pg";
+
+const BASE = process.env.BASE ?? "http://localhost:3000";
+const PW = process.env.DEMO_PASSWORD;
+if (!PW || !process.env.DATABASE_URL) throw new Error("DEMO_PASSWORD et DATABASE_URL sont nécessaires.");
+
+// Cas de test : une praticienne a masqué ses coordonnées et son activité.
+const client = new pg.Client({ connectionString: process.env.DATABASE_URL });
+await client.connect();
+await client.query(`UPDATE "PractitionerProfile" SET visibility = '{"contact":"masque","historique":"masque"}' WHERE id = 'demo-p-durand'`);
+await client.end();
+const results = [];
+const check = (name, ok, detail = "") => { results.push({ name, ok, detail }); console.log(`${ok ? "OK  " : "FAIL"} ${name}${detail ? " — " + detail : ""}`); };
+
+const browser = await chromium.launch();
+
+async function session() {
+  const ctx = await browser.newContext();
+  return { ctx, page: await ctx.newPage() };
+}
+async function login(page, email, password = PW, next = "") {
+  await page.goto(`${BASE}/connexion${next ? `?next=${encodeURIComponent(next)}` : ""}`);
+  await page.fill('input[name="email"]', email);
+  await page.fill('input[name="password"]', password);
+  await Promise.all([page.waitForLoadState("networkidle"), page.click('button:has-text("Se connecter")')]);
+  await page.waitForTimeout(800);
+}
+const text = (page) => page.locator("main").innerText();
+
+// ── 3. Visibilité : liste publique ──────────────────────────────────────────
+{
+  const { ctx, page } = await session();
+  await page.goto(`${BASE}/experts`);
+  const card = page.locator('a.kol-card[href="/experts/demo-p-durand"]');
+  const t = await card.innerText();
+  check("Liste publique : ville masquée absente de la carte", !t.includes("Lyon") && !t.includes("Hospices"), t.replace(/\s+/g, " ").slice(0, 120));
+  check("Liste publique : nombre de collaborations masqué", !/collaboration|Nouveau sur KolBase/.test(t));
+  const other = await page.locator('a.kol-card[href="/experts/demo-p-martin"]').innerText();
+  check("Liste publique : ville visible pour un profil public", other.includes("Paris"));
+  await page.goto(`${BASE}/experts?ville=Lyon`);
+  check("Recherche publique par ville : profil masqué exclu", (await page.locator('a.kol-card[href="/experts/demo-p-durand"]').count()) === 0);
+  await page.goto(`${BASE}/experts/demo-p-martin`);
+  const anon = await text(page);
+  check("Fiche expert anonyme : tarif réservé aux organisations", anon.includes("Tarif indicatif : réservé aux organisations inscrites") && !anon.includes("Tarif journalier indicatif"));
+  await ctx.close();
+}
+
+// ── 3. Visibilité : praticien connecté sans organisation ───────────────────
+{
+  const { ctx, page } = await session();
+  await login(page, "ines.lambert@demo.kolbase.local");
+  await page.goto(`${BASE}/experts/demo-p-martin`);
+  const t = await text(page);
+  check("Praticien connecté (sans organisation) : tarif non visible", !t.includes("Tarif journalier indicatif") && t.includes("réservé aux organisations inscrites"));
+  check("Praticien connecté : pas de lien « Se connecter » dans les mentions", !/réservé aux organisations inscrites\.\s*Se connecter/.test(t));
+  await ctx.close();
+}
+
+// ── 3. Visibilité : membre d'organisation ──────────────────────────────────
+{
+  const { ctx, page } = await session();
+  await login(page, "claire.morel@demo.kolbase.local");
+  await page.goto(`${BASE}/experts/demo-p-martin`);
+  check("Membre d'organisation : tarif visible", (await text(page)).includes("Tarif journalier indicatif"));
+  await page.goto(`${BASE}/experts/demo-p-durand`);
+  const d = await text(page);
+  check("Membre d'organisation : coordonnées masquées restent masquées", !d.includes("Hospices"));
+  await page.goto(`${BASE}/annuaire?ville=Lyon`);
+  check("Annuaire : recherche par ville masquée n'expose pas le profil", (await page.locator('a[href="/experts/demo-p-durand"]').count()) === 0);
+  await page.goto(`${BASE}/annuaire?q=Hospices`);
+  check("Annuaire : recherche sur l'établissement masqué n'expose pas le profil", (await page.locator('a[href="/experts/demo-p-durand"]').count()) === 0);
+  await page.goto(`${BASE}/annuaire?q=Implantologie`);
+  check("Annuaire : le profil reste trouvable par ses champs visibles", (await page.locator('a[href="/experts/demo-p-durand"]').count()) === 1);
+  await page.goto(`${BASE}/organisations/demo-org-dentalys/dossiers/nouveau`);
+  const html = await page.content();
+  check("Nouveau dossier : la ville masquée n'est pas envoyée au navigateur", !/Durand[^<]{0,80}Lyon/.test(html));
+  await ctx.close();
+}
+
+// ── 2. Admin d'une organisation prestataire ────────────────────────────────
+{
+  const { ctx, page } = await session();
+  await login(page, "karim.benali@demo.kolbase.local");
+  await page.goto(`${BASE}/organisations/demo-org-mediane/membres`);
+  const options = await page.locator('select[name="role"] option').allInnerTexts();
+  check("Prestataire : rôles d'invitation limités", JSON.stringify(options) === JSON.stringify(["Administrateur", "Membre de l'équipe"]), options.join(", "));
+  check("Prestataire : rôle par défaut non administrateur", (await page.locator('select[name="role"]').inputValue()) === "PRESTATAIRE");
+  await page.click('button:has-text("Générer le lien")');
+  await page.waitForSelector(".copy input", { timeout: 10000 }).catch(() => {});
+  const link = await page.locator(".copy input").inputValue().catch(() => "");
+  check("Prestataire : l'admin peut générer une invitation", link.includes("/invitation/"), link);
+  await page.fill('form:has(h2:has-text("Fiche de l")) input[name="sector"]', "Logistique événementielle et congrès");
+  await page.click('form:has(h2:has-text("Fiche de l")) button:has-text("Enregistrer")');
+  await page.waitForTimeout(1500);
+  check("Prestataire : l'admin peut modifier la fiche", (await text(page)).includes("Organisation mise à jour."), page.url());
+  check("Prestataire : pas de formulaire de page publique (géré sur la page devis)", (await page.locator('h2:has-text("Page publique")').count()) === 0);
+  // L'invité accepte : il devient membre de l'équipe.
+  const { ctx: c2, page: p2 } = await session();
+  await login(p2, "ines.lambert@demo.kolbase.local");
+  await p2.goto(link);
+  check("Invitation : rôle affiché « Membre de l'équipe »", (await text(p2)).includes("Membre de l'équipe"));
+  await c2.close();
+  await ctx.close();
+}
+
+// ── 2. Non-régression : un client garde ses espaces, un prestataire n'y accède pas ──
+{
+  const { ctx, page } = await session();
+  await login(page, "karim.benali@demo.kolbase.local");
+  await page.goto(`${BASE}/organisations/demo-org-mediane/dossiers`);
+  check("Prestataire : toujours redirigé hors des dossiers", page.url().endsWith("/organisations/demo-org-mediane"), page.url());
+  await ctx.close();
+}
+
+// ── 4. Redirection ouverte ─────────────────────────────────────────────────
+{
+  const { ctx, page } = await session();
+  await login(page, "claire.morel@demo.kolbase.local", PW, "/\\evil.example");
+  check("Connexion avec next=/\\evil.example : reste sur KolBase", page.url().startsWith(BASE + "/") && !page.url().includes("evil"), page.url());
+  await ctx.close();
+  const s2 = await session();
+  await login(s2.page, "julien.faure@demo.kolbase.local", PW, "/annuaire?q=implant");
+  check("Connexion avec next interne : redirection conservée", s2.page.url() === `${BASE}/annuaire?q=implant`, s2.page.url());
+  await s2.ctx.close();
+}
+
+// ── 4. Limitation des tentatives ───────────────────────────────────────────
+{
+  const { ctx, page } = await session();
+  let last = "";
+  for (let i = 1; i <= 5; i++) {
+    await login(page, "helene.durand@demo.kolbase.local", "mauvais-mot-de-passe-1");
+    last = await text(page);
+  }
+  check("5 échecs : message d'erreur classique", last.includes("E-mail ou mot de passe incorrect."));
+  await login(page, "helene.durand@demo.kolbase.local", PW);
+  const t = await text(page);
+  check("6e tentative (même correcte) : bloquée", t.includes("Trop de tentatives") && page.url().includes("/connexion"), t.match(/Trop de tentatives[^.]*\./)?.[0] ?? page.url());
+  await login(page, "camille.petit@demo.kolbase.local", PW);
+  check("Un autre compte peut toujours se connecter", page.url().includes("/tableau-de-bord"), page.url());
+  await ctx.close();
+}
+
+await browser.close();
+const failed = results.filter((r) => !r.ok);
+console.log(`\n${results.length - failed.length}/${results.length} vérifications OK`);
+process.exit(failed.length ? 1 : 0);

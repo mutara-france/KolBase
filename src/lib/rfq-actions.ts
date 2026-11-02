@@ -7,14 +7,9 @@ import { audit } from "@/lib/auth";
 import { requireMembership } from "@/lib/orgs";
 import { EVENT_MANAGER_ROLES, eventScope, parseParisDateTime } from "@/lib/events";
 import { SUPPLIER_CATEGORIES } from "@/lib/suppliers";
+import { eurToCents, str } from "@/lib/form";
 
 export type ActionState = { error?: string; ok?: string } | undefined;
-
-const str = (f: FormData, k: string) => String(f.get(k) ?? "").trim();
-const eurToCents = (v: string) => {
-  const n = Number(v.replace(/\s/g, "").replace(",", "."));
-  return v && Number.isFinite(n) && n > 0 ? Math.round(n * 100) : null;
-};
 
 // ─── Côté organisation ──────────────────────────────────────────────────────
 
@@ -104,7 +99,7 @@ export async function submitQuote(_: ActionState, form: FormData): Promise<Actio
   const rfqId = str(form, "rfqId");
   const invite = await db.rfqSupplier.findUnique({ where: { rfqId_supplierId: { rfqId, supplierId: orgId } }, include: { rfq: true } });
   if (!invite || invite.rfq.status !== "sent") return { error: "Cette demande n'accepte plus de devis." };
-  const amountCents = eurToCents(str(form, "amount"));
+  const amountCents = eurToCents(str(form, "amount"), { allowZero: false });
   if (amountCents === null) return { error: "Indiquez le montant du devis." };
   const data = { amountCents, delay: str(form, "delay") || null, note: str(form, "note") || null, authorId: user.id, status: "submitted" };
   const q = await db.quote.upsert({ where: { rfqId_supplierId: { rfqId, supplierId: orgId } }, update: data, create: { rfqId, supplierId: orgId, ...data } });

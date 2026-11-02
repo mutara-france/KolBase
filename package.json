@@ -13,9 +13,14 @@
     "db:migrate:dev": "prisma migrate dev",
     "db:seed": "tsx prisma/seed.ts",
     "lint": "tsc --noEmit",
-    "deploy:prepare": "sh scripts/predeploy.sh"
+    "deploy:prepare": "sh scripts/predeploy.sh",
+    "test": "vitest run",
+    "test:e2e": "node tests/e2e/parcours.mjs"
   },
   "dependencies": {
+    "@fontsource/figtree": "^5.3.0",
+    "@fontsource/ibm-plex-mono": "^5.3.0",
+    "@fontsource/montserrat": "^5.3.0",
     "@prisma/adapter-pg": "^7.10.1",
     "@prisma/client": "^7.10.1",
     "lucide-react": "^1.51.0",
@@ -32,8 +37,10 @@
     "@types/react": "^19.3.0",
     "@types/react-dom": "^19.3.0",
     "dotenv": "^18.0.5",
+    "playwright": "^1.63.0",
     "prisma": "^7.10.1",
     "tsx": "^4.23.15",
-    "typescript": "^7.0.2"
+    "typescript": "^7.0.2",
+    "vitest": "^5.0.5"
   }
 }

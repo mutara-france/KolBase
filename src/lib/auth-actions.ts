@@ -7,10 +7,10 @@ import { audit, createSession, destroyOtherSessions, destroySession, requireUser
 import { hashPassword, passwordProblem, verifyPassword } from "@/lib/password";
 import { blockedFor, clientIp, hit, reset } from "@/lib/rate-limit";
 import { safeNext } from "@/lib/safe-redirect";
+import { str } from "@/lib/form";
 
 export type FormState = { error?: string; ok?: string } | undefined;
 
-const str = (f: FormData, k: string) => String(f.get(k) ?? "").trim();
 const emailOk = (e: string) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(e);
 
 // Limites anti-force brute (échecs comptés sur 15 min) et anti-création de comptes en masse (par heure).

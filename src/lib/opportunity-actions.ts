@@ -7,14 +7,9 @@ import { audit, requireUser } from "@/lib/auth";
 import { requireMembership } from "@/lib/orgs";
 import { parseParisDateTime } from "@/lib/events";
 import { collabType, SOURCING_ROLES } from "@/lib/projects";
+import { eurToCents, str } from "@/lib/form";
 
 export type ActionState = { error?: string; ok?: string } | undefined;
-
-const str = (f: FormData, k: string) => String(f.get(k) ?? "").trim();
-const eurToCents = (v: string) => {
-  const n = Number(v.replace(/\s/g, "").replace(",", "."));
-  return v && Number.isFinite(n) && n >= 0 ? Math.round(n * 100) : null;
-};
 
 export async function createOpenCall(_: ActionState, form: FormData): Promise<ActionState> {
   const orgId = str(form, "orgId");
