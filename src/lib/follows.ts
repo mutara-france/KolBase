@@ -1,5 +1,5 @@
 import { db } from "@/lib/db";
-import { companyVisibility, kolVisibility } from "@/lib/visibility";
+import { canSee, companyVisibility, kolViewer, kolVisibility } from "@/lib/visibility";
 import { translate, type Vars } from "@/lib/i18n";
 
 /** `label` : libellé en français ; `msg` : sa clé de traduction et ses variables, pour l'afficher dans la langue de l'utilisateur. */
@@ -12,10 +12,11 @@ const WINDOW_DAYS = 180;
 /**
  * Fil des mises à jour des profils suivis, reconstitué à partir des données existantes
  * (publications, référencement, interventions, appels, événements). Respecte la visibilité
- * choisie par chaque profil pour un membre connecté.
+ * choisie par chaque profil pour la personne qui lit (simple compte connecté ou membre d'une organisation validée).
  */
 export async function followFeed(userId: string): Promise<FeedItem[]> {
   const since = new Date(Date.now() - WINDOW_DAYS * 864e5);
+  const reader = await db.user.findUnique({ where: { id: userId }, select: { practitioner: { select: { id: true } }, memberships: { select: { organization: { select: { kind: true, verification: true } } } } } });
   const follows = await db.follow.findMany({ where: { userId }, select: { practitionerId: true, organizationId: true } });
   const pIds = follows.map((f) => f.practitionerId).filter((x): x is string => !!x);
   const oIds = follows.map((f) => f.organizationId).filter((x): x is string => !!x);
@@ -33,17 +34,21 @@ export async function followFeed(userId: string): Promise<FeedItem[]> {
     for (const p of pracs) {
       const name = `Dr ${p.user.firstName} ${p.user.lastName}`;
       const href = `/experts/${p.id}`;
-      if (kolVisibility(p.visibility).publications !== "masque")
+      const v = kolVisibility(p.visibility);
+      const viewer = kolViewer(reader, p.id);
+      if (canSee(v.publications, viewer))
         for (const x of p.publications) items.push({ key: `pub-${x.id}`, date: x.createdAt, subject: name, href, kind: "practitioner", ...label("Nouvelle publication : {title}", { title: x.title }) });
-      for (const a of p.speakerApplications)
-        items.push({ key: `spk-${a.id}`, date: a.createdAt, subject: name, href: `/evenements/${a.eventId}`, kind: "practitioner", ...label("Intervient à « {title} »", { title: a.event.title }) });
+      // Une intervention retenue révèle un partenaire : seulement si le praticien affiche ses collaborations en détail.
+      if (v.projets === "nominatif" && canSee(v.historique, viewer))
+        for (const a of p.speakerApplications)
+          items.push({ key: `spk-${a.id}`, date: a.createdAt, subject: name, href: `/evenements/${a.eventId}`, kind: "practitioner", ...label("Intervient à « {title} »", { title: a.event.title }) });
       if (p.listedAt && p.listedAt >= since) items.push({ key: `lst-${p.id}`, date: p.listedAt, subject: name, href, kind: "practitioner", ...label("Référencé(e) comme expert") });
     }
   }
 
   if (oIds.length) {
     const orgs = await db.organization.findMany({
-      where: { id: { in: oIds }, listed: true },
+      where: { id: { in: oIds }, listed: true, verification: "VERIFIED" },
       include: {
         openCalls: { where: { status: "open", createdAt: { gte: since } } },
         events: { where: { publishedAt: { gte: since, not: null } } },

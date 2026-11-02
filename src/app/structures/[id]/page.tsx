@@ -65,7 +65,6 @@ export default async function Page({ params }: { params: Promise<{ id: string }>
             <div className="stat-card"><div className="stat-value">{o.openCalls.length}</div><div className="stat-label">{t("Appels ouverts")}</div></div>
             <div className="stat-card"><div className="stat-value tone-electric">{o.events.length}</div><div className="stat-label">{t("Événements à venir")}</div></div>
             <div className="stat-card"><div className="stat-value">{o._count.projects}</div><div className="stat-label">{t("Collaborations")}</div></div>
-            {canSee(v.equipe, viewer) && <div className="stat-card"><div className="stat-value">{o.responseDays ? t("{n} j", { n: o.responseDays }) : "—"}</div><div className="stat-label">{t("Délai de réponse moyen")}</div></div>}
           </div>
           <div className="grid-2">
             <section className="card">

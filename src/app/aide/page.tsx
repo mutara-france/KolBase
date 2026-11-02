@@ -13,8 +13,8 @@ export const dynamic = "force-dynamic";
 const FAQ: [string, string][] = [
   ["Qui peut s'inscrire ?", "Tout professionnel de santé du secteur dentaire, ainsi que les membres d'organisations (industriels, sociétés savantes, associations, organismes de formation)."],
   ["Faut-il être référencé pour s'inscrire à un événement ?", "Non. Un compte suffit. Le référencement comme expert est un choix distinct, activable depuis « Mon compte »."],
-  ["Que deviennent les avantages acceptés à un événement ?", "Chaque prestation acceptée (repas, nuitée, transport…) est valorisée, fait l'objet d'une convention d'hospitalité et est publiée sur Transparence Santé."],
-  ["Comment une organisation sollicite-t-elle un expert ?", "Depuis l'annuaire ou une opportunité : elle ouvre un dossier, propose des honoraires vérifiés face aux références de juste contrepartie, puis le dossier suit le circuit de conformité."],
+  ["Que deviennent les avantages acceptés à un événement ?", "Chaque prestation acceptée (repas, nuitée, transport…) est valorisée et fait l'objet d'une convention d'hospitalité ; l'organisation la déclare ensuite sur Transparence Santé, à partir de l'export préparé par KolBase."],
+  ["Comment une organisation sollicite-t-elle un expert ?", "Depuis l'annuaire ou une opportunité : elle ouvre un dossier, propose des honoraires comparés à un repère indicatif, puis le dossier suit le circuit de conformité."],
   ["Mes données sont-elles publiques ?", "Seuls les experts référencés apparaissent sur le site public, avec des informations limitées. Coordonnées et tarifs sont réservés aux membres connectés."],
   ["Combien coûte KolBase ?", "Le référencement est gratuit pour les praticiens et les organisations."],
 ];

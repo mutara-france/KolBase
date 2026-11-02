@@ -19,7 +19,8 @@ export default function Page() {
         ["E-mails", <p key="e">KolBase envoie des e-mails de service (confirmation d&apos;adresse, mot de passe, invitations) et, sauf désactivation dans « Mon compte », des notifications liées à l&apos;activité de l&apos;utilisateur.</p>],
         ["Suppression du compte", <p key="s">L&apos;utilisateur peut supprimer son compte à tout moment depuis « Mon compte ». Les éléments liés aux conventions et aux hospitalités déclarées sont conservés pour les obligations des organisations, comme décrit dans la politique de confidentialité.</p>],
         ["Responsabilité", <p key="r">KolBase fournit un service de mise en relation et de gestion. Il n&apos;est pas partie aux conventions conclues entre utilisateurs.</p>],
-        ["Droit applicable", <p key="d">Droit français. Juridiction compétente : {legal("court")}. [Modalités de modification des CGU à compléter.]</p>],
+        ["Modification des conditions", <p key="mod">KolBase peut faire évoluer les présentes conditions, notamment pour suivre la réglementation ou les fonctions du service. Toute modification substantielle est annoncée par e-mail ou à la connexion au moins trente jours avant son entrée en vigueur ; l&apos;utilisateur qui la refuse peut supprimer son compte à tout moment. La poursuite de l&apos;utilisation après cette date vaut acceptation.</p>],
+        ["Droit applicable", <p key="d">Droit français. Juridiction compétente : {legal("court")}.</p>],
       ]}
     />
   );

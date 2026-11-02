@@ -129,7 +129,7 @@ export function ListingForm({ listed, eligible, hasRpps }: { listed: boolean; el
         <ul className="muted">
           <li>{t("Votre profil apparaît dans l'annuaire des experts et sur le site public.")}</li>
           <li>{t("Vous recevez des sollicitations et accédez aux opportunités.")}</li>
-          <li>{t("Toute rémunération ou avantage reçu sera conventionné et publié sur Transparence Santé.")}</li>
+          <li>{t("Toute rémunération ou avantage reçu fera l'objet d'une convention, que l'organisation déclare sur Transparence Santé.")}</li>
           {!hasRpps && <li><strong>{t("Prérequis : renseignez votre numéro RPPS")}</strong> {t("(Informations personnelles, plus bas).")}</li>}
         </ul>
       )}

@@ -3,7 +3,7 @@ import { SiteHeader } from "@/components/SiteHeader";
 import { StatusPill } from "@/components/ProjectBits";
 import { db } from "@/lib/db";
 import { requireUser } from "@/lib/auth";
-import { collabType } from "@/lib/projects";
+import { collabType, recruitmentOpen } from "@/lib/projects";
 import { fmtDate, fmtEur } from "@/lib/i18n";
 import { getT } from "@/lib/i18n/server";
 
@@ -22,7 +22,7 @@ export default async function Page() {
         orderBy: { createdAt: "desc" },
       })
     : [];
-  const pending = links.filter((l) => l.status === "ATT_EXPERTS" && l.project.status !== "DECLINE");
+  const pending = links.filter((l) => l.status === "ATT_EXPERTS" && recruitmentOpen(l.project.status));
   const others = links.filter((l) => !pending.includes(l));
 
   const Tile = ({ l }: { l: (typeof links)[number] }) => {
@@ -32,7 +32,7 @@ export default async function Page() {
         <strong>{l.project.title}</strong>
         <span className="muted">{l.project.organization.name} · {label && t(label)} · {l.feeCents != null ? t("{amount} HT", { amount: fmtEur(locale, l.feeCents) }) : "—"}</span>
         <span className="muted">{t("Reçue le {date}", { date: fmtDate(locale, l.createdAt) })}</span>
-        <StatusPill status={l.status === "ATT_EXPERTS" && l.project.status === "DECLINE" ? "DECLINE" : l.status} />
+        <StatusPill status={l.status === "ATT_EXPERTS" && !recruitmentOpen(l.project.status) ? "DECLINE" : l.status} />
       </Link>
     );
   };

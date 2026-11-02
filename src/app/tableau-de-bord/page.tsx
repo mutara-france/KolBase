@@ -6,7 +6,7 @@ import { DashHead, MoreLink, Timeline, todayLabel, type TimelineItem } from "@/c
 import { TodoList, type TodoItem } from "@/components/Todo";
 import { db } from "@/lib/db";
 import { requireUser } from "@/lib/auth";
-import { collabType } from "@/lib/projects";
+import { collabType, recruitmentOpen } from "@/lib/projects";
 import { drPrefix } from "@/lib/professions";
 import { fmtDate, fmtEur } from "@/lib/i18n";
 import { getT } from "@/lib/i18n/server";
@@ -58,7 +58,7 @@ export default async function Page() {
     : 0;
 
   const linkOf = (projectId: string) => links.find((l) => l.projectId === projectId)?.id;
-  const pending = links.filter((l) => l.status === "ATT_EXPERTS" && l.project.status !== "DECLINE");
+  const pending = links.filter((l) => l.status === "ATT_EXPERTS" && recruitmentOpen(l.project.status));
   const toSign = links.filter((l) => l.status === "SIGNATURE");
   const spec = (p.specialty ?? "").toLowerCase();
   const matching = calls.filter((c) => spec && `${c.specialty ?? ""} ${c.title}`.toLowerCase().includes(spec.split(/[ ,]/)[0]));

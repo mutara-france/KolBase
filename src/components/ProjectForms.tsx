@@ -37,7 +37,7 @@ export function NewProjectForm({ orgId, types, experts, preselected }: { orgId: 
         </label>
         <label>Domaine thérapeutique<input name="therapeuticArea" /></label>
       </div>
-      <p className="hint">Juste contrepartie de référence : {type.fmv[0].toLocaleString("fr-FR")} à {type.fmv[1].toLocaleString("fr-FR")} € HT par {type.unit}.</p>
+      <p className="hint">Repère indicatif KolBase (non réglementaire) : {type.fmv[0].toLocaleString("fr-FR")} à {type.fmv[1].toLocaleString("fr-FR")} € HT par {type.unit}. La juste contrepartie reste à documenter par votre organisation.</p>
       <label>Objet et déroulé<textarea name="description" rows={4} placeholder="Contexte, livrables attendus, dates…" /></label>
 
       <fieldset>

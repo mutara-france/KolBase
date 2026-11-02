@@ -25,17 +25,22 @@ export async function detectConflicts(projectId: string): Promise<Conflict[]> {
   for (const e of project.experts) {
     const name = `Dr ${e.practitioner.user.firstName} ${e.practitioner.user.lastName}`;
 
-    // 1. Engagement simultané par une autre organisation dans le même domaine.
+    // 1. Engagement simultané par une autre organisation dans le même domaine. Les dossiers des autres
+    // organisations sont confidentiels : seul un signal anonyme est donné (ni nom, ni titre, ni montant).
     if (project.therapeuticArea) {
       const others = await db.projectExpert.findMany({
         where: {
           practitionerId: e.practitionerId, status: ENGAGED,
           project: { id: { not: project.id }, organizationId: { not: project.organizationId }, therapeuticArea: project.therapeuticArea, status: { notIn: [...CLOSED] } },
         },
-        include: { project: { include: { organization: { select: { name: true } } } } },
+        select: { project: { select: { organizationId: true } } },
       });
-      for (const o of others)
-        out.push({ kind: "concurrent", who: name, severity: "warn", detail: `Engagé simultanément par ${o.project.organization.name} en ${project.therapeuticArea} (« ${o.project.title} »).` });
+      const orgs = new Set(others.map((o) => o.project.organizationId)).size;
+      if (orgs > 0)
+        out.push({
+          kind: "concurrent", who: name, severity: "warn",
+          detail: `Collaboration en cours avec ${orgs > 1 ? `${orgs} autres organisations` : "une autre organisation"} en ${project.therapeuticArea}. Les détails restent confidentiels : demandez à l'expert de déclarer ses liens d'intérêts.`,
+        });
     }
 
     // 2. Structure bénéficiaire détenue majoritairement par le praticien.

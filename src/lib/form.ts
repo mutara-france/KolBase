@@ -12,16 +12,19 @@ export const str = (f: FormData, k: string, max = MAX_TEXT) => String(f.get(k) ?
  * Montant saisi en euros (« 1 200,50 », « 1200.5 ») converti en centimes.
  * Vide, négatif ou illisible : null. `allowZero: false` refuse aussi 0 (devis, par exemple).
  */
+/** Montant maximal accepté (10 millions d'euros) : reste représentable en centimes dans un entier PostgreSQL. */
+export const MAX_EUR = 10_000_000;
+
 export function eurToCents(v: string, { allowZero = true }: { allowZero?: boolean } = {}): number | null {
   const s = v.replace(/[\s  ]/g, "").replace(",", ".");
   if (!s) return null;
   const n = Number(s);
-  if (!Number.isFinite(n) || n < 0 || (!allowZero && n === 0)) return null;
+  if (!Number.isFinite(n) || n < 0 || n > MAX_EUR || (!allowZero && n === 0)) return null;
   return Math.round(n * 100);
 }
 
 /** Entier positif ou nul (arrondi), ou null si vide ou illisible. */
-export const intOrNull = (v: string) => (v && Number.isFinite(Number(v)) ? Math.max(0, Math.round(Number(v))) : null);
+export const intOrNull = (v: string) => (v && Number.isFinite(Number(v)) ? Math.min(1_000_000_000, Math.max(0, Math.round(Number(v)))) : null);
 
 /**
  * Volume d'une prestation (heures, journées…) : nombre strictement positif et plausible.

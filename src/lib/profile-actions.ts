@@ -44,7 +44,8 @@ export async function addPublication(_: ActionState, form: FormData): Promise<Ac
   if (!user.practitioner) return { error: t("Réservé aux praticiens.") };
   const title = str(form, "title");
   if (!title) return { error: t("Le titre est obligatoire.") };
-  const year = Number(str(form, "year")) || null;
+  const yearNum = Number(str(form, "year"));
+  const year = Number.isInteger(yearNum) && yearNum >= 1900 && yearNum <= new Date().getFullYear() + 1 ? yearNum : null;
   if (year && (year < 1950 || year > new Date().getFullYear() + 1)) return { error: t("Année invalide.") };
   await db.publication.create({
     data: {

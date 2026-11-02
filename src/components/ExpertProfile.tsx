@@ -36,6 +36,14 @@ export async function ExpertProfile({ id, viewer, solicitHref, userId = null }: 
   const v = kolVisibility(p.visibility);
   const name = `${drPrefix(p.profession)}${p.user.firstName} ${p.user.lastName}`;
   const orgs = [...new Map(p.projectLinks.map((l) => [l.project.organization.id, l.project.organization.name])).values()];
+  // Délai de réponse mesuré sur les sollicitations des 12 derniers mois (au moins 3 réponses), jamais une valeur saisie.
+  const answered = await db.projectExpert.findMany({
+    where: { practitionerId: p.id, respondedAt: { not: null }, createdAt: { gte: new Date(Date.now() - 365 * 864e5) } },
+    select: { createdAt: true, respondedAt: true },
+  });
+  const responseDays = answered.length >= 3
+    ? Math.max(1, Math.round(answered.reduce((s, l) => s + (l.respondedAt!.getTime() - l.createdAt.getTime()), 0) / answered.length / 864e5))
+    : null;
 
   return (
     <div className="stack">
@@ -61,7 +69,7 @@ export async function ExpertProfile({ id, viewer, solicitHref, userId = null }: 
           <>
             <div className="stat-card"><div className="stat-value">{p.projectLinks.length}</div><div className="stat-label">{t("Collaborations via KolBase")}</div></div>
             <div className="stat-card"><div className="stat-value">{orgs.length}</div><div className="stat-label">{t("Organisations partenaires")}</div></div>
-            <div className="stat-card"><div className="stat-value tone-electric">{p.responseDays ? t("{n} j", { n: p.responseDays }) : "—"}</div><div className="stat-label">{t("Délai de réponse moyen")}</div></div>
+            <div className="stat-card"><div className="stat-value tone-electric">{responseDays ? t("{n} j", { n: responseDays }) : "—"}</div><div className="stat-label">{t("Délai de réponse moyen")}</div></div>
           </>
         ) : null}
         {canSee(v.tarif, viewer) && p.dayRateCents != null && (

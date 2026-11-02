@@ -8,7 +8,7 @@ import { db } from "@/lib/db";
 import { requireMembership } from "@/lib/orgs";
 import { COMPLIANCE_ROLES, formatDate, formatEUR } from "@/lib/events";
 import { collabType, STATUS_LABEL } from "@/lib/projects";
-import { complianceSettings, foreignRegime, remunerationRegime, REGIME_LABEL, SETTING_FIELDS, type Regime } from "@/lib/compliance";
+import { complianceSettings, foreignRegime, legalBound, remunerationRegime, REGIME_LABEL, SETTING_FIELDS, type Regime } from "@/lib/compliance";
 import { country, practicesInFrance } from "@/lib/countries";
 import { registerRows } from "@/lib/compliance-data";
 import { markProjectPublished } from "@/lib/compliance-actions";
@@ -37,7 +37,7 @@ export default async function Page({ params, searchParams }: { params: Promise<{
 
   const projects = await db.project.findMany({
     where: { organizationId: id, status: { in: ["EN_VALID", "VALIDE", "ORDRE", "REFUS_ORDRE", "SIGNATURE", "SIGNE", "TERMINE"] } },
-    include: { experts: { where: { status: { not: "DECLINE" } }, include: { practitioner: { include: { user: { select: { firstName: true, lastName: true } } } } } } },
+    include: { experts: { where: { status: { notIn: ["DECLINE", "ATT_EXPERTS"] } }, include: { practitioner: { include: { user: { select: { firstName: true, lastName: true } } } } } } },
     orderBy: { updatedAt: "desc" },
   });
   const regimeOf = (p: (typeof projects)[number]) => {
@@ -150,7 +150,7 @@ export default async function Page({ params, searchParams }: { params: Promise<{
             )}
           </section>
         )}
-        {onglet === "parametres" && <ComplianceSettingsForm orgId={id} settings={s} fields={SETTING_FIELDS} canEdit={isAdmin || roles.includes("CONFORMITE")} />}
+        {onglet === "parametres" && <ComplianceSettingsForm orgId={id} settings={s} fields={SETTING_FIELDS.map((f) => ({ ...f, legal: legalBound(f.key) }))} canEdit={isAdmin || roles.includes("CONFORMITE")} />}
       </main>
     </>
   );

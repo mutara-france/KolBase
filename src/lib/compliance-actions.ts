@@ -5,7 +5,7 @@ import { db } from "@/lib/db";
 import { audit } from "@/lib/auth";
 import { requireMembership } from "@/lib/orgs";
 import { COMPLIANCE_ROLES } from "@/lib/events";
-import { SETTING_FIELDS, complianceSettings } from "@/lib/compliance";
+import { SETTING_FIELDS, complianceSettings, legalBound } from "@/lib/compliance";
 import { str } from "@/lib/form";
 
 export type ActionState = { error?: string; ok?: string } | undefined;
@@ -17,6 +17,9 @@ export async function updateComplianceSettings(_: ActionState, form: FormData): 
   for (const f of SETTING_FIELDS) {
     const v = Number(str(form, f.key).replace(",", "."));
     if (!Number.isFinite(v) || v < 0) return { error: `Valeur invalide : ${f.label}.` };
+    const bound = legalBound(f.key);
+    if (bound?.max != null && v > bound.max) return { error: `${f.label} : ${bound.max} ${f.unit} au maximum (seuil réglementaire, qui ne peut qu'être abaissé).` };
+    if (bound?.min != null && v < bound.min) return { error: `${f.label} : ${bound.min} ${f.unit} au minimum (délai réglementaire, qui ne peut qu'être allongé).` };
     raw[f.key] = v;
   }
   const settings = complianceSettings(raw);

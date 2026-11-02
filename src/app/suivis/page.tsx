@@ -23,7 +23,8 @@ export default async function Page() {
   const [feed, follows] = await Promise.all([
     followFeed(user.id),
     db.follow.findMany({
-      where: { userId: user.id },
+      // Un profil retiré de l'annuaire (ou une organisation non validée) disparaît de la liste des suivis.
+      where: { userId: user.id, OR: [{ practitioner: { listed: true } }, { organization: { listed: true, verification: "VERIFIED" } }] },
       include: { practitioner: { include: { user: { select: { firstName: true, lastName: true } } } }, organization: true },
       orderBy: { createdAt: "desc" },
     }),

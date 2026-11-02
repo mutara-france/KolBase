@@ -60,6 +60,13 @@ export const PROJECT_ROLES: OrgRole[] = ["ADMIN", "EDUCATION", "EVENEMENTS", "CU
 export const PROJECT_VIEW_ROLES: OrgRole[] = [...PROJECT_ROLES, "CONFORMITE"];
 
 /** Transitions possibles : qui peut faire quoi, depuis quel statut. */
+/**
+ * Phase de recrutement : un expert sollicité peut encore accepter. Une fois le dossier soumis à la conformité,
+ * le recrutement est clos ; un expert resté sans réponse doit être sollicité de nouveau (nouveau dossier).
+ */
+export const RECRUITING_STATUSES: ProjectStatus[] = ["ATT_EXPERTS", "ACCORD"];
+export const recruitmentOpen = (status: ProjectStatus | string) => (RECRUITING_STATUSES as string[]).includes(status);
+
 export const TRANSITIONS = {
   accept_proposal: { from: ["ATT_IND"], to: "ACCORD", roles: "project", label: "Accepter la proposition" },
   decline_proposal: { from: ["ATT_IND"], to: "DECLINE", roles: "project", label: "Décliner la proposition" },
@@ -92,6 +99,3 @@ export function fmvCheck(typeId: string, feeCents: number | null, units: number 
 export const MATERIAL_KINDS = { diaporama: "Diaporama", article: "Article / texte", video: "Vidéo", programme: "Programme", autre: "Autre" } as const;
 export const MATERIAL_STATUS = { submitted: "En relecture", approved: "Approuvé", changes: "Modifications demandées" } as const;
 export const REVIEW_ROLES: OrgRole[] = ["ADMIN", "RELECTURE", "CONFORMITE"];
-
-/** Seuil d'alerte de cumul annuel de rémunérations d'un même expert par une même organisation (€ HT). */
-export const CUMUL_ALERT_EUR = 10000;

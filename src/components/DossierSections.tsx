@@ -17,8 +17,8 @@ export async function ConflictsPanel({ projectId }: { projectId: string }) {
   const conflicts = await detectConflicts(projectId);
   return (
     <section className="card">
-      <h2 className="section-title"><ShieldAlert size={15} /> Conflits d&apos;intérêts et points d&apos;attention</h2>
-      {conflicts.length === 0 ? <p className="todo-empty">Aucun conflit détecté.</p> : (
+      <h2 className="section-title"><ShieldAlert size={15} /> Points d&apos;attention (conflits d&apos;intérêts possibles)</h2>
+      {conflicts.length === 0 ? <p className="todo-empty">Aucun point d&apos;attention dans les données KolBase. Les liens d&apos;intérêts noués en dehors de KolBase ne sont pas connus : l&apos;expert les déclare lui-même.</p> : (
         <ul className="conflict-list">
           {conflicts.map((c, i) => (
             <li key={i} className={`conflict ${c.severity}`}>

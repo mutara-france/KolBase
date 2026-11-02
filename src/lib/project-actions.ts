@@ -6,7 +6,8 @@ import { db } from "@/lib/db";
 import { audit, requireUser } from "@/lib/auth";
 import { ORG_NOT_VERIFIED, isVerifiedOrg, requireMembership } from "@/lib/orgs";
 import { COMPLIANCE_ROLES } from "@/lib/events";
-import { collabType, PROJECT_ROLES, SOURCING_ROLES, PROJECT_VIEW_ROLES, TRANSITIONS, type TransitionKey } from "@/lib/projects";
+import { collabType, PROJECT_ROLES, RECRUITING_STATUSES, recruitmentOpen, SOURCING_ROLES, PROJECT_VIEW_ROLES, TRANSITIONS, type TransitionKey } from "@/lib/projects";
+import { storageEnabled } from "@/lib/storage";
 import type { ProjectStatus } from "@/generated/prisma/client";
 import { complianceSettings, projectRegime } from "@/lib/compliance";
 import { missingSignedConventions } from "@/lib/project-documents";
@@ -85,9 +86,15 @@ export async function respondToSolicitation(_: ActionState, form: FormData): Pro
   if (!link) return { error: t("Sollicitation introuvable.") };
   if (link.status !== "ATT_EXPERTS") return { error: t("Vous avez déjà répondu.") };
   if (link.project.status === "DECLINE") return { error: t("Ce dossier a été abandonné par l'organisation.") };
+  if (!recruitmentOpen(link.project.status)) return { error: t("Le recrutement de ce dossier est clos : l'organisation doit vous solliciter de nouveau.") };
   if (!["accept", "decline"].includes(answer)) return { error: t("Réponse invalide.") };
   const status: ProjectStatus = answer === "accept" ? "ACCORD" : "DECLINE";
-  await db.projectExpert.update({ where: { id: link.id }, data: { status, responseNote: str(form, "note") || null, respondedAt: new Date() } });
+  // Réponse prise en compte seulement si la sollicitation est toujours ouverte (double envoi, dossier avancé entre-temps).
+  const { count } = await db.projectExpert.updateMany({
+    where: { id: link.id, status: "ATT_EXPERTS", project: { status: { in: RECRUITING_STATUSES } } },
+    data: { status, responseNote: str(form, "note") || null, respondedAt: new Date() },
+  });
+  if (count === 0) return { error: t("Vous avez déjà répondu.") };
   if (str(form, "note")) {
     await db.message.create({ data: { projectId: link.projectId, projectExpertId: link.id, authorId: user.id, body: str(form, "note") } });
   }
@@ -133,8 +140,13 @@ export async function advanceProject(form: FormData) {
   const { user } = await requireMembership(orgId, t.roles === "compliance" ? COMPLIANCE_ROLES : PROJECT_ROLES);
   const project = await db.project.findFirst({ where: { id: projectId, organizationId: orgId }, include: { experts: { include: { practitioner: { select: { country: true } } } }, organization: { select: { complianceSettings: true } } } });
   if (!project || !(t.from as readonly string[]).includes(project.status)) return;
-  // Convention signée : avec le stockage activé, la convention signée de chaque expert engagé doit être déposée.
-  if (key === "signed" && (await missingSignedConventions(projectId)).length > 0) return;
+  // Convention signée : chaque expert engagé doit avoir une convention signée déposée ou une signature électronique
+  // achevée. Sans stockage de documents, seule une attestation explicite (nominative, datée) en tient lieu.
+  let attest = false;
+  if (key === "signed" && (await missingSignedConventions(projectId)).length > 0) {
+    if (storageEnabled() || form.get("attest") !== "1") return;
+    attest = true;
+  }
   // Un dossier au-delà des seuils d'autorisation ne peut pas passer par la déclaration simple ;
   // la voie « hors France » est réservée aux dossiers dont tous les experts exercent à l'étranger.
   const regime = projectRegime(complianceSettings(project.organization.complianceSettings), collabType(project.typeId)?.unit ?? "", project.experts.map((e) => ({ ...e, country: e.practitioner.country })))?.regime;
@@ -149,12 +161,13 @@ export async function advanceProject(form: FormData) {
       status: t.to,
       ...(key === "block" || key === "validate" ? { complianceNote: note || null } : {}),
       ...(key === "ordre" ? { ordreRef: note || null } : {}),
+      ...(attest ? { signatureAttestedAt: new Date(), signatureAttestedById: user.id } : {}),
     },
   });
   // Les experts ayant donné leur accord suivent le statut du dossier.
   await db.projectExpert.updateMany({ where: { projectId, status: { notIn: ["DECLINE", "ATT_EXPERTS"] } }, data: { status: t.to } });
   if (key === "abandon") await db.projectExpert.updateMany({ where: { projectId, status: "ATT_EXPERTS" }, data: { status: "DECLINE" } });
-  await audit(user.id, `project.${key}`, "Project", projectId, { from: project.status, to: t.to, note: note || undefined });
+  await audit(user.id, `project.${key}`, "Project", projectId, { from: project.status, to: t.to, note: note || undefined, ...(attest ? { attestation: "convention signée conservée hors KolBase" } : {}) });
   if (key === "submit" || key === "validate" || key === "block") notifyCompliance(projectId, key, user.id);
   revalidatePath(`/organisations/${orgId}/dossiers/${projectId}`);
 }

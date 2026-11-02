@@ -12,7 +12,7 @@ industriels, sociétés savantes, associations, organismes de formation.
 ## Démarrer en local
 
 ```bash
-cp .env.example .env          # renseigner DATABASE_URL et AUTH_SECRET
+cp .env.example .env          # renseigner DATABASE_URL
 npm install
 npx prisma migrate deploy     # crée les tables (migrations versionnées)
 DEMO_PASSWORD=… npm run db:seed   # données fictives de démonstration
@@ -46,7 +46,9 @@ Voir `prisma/schema.prisma`. Principes repris du prototype :
 
 ## Déploiement
 
-Chaque commit sur `main` est déployé automatiquement par Render.
+Chaque commit sur `main` est déployé automatiquement par Render, une fois les vérifications GitHub (CI) réussies
+(`autoDeployTrigger: checksPass`). Protéger `main` dans GitHub (vérification « verifier » obligatoire avant fusion)
+évite qu'un commit non testé y arrive.
 
 Avant chaque mise en production, Render exécute `npm run deploy:prepare` (`scripts/predeploy.sh`) :
 

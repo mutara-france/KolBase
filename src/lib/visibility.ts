@@ -38,15 +38,14 @@ export const COMPANY_VIS_FIELDS = [
   { key: "areas", label: "Aires d'intervention", desc: "Spécialités dans lesquelles vous collaborez." },
   { key: "policy", label: "Politique de conformité", desc: "Vos règles de contractualisation." },
   { key: "contact", label: "Contact partenariats", desc: "Adresse de prise de contact." },
-  { key: "projets", label: "Appels ouverts", desc: "Vos opportunités publiées." },
-  { key: "equipe", label: "Délais de réponse", desc: "Réactivité moyenne de vos équipes." },
+  { key: "projets", label: "Appels ouverts", desc: "Sur votre fiche et les pages publiques. Les praticiens connectés voient toujours vos appels dans « Opportunités » pour y répondre." },
 ] as const;
 
 export type KolVisibility = Record<(typeof KOL_VIS_FIELDS)[number]["key"], VisLevel> & { projets: ProjVisLevel };
 export type CompanyVisibility = Record<(typeof COMPANY_VIS_FIELDS)[number]["key"], VisLevel>;
 
 export const DEFAULT_KOL_VISIBILITY: KolVisibility = { contact: "public", tarif: "industriels", publications: "public", structures: "industriels", projets: "nominatif", historique: "public" };
-export const DEFAULT_COMPANY_VISIBILITY: CompanyVisibility = { areas: "public", policy: "public", contact: "industriels", projets: "public", equipe: "industriels" };
+export const DEFAULT_COMPANY_VISIBILITY: CompanyVisibility = { areas: "public", policy: "public", contact: "industriels", projets: "public" };
 
 const isLevel = (v: unknown): v is VisLevel => v === "public" || v === "industriels" || v === "masque";
 const isProj = (v: unknown): v is ProjVisLevel => v === "nominatif" || v === "agrege" || v === "masque";

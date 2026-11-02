@@ -7,6 +7,7 @@ import { db } from "@/lib/db";
 import { audit, requireUser } from "@/lib/auth";
 import { invitableRoles, isVerifiedOrg, requireMembership, SIREN_REQUIRED, sirenFields } from "@/lib/orgs";
 import { blockedFor, hit } from "@/lib/rate-limit";
+import { mailEnabled } from "@/lib/mail";
 import { LOGO_MAX_BYTES, sniffLogo } from "@/lib/logos";
 import { parseSiren, sirenKeyOk } from "@/lib/siren";
 import type { FormState } from "@/lib/auth-actions";
@@ -149,12 +150,13 @@ export async function removeMembership(form: FormData) {
   const id = str(form, "membershipId");
   const m = await db.membership.findFirst({ where: { id, organizationId: orgId } });
   if (!m) return;
-  // On ne retire pas le dernier administrateur.
-  if (m.role === "ADMIN") {
-    const admins = await db.membership.count({ where: { organizationId: orgId, role: "ADMIN" } });
-    if (admins <= 1) return;
-  }
-  await db.membership.delete({ where: { id } });
+  // On ne retire pas le dernier administrateur, même si deux retraits arrivent en même temps (verrou sur l'organisation).
+  const removed = await db.$transaction(async (tx) => {
+    await tx.$queryRaw`SELECT 1 FROM "Organization" WHERE id = ${orgId} FOR UPDATE`;
+    if (m.role === "ADMIN" && (await tx.membership.count({ where: { organizationId: orgId, role: "ADMIN" } })) <= 1) return false;
+    return (await tx.membership.deleteMany({ where: { id } })).count === 1;
+  });
+  if (!removed) return;
   await audit(user.id, "org.member_remove", "Membership", id, { userId: m.userId, role: m.role });
   revalidatePath(`/organisations/${orgId}`);
   revalidatePath(`/organisations/${orgId}/membres`);
@@ -165,6 +167,8 @@ export async function acceptInvitation(form: FormData) {
   const token = str(form, "token");
   const inv = await db.invitation.findUnique({ where: { tokenHash: sha256(token) } });
   if (!inv || inv.acceptedAt || inv.revokedAt || inv.expiresAt < new Date()) redirect(`/invitation/${token}`);
+  // Invitation nominative : réservée au compte de l'adresse invitée (adresse confirmée dès que les e-mails sont configurés).
+  if (inv.email && (inv.email.toLowerCase() !== user.email.toLowerCase() || (mailEnabled() && !user.emailVerifiedAt))) redirect(`/invitation/${token}`);
   // Usage unique garanti même en cas d'acceptations simultanées : seule la première « consomme » le jeton.
   const accepted = await db.$transaction(async (tx) => {
     const { count } = await tx.invitation.updateMany({

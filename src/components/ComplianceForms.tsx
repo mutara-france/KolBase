@@ -5,7 +5,7 @@ import { updateComplianceSettings } from "@/lib/compliance-actions";
 import { Notice } from "@/components/AuthForms";
 import type { ComplianceSettings } from "@/lib/compliance";
 
-type Field = { key: keyof ComplianceSettings; label: string; unit: string; group: string };
+type Field = { key: keyof ComplianceSettings; label: string; unit: string; group: string; legal?: { min?: number; max?: number } | null };
 
 export function ComplianceSettingsForm({ orgId, settings, fields, canEdit }: { orgId: string; settings: ComplianceSettings; fields: Field[]; canEdit: boolean }) {
   const [state, action, pending] = useActionState(updateComplianceSettings, undefined);
@@ -15,7 +15,7 @@ export function ComplianceSettingsForm({ orgId, settings, fields, canEdit }: { o
       <h2>Paramètres de conformité</h2>
       <p className="muted">
         Valeurs par défaut reprises des arrêtés du 7 août 2020 (seuils au-delà desquels une autorisation est requise).
-        Elles doivent être validées par votre service juridique.
+        Votre organisation peut les rendre plus strictes (seuils plus bas, délais plus longs), jamais plus souples.
       </p>
       <Notice state={state} />
       <input type="hidden" name="orgId" value={orgId} />
@@ -25,7 +25,11 @@ export function ComplianceSettingsForm({ orgId, settings, fields, canEdit }: { o
           {fields.filter((f) => f.group === g).map((f) => (
             <label key={f.key}>
               {f.label} <span className="muted">({f.unit})</span>
-              <input name={f.key} type="number" min={0} step="any" defaultValue={settings[f.key]} required disabled={!canEdit} />
+              <input
+                name={f.key} type="number" step="any" defaultValue={settings[f.key]} required disabled={!canEdit}
+                min={f.legal?.min ?? 0} max={f.legal?.max}
+              />
+              {f.legal && <span className="hint">{f.legal.max != null ? `Plafond réglementaire : ${f.legal.max} ${f.unit}.` : `Minimum réglementaire : ${f.legal.min} ${f.unit}.`}</span>}
             </label>
           ))}
         </fieldset>

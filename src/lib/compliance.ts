@@ -47,15 +47,31 @@ export const SETTING_FIELDS: { key: keyof ComplianceSettings; label: string; uni
   { key: "authorizationDays", label: "Délai de demande d'autorisation avant exécution", unit: "jours", group: "Délais" },
 ];
 
+/**
+ * Seuils fixés par l'arrêté du 7 août 2020 et délais du dispositif : une organisation peut les rendre plus stricts
+ * (seuils plus bas, délais plus longs), jamais plus souples. Les valeurs par défaut sont les valeurs réglementaires.
+ */
+export const LEGAL_CEILINGS: (keyof ComplianceSettings)[] = [
+  "remunerationConventionMax", "remunerationHourlyMax", "remunerationHalfDayMax",
+  "hospitalityNightMax", "hospitalityMealMax", "hospitalityCollationMax", "hospitalityTotalMax",
+];
+export const LEGAL_FLOORS: (keyof ComplianceSettings)[] = ["declarationDays", "authorizationDays"];
+
 export function complianceSettings(raw: unknown): ComplianceSettings {
   const r = (raw && typeof raw === "object" ? raw : {}) as Record<string, unknown>;
   const out = { ...DEFAULT_COMPLIANCE };
   for (const f of SETTING_FIELDS) {
     const v = Number(r[f.key]);
-    if (Number.isFinite(v) && v >= 0) out[f.key] = v;
+    if (!Number.isFinite(v) || v < 0) continue;
+    const legal = DEFAULT_COMPLIANCE[f.key];
+    out[f.key] = LEGAL_CEILINGS.includes(f.key) ? Math.min(v, legal) : LEGAL_FLOORS.includes(f.key) ? Math.max(v, legal) : v;
   }
   return out;
 }
+
+/** Valeur réglementaire qu'un réglage ne peut pas assouplir, avec le sens de la contrainte. */
+export const legalBound = (key: keyof ComplianceSettings) =>
+  LEGAL_CEILINGS.includes(key) ? { max: DEFAULT_COMPLIANCE[key] } : LEGAL_FLOORS.includes(key) ? { min: DEFAULT_COMPLIANCE[key] } : null;
 
 export type Regime = "declaration" | "autorisation" | "hors_france";
 export const REGIME_LABEL: Record<Regime, string> = { declaration: "Déclaration", autorisation: "Autorisation", hors_france: "Hors France" };
@@ -86,7 +102,10 @@ export function remunerationRegime(s: ComplianceSettings, feeCents: number | nul
  * Si tous les experts engagés exercent hors de France, le dossier sort du dispositif EPS (« hors France »).
  */
 export function projectRegime(s: ComplianceSettings, unit: string, experts: { status: string; feeCents: number | null; days: number | null; country?: string | null }[]) {
-  const engaged = experts.filter((e) => e.status !== "DECLINE");
+  // Experts engagés ; les sollicitations sans réponse ne comptent que tant qu'aucun expert n'a accepté (aperçu).
+  const live = experts.filter((e) => e.status !== "DECLINE");
+  const accepted = live.filter((e) => e.status !== "ATT_EXPERTS");
+  const engaged = accepted.length > 0 ? accepted : live;
   const french = engaged.filter((e) => practicesInFrance(e.country));
   if (engaged.length > 0 && french.length === 0) {
     const codes = [...new Set(engaged.map((e) => e.country ?? "XX"))];

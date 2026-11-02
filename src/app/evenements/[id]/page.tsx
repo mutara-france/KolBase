@@ -17,7 +17,7 @@ const dateTime = (locale: Locale, d: Date) => fmtDate(locale, d, { weekday: "lon
 export async function generateMetadata({ params }: { params: Promise<{ id: string }> }): Promise<Metadata> {
   const { id } = await params;
   const { t, locale } = await getT();
-  const e = await db.event.findFirst({ where: { id, publishedAt: { not: null } }, include: { organization: { select: { name: true } } } });
+  const e = await db.event.findFirst({ where: { id, publishedAt: { not: null }, organization: { verification: "VERIFIED" } }, include: { organization: { select: { name: true } } } });
   if (!e) return { title: t("Événement — KolBase"), robots: { index: false } };
   return {
     title: `${e.title} — ${e.organization.name} — KolBase`,
@@ -29,7 +29,7 @@ export default async function Page({ params }: { params: Promise<{ id: string }>
   const { id } = await params;
   const [event, user] = await Promise.all([
     db.event.findFirst({
-      where: { id, publishedAt: { not: null } },
+      where: { id, publishedAt: { not: null }, organization: { verification: "VERIFIED" } },
       include: { organization: true, benefits: true, _count: { select: { registrations: true } } },
     }),
     getCurrentUser(),
