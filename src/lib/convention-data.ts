@@ -38,6 +38,8 @@ export async function loadCollabConvention(linkId: string, where: { organization
     project: { title: p.title, typeLabel: type?.label ?? p.typeId, unit: type?.unit ?? "unité", therapeuticArea: p.therapeuticArea, description: p.description, ordreRef: p.ordreRef },
     link: { units: link.days, feeCents: link.feeCents },
     fmv: fmv ? { min: fmv.min, max: fmv.max, perUnit: fmv.perUnit, verdict: fmv.verdict } : null,
+    // Langue de l'expert : celle des e-mails et de la page de signature électronique.
+    expertLocale: link.practitioner.user.locale,
   };
 }
 

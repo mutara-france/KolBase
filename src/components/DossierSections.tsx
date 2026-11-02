@@ -231,29 +231,33 @@ export function ConventionSignatureBlock({ orgId, linkId, signature, projectStat
 }
 
 /** Côté expert : où en est la signature électronique de sa convention. */
-export function ExpertSignatureBlock({ linkId, signature, email }: { linkId: string; signature: ConventionSignature | null; email: string }) {
+export async function ExpertSignatureBlock({ linkId, signature, email }: { linkId: string; signature: ConventionSignature | null; email: string }) {
   const s = signature;
   if (!s || s.status === "draft") return null;
+  const { t, locale } = await getT();
   if (s.status === "done")
     return (
       <p className="notice ok">
-        Convention signée électroniquement par les deux parties{s.completedAt ? ` le ${formatDate(s.completedAt)}` : ""}.{" "}
-        <a href={`/signatures/${linkId}`}>Télécharger la convention signée (PDF)</a>
+        {s.completedAt ? t("Convention signée électroniquement par les deux parties le {date}.", { date: fmtDate(locale, s.completedAt) }) : t("Convention signée électroniquement par les deux parties.")}{" "}
+        <a href={`/signatures/${linkId}`}>{t("Télécharger la convention signée (PDF)")}</a>
       </p>
     );
   if (s.status === "ongoing")
     return (
       <section className="card highlight stack-sm">
-        <h2 className="section-title"><FileSignature size={15} /> Convention en attente de votre signature</h2>
+        <h2 className="section-title"><FileSignature size={15} /> {t("Convention en attente de votre signature")}</h2>
         <p>
-          Yousign, notre prestataire de signature électronique, vous a envoyé un e-mail à <strong>{email}</strong> avec le lien pour signer
-          {s.sentAt ? ` (demande du ${formatDate(s.sentAt)})` : ""}. Un code de vérification vous est adressé par e-mail au moment de signer.
-          Pensez à regarder dans vos courriers indésirables.
+          {t("Yousign, notre prestataire de signature électronique, vous a envoyé un e-mail à {email} avec le lien pour signer.", { email })}
+          {s.sentAt ? ` ${t("Demande du {date}.", { date: fmtDate(locale, s.sentAt) })}` : ""}{" "}
+          {t("Un code de vérification vous est adressé par e-mail au moment de signer. Pensez à regarder dans vos courriers indésirables.")}
         </p>
-        <p className="text-xs">Si vous avez déjà signé, la convention attend la signature de l&apos;organisation.</p>
+        <p className="text-xs">{t("Si vous avez déjà signé, la convention attend la signature de l'organisation.")}</p>
         {signatureEnabled() && <RefreshSignatureForm linkId={linkId} />}
       </section>
     );
-  const why = s.status === "declined" ? `a été refusée${s.note ? ` (« ${s.note} »)` : ""}` : s.status === "expired" ? "a expiré" : "a été annulée";
-  return <p className="notice warn">La demande de signature électronique de la convention {why}. L&apos;organisation peut vous en adresser une nouvelle.</p>;
+  const msg =
+    s.status === "declined"
+      ? s.note ? t("La demande de signature électronique de la convention a été refusée (« {note} »).", { note: s.note }) : t("La demande de signature électronique de la convention a été refusée.")
+      : s.status === "expired" ? t("La demande de signature électronique de la convention a expiré.") : t("La demande de signature électronique de la convention a été annulée.");
+  return <p className="notice warn">{msg} {t("L'organisation peut vous en adresser une nouvelle.")}</p>;
 }

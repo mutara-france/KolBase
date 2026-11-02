@@ -32,8 +32,9 @@ export async function markProjectPublished(form: FormData) {
   const { user } = await requireMembership(orgId, COMPLIANCE_ROLES);
   const projectId = str(form, "projectId");
   const undo = form.get("undo") === "1";
+  // Seule une convention signée se publie sur Transparence Santé ; l'annulation reste toujours possible.
   const { count } = await db.project.updateMany({
-    where: { id: projectId, organizationId: orgId },
+    where: { id: projectId, organizationId: orgId, ...(undo ? {} : { status: { in: ["SIGNE", "TERMINE"] } }) },
     data: undo ? { declared: false, declarationRef: null, declaredAt: null } : { declared: true, declarationRef: str(form, "ref") || null, declaredAt: new Date() },
   });
   if (!count) return;

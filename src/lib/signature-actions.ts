@@ -1,5 +1,6 @@
 "use server";
 
+import { getT } from "@/lib/i18n/server";
 import { revalidatePath } from "next/cache";
 import { db } from "@/lib/db";
 import { audit, requireUser } from "@/lib/auth";
@@ -67,8 +68,8 @@ export async function sendConventionForSignature(_: ActionState, form: FormData)
       filename: `convention-${data.ref}.pdf`,
       pdf: bytes,
       signers: [
-        { firstName: user.firstName, lastName: user.lastName, email: user.email, box: orgBox },
-        { firstName: data.expert.firstName, lastName: data.expert.lastName, email: data.expert.email, box: expertBox },
+        { firstName: user.firstName, lastName: user.lastName, email: user.email, box: orgBox, locale: user.locale },
+        { firstName: data.expert.firstName, lastName: data.expert.lastName, email: data.expert.email, box: expertBox, locale: data.expertLocale },
       ],
     });
     await db.conventionSignature.update({
@@ -95,13 +96,14 @@ export async function refreshSignatureStatus(_: ActionState, form: FormData): Pr
   });
   const team = !!link && user.memberships.some((m) => m.organizationId === link.project.organizationId && PROJECT_VIEW_ROLES.includes(m.role));
   const expert = !!link && link.practitioner.userId === user.id;
-  if (!link || !(team || expert) || !link.signature) return { error: "Demande de signature introuvable." };
-  if (!signatureEnabled()) return { error: "La signature électronique n'est pas configurée." };
-  if (isPendingRequest(link.signature.requestId)) return { error: "L'envoi n'a pas abouti : envoyez de nouveau la convention." };
+  const { t } = await getT();
+  if (!link || !(team || expert) || !link.signature) return { error: t("Demande de signature introuvable.") };
+  if (!signatureEnabled()) return { error: t("La signature électronique n'est pas configurée.") };
+  if (isPendingRequest(link.signature.requestId)) return { error: t("L'envoi n'a pas abouti : envoyez de nouveau la convention.") };
   try {
     const status = await syncSignature({ ...link.signature, projectExpert: { projectId: link.projectId } });
     refresh(link.project.organizationId, link.projectId, link.id);
-    return { ok: `Statut à jour : ${SIGNATURE_LABEL[status].toLowerCase()}.` };
+    return { ok: t("Statut à jour : {statut}.", { statut: t(SIGNATURE_LABEL[status]).toLowerCase() }) };
   } catch (e) {
     console.error("[signature] statut indisponible", e);
     return { error: failure(e) };

@@ -44,7 +44,7 @@ export default async function Page({ params }: { params: Promise<{ linkId: strin
         <div>
           <StatusPill status={abandoned ? "DECLINE" : p.status === "ATT_IND" ? "ATT_IND" : link.status} />
           <h1>{p.title}</h1>
-          <p className="muted">{p.organization.name} · {type ? t(type.label) : p.typeId}{p.therapeuticArea ? ` · ${p.therapeuticArea}` : ""}</p>
+          <p className="muted">{p.organization.name} · {type ? t(type.label) : p.typeId}{p.therapeuticArea ? ` · ${t(p.therapeuticArea)}` : ""}</p>
         </div>
         {link.status !== "ATT_EXPERTS" && link.status !== "DECLINE" && <Pipeline status={link.status} />}
         <section className="card">

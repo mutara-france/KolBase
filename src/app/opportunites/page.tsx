@@ -64,7 +64,7 @@ export default async function Page({ searchParams }: { searchParams: Promise<{ t
             <Link key={c.id} href={`/opportunites/${c.id}`} className="card tile">
               <span className="tag">{t(collabType(c.typeId)?.label ?? c.typeId)}</span>
               <strong>{c.title}</strong>
-              <span className="muted">{c.organization.name}{c.specialty ? ` · ${c.specialty}` : ""}</span>
+              <span className="muted">{c.organization.name}{c.specialty ? ` · ${t(c.specialty)}` : ""}</span>
               {(c.budgetMinCents != null || c.budgetMaxCents != null) && (
                 <span className="muted">{t("Budget {amount} HT", { amount: [c.budgetMinCents, c.budgetMaxCents].filter((x) => x != null).map((x) => fmtEur(locale, x!)).join(" – ") })}</span>
               )}

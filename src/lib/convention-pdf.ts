@@ -153,6 +153,7 @@ export type CollabConventionInput = {
   project: { title: string; typeLabel: string; unit: string; therapeuticArea: string | null; description: string | null; ordreRef: string | null };
   link: { units: number | null; feeCents: number | null };
   fmv: { min: number; max: number; perUnit: number; verdict: "ok" | "above" | "below" } | null;
+  expertLocale?: string;
 };
 
 /** Titre « Dr » selon la langue. */

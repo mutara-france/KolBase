@@ -159,10 +159,11 @@ export function SendSignatureForm({ orgId, linkId, again }: { orgId: string; lin
 /** Interrogation du prestataire de signature (sans webhook, ou pour rattraper un événement manqué). */
 export function RefreshSignatureForm({ linkId }: { linkId: string }) {
   const [state, action, pending] = useActionState(refreshSignatureStatus, undefined);
+  const t = useT();
   return (
     <form action={action} className="inline wrap">
       <input type="hidden" name="linkId" value={linkId} />
-      <button className="link" disabled={pending}>{pending ? "Mise à jour…" : "Mettre à jour le statut"}</button>
+      <button className="link" disabled={pending}>{pending ? t("Mise à jour…") : t("Mettre à jour le statut")}</button>
       {state?.error && <span className="text-xs" style={{ color: "var(--danger)" }} role="alert">{state.error}</span>}
       {state?.ok && <span className="text-xs" role="status">{state.ok}</span>}
     </form>

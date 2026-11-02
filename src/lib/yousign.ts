@@ -143,7 +143,8 @@ async function call(path: string, init: { method?: string; json?: unknown; form?
 }
 const callJson = async <T>(path: string, init: Parameters<typeof call>[1] = {}) => (await call(path, init)).json() as Promise<T>;
 
-export type Signer = { firstName: string; lastName: string; email: string; box: SignatureBox };
+/** Signataire : la langue choisit celle des e-mails et de la page de signature Yousign. */
+export type Signer = { firstName: string; lastName: string; email: string; box: SignatureBox; locale?: string };
 
 /**
  * Crée la demande, dépose la convention, ajoute les signataires (signature électronique simple, code reçu par e-mail)
@@ -169,7 +170,7 @@ export async function createSignatureRequest(i: { name: string; externalId: stri
     await callJson(`/signature_requests/${sr.id}/signers`, {
       method: "POST",
       json: {
-        info: { first_name: s.firstName.slice(0, 255), last_name: s.lastName.slice(0, 255), email: s.email, locale: "fr" },
+        info: { first_name: s.firstName.slice(0, 255), last_name: s.lastName.slice(0, 255), email: s.email, locale: s.locale === "en" ? "en" : "fr" },
         signature_level: "electronic_signature",
         signature_authentication_mode: "otp_email",
         fields: [signatureField(doc.id, s.box)],
