@@ -545,6 +545,18 @@ async function submitNewOrg(page, siren) {
   await ctx.close();
 }
 
+// ── Lancement : état de la configuration et textes légaux ──────────────────
+{
+  const { ctx, page } = await session();
+  await login(page, "anne.chevalier@demo.kolbase.local");
+  await page.goto(`${BASE}/admin?onglet=lancement`);
+  const t = await text(page);
+  check("Administration : état du lancement", t.includes("Avant l'ouverture au public") && t.includes("Envoi d'e-mails") && t.includes("À compléter : forme sociale et capital"));
+  await page.goto(`${BASE}/mentions-legales`);
+  check("Mentions légales : champs manquants signalés", (await page.locator("main").innerText()).includes("[forme sociale et capital à compléter]"));
+  await ctx.close();
+}
+
 // ── 4. Limitation des tentatives ───────────────────────────────────────────
 {
   const { ctx, page } = await session();

@@ -105,9 +105,11 @@ facturation ne sont conservés que s'ils figurent sur des conventions ou des hos
 
 ## Avant l'ouverture au public
 
-1. **Textes légaux** : compléter les passages « à compléter » des mentions légales (éditeur, SIREN, directeur
-   de la publication, contact), des CGU (juridiction) et de la politique de confidentialité (contact, DPO,
-   prestataire d'e-mails, durées de conservation).
+L'onglet **Lancement** de `/admin` indique ce qui reste à faire sur l'environnement en ligne.
+
+1. **Textes légaux** : renseigner `src/lib/legal.ts` (éditeur, forme sociale, siège, immatriculation, directeur
+   de la publication, contacts, juridiction, prestataires), repris par les mentions légales, les CGU et la
+   politique de confidentialité ; revoir les durées de conservation avec un conseil.
 2. **Variables Render** : `PLATFORM_ADMIN_EMAILS`, `SMTP_URL`, `MAIL_FROM` (et `ORCID_CLIENT_ID` /
    `ORCID_CLIENT_SECRET` si la connexion ORCID est souhaitée).
 3. **Démo** : passer `SEED_DEMO` à `0` (sinon le déploiement suivant la recharge), puis, depuis le shell Render,

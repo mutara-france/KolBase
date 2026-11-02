@@ -221,3 +221,12 @@ describe("e-mails", () => {
     else process.env.MAIL_DELIVER_RESERVED = saved;
   });
 });
+
+describe("textes légaux", () => {
+  it("champ manquant affiché « à compléter » et listé", async () => {
+    const { legal, missingLegal } = await import("@/lib/legal");
+    expect(legal("editor")).toBe("Mutara France");
+    expect(legal("registration")).toBe("[immatriculation (RCS et SIREN) à compléter]");
+    expect(missingLegal()).toContain("directeur de la publication");
+  });
+});
