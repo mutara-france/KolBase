@@ -358,7 +358,7 @@ async function submitNewOrg(page, siren) {
   await hugo.page.waitForTimeout(1200);
   check("Référencement sans RPPS refusé", (await text(hugo.page)).includes("Renseignez d'abord votre numéro RPPS"));
   const infos = 'form:has(h2:has-text("Informations personnelles"))';
-  await hugo.page.fill(`${infos} input[name="rpps"]`, "10101010101");
+  await hugo.page.fill(`${infos} input[name="rpps"]`, "10101010105");
   await hugo.page.click(`${infos} button:has-text("Enregistrer")`);
   await hugo.page.waitForTimeout(1200);
   await hugo.page.reload();
@@ -554,6 +554,45 @@ async function submitNewOrg(page, siren) {
   check("Administration : état du lancement", t.includes("Avant l'ouverture au public") && t.includes("Envoi d'e-mails") && t.includes("À compléter : hébergeur des documents"));
   await page.goto(`${BASE}/mentions-legales`);
   check("Mentions légales : éditeur complet", (await page.locator("main").innerText()).includes("MUTARA, société par actions simplifiée (SAS) au capital de 100 €"));
+  await ctx.close();
+}
+
+// ── 3 bis. Logo d'organisation et exports protégés ─────────────────────────
+{
+  const { ctx, page } = await session();
+  const db = new pg.Client({ connectionString: process.env.DATABASE_URL });
+  await db.connect();
+  await login(page, "claire.morel@demo.kolbase.local");
+  await page.goto(`${BASE}/organisations/demo-org-dentalys/membres`);
+  // PNG 1×1 valide, puis un « logo » SVG déguisé en PNG (refusé sur son contenu).
+  const png = Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==", "base64");
+  await page.setInputFiles('input[name="logo"]', { name: "faux.png", mimeType: "image/png", buffer: Buffer.from("<svg onload=alert(1)>") });
+  await page.click('button:has-text("Ajouter le logo")');
+  await page.waitForTimeout(800);
+  check("Logo : SVG déguisé refusé", (await text(page)).includes("Format non reconnu"));
+  await page.setInputFiles('input[name="logo"]', { name: "logo.png", mimeType: "image/png", buffer: png });
+  await page.click('button:has-text("Ajouter le logo")');
+  await page.waitForTimeout(800);
+  check("Logo : enregistré", (await text(page)).includes("Logo enregistré"));
+  const anon = await browser.newContext();
+  const r = await anon.request.get(`${BASE}/logos/demo-org-dentalys`);
+  check("Logo : public pour une organisation validée", r.status() === 200 && r.headers()["content-type"] === "image/png", String(r.status()));
+  const pub = await anon.newPage();
+  await pub.goto(`${BASE}/structures/demo-org-dentalys`);
+  check("Logo : affiché sur la fiche publique", (await pub.locator('main img[src^="/logos/demo-org-dentalys"]').count()) > 0);
+  await anon.close();
+  // Export CSV : une formule saisie comme nom est neutralisée.
+  await db.query(`update "User" set "lastName"='=HYPERLINK("http://x")' where id='demo-u-lambert'`);
+  const csv = await (await ctx.request.get(`${BASE}/organisations/demo-org-dentalys/hospitalites/export`)).text();
+  check("Export CSV : formule neutralisée", csv.includes(`"'=HYPERLINK(""http://x"")"`) && !/;=HYPERLINK/.test(csv));
+  await db.query(`update "User" set "lastName"='Lambert' where id='demo-u-lambert'`);
+  // Convention PDF : nom en alphabet étendu conservé (police Unicode embarquée).
+  await db.query(`update "User" set "firstName"='Łukasz', "lastName"='Żółć' where id='demo-u-durand'`);
+  const pdf = await ctx.request.get(`${BASE}/organisations/demo-org-dentalys/dossiers/demo-prj-board/convention/demo-prj-board-x1`);
+  const body = await pdf.body();
+  check("Convention PDF : générée avec un nom non latin", pdf.status() === 200 && pdf.headers()["content-type"] === "application/pdf" && body.subarray(0, 5).toString() === "%PDF-" && body.length < 200_000, `${pdf.status()} ${body.length} o`);
+  await db.query(`update "User" set "firstName"='Hélène', "lastName"='Durand' where id='demo-u-durand'`);
+  await db.end();
   await ctx.close();
 }
 

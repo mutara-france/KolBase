@@ -57,7 +57,7 @@ export default async function Home({ searchParams }: { searchParams: Promise<{ c
               <h2 id="home-confiance">Ils publient sur KolBase</h2>
               <ul className="trust-list">
                 {ranked.slice(0, 5).map((o) => (
-                  <li key={o.id}><Link href={`/structures/${o.id}`}><Avatar name={o.name} size={36} square />{o.name}</Link></li>
+                  <li key={o.id}><Link href={`/structures/${o.id}`}><Avatar name={o.name} size={36} square src={o.logo} />{o.name}</Link></li>
                 ))}
               </ul>
             </div>
@@ -145,7 +145,7 @@ export default async function Home({ searchParams }: { searchParams: Promise<{ c
               <div className="orgs-layout">
                 <article className="org-feature">
                   <div className="org-feature-head">
-                    <Avatar name={featured.name} size={76} square />
+                    <Avatar name={featured.name} size={76} square src={featured.logo} />
                     <div>
                       <div className="eyebrow">À la une</div>
                       <h3>{featured.name}</h3>
@@ -167,7 +167,7 @@ export default async function Home({ searchParams }: { searchParams: Promise<{ c
                 <div className="org-list">
                   {others.map((o) => (
                     <Link key={o.id} href={`/structures/${o.id}`} className="org-row">
-                      <Avatar name={o.name} size={56} square />
+                      <Avatar name={o.name} size={56} square src={o.logo} />
                       <span style={{ minWidth: 0 }}><strong>{o.name}</strong><small>{[o.kind, o.hq].filter(Boolean).join(" · ")}</small></span>
                       <span className="go" aria-hidden><ArrowRight size={18} /></span>
                     </Link>

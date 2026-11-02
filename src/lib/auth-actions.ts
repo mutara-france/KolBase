@@ -12,7 +12,7 @@ import { sendLater } from "@/lib/mail";
 import { notifyPlatformAdmins } from "@/lib/notifications";
 import { consumeToken, findToken, issueToken } from "@/lib/tokens";
 import { anonymizeAccount, soleAdminOrgs } from "@/lib/account";
-import { str } from "@/lib/form";
+import { MAX_NAME, str } from "@/lib/form";
 
 export type FormState = { error?: string; ok?: string } | undefined;
 
@@ -43,8 +43,8 @@ async function sendVerification(user: { id: string; email: string; firstName: st
 const tooMany = (minutes: number) => ({ error: `Trop de tentatives. Réessayez dans ${minutes} minute${minutes > 1 ? "s" : ""}.` });
 
 export async function signUp(_: FormState, form: FormData): Promise<FormState> {
-  const firstName = str(form, "firstName");
-  const lastName = str(form, "lastName");
+  const firstName = str(form, "firstName", MAX_NAME);
+  const lastName = str(form, "lastName", MAX_NAME);
   const email = str(form, "email").toLowerCase();
   const password = String(form.get("password") ?? "");
   const profession = str(form, "profession");
@@ -107,8 +107,8 @@ export async function signOut() {
 
 export async function updateProfile(_: FormState, form: FormData): Promise<FormState> {
   const user = await requireUser();
-  const firstName = str(form, "firstName");
-  const lastName = str(form, "lastName");
+  const firstName = str(form, "firstName", MAX_NAME);
+  const lastName = str(form, "lastName", MAX_NAME);
   if (!firstName || !lastName) return { error: "Prénom et nom sont obligatoires." };
   await db.user.update({
     where: { id: user.id },
@@ -121,7 +121,7 @@ export async function updateProfile(_: FormState, form: FormData): Promise<FormS
     const profession = str(form, "profession") || p.profession;
     if (!(PROFESSIONS as readonly string[]).includes(profession) && profession !== p.profession) return { error: "Profession invalide." };
     const rpps = normalizeRpps(str(form, "rpps")) || null;
-    if (rpps && !isRpps(rpps)) return { error: "Le numéro RPPS comporte 11 chiffres." };
+    if (rpps && !isRpps(rpps)) return { error: "Numéro RPPS invalide : 11 chiffres, le dernier étant une clé de contrôle. Vérifiez la saisie (un numéro INAMI ou une licence étrangère ne convient pas)." };
     if (rpps && rpps !== p.rpps && (await db.practitionerProfile.findFirst({ where: { rpps, NOT: { id: p.id } } })))
       return { error: "Ce numéro RPPS est déjà associé à un autre compte. Contactez-nous s'il s'agit du vôtre." };
     // Un RPPS modifié doit être contrôlé à nouveau ; sans RPPS ou hors profession éligible, plus de référencement.
@@ -168,6 +168,8 @@ export async function setListed(_: FormState, form: FormData): Promise<FormState
   if (listed && !canBeExpert(user.practitioner.profession))
     return { error: "Le référencement comme expert est réservé aux chirurgiens-dentistes, orthodontistes, chirurgiens oraux et stomatologues." };
   if (listed && !user.practitioner.rpps) return { error: "Renseignez d'abord votre numéro RPPS dans « Informations personnelles » : KolBase le vérifie pour afficher le badge « Identité vérifiée »." };
+  if (listed && !user.practitioner.rppsVerified && user.practitioner.rppsCheckedAt)
+    return { error: "Votre numéro RPPS n'a pas pu être vérifié : corrigez-le dans « Informations personnelles » pour vous référencer à nouveau." };
   await db.practitionerProfile.update({
     where: { userId: user.id },
     data: { listed, listedAt: listed ? new Date() : null },

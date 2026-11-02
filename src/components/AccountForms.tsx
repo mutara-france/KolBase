@@ -20,14 +20,13 @@ export function ProfileForm({ user, practitioner }: Props) {
       <h2>Informations personnelles</h2>
       <Notice state={state} />
       <div className="row">
-        <label>Prénom<input name="firstName" defaultValue={user.firstName} required /></label>
-        <label>Nom<input name="lastName" defaultValue={user.lastName} required /></label>
+        <label>Prénom<input name="firstName" maxLength={120} defaultValue={user.firstName} required /></label>
+        <label>Nom<input name="lastName" maxLength={120} defaultValue={user.lastName} required /></label>
       </div>
       <div className="row">
         <label>Téléphone<input name="phone" type="tel" defaultValue={user.phone ?? ""} /></label>
-        <label>Langue
-          <select name="locale" defaultValue={user.locale}><option value="fr">Français</option><option value="en">English</option></select>
-        </label>
+        {/* Interface disponible en français uniquement pour l'instant : la préférence est conservée telle quelle. */}
+        <input type="hidden" name="locale" value={user.locale} />
       </div>
       {practitioner && (
         <>

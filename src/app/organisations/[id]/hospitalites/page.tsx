@@ -56,7 +56,7 @@ export default async function Page({ params, searchParams }: { params: Promise<{
           <section key={eventId} className="card">
             <h2>{rs[0].event.title}</h2>
             <p className="muted">{formatDate(rs[0].event.startsAt)} · {rs.length} bénéficiaire{rs.length > 1 ? "s" : ""} · {formatEUR(sum(rs))}</p>
-            <table className="table">
+            <table className="table" tabIndex={0}>
               <thead><tr><th>Bénéficiaire</th><th>Profession</th><th>Prestations</th><th>Valeur</th><th>Convention</th><th>Déclaration</th></tr></thead>
               <tbody>
                 {rs.map((r) => (

@@ -10,7 +10,7 @@ import { collabType, PROJECT_ROLES, SOURCING_ROLES, PROJECT_VIEW_ROLES, TRANSITI
 import type { ProjectStatus } from "@/generated/prisma/client";
 import { complianceSettings, projectRegime } from "@/lib/compliance";
 import { missingSignedConventions } from "@/lib/project-documents";
-import { eurToCents, str } from "@/lib/form";
+import { eurToCents, str, unitsOrNull, UNITS_INVALID } from "@/lib/form";
 import { notifyCompliance, notifyExpertAnswer, notifyMessage, notifySolicitations } from "@/lib/notifications";
 
 export type ActionState = { error?: string; ok?: string } | undefined;
@@ -32,8 +32,9 @@ export async function createProject(_: ActionState, form: FormData): Promise<Act
   const experts = [];
   for (const id of expertIds) {
     const fee = eurToCents(str(form, `fee_${id}`));
-    const units = Number(str(form, `units_${id}`).replace(",", ".")) || null;
+    const units = unitsOrNull(str(form, `units_${id}`));
     if (fee === null) return { error: "Indiquez des honoraires pour chaque expert (0 si bénévole)." };
+    if (units === undefined) return { error: UNITS_INVALID };
     experts.push({ practitionerId: id, feeCents: fee, days: units });
   }
 

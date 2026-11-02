@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { logoSrc } from "@/lib/logos";
 import { notFound } from "next/navigation";
 import { ArrowLeft, Clock, Lock, Mail, MapPin, ShieldCheck } from "lucide-react";
 import { SiteHeader } from "@/components/SiteHeader";
@@ -47,7 +48,7 @@ export default async function Page({ params }: { params: Promise<{ id: string }>
         <div className={user ? "stack" : "public-section stack"}>
           <Link href="/structures" className="back-link"><ArrowLeft size={14} /> Toutes les organisations</Link>
           <section className="card profile-hero">
-            <Avatar name={o.name} size={76} square />
+            <Avatar name={o.name} size={76} square src={logoSrc(o)} />
             <div className="grow">
               <span className="sector-tag">{ORG_KIND_LABEL[o.kind]}</span>
               <h1 className="profile-name">{o.name}</h1>
@@ -92,7 +93,10 @@ export default async function Page({ params }: { params: Promise<{ id: string }>
           <section>
             <div className="section-head"><div><div className="eyebrow mb-1">Agenda</div><h2 className="section-h2">Événements à venir</h2></div></div>
             {o.events.length === 0 ? <p className="muted"><Clock size={13} /> Aucun événement à venir.</p> : (
-              <div className="grid-3">{o.events.map((e) => <EventCard key={e.id} ev={{ ...e, organization: { name: o.name }, registrations: e._count.registrations }} compact />)}</div>
+              <>
+                <div className="grid-3">{o.events.slice(0, 12).map((e) => <EventCard key={e.id} ev={{ ...e, organization: { name: o.name }, registrations: e._count.registrations }} compact />)}</div>
+                {o.events.length > 12 && <p className="muted text-sm">Et {o.events.length - 12} autres événements à venir sur la page <Link href="/evenements">Événements</Link>.</p>}
+              </>
             )}
           </section>
         </div>

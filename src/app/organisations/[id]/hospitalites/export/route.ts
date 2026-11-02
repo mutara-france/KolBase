@@ -5,7 +5,9 @@ import { COMPLIANCE_ROLES, formatDate, toCSV } from "@/lib/events";
 export async function GET(req: Request, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
   const { org } = await requireMembership(id, COMPLIANCE_ROLES);
-  const statut = new URL(req.url).searchParams.get("statut");
+  // Valeur reprise dans le nom du fichier : liste fermée.
+  const param = new URL(req.url).searchParams.get("statut");
+  const statut = param === "declarees" || param === "a-declarer" ? param : null;
   const regs = await db.registration.findMany({
     where: {
       event: { organizationId: id },

@@ -37,8 +37,8 @@ export function SignUpForm({ next }: { next?: string }) {
       <Notice state={state} />
       <input type="hidden" name="next" value={next ?? ""} />
       <div className="row">
-        <label>Prénom<input name="firstName" autoComplete="given-name" required /></label>
-        <label>Nom<input name="lastName" autoComplete="family-name" required /></label>
+        <label>Prénom<input name="firstName" maxLength={120} autoComplete="given-name" required /></label>
+        <label>Nom<input name="lastName" maxLength={120} autoComplete="family-name" required /></label>
       </div>
       <label>E-mail professionnel<input name="email" type="email" autoComplete="email" required /></label>
       <label>Profession

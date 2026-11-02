@@ -19,4 +19,20 @@ export const drPrefix = (profession: string | null | undefined) => (canBeExpert(
 
 /** Numéro RPPS : 11 chiffres (espaces tolérés à la saisie). */
 export const normalizeRpps = (v: string) => v.replace(/\s/g, "");
-export const isRpps = (v: string) => /^\d{11}$/.test(v);
+/** Clé de Luhn (dernier chiffre), comme pour le SIREN. */
+export function luhnOk(digits: string) {
+  let sum = 0;
+  for (let i = 0; i < digits.length; i++) {
+    let d = Number(digits[digits.length - 1 - i]);
+    if (i % 2) { d *= 2; if (d > 9) d -= 9; }
+    sum += d;
+  }
+  return sum % 10 === 0;
+}
+/** Numéro RPPS : 11 chiffres dont le dernier est une clé de Luhn (Agence du numérique en santé). */
+export const isRpps = (v: string) => /^\d{11}$/.test(v) && luhnOk(v);
+/** Complète un numéro par sa clé de Luhn (numéros fictifs de démonstration). */
+export function withLuhn(base: string) {
+  for (let k = 0; k <= 9; k++) if (luhnOk(base + k)) return base + k;
+  return base + "0";
+}

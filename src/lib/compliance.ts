@@ -62,11 +62,15 @@ export const REGIME_LABEL: Record<Regime, string> = { declaration: "Déclaration
 export function remunerationRegime(s: ComplianceSettings, feeCents: number | null, units: number | null, unit: string): { regime: Regime; reason: string } {
   const fee = (feeCents ?? 0) / 100;
   if (fee > s.remunerationConventionMax) return { regime: "autorisation", reason: `${fee.toLocaleString("fr-FR")} € > ${s.remunerationConventionMax.toLocaleString("fr-FR")} € par convention` };
-  if (unit === "heure" && units && fee / units > s.remunerationHourlyMax)
-    return { regime: "autorisation", reason: `${Math.round(fee / units)} €/h > ${s.remunerationHourlyMax} €/h` };
+  // Volume absent ou incohérent : on compte une seule unité, l'hypothèse la plus prudente.
+  const known = units != null && Number.isFinite(units) && units > 0;
+  const n = known ? units : 1;
+  const unknown = known ? "" : " (volume non renseigné : compté pour 1)";
+  if (unit === "heure" && fee / n > s.remunerationHourlyMax)
+    return { regime: "autorisation", reason: `${Math.round(fee / n)} €/h > ${s.remunerationHourlyMax} €/h${unknown}` };
   // Une journée compte deux demi-journées.
-  if (unit === "journée" && units && fee / units > 2 * s.remunerationHalfDayMax)
-    return { regime: "autorisation", reason: `${Math.round(fee / units).toLocaleString("fr-FR")} € par journée > ${s.remunerationHalfDayMax} € par demi-journée` };
+  if (unit === "journée" && fee / n > 2 * s.remunerationHalfDayMax)
+    return { regime: "autorisation", reason: `${Math.round(fee / n).toLocaleString("fr-FR")} € par journée > ${s.remunerationHalfDayMax} € par demi-journée${unknown}` };
   return { regime: "declaration", reason: "Sous les seuils d'autorisation" };
 }
 

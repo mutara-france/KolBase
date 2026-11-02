@@ -11,11 +11,15 @@ import { missingLegal } from "@/lib/legal";
 import { mailEnabled } from "@/lib/mail";
 import { storageEnabled } from "@/lib/storage";
 import { orcidOAuth } from "@/lib/orcid";
+import { Avatar } from "@/components/Avatar";
+import { logoSrc } from "@/lib/logos";
 
 export const metadata = { title: "Administration — KolBase" };
 export const dynamic = "force-dynamic";
 
 const TONE = { PENDING: "wait", VERIFIED: "ok", REJECTED: "bad" } as const;
+/** Messageries grand public : un administrateur d'entreprise s'inscrit d'ordinaire avec l'adresse de la société. */
+const PERSONAL_MAIL = /@(gmail|googlemail|hotmail|outlook|live|msn|yahoo|ymail|icloud|me|aol|gmx|laposte|orange|wanadoo|free|sfr|neuf|bbox|protonmail|proton)\./i;
 
 /** Administration de la plateforme : validation des organisations (SIREN) et des praticiens (RPPS). */
 export default async function Page({ searchParams }: { searchParams: Promise<{ onglet?: string }> }) {
@@ -41,6 +45,9 @@ export default async function Page({ searchParams }: { searchParams: Promise<{ o
     }),
   ]);
   const pending = orgs.filter((o) => o.verification === "PENDING");
+  // Plusieurs organisations sur un même SIREN : doublon ou tentative d'usurpation, à examiner.
+  const bySiren = new Map<string, typeof orgs>();
+  for (const o of orgs) if (o.siren) bySiren.set(o.siren, [...(bySiren.get(o.siren) ?? []), o]);
   const groups = [
     ["À valider", pending],
     ["Refusées", orgs.filter((o) => o.verification === "REJECTED")],
@@ -65,13 +72,17 @@ export default async function Page({ searchParams }: { searchParams: Promise<{ o
               {list.length === 0 && <p className="muted">Aucune.</p>}
               {list.map((o) => {
                 const mismatch = o.legalName && !normalize(o.legalName).includes(normalize(o.name)) && !normalize(o.name).includes(normalize(o.legalName));
+                const twins = o.siren ? (bySiren.get(o.siren) ?? []).filter((x) => x.id !== o.id) : [];
                 return (
                   <section key={o.id} className="card stack-sm">
                     <div className="actions spread">
-                      <span>
+                      <span className="actions" style={{ alignItems: "center" }}>
+                        <Avatar name={o.name} size={44} square src={logoSrc(o)} />
+                        <span>
                         <strong>{o.name}</strong> <span className={`pill ${TONE[o.verification]}`}>{VERIFICATION_LABEL[o.verification]}</span>
                         <br />
                         <span className="muted">{ORG_KIND_LABEL[o.kind]} · créée le {formatDate(o.createdAt)}{o.headquarters ? ` · ${o.headquarters}` : ""}</span>
+                        </span>
                       </span>
                     </div>
                     <dl className="facts">
@@ -93,8 +104,17 @@ export default async function Page({ searchParams }: { searchParams: Promise<{ o
                         {!o.siren ? "—" : !o.sirenCheckedAt ? "non contrôlé (répertoire indisponible)" : o.legalName ? `${o.legalName}${o.sirenActive === false ? " — FERMÉE" : o.sirenActive ? " — active" : ""}` : "SIREN introuvable"}
                         {mismatch && <span className="pill wait" style={{ marginLeft: 8 }}>Nom différent de la raison sociale</span>}
                       </dd>
+                      {twins.length > 0 && (
+                        <>
+                          <dt>Même SIREN</dt>
+                          <dd><span className="pill bad">Doublon possible</span> {twins.map((t) => `${t.name} (${VERIFICATION_LABEL[t.verification].toLowerCase()})`).join(", ")}</dd>
+                        </>
+                      )}
                       <dt>Administrateurs</dt>
-                      <dd>{o.members.map((m) => `${m.user.firstName} ${m.user.lastName} <${m.user.email}>`).join(", ") || "—"}</dd>
+                      <dd>
+                        {o.members.map((m) => `${m.user.firstName} ${m.user.lastName} <${m.user.email}>`).join(", ") || "—"}
+                        {o.members.some((m) => PERSONAL_MAIL.test(m.user.email)) && <span className="pill wait" style={{ marginLeft: 8 }}>Adresse personnelle</span>}
+                      </dd>
                       {o.contactEmail && (<><dt>Contact</dt><dd>{o.contactEmail}</dd></>)}
                       {o.verificationNote && (<><dt>Note</dt><dd>{o.verificationNote}</dd></>)}
                     </dl>

@@ -59,22 +59,31 @@ export function DashStats({ stats }: { stats: { href: string; value: number | st
 }
 
 /** « À faire » : les urgences d'abord, puis le reste. */
-export function TodoGroups({ todos, empty }: { todos: TodoItem[]; empty?: string }) {
+/** Actions à mener, les urgentes d'abord ; au-delà de `limit` par groupe, un simple décompte. */
+export function TodoGroups({ todos, empty, limit = 15, moreHref }: { todos: TodoItem[]; empty?: string; limit?: number; moreHref?: string }) {
   const urgent = todos.filter((t) => t.tone === "danger");
   const rest = todos.filter((t) => t.tone !== "danger");
   if (todos.length === 0) return <TodoList items={[]} empty={empty} />;
+  const more = (n: number) =>
+    n > limit && (
+      <p className="text-xs muted" style={{ margin: "6px 0 0" }}>
+        … et {n - limit} autre{n - limit > 1 ? "s" : ""}{moreHref && <> · <Link href={moreHref}>tout voir</Link></>}
+      </p>
+    );
   return (
     <div className="todo-groups">
       {urgent.length > 0 && (
         <div>
           <p className="todo-group urgent">Urgent</p>
-          <TodoList items={urgent} />
+          <TodoList items={urgent.slice(0, limit)} />
+          {more(urgent.length)}
         </div>
       )}
       {rest.length > 0 && (
         <div>
           {urgent.length > 0 && <p className="todo-group">À traiter</p>}
-          <TodoList items={rest} />
+          <TodoList items={rest.slice(0, limit)} />
+          {more(rest.length)}
         </div>
       )}
     </div>

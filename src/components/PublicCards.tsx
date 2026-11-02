@@ -49,7 +49,7 @@ export function EventCard({ ev, compact = false }: { ev: EventCardData; compact?
   const left = ev.capacity != null ? Math.max(ev.capacity - ev.registrations, 0) : null;
   return (
     <article className="event-card">
-      <Link href={href} className="event-cover" aria-label={ev.title}>
+      <Link href={href} className="event-cover" aria-hidden="true" tabIndex={-1}>
         <AreaArt seed={ev.id + (ev.therapeuticArea ?? "")} height={compact ? 112 : 128} />
         <time className="event-date-chip" dateTime={ev.startsAt.toISOString()}>
           <span className="event-month">{MONTHS[Number(get("month")) - 1]}</span>
@@ -99,12 +99,12 @@ export function KolCard({ k }: { k: KolCardData }) {
   );
 }
 
-export type OrgCardData = { id: string; name: string; kind: string; sector: string | null; about: string | null; hq: string | null; areas: string[]; openCalls: number; collaborations: number };
+export type OrgCardData = { id: string; name: string; logo?: string | null; kind: string; sector: string | null; about: string | null; hq: string | null; areas: string[]; openCalls: number; collaborations: number };
 export function OrgCard({ o }: { o: OrgCardData }) {
   return (
     <Link href={`/structures/${o.id}`} className="kol-card">
       <div className="kol-head">
-        <Avatar name={o.name} size={56} square />
+        <Avatar name={o.name} size={56} square src={o.logo} />
         <span className="sector-tag">{o.kind}</span>
       </div>
       <h3 className="kol-name">{o.name}</h3>

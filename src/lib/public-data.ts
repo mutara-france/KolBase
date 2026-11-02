@@ -2,6 +2,7 @@ import "server-only";
 import { db } from "@/lib/db";
 import { ORG_KIND_LABEL } from "@/lib/orgs";
 import { canSee, kolVisibility } from "@/lib/visibility";
+import { logoSrc } from "@/lib/logos";
 import type { CallCardData, EventCardData, KolCardData, OrgCardData } from "@/components/PublicCards";
 
 export async function publicEvents(take?: number): Promise<EventCardData[]> {
@@ -42,7 +43,7 @@ export async function publicOrgs(take?: number): Promise<OrgCardData[]> {
     orderBy: { createdAt: "asc" },
     take,
   });
-  return os.map((o) => ({ id: o.id, name: o.name, kind: ORG_KIND_LABEL[o.kind], sector: o.sector, about: o.about, hq: o.headquarters, areas: o.areas, openCalls: o._count.openCalls, collaborations: o._count.projects }));
+  return os.map((o) => ({ id: o.id, name: o.name, logo: logoSrc(o), kind: ORG_KIND_LABEL[o.kind], sector: o.sector, about: o.about, hq: o.headquarters, areas: o.areas, openCalls: o._count.openCalls, collaborations: o._count.projects }));
 }
 
 export async function publicCalls(take?: number): Promise<CallCardData[]> {

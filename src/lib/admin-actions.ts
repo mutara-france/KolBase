@@ -24,10 +24,15 @@ export async function reviewOrganization(form: FormData) {
     await db.organization.update({ where: { id: orgId }, data: { verification: "VERIFIED", verifiedAt: new Date(), verifiedById: admin.id, verificationNote: note } });
   } else if (decision === "reject" || decision === "suspend") {
     if (decision === "reject" && !note) return; // un refus est toujours motivé
-    await db.organization.update({
-      where: { id: orgId },
-      data: { verification: decision === "reject" ? "REJECTED" : "PENDING", verifiedAt: null, verifiedById: admin.id, verificationNote: note, listed: false },
-    });
+    // Une organisation refusée ou suspendue cesse aussi de recevoir des candidatures.
+    await db.$transaction([
+      db.organization.update({
+        where: { id: orgId },
+        data: { verification: decision === "reject" ? "REJECTED" : "PENDING", verifiedAt: null, verifiedById: admin.id, verificationNote: note, listed: false },
+      }),
+      db.openCall.updateMany({ where: { organizationId: orgId, status: "open" }, data: { status: "closed" } }),
+      db.event.updateMany({ where: { organizationId: orgId, speakerCallOpen: true }, data: { speakerCallOpen: false } }),
+    ]);
   } else return;
   await audit(admin.id, `platform.org_${decision}`, "Organization", orgId, { note: note ?? undefined });
   refresh();
@@ -56,7 +61,8 @@ export async function reviewRpps(form: FormData) {
   // Le RPPS contrôlé est celui affiché à l'administrateur : s'il a changé entre-temps, on ne valide rien.
   const { count } = await db.practitionerProfile.updateMany({
     where: { id: practitionerId, rpps },
-    data: { rppsVerified: decision === "verify", rppsCheckedAt: new Date(), rppsCheckNote: decision === "reject" ? note : null },
+    // Un RPPS refusé retire aussi le praticien de l'annuaire public (il pourra se référencer à nouveau avec un numéro corrigé).
+    data: { rppsVerified: decision === "verify", rppsCheckedAt: new Date(), rppsCheckNote: decision === "reject" ? note : null, ...(decision === "reject" ? { listed: false, listedAt: null } : {}) },
   });
   if (count) await audit(admin.id, `platform.rpps_${decision}`, "PractitionerProfile", practitionerId, { rpps, note: note ?? undefined });
   refresh();

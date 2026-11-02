@@ -8,10 +8,11 @@ import { matches, normalize } from "@/lib/search";
 export const metadata = { title: "Experts — KolBase" };
 export const dynamic = "force-dynamic";
 
-type Params = { q?: string; type?: string; ville?: string; specialite?: string };
+type Params = { q?: string; type?: string; ville?: string; specialite?: string; page?: string };
+const PER_PAGE = 24;
 
 export default async function Page({ searchParams }: { searchParams: Promise<Params> }) {
-  const { q = "", type = "", ville = "", specialite = "" } = await searchParams;
+  const { q = "", type = "", ville = "", specialite = "", page: pageParam = "1" } = await searchParams;
   const [all, specialties] = await Promise.all([publicExperts(), publicSpecialties()]);
   const experts = all.filter((k) =>
     matches(q, k.name, k.specialty, k.subspecialty, k.profession, k.city, k.hospital, ...k.types)
@@ -20,6 +21,14 @@ export default async function Page({ searchParams }: { searchParams: Promise<Par
     && (!specialite || normalize(k.specialty) === normalize(specialite)),
   );
   const filtered = Boolean(q || type || ville || specialite);
+  const pages = Math.max(1, Math.ceil(experts.length / PER_PAGE));
+  const page = Math.min(pages, Math.max(1, Math.floor(Number(pageParam)) || 1));
+  const shown = experts.slice((page - 1) * PER_PAGE, page * PER_PAGE);
+  const pageHref = (n: number) => {
+    const p = new URLSearchParams({ ...(q && { q }), ...(type && { type }), ...(ville && { ville }), ...(specialite && { specialite }), ...(n > 1 && { page: String(n) }) });
+    const qs = p.toString();
+    return qs ? `/experts?${qs}` : "/experts";
+  };
   const chip = (name: string) => {
     const p = new URLSearchParams({ ...(q && { q }), ...(type && { type }), ...(ville && { ville }), ...(name && { specialite: name }) });
     const qs = p.toString();
@@ -60,7 +69,14 @@ export default async function Page({ searchParams }: { searchParams: Promise<Par
             {filtered && <Link href="/experts" className="text-sm">Effacer les filtres</Link>}
           </div>
           {experts.length === 0 && <p className="muted">Aucun praticien ne correspond à cette recherche. Élargissez la spécialité ou retirez un filtre.</p>}
-          <div className="grid-3">{experts.map((k) => <KolCard key={k.id} k={k} />)}</div>
+          <div className="grid-3">{shown.map((k) => <KolCard key={k.id} k={k} />)}</div>
+          {pages > 1 && (
+            <nav className="pager" aria-label="Pages de résultats">
+              {page > 1 ? <Link href={pageHref(page - 1)} className="btn ghost small" rel="prev">Précédent</Link> : <span />}
+              <span className="muted text-sm">Page {page} sur {pages}</span>
+              {page < pages ? <Link href={pageHref(page + 1)} className="btn ghost small" rel="next">Suivant</Link> : <span />}
+            </nav>
+          )}
         </section>
       </main>
     </>

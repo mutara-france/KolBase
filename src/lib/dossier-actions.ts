@@ -6,7 +6,7 @@ import { db } from "@/lib/db";
 import { audit, requireUser } from "@/lib/auth";
 import { requireMembership } from "@/lib/orgs";
 import { collabType, MATERIAL_KINDS, PROJECT_ROLES, REVIEW_ROLES } from "@/lib/projects";
-import { eurToCents, str } from "@/lib/form";
+import { eurToCents, str, unitsOrNull, UNITS_INVALID } from "@/lib/form";
 import { notifyProposal } from "@/lib/notifications";
 
 export type ActionState = { error?: string; ok?: string } | undefined;
@@ -137,14 +137,16 @@ export async function proposeCollaboration(_: ActionState, form: FormData): Prom
   const user = await requireUser();
   if (!user.practitioner?.listed) return { error: "Référencez-vous comme expert pour proposer une collaboration." };
   const orgId = str(form, "orgId");
-  const org = await db.organization.findFirst({ where: { id: orgId, listed: true } });
+  const org = await db.organization.findFirst({ where: { id: orgId, listed: true, verification: "VERIFIED", kind: { not: "PRESTATAIRE" } } });
   if (!org) return { error: "Organisation introuvable." };
   const title = str(form, "title"); const typeId = str(form, "typeId"); const message = str(form, "message");
   if (!title) return { error: "Donnez un titre à votre proposition." };
   if (!collabType(typeId)) return { error: "Type de collaboration invalide." };
   if (message.length < 30) return { error: "Décrivez votre proposition en quelques lignes (30 caractères minimum)." };
   const fee = eurToCents(str(form, "fee"));
-  const units = Number(str(form, "units").replace(",", ".")) || 1;
+  const parsedUnits = unitsOrNull(str(form, "units"));
+  if (parsedUnits === undefined) return { error: UNITS_INVALID };
+  const units = parsedUnits ?? 1;
   const project = await db.project.create({
     data: {
       organizationId: orgId, title, typeId, therapeuticArea: str(form, "therapeuticArea") || user.practitioner.specialty, description: message,

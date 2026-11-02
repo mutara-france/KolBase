@@ -11,6 +11,7 @@ import "dotenv/config";
 import { PrismaPg } from "@prisma/adapter-pg";
 import { PrismaClient, type OrgKind, type OrgRole, type ProjectStatus, type EventFormat, type ExpenseStatus, type ApplicationStatus, type RfqStatus, type QuoteStatus } from "../src/generated/prisma/client";
 import { hashPassword } from "../src/lib/password";
+import { withLuhn } from "../src/lib/professions";
 
 const db = new PrismaClient({ adapter: new PrismaPg({ connectionString: process.env.DATABASE_URL }) });
 const DAY = 864e5;
@@ -167,11 +168,12 @@ async function main() {
         bio: p.bio, listed: p.listed, rppsVerified: verified, listedAt: p.listed ? at(-200 + Math.floor(Math.random() * 150)) : null, responseDays: p.listed ? 3 : null,
       },
     });
-    // RPPS fictifs (préfixe 999, hors plage réelle) : vérifiés pour la plupart, trois en attente de contrôle.
+    // RPPS fictifs (préfixe 999, hors plage réelle qui commence par 1, clé de Luhn valide) :
+    // vérifiés pour la plupart, trois en attente de contrôle.
     if (p.listed)
       await db.practitionerProfile.updateMany({
-        where: { id: p.id, rpps: null },
-        data: { rpps: `999${String(PRACS.indexOf(p) + 1).padStart(8, "0")}`, rppsCheckedAt: verified ? at(-60) : null },
+        where: { id: p.id, OR: [{ rpps: null }, { rpps: { startsWith: "999" } }] },
+        data: { rpps: withLuhn(`999${String(PRACS.indexOf(p) + 1).padStart(7, "0")}`), rppsCheckedAt: verified ? at(-60) : null },
       });
   }
   const PUBS: [string, string, string, number, string[]][] = [

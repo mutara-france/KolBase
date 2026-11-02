@@ -1,7 +1,8 @@
 "use client";
 
 import { useActionState, useState } from "react";
-import { createInvitation, createOrganization, submitSiren, updateOrganization, updateExpertProfile, type InviteState } from "@/lib/org-actions";
+import { createInvitation, createOrganization, removeOrgLogo, submitSiren, updateOrganization, updateExpertProfile, updateOrgLogo, type InviteState } from "@/lib/org-actions";
+import { Avatar } from "@/components/Avatar";
 import { Notice } from "@/components/AuthForms";
 
 type Opt = { value: string; label: string };
@@ -13,7 +14,7 @@ export function NewOrgForm({ kinds }: { kinds: Opt[] }) {
       <h1>Créer une organisation</h1>
       <p className="muted">Vous en serez l&apos;administrateur et pourrez ensuite inviter vos collègues.</p>
       <Notice state={state} />
-      <label>Nom de l&apos;organisation<input name="name" required /></label>
+      <label>Nom de l&apos;organisation<input name="name" maxLength={120} required /></label>
       <label>Type
         <select name="kind" defaultValue="INDUSTRIEL">{kinds.map((k) => <option key={k.value} value={k.value}>{k.label}</option>)}</select>
       </label>
@@ -39,7 +40,7 @@ export function EditOrgForm({ org }: { org: Org }) {
       <h2>Fiche de l&apos;organisation</h2>
       <Notice state={state} />
       <input type="hidden" name="orgId" value={org.id} />
-      <label>Nom<input name="name" defaultValue={org.name} required /></label>
+      <label>Nom<input name="name" maxLength={120} defaultValue={org.name} required /></label>
       <div className="row">
         <label>Secteur<input name="sector" defaultValue={org.sector ?? ""} /></label>
         <label>Siège<input name="headquarters" defaultValue={org.headquarters ?? ""} /></label>
@@ -145,6 +146,36 @@ export function VerificationCard({ orgId, v, canEdit }: { orgId: string; v: Veri
             <label>SIREN ou SIRET<input name="siren" inputMode="numeric" defaultValue={v.siren ?? ""} placeholder="9 ou 14 chiffres" required /></label>
             <button className="btn secondary" disabled={pending} style={{ alignSelf: "end" }}>{pending ? "Contrôle…" : v.status === "VERIFIED" ? "Mettre à jour" : "Envoyer pour validation"}</button>
           </div>
+        </form>
+      )}
+    </section>
+  );
+}
+
+/** Logo de l'organisation : aperçu, envoi d'une nouvelle image, suppression. */
+export function LogoForm({ orgId, name, src, verified }: { orgId: string; name: string; src: string | null; verified: boolean }) {
+  const [state, action, pending] = useActionState(updateOrgLogo, undefined);
+  return (
+    <section className="card form">
+      <h2>Logo</h2>
+      <Notice state={state} />
+      <div className="actions" style={{ alignItems: "center" }}>
+        <Avatar name={name} size={64} square src={src} />
+        <p className="muted text-sm" style={{ margin: 0 }}>
+          PNG, JPEG ou WebP, 500 Ko au plus, de préférence carré sur fond clair. Il remplace le monogramme sur votre fiche, l&apos;annuaire des organisations et les appels publiés.
+          {!verified && " Il ne sera visible publiquement qu'après la validation de l'organisation."} Ne publiez que le logo de votre propre organisation.
+        </p>
+      </div>
+      <form action={action} className="inline wrap">
+        <input type="hidden" name="orgId" value={orgId} />
+        <label className="sr-only" htmlFor="logo-file">Fichier du logo</label>
+        <input id="logo-file" name="logo" type="file" accept="image/png,image/jpeg,image/webp" required />
+        <button className="btn secondary" disabled={pending}>{pending ? "Envoi…" : src ? "Remplacer" : "Ajouter le logo"}</button>
+      </form>
+      {src && (
+        <form action={removeOrgLogo}>
+          <input type="hidden" name="orgId" value={orgId} />
+          <button className="link danger">Retirer le logo</button>
         </form>
       )}
     </section>

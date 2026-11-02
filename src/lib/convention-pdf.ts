@@ -1,5 +1,8 @@
 import { drPrefix } from "@/lib/professions";
 import "server-only";
+import { readFile } from "node:fs/promises";
+import path from "node:path";
+import fontkit from "@pdf-lib/fontkit";
 import { PDFDocument, StandardFonts, rgb, type PDFFont, type PDFPage } from "pdf-lib";
 
 const A4: [number, number] = [595.28, 841.89];
@@ -8,27 +11,56 @@ const INK = rgb(0.06, 0.09, 0.16);
 const MUTED = rgb(0.28, 0.33, 0.41);
 const BRAND = rgb(0.11, 0.31, 0.85);
 
-/** Les polices standard PDF (WinAnsi) ne couvrent pas tout l'Unicode : on normalise. */
-const clean = (s: string) =>
-  s.replace(/[‘’]/g, "'").replace(/[“”]/g, '"').replace(/[–—]/g, "-").replace(/ | /g, " ")
-    .replace(/×/g, "x").replace(/[^\x20-\x7E -ÿ€]/g, "");
+/**
+ * Police Unicode embarquée (DejaVu Sans : latin étendu, grec, cyrillique…) pour que les noms
+ * « Łukasz Żółć » ou « Νίκος » figurent tels quels dans la convention. Repli sur Helvetica si
+ * les fichiers sont absents. Un caractère que la police ne couvre pas (idéogrammes) devient « ? »
+ * plutôt que de disparaître sans laisser de trace.
+ */
+const FONT_DIR = path.join(process.cwd(), "assets", "fonts");
+let fontFiles: Promise<[Uint8Array, Uint8Array] | null> | null = null;
+const loadFonts = () =>
+  (fontFiles ??= Promise.all([readFile(path.join(FONT_DIR, "DejaVuSans.ttf")), readFile(path.join(FONT_DIR, "DejaVuSans-Bold.ttf"))])
+    .then(([r, b]) => [new Uint8Array(r), new Uint8Array(b)] as [Uint8Array, Uint8Array])
+    .catch(() => null));
+
+/** Normalise le texte pour la police : espaces insécables, puis caractères couverts uniquement. */
+function makeClean(covered: Set<number> | null) {
+  return (s: string) => {
+    const base = s.replace(/[\u00A0\u202F\u2007\t]/g, " ").replace(/[\u0000-\u0009\u000B-\u001F\u007F]/g, "");
+    if (!covered) {
+      // Polices standard PDF (WinAnsi) : on remplace la typographie, puis « ? » pour le reste.
+      return base.replace(/[‘’]/g, "'").replace(/[“”]/g, '"').replace(/[–—]/g, "-").replace(/×/g, "x")
+        .replace(/[^\n\x20-\x7E\u00A0-\u00FF€]/g, "?");
+    }
+    let out = "";
+    for (const ch of base) {
+      const cp = ch.codePointAt(0)!;
+      if (ch === "\n" || covered.has(cp)) { out += ch; continue; }
+      // Lettre accentuée hors police : on garde au moins la lettre de base.
+      const plain = ch.normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+      out += plain && [...plain].every((c) => covered.has(c.codePointAt(0)!)) ? plain : "?";
+    }
+    return out;
+  };
+}
 
 class Writer {
   page!: PDFPage;
   y = 0;
   pageNo = 0;
-  constructor(private doc: PDFDocument, private font: PDFFont, private bold: PDFFont, private footer: string) { this.newPage(); }
+  constructor(private doc: PDFDocument, private font: PDFFont, private bold: PDFFont, private footer: string, readonly clean: (s: string) => string) { this.newPage(); }
   newPage() {
     this.page = this.doc.addPage(A4);
     this.pageNo++;
     this.y = A4[1] - M;
-    this.page.drawText(clean(this.footer), { x: M, y: 30, size: 8, font: this.font, color: MUTED });
+    this.page.drawText(this.clean(this.footer), { x: M, y: 30, size: 8, font: this.font, color: MUTED });
     this.page.drawText(`Page ${this.pageNo}`, { x: A4[0] - M - 40, y: 30, size: 8, font: this.font, color: MUTED });
   }
   ensure(h: number) { if (this.y - h < 60) this.newPage(); }
   wrap(text: string, size: number, font: PDFFont, width: number) {
     const lines: string[] = [];
-    for (const para of clean(text).split("\n")) {
+    for (const para of this.clean(text).split("\n")) {
       let line = "";
       for (const word of para.split(/\s+/)) {
         const tryLine = line ? `${line} ${word}` : word;
@@ -55,7 +87,7 @@ class Writer {
     for (const [k, v] of rows) {
       const lines = this.wrap(v, 10, this.font, A4[0] - 2 * M - 170);
       this.ensure(lines.length * 14 + 2);
-      this.page.drawText(clean(k), { x: M, y: this.y - 10, size: 10, font: this.bold, color: MUTED });
+      this.page.drawText(this.clean(k), { x: M, y: this.y - 10, size: 10, font: this.bold, color: MUTED });
       lines.forEach((l, i) => this.page.drawText(l, { x: M + 170, y: this.y - 10 - i * 14, size: 10, font: this.font, color: INK }));
       this.y -= Math.max(1, lines.length) * 14 + 4;
     }
@@ -65,7 +97,7 @@ class Writer {
     this.y -= 10;
     const w = (A4[0] - 2 * M - 30) / 2;
     [[left, M], [right, M + w + 30]].forEach(([label, x]) => {
-      this.page.drawText(clean(label as string), { x: x as number, y: this.y - 10, size: 10, font: this.bold, color: INK });
+      this.page.drawText(this.clean(label as string), { x: x as number, y: this.y - 10, size: 10, font: this.bold, color: INK });
       this.page.drawText("Date, nom, qualité et signature :", { x: x as number, y: this.y - 26, size: 9, font: this.font, color: MUTED });
       this.page.drawRectangle({ x: x as number, y: this.y - 110, width: w, height: 76, borderColor: MUTED, borderWidth: 0.5 });
     });
@@ -81,9 +113,18 @@ async function setup(title: string, footer: string) {
   doc.setTitle(title);
   doc.setProducer("KolBase");
   doc.setCreator("KolBase");
-  const font = await doc.embedFont(StandardFonts.Helvetica);
-  const bold = await doc.embedFont(StandardFonts.HelveticaBold);
-  return { doc, w: new Writer(doc, font, bold, footer) };
+  const files = await loadFonts();
+  let font: PDFFont, bold: PDFFont, covered: Set<number> | null = null;
+  if (files) {
+    doc.registerFontkit(fontkit);
+    font = await doc.embedFont(files[0], { subset: true });
+    bold = await doc.embedFont(files[1], { subset: true });
+    covered = new Set(font.getCharacterSet());
+  } else {
+    font = await doc.embedFont(StandardFonts.Helvetica);
+    bold = await doc.embedFont(StandardFonts.HelveticaBold);
+  }
+  return { doc, w: new Writer(doc, font, bold, footer, makeClean(covered)) };
 }
 
 function header(w: Writer, title: string, ref: string, status: string) {

@@ -194,9 +194,12 @@ model Organization {
   verifiedAt         DateTime?
   verifiedById       String?
   verificationNote   String?
+  // Logo (image stockée à part, servie par /logos/[id]) : date de mise à jour, null si aucun logo.
+  logoUpdatedAt      DateTime?
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
 
+  logo          OrganizationLogo?
   members       Membership[]
   projects      Project[]
   events        Event[]       @relation("orgEvents")
@@ -646,4 +649,13 @@ enum ExpenseStatus {
 enum RegistrationKind {
   participant
   speaker
+}
+
+/** Logo d'une organisation (PNG, JPEG ou WebP, 500 Ko au plus), conservé en base pour ne pas dépendre du stockage S3. */
+model OrganizationLogo {
+  organizationId String       @id
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  data           Bytes
+  contentType    String
+  updatedAt      DateTime     @updatedAt
 }

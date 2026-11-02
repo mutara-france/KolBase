@@ -85,7 +85,7 @@ export default async function Page({ params, searchParams }: { params: Promise<{
               adressée au moins {s.authorizationDays} jours avant l&apos;exécution ; sous les seuils, une déclaration {s.declarationDays} jours ouvrables avant suffit.
             </p>
             {authorizations.length === 0 ? <p className="muted">Aucune autorisation en cours.</p> : (
-              <table className="table">
+              <table className="table" tabIndex={0}>
                 <thead><tr><th>Dossier</th><th>Experts</th><th>Montant</th><th>Motif</th><th>Statut</th></tr></thead>
                 <tbody>
                   {authorizations.map((p) => (
@@ -114,7 +114,7 @@ export default async function Page({ params, searchParams }: { params: Promise<{
               <Link href={`/organisations/${id}/hospitalites`}>Hospitalités</Link>.
             </p>
             {toPublish.length === 0 ? <p className="muted">Aucune convention signée.</p> : (
-              <table className="table">
+              <table className="table" tabIndex={0}>
                 <thead><tr><th>Dossier</th><th>Experts</th><th>Montant</th><th>Statut</th><th>Publication</th></tr></thead>
                 <tbody>
                   {toPublish.map((p) => (
@@ -159,7 +159,7 @@ export default async function Page({ params, searchParams }: { params: Promise<{
       <section className="card">
         <h2>Dossiers à valider</h2>
         {toValidate.length === 0 ? <p className="muted">Aucun dossier en attente de validation.</p> : (
-          <table className="table">
+          <table className="table" tabIndex={0}>
             <thead><tr><th>Dossier</th><th>Experts</th><th>Montant</th><th>Juste contrepartie</th><th>Régime</th><th>Conflits</th><th>Soumis le</th></tr></thead>
             <tbody>
               {toValidate.map((p, i) => {
@@ -200,7 +200,7 @@ export default async function Page({ params, searchParams }: { params: Promise<{
         </nav>
         <p className="muted">{rows.length} convention{rows.length > 1 ? "s" : ""} · {formatEUR(sum)} · {rows.filter((r) => r.regime === "autorisation").length} sous autorisation</p>
         {rows.length === 0 ? <p className="muted">Aucune convention sur la période.</p> : (
-          <table className="table">
+          <table className="table" tabIndex={0}>
             <thead><tr><th>Date</th><th>Bénéficiaire</th><th>Objet</th><th>Nature</th><th>Montant</th><th>Régime</th><th>Statut</th></tr></thead>
             <tbody>
               {rows.map((r, i) => (

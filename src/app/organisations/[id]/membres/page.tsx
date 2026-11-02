@@ -1,5 +1,6 @@
 import { SiteHeader } from "@/components/SiteHeader";
-import { EditOrgForm, InviteForm, VerificationCard } from "@/components/OrgForms";
+import { EditOrgForm, InviteForm, LogoForm, VerificationCard } from "@/components/OrgForms";
+import { logoSrc } from "@/lib/logos";
 import { db } from "@/lib/db";
 import { ORG_KIND_LABEL, invitableRoles, requireMembership, roleLabel } from "@/lib/orgs";
 import { removeMembership, revokeInvitation } from "@/lib/org-actions";
@@ -40,7 +41,7 @@ export default async function Page({ params }: { params: Promise<{ id: string }>
 
         <section className="card">
           <h2>Membres ({members.length})</h2>
-          <table className="table">
+          <table className="table" tabIndex={0}>
             <thead><tr><th>Nom</th><th>E-mail</th><th>Rôle</th><th>Depuis</th>{isAdmin && <th />}</tr></thead>
             <tbody>
               {members.map((m) => (
@@ -72,7 +73,7 @@ export default async function Page({ params }: { params: Promise<{ id: string }>
             {invitations.length > 0 && (
               <section className="card">
                 <h2>Invitations en attente</h2>
-                <table className="table">
+                <table className="table" tabIndex={0}>
                   <thead><tr><th>Rôle</th><th>Mémo</th><th>Expire le</th><th /></tr></thead>
                   <tbody>
                     {invitations.map((i) => (
@@ -95,6 +96,7 @@ export default async function Page({ params }: { params: Promise<{ id: string }>
             )}
             {/* Le référencement d'un prestataire se règle avec sa fiche prestataire (page Demandes de devis). */}
             {!isSupplier && <OrgVisibilityForm orgId={id} v={companyVisibility(org.visibility)} listed={org.listed} />}
+            <LogoForm orgId={id} name={org.name} src={logoSrc(org)} verified={org.verification === "VERIFIED"} />
             <EditOrgForm org={{ id: org.id, name: org.name, sector: org.sector, headquarters: org.headquarters, contactEmail: org.contactEmail, about: org.about, policy: org.policy, areas: org.areas }} />
           </>
         )}
