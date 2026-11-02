@@ -232,6 +232,7 @@ describe("textes légaux", () => {
     expect(legal("editor")).toBe("MUTARA");
     expect(legal("capital")).toBe("100 €");
     expect(legal("storageProvider")).toBe("[hébergeur des documents à compléter]");
+    expect(legal("signatureProvider")).toContain("Youtrust SAS");
     expect(missingLegal()).toEqual(["hébergeur des documents"]);
   });
 });

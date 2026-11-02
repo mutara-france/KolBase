@@ -6,6 +6,7 @@ import { Notice } from "@/components/AuthForms";
 import { uploadDocument } from "@/lib/document-actions";
 import { intlLocale } from "@/lib/i18n";
 import { useLocale, useT } from "@/components/I18nProvider";
+import { refreshSignatureStatus, sendConventionForSignature } from "@/lib/signature-actions";
 
 type Hidden = { orgId: string; projectId: string };
 const H = ({ orgId, projectId }: Hidden) => (<><input type="hidden" name="orgId" value={orgId} /><input type="hidden" name="projectId" value={projectId} /></>);
@@ -134,6 +135,36 @@ export function DocumentUploadForm({ projectId, experts, ownLinkId }: { projectI
       <label>{t("Fichier")}<input type="file" name="file" required accept=".pdf,.jpg,.jpeg,.png,.docx,.xlsx,.pptx" /></label>
       <p className="hint">{t("PDF, image ou document bureautique, 10 Mo au maximum.")}</p>
       <button className="btn secondary" disabled={pending}>{pending ? t("Envoi…") : t("Déposer")}</button>
+    </form>
+  );
+}
+
+/** Envoi de la convention d'un expert en signature électronique (Yousign). */
+export function SendSignatureForm({ orgId, linkId, again }: { orgId: string; linkId: string; again?: boolean }) {
+  const [state, action, pending] = useActionState(sendConventionForSignature, undefined);
+  return (
+    <form action={action} className="stack-sm">
+      <Notice state={state} />
+      <input type="hidden" name="orgId" value={orgId} />
+      <input type="hidden" name="linkId" value={linkId} />
+      {!state?.ok && (
+        <span>
+          <button className="btn small" disabled={pending}>{pending ? "Envoi en cours…" : again ? "Envoyer de nouveau en signature électronique" : "Envoyer en signature électronique"}</button>
+        </span>
+      )}
+    </form>
+  );
+}
+
+/** Interrogation du prestataire de signature (sans webhook, ou pour rattraper un événement manqué). */
+export function RefreshSignatureForm({ linkId }: { linkId: string }) {
+  const [state, action, pending] = useActionState(refreshSignatureStatus, undefined);
+  return (
+    <form action={action} className="inline wrap">
+      <input type="hidden" name="linkId" value={linkId} />
+      <button className="link" disabled={pending}>{pending ? "Mise à jour…" : "Mettre à jour le statut"}</button>
+      {state?.error && <span className="text-xs" style={{ color: "var(--danger)" }} role="alert">{state.error}</span>}
+      {state?.ok && <span className="text-xs" role="status">{state.ok}</span>}
     </form>
   );
 }

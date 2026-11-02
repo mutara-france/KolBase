@@ -8,12 +8,13 @@ import { requireMembership } from "@/lib/orgs";
 import { COMPLIANCE_ROLES, formatEUR } from "@/lib/events";
 import { collabType, PROJECT_ROLES, PROJECT_VIEW_ROLES, STATUS_LABEL, TRANSITIONS, type TransitionKey } from "@/lib/projects";
 import { advanceProject } from "@/lib/project-actions";
-import { BudgetPanel, ConflictsPanel, DocumentsPanel, MaterialsPanel } from "@/components/DossierSections";
+import { BudgetPanel, ConflictsPanel, ConventionSignatureBlock, DocumentsPanel, MaterialsPanel } from "@/components/DossierSections";
 import { missingSignedConventions } from "@/lib/project-documents";
 import { REVIEW_ROLES } from "@/lib/projects";
 import { complianceSettings, projectRegime, REGIME_LABEL } from "@/lib/compliance";
 import { country, foreignObligations, practicesInFrance } from "@/lib/countries";
 import { drPrefix } from "@/lib/professions";
+import { signatureEnabled } from "@/lib/yousign";
 
 export const metadata = { title: "Dossier — KolBase" };
 
@@ -28,6 +29,11 @@ const ACTION_LABEL: Record<string, string> = {
   "material.submit": "Support soumis à la relecture",
   "material.approve": "Support approuvé",
   "material.changes": "Modifications demandées sur un support",
+  "signature.send": "Convention envoyée en signature électronique",
+  "signature.done": "Convention signée électroniquement",
+  "signature.declined": "Signature électronique refusée",
+  "signature.expired": "Demande de signature électronique expirée",
+  "signature.canceled": "Demande de signature électronique annulée",
 };
 
 export default async function Page({ params }: { params: Promise<{ id: string; projectId: string }> }) {
@@ -39,6 +45,7 @@ export default async function Page({ params }: { params: Promise<{ id: string; p
       experts: {
         include: {
           practitioner: { include: { user: { select: { firstName: true, lastName: true } } } },
+          signature: true,
           messages: { include: { author: { select: { firstName: true, lastName: true } } }, orderBy: { createdAt: "asc" } },
         },
         orderBy: { createdAt: "asc" },
@@ -105,7 +112,9 @@ export default async function Page({ params }: { params: Promise<{ id: string; p
               ))}
             </div>
             {unsigned.length > 0 && (
-              <p className="hint">Déposez la convention signée de {unsigned.join(", ")} (rubrique Documents) pour passer le dossier en « Signé ».</p>
+              <p className="hint">
+                Déposez la convention signée de {unsigned.join(", ")} (rubrique Documents){signatureEnabled() ? " ou faites-la signer électroniquement (fiche de l'expert ci-dessous)" : ""} pour passer le dossier en « Signé ».
+              </p>
             )}
             {project.status === "VALIDE" && regime?.regime === "hors_france" && (
               <p className="hint">
@@ -165,6 +174,9 @@ export default async function Page({ params }: { params: Promise<{ id: string; p
                   version anglaise
                 </a>
               </span>
+            )}
+            {e.status !== "ATT_EXPERTS" && e.status !== "DECLINE" && (
+              <ConventionSignatureBlock orgId={id} linkId={e.id} signature={e.signature} projectStatus={project.status} canSend={isProject} />
             )}
             <Thread messages={e.messages} meId={user.id} />
             {e.status !== "DECLINE" && <MessageForm linkId={e.id} />}

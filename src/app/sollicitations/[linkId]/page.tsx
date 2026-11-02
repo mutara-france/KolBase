@@ -6,7 +6,7 @@ import { MessageForm, RespondForm } from "@/components/ProjectForms";
 import { db } from "@/lib/db";
 import { requireUser } from "@/lib/auth";
 import { collabType } from "@/lib/projects";
-import { DocumentsPanel, MaterialsPanel } from "@/components/DossierSections";
+import { DocumentsPanel, ExpertSignatureBlock, MaterialsPanel } from "@/components/DossierSections";
 import { fmtEur, intlLocale } from "@/lib/i18n";
 import { getT } from "@/lib/i18n/server";
 
@@ -22,6 +22,7 @@ export default async function Page({ params }: { params: Promise<{ linkId: strin
     where: { id: linkId, practitioner: { userId: user.id } },
     include: {
       project: { include: { organization: true } },
+      signature: true,
       messages: { include: { author: { select: { firstName: true, lastName: true } } }, orderBy: { createdAt: "asc" } },
     },
   });
@@ -57,6 +58,7 @@ export default async function Page({ params }: { params: Promise<{ linkId: strin
         {link.status !== "ATT_EXPERTS" && link.status !== "DECLINE" && !abandoned && (
           <a className="btn ghost" href={`/sollicitations/${link.id}/convention`} target="_blank" rel="noreferrer">{t("Projet de convention (PDF)")}</a>
         )}
+        {link.status !== "ATT_EXPERTS" && link.status !== "DECLINE" && !abandoned && <ExpertSignatureBlock linkId={link.id} signature={link.signature} email={user.email} />}
         {p.description && <section className="card"><h2>{t("Objet")}</h2><p>{p.description}</p></section>}
         {link.status === "ATT_EXPERTS" && !abandoned && (
           <section className="card highlight"><h2>{t("Votre réponse")}</h2><RespondForm linkId={link.id} /></section>

@@ -72,3 +72,12 @@ services:
         sync: false
       - key: S3_SECRET_ACCESS_KEY
         sync: false
+      # Signature électronique des conventions (facultatif) : clé d'API Yousign v3 (YOUSIGN_API_URL vide = production,
+      # https://api-sandbox.yousign.app/v3 pour le bac à sable), et secret du webhook déclaré chez Yousign vers
+      # <APP_URL>/api/signature/webhook (signature_request.done, .declined, .expired, .canceled). Sans clé : signature sur papier.
+      - key: YOUSIGN_API_KEY
+        sync: false
+      - key: YOUSIGN_API_URL
+        sync: false
+      - key: YOUSIGN_WEBHOOK_SECRET
+        sync: false

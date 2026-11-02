@@ -11,6 +11,7 @@ import { missingLegal } from "@/lib/legal";
 import { mailEnabled } from "@/lib/mail";
 import { storageEnabled } from "@/lib/storage";
 import { orcidOAuth } from "@/lib/orcid";
+import { signatureApiUrl, signatureEnabled, signatureSandbox, webhookSecret } from "@/lib/yousign";
 import { Avatar } from "@/components/Avatar";
 import { logoSrc } from "@/lib/logos";
 import { country, licenseRule, practicesInFrance, registryLink } from "@/lib/countries";
@@ -213,6 +214,15 @@ function LaunchChecklist({ demoOrgs, admins }: { demoOrgs: number; admins: { ema
   const unconfirmed = admins.filter((a) => !a.emailVerifiedAt).map((a) => a.email);
   const missing = platformAdminEmails().filter((e) => !admins.some((a) => a.email.toLowerCase() === e));
   const legalGaps = missingLegal();
+  const esign = signatureEnabled();
+  const esignDetail = !esign
+    ? "Non configurée : les conventions se signent sur papier puis se déposent dans le dossier."
+    : [
+        signatureSandbox() ? `Environnement de test (${signatureApiUrl()}) : les signatures n'ont pas de valeur juridique.` : "Yousign, environnement de production.",
+        webhookSecret()
+          ? `Webhook signé configuré (${process.env.APP_URL ?? "<APP_URL>"}/api/signature/webhook).`
+          : `YOUSIGN_WEBHOOK_SECRET absent : déclarer le webhook ${process.env.APP_URL ?? "<APP_URL>"}/api/signature/webhook chez Yousign, sinon le statut se met à jour à la main depuis chaque dossier.`,
+      ].join(" ");
   const items: { ok: boolean; optional?: boolean; label: string; detail: string }[] = [
     {
       ok: missing.length === 0 && unconfirmed.length === 0,
@@ -225,6 +235,7 @@ function LaunchChecklist({ demoOrgs, admins }: { demoOrgs: number; admins: { ema
     { ok: !!process.env.APP_URL, label: "Adresse du site (APP_URL)", detail: process.env.APP_URL || "Non définie : les liens des e-mails et du plan du site sont incomplets." },
     { ok: mailEnabled(), label: "Envoi d'e-mails (SMTP_URL, MAIL_FROM)", detail: mailEnabled() ? `Expéditeur : ${process.env.MAIL_FROM ?? "par défaut"}` : "Non configuré : aucun e-mail n'est envoyé (mot de passe oublié, notifications)." },
     { ok: storageEnabled(), label: "Stockage des documents (S3_*)", detail: storageEnabled() ? `Compartiment : ${process.env.S3_BUCKET}` : "Non configuré : le dépôt de documents est désactivé." },
+    { ok: esign && !!webhookSecret() && !signatureSandbox(), optional: !esign, label: "Signature électronique (YOUSIGN_*, facultatif)", detail: esignDetail },
     { ok: !!orcidOAuth(), optional: true, label: "Connexion ORCID (facultatif)", detail: orcidOAuth() ? "Active." : "Non configurée : l'iD ORCID se saisit à la main." },
     { ok: legalGaps.length === 0, label: "Textes légaux (src/lib/legal.ts)", detail: legalGaps.length ? `À compléter : ${legalGaps.join(", ")}.` : "Complets." },
     { ok: process.env.SEED_DEMO !== "1", label: "Rechargement de la démo (SEED_DEMO)", detail: process.env.SEED_DEMO === "1" ? "Actif : la démo est rechargée à chaque déploiement. Passer à 0 avant l'ouverture." : "Désactivé." },

@@ -1,15 +1,17 @@
-import { AlertTriangle, ExternalLink, FileText, Info, ShieldAlert, Wallet } from "lucide-react";
+import { AlertTriangle, ExternalLink, FileSignature, FileText, Info, ShieldAlert, Wallet } from "lucide-react";
 import { db } from "@/lib/db";
 import { detectConflicts } from "@/lib/conflicts";
 import { formatDate, formatEUR } from "@/lib/events";
 import { MATERIAL_KINDS, MATERIAL_STATUS } from "@/lib/projects";
 import { reviewMaterial, updateExpense } from "@/lib/dossier-actions";
-import { BudgetForm, DocumentUploadForm, ExpenseForm, MaterialForm, VersionForm } from "@/components/DossierForms";
+import { BudgetForm, DocumentUploadForm, ExpenseForm, MaterialForm, RefreshSignatureForm, SendSignatureForm, VersionForm } from "@/components/DossierForms";
 import { deleteDocument } from "@/lib/document-actions";
 import { storageEnabled } from "@/lib/storage";
 import { drPrefix } from "@/lib/professions";
 import { fmtDate, type Locale, type T } from "@/lib/i18n";
 import { getT } from "@/lib/i18n/server";
+import { canSendAgain, SIGNATURE_LABEL, signatureEnabled } from "@/lib/yousign";
+import type { ConventionSignature, ProjectStatus } from "@/generated/prisma/client";
 
 export async function ConflictsPanel({ projectId }: { projectId: string }) {
   const conflicts = await detectConflicts(projectId);
@@ -189,4 +191,69 @@ export async function DocumentsPanel({ projectId, linkId, canUpload }: { project
       ))}
     </section>
   );
+}
+
+const SIGNATURE_TONE = { draft: "wait", ongoing: "wait", done: "ok", declined: "bad", expired: "done", canceled: "done" } as const;
+
+/**
+ * Signature électronique de la convention d'un expert, côté organisation : envoi (dossier « En signature »),
+ * suivi, mise à jour du statut et téléchargement de la convention signée. Rien sans Yousign configuré ni demande passée.
+ */
+export function ConventionSignatureBlock({ orgId, linkId, signature, projectStatus, canSend }: {
+  orgId: string; linkId: string; signature: ConventionSignature | null; projectStatus: ProjectStatus; canSend: boolean;
+}) {
+  const enabled = signatureEnabled();
+  const s = signature;
+  const sendable = enabled && canSend && projectStatus === "SIGNATURE" && canSendAgain(s?.status);
+  if (!s && !sendable) return null;
+  return (
+    <div className="stack-sm mt-3">
+      <p className="text-sm">
+        <FileSignature size={14} /> Signature électronique{" "}
+        {s && <span className={`pill ${SIGNATURE_TONE[s.status]}`}>{SIGNATURE_LABEL[s.status]}</span>}
+      </p>
+      {s?.status === "ongoing" && (
+        <p className="text-xs">Envoyée{s.sentAt ? ` le ${formatDate(s.sentAt)}` : ""} : Yousign a écrit à chaque signataire (l&apos;expert et la personne qui a envoyé la convention), qui signe depuis le lien reçu.</p>
+      )}
+      {s?.status === "done" && (
+        <p className="text-xs">
+          Signée par les deux parties{s.completedAt ? ` le ${formatDate(s.completedAt)}` : ""}. <a href={`/signatures/${linkId}`}>Convention signée (PDF)</a>
+        </p>
+      )}
+      {s?.status === "declined" && <p className="text-xs">Un signataire a refusé de signer{s.note ? ` : « ${s.note} »` : ""}.</p>}
+      {s?.status === "expired" && <p className="text-xs">La demande a expiré sans être signée.</p>}
+      {s?.status === "canceled" && <p className="text-xs">La demande a été annulée chez Yousign.</p>}
+      {s?.status === "draft" && <p className="text-xs">{s.note ? "L'envoi précédent a échoué." : "Envoi en cours ou interrompu."}</p>}
+      {enabled && s?.status === "ongoing" && <RefreshSignatureForm linkId={linkId} />}
+      {sendable && <SendSignatureForm orgId={orgId} linkId={linkId} again={!!s && s.status !== "draft"} />}
+    </div>
+  );
+}
+
+/** Côté expert : où en est la signature électronique de sa convention. */
+export function ExpertSignatureBlock({ linkId, signature, email }: { linkId: string; signature: ConventionSignature | null; email: string }) {
+  const s = signature;
+  if (!s || s.status === "draft") return null;
+  if (s.status === "done")
+    return (
+      <p className="notice ok">
+        Convention signée électroniquement par les deux parties{s.completedAt ? ` le ${formatDate(s.completedAt)}` : ""}.{" "}
+        <a href={`/signatures/${linkId}`}>Télécharger la convention signée (PDF)</a>
+      </p>
+    );
+  if (s.status === "ongoing")
+    return (
+      <section className="card highlight stack-sm">
+        <h2 className="section-title"><FileSignature size={15} /> Convention en attente de votre signature</h2>
+        <p>
+          Yousign, notre prestataire de signature électronique, vous a envoyé un e-mail à <strong>{email}</strong> avec le lien pour signer
+          {s.sentAt ? ` (demande du ${formatDate(s.sentAt)})` : ""}. Un code de vérification vous est adressé par e-mail au moment de signer.
+          Pensez à regarder dans vos courriers indésirables.
+        </p>
+        <p className="text-xs">Si vous avez déjà signé, la convention attend la signature de l&apos;organisation.</p>
+        {signatureEnabled() && <RefreshSignatureForm linkId={linkId} />}
+      </section>
+    );
+  const why = s.status === "declined" ? `a été refusée${s.note ? ` (« ${s.note} »)` : ""}` : s.status === "expired" ? "a expiré" : "a été annulée";
+  return <p className="notice warn">La demande de signature électronique de la convention {why}. L&apos;organisation peut vous en adresser une nouvelle.</p>;
 }

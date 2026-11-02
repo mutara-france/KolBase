@@ -357,8 +357,35 @@ model ProjectExpert {
 
   messages  Message[]
   documents Document[]
+  signature ConventionSignature?
 
   @@unique([projectId, practitionerId])
+}
+
+// Statut d'une demande de signature électronique (valeurs du prestataire, Yousign).
+enum SignatureStatus {
+  draft
+  ongoing
+  done
+  declined
+  expired
+  canceled
+}
+
+// Signature électronique (Yousign) de la convention d'un expert. Une seule demande suivie par expert :
+// un nouvel envoi (après refus, expiration ou annulation) remplace la précédente ; l'historique est dans AuditLog.
+model ConventionSignature {
+  id              String          @id @default(cuid())
+  projectExpertId String          @unique
+  projectExpert   ProjectExpert   @relation(fields: [projectExpertId], references: [id], onDelete: Cascade)
+  requestId       String          @unique // identifiant de la demande chez le prestataire
+  documentId      String?         // identifiant du document à signer chez le prestataire
+  status          SignatureStatus @default(draft)
+  sentById        String?         // signataire côté organisation (auteur de l'envoi)
+  sentAt          DateTime?
+  completedAt     DateTime?
+  note            String?         // motif d'un refus, échec de l'envoi
+  updatedAt       DateTime        @updatedAt
 }
 
 // Pièce d'un dossier, stockée dans le stockage objet (S3 compatible) : convention signée d'un expert ou autre pièce.

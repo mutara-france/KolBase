@@ -3,7 +3,9 @@
 // Usage : BASE=http://localhost:3000 DEMO_PASSWORD=… DATABASE_URL=… npm run test:e2e
 import { chromium } from "playwright";
 import pg from "pg";
-import { mails, startFakes } from "./faux-services.mjs";
+import { createHmac } from "node:crypto";
+import { PDFDocument } from "pdf-lib";
+import { mails, signatureRequests, startFakes } from "./faux-services.mjs";
 
 const BASE = process.env.BASE ?? "http://localhost:3000";
 const PW = process.env.DEMO_PASSWORD;
@@ -259,6 +261,85 @@ const linkIn = (mail) => mail?.text.match(/https?:\/\/\S+/g)?.find((u) => !u.end
   await page.reload();
   const signed = await page.locator('li:has-text("convention-roux-signée.pdf")').innerText();
   check("Dossier signé : la convention signée ne peut plus être retirée", !signed.includes("Retirer") && (await text(page)).includes("Signé"));
+  await ctx.close();
+}
+
+// ── Signature électronique (faux Yousign) : envoi, refus, nouvel envoi, webhook signé ─────
+{
+  const db = new pg.Client({ connectionString: process.env.DATABASE_URL });
+  await db.connect();
+  await db.query(`insert into "Project" (id, "organizationId", title, "typeId", status, "updatedAt") values ('e2e-prj-esign', 'demo-org-academie', 'Formation signée électroniquement', 'dpc', 'SIGNATURE', now()) on conflict do nothing`);
+  await db.query(`insert into "ProjectExpert" (id, "projectId", "practitionerId", status, "feeCents", days) values ('e2e-link-esign', 'e2e-prj-esign', 'demo-p-roux', 'SIGNATURE', 150000, 1) on conflict do nothing`);
+  const { ctx, page } = await session();
+  await login(page, "anne.chevalier@demo.kolbase.local");
+  const dossier = `${BASE}/organisations/demo-org-academie/dossiers/e2e-prj-esign`;
+  await page.goto(dossier);
+  const send = page.locator('button:has-text("signature électronique")');
+  check("Signature électronique : envoi proposé (YOUSIGN_* et faux Yousign du port 3995)", (await send.count()) === 1);
+  if ((await send.count()) === 1) {
+    await send.click();
+    await page.waitForSelector('.pill:has-text("En cours de signature")', { timeout: 20000 }).catch(() => {});
+    check("Signature électronique : convention envoyée", (await text(page)).includes("Yousign a écrit à chaque signataire"));
+    const first = [...signatureRequests.values()].find((r) => r.body.external_id === "e2e-link-esign");
+    const pages = first?.pdf ? (await PDFDocument.load(first.pdf)).getPageCount() : 0;
+    const [org, exp] = first?.signers ?? [];
+    check("Yousign : demande activée avec la convention et deux signataires",
+      first?.status === "ongoing" && pages > 0 && org?.info.email === "anne.chevalier@demo.kolbase.local" && exp?.info.email === "mathieu.roux@demo.kolbase.local" && org.signature_level === "electronic_signature");
+    check("Yousign : un champ de signature par signataire, côte à côte sur la dernière page",
+      org?.fields?.[0]?.page === pages && exp?.fields?.[0]?.page === pages && org.fields[0].x < exp.fields[0].x && org.fields[0].y === exp.fields[0].y, JSON.stringify([org?.fields, exp?.fields, pages]));
+
+    // Refus constaté par « Mettre à jour le statut » (sans webhook), puis nouvel envoi.
+    first.status = "declined";
+    first.decline_information = { reason: "Honoraires à revoir", signer_id: exp?.id };
+    await page.reload();
+    await page.click('button:has-text("Mettre à jour le statut")');
+    await page.waitForTimeout(1500);
+    await page.reload();
+    let t = await text(page);
+    check("Mise à jour du statut : refus et motif affichés", t.includes("Signature refusée") && t.includes("Honoraires à revoir"));
+    await page.click('button:has-text("Envoyer de nouveau en signature électronique")');
+    await page.waitForSelector('.pill:has-text("En cours de signature")', { timeout: 20000 }).catch(() => {});
+    const second = [...signatureRequests.values()].filter((r) => r.body.external_id === "e2e-link-esign").at(-1);
+    check("Nouvel envoi : nouvelle demande Yousign", !!second && second.id !== first.id && second.status === "ongoing");
+
+    const expert = await session();
+    await login(expert.page, "mathieu.roux@demo.kolbase.local");
+    await expert.page.goto(`${BASE}/sollicitations/e2e-link-esign`);
+    check("Expert : convention en attente de sa signature", (await text(expert.page)).includes("Convention en attente de votre signature"));
+
+    // Webhook : signature HMAC exigée, identifiants inconnus ignorés, traitement idempotent.
+    const hook = (body, sig) => fetch(`${BASE}/api/signature/webhook`, { method: "POST", headers: { "Content-Type": "application/json", "X-Yousign-Signature-256": sig }, body });
+    const hmac = (b) => `sha256=${createHmac("sha256", "test").update(b).digest("hex")}`;
+    const event = (id) => JSON.stringify({ event_id: `evt-${id}`, event_name: "signature_request.done", event_time: String(Math.floor(Date.now() / 1000)), sandbox: false, data: { signature_request: { id, status: "done", completed_at: new Date().toISOString() } } });
+    check("Webhook : signature invalide refusée", (await hook(event(second.id), "sha256=00")).status === 401);
+    const signed = (b) => hook(b, hmac(b));
+    const unknown = await signed(event("inconnu"));
+    check("Webhook : demande inconnue ignorée (200)", unknown.status === 200 && (await unknown.json()).ignored === true);
+    check("Webhook : ancienne demande remplacée ignorée", (await (await signed(event(first.id))).json()).ignored === true);
+    second.status = "done";
+    second.completed_at = new Date().toISOString();
+    const done = event(second.id);
+    const [r1, r2] = [await signed(done), await signed(done)];
+    check("Webhook : signature achevée acceptée (et rejouée sans erreur)", r1.status === 200 && r2.status === 200);
+    for (let i = 0; i < 20 && !(await text(page)).includes("Signée électroniquement"); i++) { await page.waitForTimeout(500); await page.reload(); }
+    t = await text(page);
+    check("Dossier : convention signée électroniquement", t.includes("Signée électroniquement") && t.includes("Signée par les deux parties"));
+    check("Documents : convention signée rangée une seule fois", (await page.locator('li:has-text("convention-signee-")').count()) === 1, String(await page.locator('li:has-text("convention-signee-")').count()));
+    check("Signature électronique : « Convention signée » devient possible", (await page.locator('button:has-text("Convention signée")').count()) === 1);
+    const dl = await page.request.get(`${BASE}/signatures/e2e-link-esign`);
+    const pdf = await dl.body();
+    check("Téléchargement de la convention signée (organisation)", dl.ok() && pdf.subarray(0, 5).toString() === "%PDF-" && pdf.includes("faux Yousign"), String(dl.status()));
+    await expert.page.reload();
+    check("Expert : convention signée affichée", (await text(expert.page)).includes("Convention signée électroniquement par les deux parties"));
+    check("Expert : téléchargement de sa convention signée", (await expert.page.request.get(`${BASE}/signatures/e2e-link-esign`)).ok());
+    await expert.ctx.close();
+    const other = await session();
+    await login(other.page, "julien.faure@demo.kolbase.local");
+    check("Convention signée : refusée à une autre organisation", (await other.page.request.get(`${BASE}/signatures/e2e-link-esign`)).status() === 404);
+    await other.ctx.close();
+  }
+  await db.query(`delete from "Project" where id = 'e2e-prj-esign'`);
+  await db.end();
   await ctx.close();
 }
 

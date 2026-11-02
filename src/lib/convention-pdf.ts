@@ -94,6 +94,8 @@ class Writer {
       this.y -= Math.max(1, lines.length) * 14 + 4;
     }
   }
+  /** Cadres de signature dessinés (repère PDF : origine en bas à gauche), pour la signature électronique. */
+  boxes: SignatureBox[] = [];
   signatures(left: string, right: string, caption = "Date, nom, qualité et signature :") {
     this.ensure(120);
     this.y -= 10;
@@ -102,6 +104,7 @@ class Writer {
       this.page.drawText(this.clean(label as string), { x: x as number, y: this.y - 10, size: 10, font: this.bold, color: INK });
       this.page.drawText(this.clean(caption), { x: x as number, y: this.y - 26, size: 9, font: this.font, color: MUTED });
       this.page.drawRectangle({ x: x as number, y: this.y - 110, width: w, height: 76, borderColor: MUTED, borderWidth: 0.5 });
+      this.boxes.push({ page: this.pageNo, x: x as number, y: this.y - 110, width: w, height: 76, pageHeight: A4[1] });
     });
     this.y -= 120;
   }
@@ -155,7 +158,15 @@ export type CollabConventionInput = {
 /** Titre « Dr » selon la langue. */
 const dr = (t: T, profession: string) => (drPrefix(profession) ? `${t("Dr")} ` : "");
 
+/** Cadre de signature : page (à partir de 1), position et taille en points, repère PDF (origine en bas à gauche). */
+export type SignatureBox = { page: number; x: number; y: number; width: number; height: number; pageHeight: number };
+
 export async function buildCollaborationConvention(i: CollabConventionInput, locale: Locale = "fr") {
+  return (await buildCollaborationConventionForSignature(i, locale)).bytes;
+}
+
+/** Convention et position des cadres de signature (organisation, puis expert), pour la signature électronique. */
+export async function buildCollaborationConventionForSignature(i: CollabConventionInput, locale: Locale = "fr") {
   const t = makeT(locale);
   const { doc, w } = await setup(`${t("Convention")} - ${i.project.title}`, t("KolBase - Convention {ref} - document généré, à faire valider par le service juridique avant signature.", { ref: i.ref }));
   header(w, t, locale, t("Convention de collaboration"), i.ref, t(i.statusLabel));
@@ -220,7 +231,7 @@ export async function buildCollaborationConvention(i: CollabConventionInput, loc
 
   w.heading(t("Signatures"));
   w.signatures(t("Pour {org}", { org: i.org.name }), `${dr(t, e.profession)}${e.firstName} ${e.lastName}`, t("Date, nom, qualité et signature :"));
-  return doc.save();
+  return { bytes: await doc.save(), boxes: w.boxes };
 }
 
 export type HospitalityConventionInput = {
