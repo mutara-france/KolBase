@@ -8,6 +8,7 @@ import { requireMembership } from "@/lib/orgs";
 import { COMPLIANCE_ROLES } from "@/lib/events";
 import { collabType, PROJECT_ROLES, SOURCING_ROLES, PROJECT_VIEW_ROLES, TRANSITIONS, type TransitionKey } from "@/lib/projects";
 import type { ProjectStatus } from "@/generated/prisma/client";
+import { complianceSettings, projectRegime } from "@/lib/compliance";
 import { eurToCents, str } from "@/lib/form";
 
 export type ActionState = { error?: string; ok?: string } | undefined;
@@ -84,6 +85,11 @@ export async function respondToSolicitation(_: ActionState, form: FormData): Pro
     await db.message.create({ data: { projectId: link.projectId, projectExpertId: link.id, authorId: user.id, body: str(form, "note") } });
   }
   await syncProjectFromExperts(link.projectId);
+  // Candidature retenue puis honoraires refusés : la place d'intervenant (ou la candidature) est libérée.
+  if (status === "DECLINE") {
+    await db.speakerApplication.updateMany({ where: { projectId: link.projectId, practitionerId: link.practitionerId, status: "retained" }, data: { status: "declined" } });
+    await db.application.updateMany({ where: { projectId: link.projectId, practitionerId: link.practitionerId, status: "retained" }, data: { status: "declined" } });
+  }
   await audit(user.id, answer === "accept" ? "solicitation.accept" : "solicitation.decline", "ProjectExpert", link.id, { projectId: link.projectId });
   revalidatePath(`/sollicitations/${link.id}`);
   return { ok: answer === "accept" ? "Accord de principe envoyé. L'organisation va préparer la convention." : "Sollicitation déclinée." };
@@ -115,8 +121,10 @@ export async function advanceProject(form: FormData) {
   const t = TRANSITIONS[key];
   if (!t) return;
   const { user } = await requireMembership(orgId, t.roles === "compliance" ? COMPLIANCE_ROLES : PROJECT_ROLES);
-  const project = await db.project.findFirst({ where: { id: projectId, organizationId: orgId } });
+  const project = await db.project.findFirst({ where: { id: projectId, organizationId: orgId }, include: { experts: true, organization: { select: { complianceSettings: true } } } });
   if (!project || !(t.from as readonly string[]).includes(project.status)) return;
+  // Un dossier au-delà des seuils d'autorisation ne peut pas passer par la déclaration simple.
+  if (key === "declaration" && projectRegime(complianceSettings(project.organization.complianceSettings), collabType(project.typeId)?.unit ?? "", project.experts)?.regime === "autorisation") return;
 
   const note = str(form, "note");
   await db.project.update({

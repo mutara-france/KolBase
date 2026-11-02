@@ -65,7 +65,7 @@ export function RetainForm({ orgId, applicationId, unit, defaultFee }: { orgId: 
       <input type="hidden" name="applicationId" value={applicationId} />
       <input name="units" defaultValue="1" aria-label={`Nombre (${unit})`} title={`Nombre (${unit})`} />
       <input name="fee" defaultValue={defaultFee} placeholder="Honoraires € HT" aria-label="Honoraires" required />
-      <button className="btn" disabled={pending}>{pending ? "…" : "Ouvrir le dossier"}</button>
+      <button className="btn" disabled={pending}>{pending ? "…" : "Proposer ces honoraires"}</button>
     </form>
   );
 }

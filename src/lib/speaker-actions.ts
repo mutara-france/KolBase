@@ -89,7 +89,10 @@ export async function rejectSpeaker(form: FormData) {
   revalidatePath(`/organisations/${orgId}/intervenants`);
 }
 
-/** Retenir un intervenant ouvre le dossier de collaboration correspondant (accord de principe). */
+/**
+ * Retenir un intervenant ouvre le dossier de collaboration et adresse à l'expert une proposition d'honoraires,
+ * qu'il accepte ou décline (le dossier passe alors en accord de principe ou est abandonné).
+ */
 export async function retainSpeaker(_: ActionState, form: FormData): Promise<ActionState> {
   const orgId = str(form, "orgId");
   const { user, roles } = await requireMembership(orgId, SPEAKER_ROLES);
@@ -113,9 +116,9 @@ export async function retainSpeaker(_: ActionState, form: FormData): Promise<Act
       therapeuticArea: ev.therapeuticArea,
       description: ev.description,
       origin: "Appel à intervenants",
-      status: "ACCORD",
+      status: "ATT_EXPERTS",
       createdById: user.id,
-      experts: { create: { practitionerId: app.practitionerId, status: "ACCORD", feeCents: fee, days: 1, respondedAt: new Date() } },
+      experts: { create: { practitionerId: app.practitionerId, status: "ATT_EXPERTS", feeCents: fee, days: 1 } },
     },
     include: { experts: true },
   });
@@ -129,5 +132,5 @@ export async function retainSpeaker(_: ActionState, form: FormData): Promise<Act
   await audit(user.id, "project.create", "Project", project.id, { from: "speakercall", eventId: ev.id });
   if (roles.some((r) => PROJECT_VIEW_ROLES.includes(r))) redirect(`/organisations/${orgId}/dossiers/${project.id}`);
   revalidatePath(`/organisations/${orgId}/intervenants`);
-  return { ok: "Intervenant retenu : le dossier de collaboration est ouvert pour l'équipe projets." };
+  return { ok: "Intervenant retenu : la proposition d'honoraires est envoyée à l'expert, le dossier est ouvert pour l'équipe projets." };
 }

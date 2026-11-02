@@ -102,7 +102,7 @@ export default async function Page({ params }: { params: Promise<{ id: string }>
                             <div className="muted">{[p.specialty || p.profession, p.city, `${p._count.publications} publication${p._count.publications > 1 ? "s" : ""}`].filter(Boolean).join(" · ")}</div>
                           </div>
                         </div>
-                        <span className={`pill ${a.status === "retained" ? "ok" : a.status === "rejected" ? "done" : "wait"}`}>{SPEAKER_STATUS[a.status]}</span>
+                        <span className={`pill ${a.status === "retained" ? "ok" : ["rejected", "declined"].includes(a.status) ? "done" : "wait"}`}>{SPEAKER_STATUS[a.status]}</span>
                       </div>
                       {a.message && <p>« {a.message} »</p>}
                       {a.status === "pending" && (

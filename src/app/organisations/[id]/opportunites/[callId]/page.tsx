@@ -10,7 +10,7 @@ import { rejectApplication, setOpenCallStatus } from "@/lib/opportunity-actions"
 
 export const metadata = { title: "Opportunité — KolBase" };
 
-const APP_STATUS: Record<string, string> = { pending: "À traiter", retained: "Retenue", rejected: "Non retenue" };
+const APP_STATUS: Record<string, string> = { pending: "À traiter", retained: "Retenue", rejected: "Non retenue", declined: "Honoraires déclinés" };
 
 export default async function Page({ params }: { params: Promise<{ id: string; callId: string }> }) {
   const { id, callId } = await params;
@@ -59,7 +59,7 @@ export default async function Page({ params }: { params: Promise<{ id: string; c
               <li key={a.id}>
                 <div className="actions spread">
                   <strong><Link href={`/annuaire/${a.practitionerId}`}>Dr {a.practitioner.user.firstName} {a.practitioner.user.lastName}</Link></strong>
-                  <span className={`pill ${a.status === "retained" ? "ok" : a.status === "rejected" ? "done" : "wait"}`}>{APP_STATUS[a.status]}</span>
+                  <span className={`pill ${a.status === "retained" ? "ok" : ["rejected", "declined"].includes(a.status) ? "done" : "wait"}`}>{APP_STATUS[a.status]}</span>
                 </div>
                 <span className="muted">{[a.practitioner.specialty || a.practitioner.profession, a.practitioner.city].filter(Boolean).join(" · ")} · le {formatDate(a.createdAt)}</span>
                 {a.message && <p>{a.message}</p>}

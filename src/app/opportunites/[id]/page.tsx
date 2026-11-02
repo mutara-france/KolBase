@@ -12,8 +12,9 @@ export const metadata = { title: "Opportunité — KolBase" };
 
 const APP_STATUS: Record<string, string> = {
   pending: "Votre candidature est en cours d'examen.",
-  retained: "Votre candidature a été retenue : retrouvez le dossier dans « Sollicitations ».",
+  retained: "Votre candidature a été retenue : l'organisation vous propose des honoraires, à accepter ou décliner dans « Sollicitations ».",
   rejected: "Votre candidature n'a pas été retenue.",
+  declined: "Vous avez décliné la proposition d'honoraires.",
 };
 
 export default async function Page({ params }: { params: Promise<{ id: string }> }) {
