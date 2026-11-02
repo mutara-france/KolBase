@@ -85,11 +85,13 @@ export function MessageForm({ linkId }: { linkId: string }) {
   const [state, action, pending] = useActionState(postMessage, undefined);
   const t = useT();
   return (
-    <form action={action} className="form" key={state?.ok ? Date.now() : "msg"}>
+    <form action={action} className="stack-sm" key={state?.ok ? Date.now() : "msg"}>
       {state?.error && <Notice state={state} />}
-      <textarea name="body" rows={3} placeholder={t("Votre message…")} required />
-      <input type="hidden" name="linkId" value={linkId} />
-      <button className="btn ghost" disabled={pending}>{pending ? t("Envoi…") : t("Envoyer")}</button>
+      <div className="composer">
+        <textarea name="body" rows={2} placeholder={t("Votre message…")} aria-label={t("Votre message…")} required />
+        <input type="hidden" name="linkId" value={linkId} />
+        <button className="btn small" disabled={pending}>{pending ? t("Envoi…") : t("Envoyer")}</button>
+      </div>
     </form>
   );
 }

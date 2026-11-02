@@ -1,17 +1,21 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
+import { CalendarDays, Clock, Euro, Scale, User, Users, Wallet } from "lucide-react";
+import { Avatar } from "@/components/Avatar";
 import { SiteHeader } from "@/components/SiteHeader";
 import { FmvBadge, Pipeline, StatusPill, Thread } from "@/components/ProjectBits";
 import { MessageForm } from "@/components/ProjectForms";
 import { db } from "@/lib/db";
 import { requireMembership } from "@/lib/orgs";
-import { COMPLIANCE_ROLES, formatEUR } from "@/lib/events";
-import { collabType, PROJECT_ROLES, PROJECT_VIEW_ROLES, recruitmentOpen, STATUS_LABEL, TRANSITIONS, type TransitionKey } from "@/lib/projects";
+import { COMPLIANCE_ROLES, formatDate, formatDateTime, formatEUR } from "@/lib/events";
+import { collabType, PROJECT_ROLES, PROJECT_VIEW_ROLES, recruitmentOpen, REVIEW_ROLES, STATUS_LABEL, TRANSITIONS, type TransitionKey } from "@/lib/projects";
 import { storageEnabled } from "@/lib/storage";
 import { advanceProject } from "@/lib/project-actions";
 import { BudgetPanel, ConflictsPanel, ConventionSignatureBlock, DocumentsPanel, MaterialsPanel } from "@/components/DossierSections";
 import { missingSignedConventions } from "@/lib/project-documents";
-import { REVIEW_ROLES } from "@/lib/projects";
+import { FOUR_EYES_BLOCKED, FOUR_EYES_JUSTIFY, fourEyes, projectAuthors } from "@/lib/four-eyes";
+import { RFQ_STATUS, rfqDisplayStatus, supplierCategoryLabel } from "@/lib/suppliers";
+import type { ProjectStatus } from "@/generated/prisma/client";
 import { complianceSettings, projectRegime, REGIME_LABEL } from "@/lib/compliance";
 import { country, foreignObligations, practicesInFrance } from "@/lib/countries";
 import { drPrefix } from "@/lib/professions";
@@ -35,7 +39,29 @@ const ACTION_LABEL: Record<string, string> = {
   "signature.declined": "Signature électronique refusée",
   "signature.expired": "Demande de signature électronique expirée",
   "signature.canceled": "Demande de signature électronique annulée",
+  "project.submit": "Soumis à la conformité",
+  "project.validate": "Validé par la conformité",
+  "project.block": "Bloqué par la conformité",
+  "project.revise": "Dossier repris après blocage",
 };
+
+/** Ce qu'il reste à faire, selon l'étape : affiché en tête de la colonne de droite. */
+const NEXT_HINT: Partial<Record<ProjectStatus, string>> = {
+  ATT_EXPERTS: "Les experts sollicités répondent depuis leur espace. Dès qu'un expert donne son accord de principe, le dossier peut être monté.",
+  ATT_IND: "Proposition spontanée d'un expert : acceptez-la pour ouvrir le circuit, ou déclinez-la.",
+  ACCORD: "Vérifiez les honoraires, les supports et le budget, puis soumettez le dossier à la conformité.",
+  EN_VALID: "La conformité contrôle le dossier : elle le valide, ou le bloque avec un commentaire.",
+  BLOQUE: "Corrigez le dossier selon le commentaire de la conformité, puis reprenez-le pour le soumettre à nouveau.",
+  VALIDE: "Effectuez la démarche EPS adaptée au régime (déclaration ou autorisation), puis passez en signature.",
+  ORDRE: "Demande d'autorisation transmise : indiquez la réponse de l'Ordre dès réception.",
+  SIGNATURE: "Faites signer la convention de chaque expert engagé, électroniquement ou en déposant le PDF signé.",
+  SIGNE: "Une fois la prestation réalisée, clôturez le dossier : il rejoint les déclarations Transparence Santé.",
+  TERMINE: "Prestation réalisée. Le dossier figure dans les déclarations Transparence Santé de l'organisation.",
+  DECLINE: "Dossier clos : décliné ou abandonné.",
+  REFUS_ORDRE: "Autorisation refusée : revoyez les conditions avec les experts ou abandonnez le dossier.",
+};
+const DANGER: TransitionKey[] = ["abandon", "block", "ordre_ko", "decline_proposal"];
+
 
 export default async function Page({ params }: { params: Promise<{ id: string; projectId: string }> }) {
   const { id, projectId } = await params;
@@ -51,16 +77,24 @@ export default async function Page({ params }: { params: Promise<{ id: string; p
         },
         orderBy: { createdAt: "asc" },
       },
+      expenses: { select: { amountCents: true } },
+      events: {
+        orderBy: { startsAt: "asc" },
+        include: { rfqs: { include: { quotes: { select: { status: true } } } } },
+      },
     },
   });
   if (!project) notFound();
   const linkIds = project.experts.map((e) => e.id);
-  const history = await db.auditLog.findMany({
-    where: { OR: [{ entityType: "Project", entityId: projectId }, { entityType: "ProjectExpert", entityId: { in: linkIds } }] },
-    include: { actor: { select: { firstName: true, lastName: true } } },
-    orderBy: { createdAt: "desc" },
-    take: 50,
-  });
+  const [history, owner] = await Promise.all([
+    db.auditLog.findMany({
+      where: { OR: [{ entityType: "Project", entityId: projectId }, { entityType: "ProjectExpert", entityId: { in: linkIds } }] },
+      include: { actor: { select: { firstName: true, lastName: true } } },
+      orderBy: { createdAt: "desc" },
+      take: 50,
+    }),
+    project.createdById ? db.user.findUnique({ where: { id: project.createdById }, select: { firstName: true, lastName: true } }) : null,
+  ]);
 
   const type = collabType(project.typeId);
   const isProject = roles.some((r) => PROJECT_ROLES.includes(r));
@@ -73,6 +107,8 @@ export default async function Page({ params }: { params: Promise<{ id: string; p
   const attestable = unsigned.length > 0 && !storageEnabled();
   const attester = project.signatureAttestedById ? await db.user.findUnique({ where: { id: project.signatureAttestedById }, select: { firstName: true, lastName: true } }) : null;
   const closed = !recruitmentOpen(project.status);
+  // Contrôle à quatre yeux : qui a monté ou soumis le dossier ne le valide pas seul.
+  const fourEyesRule = project.status === "EN_VALID" && isCompliance ? await fourEyes(await projectAuthors(projectId), id, user.id, COMPLIANCE_ROLES) : "ok";
   const available = (Object.keys(TRANSITIONS) as TransitionKey[]).filter((k) => {
     const t = TRANSITIONS[k];
     // Au-delà d'un seuil, la déclaration simple n'est pas possible : seule la demande d'autorisation est proposée.
@@ -83,145 +119,267 @@ export default async function Page({ params }: { params: Promise<{ id: string; p
     // « Convention signée » attend la convention signée (ou la signature électronique) de chaque expert engagé ;
     // sans stockage configuré, l'étape reste proposée mais exige une attestation.
     if (k === "signed" && unsigned.length > 0 && !attestable) return false;
+    if (k === "validate" && fourEyesRule === "blocked") return false;
     return (t.from as readonly string[]).includes(project.status) && (t.roles === "compliance" ? isCompliance : isProject);
-  });
+  }).sort((a, b) => Number(DANGER.includes(a)) - Number(DANGER.includes(b)));
   const needsNote = (k: TransitionKey) => k === "block" || k === "validate" || k === "ordre";
+  const notePlaceholder = (k: TransitionKey) => (k === "ordre" ? "Référence de la demande" : k === "validate" && fourEyesRule === "justify" ? "Justification (obligatoire)" : k === "block" ? "Motif du blocage (obligatoire)" : "Commentaire (facultatif)");
+
   // Engagé = experts ayant accepté ; les honoraires proposés sans réponse sont indiqués à part.
-  const total = project.experts.filter((e) => e.status !== "DECLINE" && e.status !== "ATT_EXPERTS").reduce((s, e) => s + (e.feeCents ?? 0), 0);
-  const proposed = closed ? 0 : project.experts.filter((e) => e.status === "ATT_EXPERTS").reduce((s, e) => s + (e.feeCents ?? 0), 0);
+  const live = project.experts.filter((e) => e.status !== "DECLINE");
+  const engaged = live.filter((e) => e.status !== "ATT_EXPERTS");
+  const waiting = closed ? [] : live.filter((e) => e.status === "ATT_EXPERTS");
+  const total = engaged.reduce((s, e) => s + (e.feeCents ?? 0), 0);
+  const proposed = waiting.reduce((s, e) => s + (e.feeCents ?? 0), 0);
+  const spent = live.reduce((s, e) => s + (e.feeCents ?? 0), 0) + project.expenses.reduce((s, e) => s + e.amountCents, 0);
+  const budgetPct = project.budgetCents ? Math.round((spent / project.budgetCents) * 100) : null;
+  const recent = history.slice(0, 8);
+  const older = history.slice(8);
+
+  const historyItem = (h: (typeof history)[number]) => {
+    const d = h.data as { to?: string; note?: string; title?: string; version?: number; selfValidated?: boolean } | null;
+    const label = (ACTION_LABEL[h.action] ? ACTION_LABEL[h.action] + (d?.title ? ` : ${d.title}${d.version ? ` (v${d.version})` : ""}` : "") : null) ?? (d?.to ? `→ ${STATUS_LABEL[d.to as keyof typeof STATUS_LABEL] ?? d.to}` : h.action);
+    return (
+      <li key={h.id}>
+        <div>
+          <span>{label}{d?.note ? ` — ${d.note}` : ""}{d?.selfValidated ? " (validé par son auteur, seul habilité : justification conservée)" : ""}</span>
+          <span className="when">{h.createdAt.toLocaleString("fr-FR", { timeZone: "Europe/Paris", dateStyle: "short", timeStyle: "short" })} · {h.actor ? `${h.actor.firstName} ${h.actor.lastName}` : "système"}</span>
+        </div>
+      </li>
+    );
+  };
 
   return (
     <>
       <SiteHeader />
       <main className="stack">
         <p className="muted"><Link href={`/organisations/${id}`}>{org.name}</Link> / <Link href={`/organisations/${id}/dossiers`}>Dossiers</Link></p>
-        <div>
-          <StatusPill status={project.status} />
+
+        <header className="dossier-hero">
+          <div className="hero-top">
+            <span className="eyebrow-sm">{type?.label ?? project.typeId}{project.therapeuticArea ? ` · ${project.therapeuticArea}` : ""}{project.origin ? ` · ${project.origin}` : ""}</span>
+            <StatusPill status={project.status} />
+          </div>
           <h1>{project.title}</h1>
-          <p className="muted">{type?.label ?? project.typeId}{project.therapeuticArea ? ` · ${project.therapeuticArea}` : ""} · engagé {formatEUR(total)} HT{proposed > 0 ? ` · ${formatEUR(proposed)} HT proposés, sans réponse` : ""}</p>
-        </div>
-        <Pipeline status={project.status} />
-
-        {project.complianceNote && <p className={`notice ${project.status === "BLOQUE" ? "error" : "ok"}`}>Conformité : {project.complianceNote}</p>}
-        {project.ordreRef && <p className="muted">Demande à l&apos;Ordre : {project.ordreRef}</p>}
-        {project.signatureAttestedAt && (
-          <p className="notice warn">
-            Signature attestée par {attester ? `${attester.firstName} ${attester.lastName}` : "un membre de l'organisation"} le {project.signatureAttestedAt.toLocaleDateString("fr-FR", { timeZone: "Europe/Paris" })} : convention signée conservée hors de KolBase, non déposée.
-          </p>
-        )}
-
-        {(available.length > 0 || unsigned.length > 0) && (
-          <section className="card">
-            <h2>Prochaine étape</h2>
-            <div className="transitions">
-              {available.map((k) => (
-                <form key={k} action={advanceProject} className="inline">
-                  <input type="hidden" name="orgId" value={id} />
-                  <input type="hidden" name="projectId" value={projectId} />
-                  <input type="hidden" name="transition" value={k} />
-                  {needsNote(k) && <input name="note" placeholder={k === "ordre" ? "Réf. de la demande" : "Commentaire"} required={k === "block"} />}
-                  {k === "signed" && attestable && (
-                    <label className="check text-sm">
-                      <input type="checkbox" name="attest" value="1" required /> J&apos;atteste que la convention de {unsigned.join(", ")} est signée par les deux parties et conservée par l&apos;organisation.
-                    </label>
-                  )}
-                  <button className={k === "abandon" || k === "block" || k === "ordre_ko" ? "btn ghost" : "btn"}>{TRANSITIONS[k].label}</button>
-                </form>
-              ))}
+          {project.description && <p className="lead">{project.description}</p>}
+          <dl className="facts">
+            <div>
+              <dt><Users size={13} /> Experts</dt>
+              <dd>{engaged.length} engagé{engaged.length > 1 ? "s" : ""}<small>{waiting.length ? `${waiting.length} réponse${waiting.length > 1 ? "s" : ""} attendue${waiting.length > 1 ? "s" : ""}` : `${live.length} sollicité${live.length > 1 ? "s" : ""}`}</small></dd>
             </div>
-            {unsigned.length > 0 && !attestable && (
-              <p className="hint">
-                Déposez la convention signée de {unsigned.join(", ")} (rubrique Documents){signatureEnabled() ? " ou faites-la signer électroniquement (fiche de l'expert ci-dessous)" : ""} pour passer le dossier en « Signé ».
-              </p>
-            )}
-            {attestable && (
-              <p className="hint">
-                Le dépôt de documents n&apos;est pas encore activé sur KolBase{signatureEnabled() ? " (la signature électronique reste possible depuis la fiche de l'expert)" : ""} : passer en « Signé » exige votre attestation, enregistrée à votre nom avec la date.
-              </p>
-            )}
-            {project.status === "VALIDE" && regime?.regime === "hors_france" && (
-              <p className="hint">
-                Régime : <span className="pill">{REGIME_LABEL.hors_france}</span> ({regime.reason}). Pas de démarche sur la plateforme EPS ; vérifiez les obligations du pays d&apos;exercice ci-dessous avant la signature.
-              </p>
-            )}
-            {project.status === "VALIDE" && regime && regime.regime !== "hors_france" && (
-              <p className="hint">
-                Régime : <span className={`pill ${regime.regime === "autorisation" ? "wait" : "ok"}`}>{REGIME_LABEL[regime.regime]}</span>{" "}
-                ({regime.reason}).{" "}
-                {regime.regime === "autorisation"
-                  ? `Demande d'autorisation à adresser au moins ${settings.authorizationDays} jours avant l'exécution ; la déclaration simple n'est pas possible.`
-                  : `Déclaration à effectuer au moins ${settings.declarationDays} jours ouvrables avant l'exécution.`}{" "}
-                Si la convention prévoit aussi une hospitalité au-delà des seuils, demandez l&apos;autorisation.
-              </p>
-            )}
-          </section>
-        )}
+            <div>
+              <dt><Euro size={13} /> Honoraires engagés</dt>
+              <dd>{formatEUR(total)} HT<small>{proposed > 0 ? `${formatEUR(proposed)} HT proposés, sans réponse` : "honoraires acceptés"}</small></dd>
+            </div>
+            <div>
+              <dt><Wallet size={13} /> Budget</dt>
+              <dd>{project.budgetCents != null ? formatEUR(project.budgetCents) : "Non défini"}<small>{budgetPct != null ? `${budgetPct} % engagé ou proposé` : "à renseigner plus bas"}</small></dd>
+            </div>
+            <div>
+              <dt><Scale size={13} /> Régime</dt>
+              <dd>{regime ? REGIME_LABEL[regime.regime] : "À déterminer"}<small>{regime ? regime.reason : "selon les experts engagés"}</small></dd>
+            </div>
+            <div>
+              <dt><User size={13} /> Responsable</dt>
+              <dd>{owner ? `${owner.firstName} ${owner.lastName}` : "—"}<small>ouvert le {formatDate(project.createdAt)}</small></dd>
+            </div>
+          </dl>
+          <Pipeline status={project.status} />
+        </header>
 
-        {foreignExperts.length > 0 && (
-          <section className="card stack-sm">
-            <h2>Experts exerçant hors de France</h2>
-            {foreignExperts.map((e) => (
-              <div key={e.id}>
-                <strong>{drPrefix(e.practitioner.profession)}{e.practitioner.user.firstName} {e.practitioner.user.lastName}</strong> · {country(e.practitioner.country).name}
-                <ul className="text-sm">{foreignObligations(e.practitioner.country).map((o) => <li key={o}>{o}</li>)}</ul>
-              </div>
-            ))}
-            <p className="text-xs muted">Repères donnés à titre indicatif, à faire valider par votre service juridique.</p>
-          </section>
-        )}
         {project.status === "ATT_IND" && <p className="notice warn">Proposition spontanée de l&apos;expert : acceptez-la pour ouvrir le circuit, ou déclinez-la.</p>}
-        {project.description && <section className="card"><h2>Objet</h2><p>{project.description}</p></section>}
-        <ConflictsPanel projectId={projectId} />
-        <MaterialsPanel orgId={id} projectId={projectId} canSubmit={isProject} canReview={roles.some((r) => REVIEW_ROLES.includes(r))} />
-        <DocumentsPanel projectId={projectId} canUpload={isProject || isCompliance} />
-        <BudgetPanel orgId={id} projectId={projectId} canEdit={isProject} />
 
-        {project.experts.map((e) => (
-          <section key={e.id} className="card">
-            <div className="actions spread">
-              <h2><Link href={`/annuaire/${e.practitionerId}`}>Dr {e.practitioner.user.firstName} {e.practitioner.user.lastName}</Link></h2>
-              <span className={`pill ${e.status === "DECLINE" ? "done" : e.status === "ATT_EXPERTS" ? "wait" : "ok"}`}>
-                {e.status === "ATT_EXPERTS" ? (closed ? "Sans réponse, recrutement clos" : "Réponse attendue") : e.status === "DECLINE" ? "A décliné" : STATUS_LABEL[e.status]}
-              </span>
-            </div>
-            <p className="muted">
-              {e.days ?? "—"} {type?.unit ?? "unité"}{(e.days ?? 0) > 1 ? "s" : ""} · {e.feeCents != null ? formatEUR(e.feeCents) : "—"} HT{" "}
-              <FmvBadge typeId={project.typeId} feeCents={e.feeCents} units={e.days} />
-            </p>
-            {e.status !== "ATT_EXPERTS" && e.status !== "DECLINE" && (
-              <span className="actions">
-                <a className="btn ghost small" href={`/organisations/${id}/dossiers/${projectId}/convention/${e.id}`} target="_blank" rel="noreferrer">
-                  Convention (PDF)
-                </a>
-                <a className="link" href={`/organisations/${id}/dossiers/${projectId}/convention/${e.id}?lang=en`} target="_blank" rel="noreferrer" title="Traduction de courtoisie : la version française fait foi">
-                  version anglaise
-                </a>
-              </span>
-            )}
-            {e.status !== "ATT_EXPERTS" && e.status !== "DECLINE" && (
-              <ConventionSignatureBlock orgId={id} linkId={e.id} signature={e.signature} projectStatus={project.status} canSend={isProject} />
-            )}
-            <Thread messages={e.messages} meId={user.id} />
-            {e.status !== "DECLINE" && <MessageForm linkId={e.id} />}
-          </section>
-        ))}
+        <div className="dossier-grid">
+          <div className="dossier-main">
+            <section className="stack-sm">
+              <div className="block-head">
+                <h2>Experts</h2>
+                <span className="muted text-sm">{engaged.length} engagé{engaged.length > 1 ? "s" : ""} sur {project.experts.length} sollicité{project.experts.length > 1 ? "s" : ""}</span>
+              </div>
+              {project.experts.length === 0 && <div className="card empty"><p className="muted">Aucun expert sollicité pour l&apos;instant.</p></div>}
+              {project.experts.map((e) => {
+                const name = `${drPrefix(e.practitioner.profession)}${e.practitioner.user.firstName} ${e.practitioner.user.lastName}`;
+                const active = e.status !== "ATT_EXPERTS" && e.status !== "DECLINE";
+                const last = e.messages.at(-1);
+                const toAnswer = last && last.authorId === e.practitioner.userId;
+                const earlier = e.messages.slice(0, -2);
+                return (
+                  <section key={e.id} className={`card expert-card${e.status === "DECLINE" ? " muted-card" : ""}`}>
+                    <div className="expert-head">
+                      <Avatar name={name} size={44} />
+                      <div className="who">
+                        <h3><Link href={`/annuaire/${e.practitionerId}`}>{name}</Link></h3>
+                        <div className="muted text-sm">
+                          {[e.practitioner.specialty ?? e.practitioner.profession, e.practitioner.city, !practicesInFrance(e.practitioner.country) ? country(e.practitioner.country).name : null].filter(Boolean).join(" · ")}
+                        </div>
+                      </div>
+                      <span className={`pill ${e.status === "DECLINE" ? "done" : e.status === "ATT_EXPERTS" ? "wait" : "ok"}`}>
+                        {e.status === "ATT_EXPERTS" ? (closed ? "Sans réponse, recrutement clos" : "Réponse attendue") : e.status === "DECLINE" ? "A décliné" : STATUS_LABEL[e.status]}
+                      </span>
+                    </div>
+                    <div className="terms">
+                      <span className="term"><CalendarDays size={13} /> {e.days ?? "—"} {type?.unit ?? "unité"}{(e.days ?? 0) > 1 ? "s" : ""}</span>
+                      <span className="term"><Euro size={13} /> {e.feeCents != null ? formatEUR(e.feeCents) : "—"} HT</span>
+                      <FmvBadge typeId={project.typeId} feeCents={e.feeCents} units={e.days} />
+                    </div>
+                    {active && (
+                      <div className="expert-docs">
+                        <span className="actions">
+                          <a className="btn ghost small" href={`/organisations/${id}/dossiers/${projectId}/convention/${e.id}`} target="_blank" rel="noreferrer">
+                            Convention (PDF)
+                          </a>
+                          <a className="link" href={`/organisations/${id}/dossiers/${projectId}/convention/${e.id}?lang=en`} target="_blank" rel="noreferrer" title="Traduction de courtoisie : la version française fait foi">
+                            version anglaise
+                          </a>
+                        </span>
+                        <ConventionSignatureBlock orgId={id} linkId={e.id} signature={e.signature} projectStatus={project.status} canSend={isProject} />
+                      </div>
+                    )}
+                    <div className="exchanges">
+                      <div className="exchanges-head">
+                        <span className="label">Échanges{e.messages.length ? ` (${e.messages.length})` : ""}</span>
+                        {toAnswer && e.status !== "DECLINE" && <span className="pill electric">À vous de répondre</span>}
+                        {last && <span className="muted text-xs">dernier message le {formatDateTime(last.createdAt)}</span>}
+                      </div>
+                      {earlier.length > 0 && (
+                        <details className="older">
+                          <summary>Afficher {earlier.length > 1 ? `les ${earlier.length} messages précédents` : "le message précédent"}</summary>
+                          <Thread messages={earlier} meId={user.id} />
+                        </details>
+                      )}
+                      <Thread messages={e.messages.slice(-2)} meId={user.id} />
+                      {e.status !== "DECLINE" && <MessageForm linkId={e.id} />}
+                    </div>
+                  </section>
+                );
+              })}
+            </section>
 
-        <section className="card">
-          <h2>Historique</h2>
-          <ul className="history">
-            {history.map((h) => {
-              const d = h.data as { to?: string; note?: string } | null;
-              const dm = h.data as { title?: string; version?: number } | null;
-              const label = (ACTION_LABEL[h.action] ? ACTION_LABEL[h.action] + (dm?.title ? ` : ${dm.title}${dm.version ? ` (v${dm.version})` : ""}` : "") : null) ?? (d?.to ? `→ ${STATUS_LABEL[d.to as keyof typeof STATUS_LABEL] ?? d.to}` : h.action);
-              return (
-                <li key={h.id}>
-                  <span className="muted">{h.createdAt.toLocaleString("fr-FR", { timeZone: "Europe/Paris", dateStyle: "short", timeStyle: "short" })}</span>{" "}
-                  {label}{d?.note ? ` — ${d.note}` : ""} <span className="muted">({h.actor ? `${h.actor.firstName} ${h.actor.lastName}` : "système"})</span>
-                </li>
-              );
-            })}
-          </ul>
-        </section>
+            <MaterialsPanel orgId={id} projectId={projectId} canSubmit={isProject} canReview={roles.some((r) => REVIEW_ROLES.includes(r))} />
+            <DocumentsPanel projectId={projectId} canUpload={isProject || isCompliance} openUpload={project.status === "SIGNATURE"} />
+            <BudgetPanel orgId={id} projectId={projectId} canEdit={isProject} />
+
+            <section className="card">
+              <h2 className="section-title"><Clock size={15} /> Historique</h2>
+              {history.length === 0 ? <p className="muted">Aucune action enregistrée.</p> : (
+                <>
+                  <ol className="audit-trail">{recent.map(historyItem)}</ol>
+                  {older.length > 0 && (
+                    <details className="older">
+                      <summary>Voir les {older.length} actions précédentes</summary>
+                      <ol className="audit-trail">{older.map(historyItem)}</ol>
+                    </details>
+                  )}
+                </>
+              )}
+            </section>
+          </div>
+
+          <aside className="dossier-aside">
+            <section className="card next-step">
+              <span className="eyebrow-sm">Prochaine étape</span>
+              <p className="next-hint">{NEXT_HINT[project.status]}</p>
+              {project.status === "EN_VALID" && !isCompliance && <p className="hint">En attente de l&apos;équipe Conformité.</p>}
+              {fourEyesRule === "blocked" && <p className="notice warn">{FOUR_EYES_BLOCKED}</p>}
+              {fourEyesRule === "justify" && <p className="hint">{FOUR_EYES_JUSTIFY}</p>}
+              {available.length > 0 && (
+                <div className="transitions-stack">
+                  {available.map((k) => (
+                    <form key={k} action={advanceProject} className={`transition${DANGER.includes(k) ? " secondary" : ""}`}>
+                      <input type="hidden" name="orgId" value={id} />
+                      <input type="hidden" name="projectId" value={projectId} />
+                      <input type="hidden" name="transition" value={k} />
+                      {needsNote(k) && <input name="note" aria-label={notePlaceholder(k)} placeholder={notePlaceholder(k)} required={k === "block" || (k === "validate" && fourEyesRule === "justify")} />}
+                      {k === "signed" && attestable && (
+                        <label className="check text-sm">
+                          <input type="checkbox" name="attest" value="1" required /> J&apos;atteste que la convention de {unsigned.join(", ")} est signée par les deux parties et conservée par l&apos;organisation.
+                        </label>
+                      )}
+                      <button className={DANGER.includes(k) ? "btn ghost" : "btn"}>{TRANSITIONS[k].label}</button>
+                    </form>
+                  ))}
+                </div>
+              )}
+              {unsigned.length > 0 && !attestable && (
+                <p className="hint">
+                  Déposez la convention signée de {unsigned.join(", ")} (rubrique Documents){signatureEnabled() ? " ou faites-la signer électroniquement (fiche de l'expert)" : ""} pour passer le dossier en « Signé ».
+                </p>
+              )}
+              {attestable && (
+                <p className="hint">
+                  Le dépôt de documents n&apos;est pas encore activé sur KolBase{signatureEnabled() ? " (la signature électronique reste possible depuis la fiche de l'expert)" : ""} : passer en « Signé » exige votre attestation, enregistrée à votre nom avec la date.
+                </p>
+              )}
+            </section>
+
+            <section className="card stack-sm">
+              <h2 className="section-title"><Scale size={15} /> Conformité</h2>
+              {regime ? (
+                <p className="text-sm">
+                  Régime : <span className={`pill ${regime.regime === "autorisation" ? "wait" : regime.regime === "hors_france" ? "" : "ok"}`}>{REGIME_LABEL[regime.regime]}</span>{" "}
+                  ({regime.reason}).{" "}
+                  {regime.regime === "hors_france"
+                    ? "Pas de démarche sur la plateforme EPS ; vérifiez les obligations du pays d'exercice avant la signature."
+                    : regime.regime === "autorisation"
+                      ? `Demande d'autorisation à adresser au moins ${settings.authorizationDays} jours avant l'exécution ; la déclaration simple n'est pas possible.`
+                      : `Déclaration à effectuer au moins ${settings.declarationDays} jours ouvrables avant l'exécution. Si une hospitalité dépasse les seuils, demandez l'autorisation.`}
+                </p>
+              ) : <p className="muted text-sm">Le régime (déclaration ou autorisation) sera déterminé dès qu&apos;un expert aura accepté.</p>}
+              {project.complianceNote && <p className={`notice ${project.status === "BLOQUE" ? "error" : "ok"}`}>Conformité : {project.complianceNote}</p>}
+              {project.ordreRef && <p className="muted text-sm">Demande à l&apos;Ordre : {project.ordreRef}</p>}
+              {project.signatureAttestedAt && (
+                <p className="notice warn">
+                  Signature attestée par {attester ? `${attester.firstName} ${attester.lastName}` : "un membre de l'organisation"} le {project.signatureAttestedAt.toLocaleDateString("fr-FR", { timeZone: "Europe/Paris" })} : convention signée conservée hors de KolBase, non déposée.
+                </p>
+              )}
+            </section>
+
+            <ConflictsPanel projectId={projectId} />
+
+            {foreignExperts.length > 0 && (
+              <section className="card stack-sm">
+                <h2 className="section-title">Experts exerçant hors de France</h2>
+                {foreignExperts.map((e) => (
+                  <div key={e.id}>
+                    <strong>{drPrefix(e.practitioner.profession)}{e.practitioner.user.firstName} {e.practitioner.user.lastName}</strong> · {country(e.practitioner.country).name}
+                    <ul className="text-sm">{foreignObligations(e.practitioner.country).map((o) => <li key={o}>{o}</li>)}</ul>
+                  </div>
+                ))}
+                <p className="text-xs muted">Repères donnés à titre indicatif, à faire valider par votre service juridique.</p>
+              </section>
+            )}
+
+            <section className="card stack-sm">
+              <h2 className="section-title"><CalendarDays size={15} /> Événement et logistique</h2>
+              {project.events.length === 0 ? (
+                <p className="muted text-sm">Réunion, formation ou symposium : créez l&apos;événement rattaché au dossier pour consulter les prestataires (salle, traiteur, hébergement, transport) et comparer leurs devis.</p>
+              ) : (
+                <ul className="linked-events">
+                  {project.events.map((ev) => {
+                    const answered = ev.rfqs.filter((r) => r.quotes.length > 0).length;
+                    return (
+                      <li key={ev.id}>
+                        <Link href={`/organisations/${id}/evenements/${ev.id}`}><strong>{ev.title}</strong></Link>
+                        <span className="muted text-xs">{formatDateTime(ev.startsAt)}{ev.city ? ` · ${ev.city}` : ""}</span>
+                        {ev.rfqs.length === 0 ? <span className="text-xs muted">Aucune demande de devis</span> : (
+                          <span className="chips">
+                            {ev.rfqs.map((r) => { const st = RFQ_STATUS[rfqDisplayStatus(r)]; return <span key={r.id} className={`pill ${st.tone}`}>{supplierCategoryLabel(r.category)} · {st.label}</span>; })}
+                          </span>
+                        )}
+                        {ev.rfqs.length > 0 && <span className="text-xs muted">{answered} demande{answered > 1 ? "s" : ""} avec devis sur {ev.rfqs.length}</span>}
+                      </li>
+                    );
+                  })}
+                </ul>
+              )}
+              {isProject && (
+                <Link className="btn ghost small" href={project.events[0] ? `/organisations/${id}/prestataires?onglet=nouvelle&evenement=${project.events[0].id}` : `/organisations/${id}/evenements/nouveau?dossier=${projectId}`}>
+                  {project.events[0] ? "Demander des devis" : "Créer l'événement du dossier"}
+                </Link>
+              )}
+            </section>
+          </aside>
+        </div>
       </main>
     </>
   );

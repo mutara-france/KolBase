@@ -18,14 +18,22 @@ export const ORG_FAMILIES = [
 export type OrgFamily = (typeof ORG_FAMILIES)[number]["id"];
 export const orgFamily = (kind: OrgKind): OrgFamily => ORG_FAMILIES.find((f) => (f.kinds as readonly OrgKind[]).includes(kind))!.id;
 
+/**
+ * Quatre rôles. Le cloisonnement des décisions repose surtout sur le contrôle à quatre yeux : la personne qui monte
+ * ou soumet un dossier ne le valide pas, celle qui soumet un support ne l'approuve pas (voir lib/four-eyes).
+ */
 export const ROLE_LABEL: Record<OrgRole, string> = {
   ADMIN: "Administrateur",
-  EDUCATION: "Éducation",
-  EVENEMENTS: "Événements",
-  CUMUL: "Éducation et événements",
-  PRESTATAIRE: "Prestataire mandaté",
-  RELECTURE: "Relecture",
+  PROJETS: "Projets",
   CONFORMITE: "Conformité",
+  PRESTATAIRE: "Agence mandatée",
+};
+/** Ce que chaque rôle permet, pour l'écran des membres. */
+export const ROLE_DESC: Record<OrgRole, string> = {
+  ADMIN: "Équipe, fiche et réglages de l'organisation ; accès à toutes les rubriques.",
+  PROJETS: "Sollicite les experts, conduit les dossiers, organise les événements et consulte les prestataires.",
+  CONFORMITE: "Valide les dossiers, relit les supports, suit les déclarations et les hospitalités.",
+  PRESTATAIRE: "Agence externe : accès limité aux événements que l'organisation lui confie.",
 };
 
 export const INTERVENTION_TYPES = [
@@ -35,7 +43,7 @@ export const INTERVENTION_TYPES = [
 
 /** Rôles proposés à l'invitation : une organisation prestataire n'a que des administrateurs et des membres d'équipe. */
 export const SUPPLIER_ROLES: OrgRole[] = ["ADMIN", "PRESTATAIRE"];
-export const invitableRoles = (kind: OrgKind): OrgRole[] => (kind === "PRESTATAIRE" ? SUPPLIER_ROLES : (Object.keys(ROLE_LABEL) as OrgRole[]));
+export const invitableRoles = (kind: OrgKind): OrgRole[] => (kind === "PRESTATAIRE" ? SUPPLIER_ROLES : ["ADMIN", "PROJETS", "CONFORMITE", "PRESTATAIRE"]);
 
 /** Libellé d'un rôle selon le type d'organisation (dans une agence, « Prestataire » désigne un membre de l'équipe). */
 export const roleLabel = (role: OrgRole, kind: OrgKind) => (kind === "PRESTATAIRE" && role === "PRESTATAIRE" ? "Membre de l'équipe" : ROLE_LABEL[role]);

@@ -1,9 +1,12 @@
 import { SiteHeader } from "@/components/SiteHeader";
-import { EditOrgForm, InviteForm, LogoForm, VerificationCard } from "@/components/OrgForms";
+import { EditOrgForm, InviteForm, LogoForm, MemberRolesForm, VerificationCard } from "@/components/OrgForms";
+import { Avatar } from "@/components/Avatar";
+import type { OrgRole } from "@/generated/prisma/client";
 import { logoSrc } from "@/lib/logos";
 import { db } from "@/lib/db";
 import { ORG_KIND_LABEL, invitableRoles, requireMembership, roleLabel } from "@/lib/orgs";
-import { removeMembership, revokeInvitation } from "@/lib/org-actions";
+import { ROLE_DESC } from "@/lib/org-roles";
+import { revokeInvitation } from "@/lib/org-actions";
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { OrgVisibilityForm } from "@/components/ProfileForms";
@@ -24,7 +27,15 @@ export default async function Page({ params }: { params: Promise<{ id: string }>
       ? db.invitation.findMany({ where: { organizationId: id, acceptedAt: null, revokedAt: null, expiresAt: { gt: new Date() } }, orderBy: { createdAt: "desc" } })
       : Promise.resolve([]),
   ]);
-  const roleOpts = invitableRoles(org.kind).map((value) => ({ value, label: roleLabel(value, org.kind) }));
+  const roleOpts = invitableRoles(org.kind).map((value) => ({ value, label: roleLabel(value, org.kind), desc: org.kind === "PRESTATAIRE" ? (value === "ADMIN" ? "Équipe, fiche prestataire et devis." : "Répond aux demandes de devis.") : ROLE_DESC[value] }));
+  // Une ligne par personne, avec l'ensemble de ses rôles.
+  const people = [...members.reduce((acc, m) => {
+    const p = acc.get(m.userId) ?? { userId: m.userId, user: m.user, roles: [] as OrgRole[], since: m.createdAt };
+    p.roles.push(m.role);
+    if (m.createdAt < p.since) p.since = m.createdAt;
+    return acc.set(m.userId, p);
+  }, new Map<string, { userId: string; user: (typeof members)[number]["user"]; roles: OrgRole[]; since: Date }>()).values()];
+  const adminCount = people.filter((p) => p.roles.includes("ADMIN")).length;
   const isSupplier = org.kind === "PRESTATAIRE";
 
   return (
@@ -40,31 +51,28 @@ export default async function Page({ params }: { params: Promise<{ id: string }>
         <VerificationCard orgId={id} canEdit={isAdmin} v={{ status: org.verification, siren: org.siren, legalName: org.legalName, note: org.verificationNote }} />
 
         <section className="card">
-          <h2>Membres ({members.length})</h2>
-          <table className="table" tabIndex={0}>
-            <thead><tr><th>Nom</th><th>E-mail</th><th>Rôle</th><th>Depuis</th>{isAdmin && <th />}</tr></thead>
-            <tbody>
-              {members.map((m) => (
-                <tr key={m.id}>
-                  <td>{m.user.firstName} {m.user.lastName}{m.userId === user.id && " (vous)"}</td>
-                  <td>{m.user.email}</td>
-                  <td>{roleLabel(m.role, org.kind)}</td>
-                  <td>{fmt(m.createdAt)}</td>
-                  {isAdmin && (
-                    <td>
-                      {!(m.role === "ADMIN" && members.filter((x) => x.role === "ADMIN").length <= 1) && (
-                        <form action={removeMembership}>
-                          <input type="hidden" name="orgId" value={id} />
-                          <input type="hidden" name="membershipId" value={m.id} />
-                          <button className="link danger">Retirer</button>
-                        </form>
-                      )}
-                    </td>
+          <h2>Membres ({people.length})</h2>
+          {isAdmin && (
+            <ul className="role-legend">
+              {roleOpts.map((r) => <li key={r.value}><strong>{r.label}</strong> : {r.desc}</li>)}
+            </ul>
+          )}
+          <ul className="member-list">
+            {people.map((p) => (
+              <li key={p.userId} className="member-row">
+                <Avatar name={`${p.user.firstName} ${p.user.lastName}`} size={40} />
+                <div className="grow" style={{ minWidth: 0 }}>
+                  <strong>{p.user.firstName} {p.user.lastName}</strong>{p.userId === user.id && <span className="muted"> (vous)</span>}
+                  <div className="text-xs muted">{p.user.email} · membre depuis le {fmt(p.since)}</div>
+                  {isAdmin ? (
+                    <MemberRolesForm orgId={id} userId={p.userId} roles={p.roles} options={roleOpts} canRemove={!(p.roles.includes("ADMIN") && adminCount <= 1)} />
+                  ) : (
+                    <div className="role-chips mt-1">{p.roles.map((r) => <span key={r} className="pill">{roleLabel(r, org.kind)}</span>)}</div>
                   )}
-                </tr>
-              ))}
-            </tbody>
-          </table>
+                </div>
+              </li>
+            ))}
+          </ul>
         </section>
 
         {isAdmin && (

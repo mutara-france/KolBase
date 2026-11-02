@@ -11,6 +11,7 @@ import { toIcs } from "@/lib/ics";
 import { invitableRoles, isVerifiedOrg, roleLabel } from "@/lib/org-roles";
 import { parseSiren, readSirenResponse, sirenKeyOk } from "@/lib/siren";
 import { canBeExpert, drPrefix, isRpps, normalizeRpps, withLuhn } from "@/lib/professions";
+import { isVatBp, linesTotal, perParticipant, readLines, withVat } from "@/lib/quotes";
 
 const member = (kind: string, verification = "VERIFIED") => ({ organizationId: "o1", organization: { kind, verification } });
 
@@ -113,7 +114,7 @@ describe("événements", () => {
   });
   it("un prestataire mandaté ne voit que les événements confiés à son agence", () => {
     const user = { memberships: [{ organizationId: "client", organization: { kind: "INDUSTRIEL" } }, { organizationId: "agence", organization: { kind: "PRESTATAIRE" } }] };
-    expect(eventScope(user, ["EVENEMENTS"])).toEqual({});
+    expect(eventScope(user, ["PROJETS"])).toEqual({});
     expect(eventScope(user, ["PRESTATAIRE"])).toEqual({ agencyId: { in: ["agence"] } });
   });
   it("CSV lisible par Excel", () => {
@@ -133,8 +134,9 @@ describe("navigation et rôles", () => {
     expect(orgNavItems("o", ["ADMIN"], "PRESTATAIRE").map((i) => i.key)).toEqual(["accueil", "devis"]);
     expect(orgSectionTabs("dossiers", "o", ["ADMIN"], "PRESTATAIRE")).toEqual([]);
   });
-  it("la relecture ne voit que les supports à relire", () => {
-    expect(orgNavItems("o", ["RELECTURE"], "INDUSTRIEL").map((i) => i.href)).toEqual(["/organisations/o", "/organisations/o/relecture"]);
+  it("la conformité voit les dossiers et la conformité, pas les praticiens ni les événements", () => {
+    expect(orgNavItems("o", ["CONFORMITE"], "INDUSTRIEL").map((i) => i.key)).toEqual(["accueil", "dossiers", "conformite"]);
+    expect(orgNavItems("o", ["PROJETS"], "INDUSTRIEL").map((i) => i.key)).toEqual(["accueil", "praticiens", "dossiers", "evenements"]);
   });
   it("correspondance des chemins", () => {
     expect(itemMatches({ href: "/organisations/o", exact: true }, "/organisations/o/dossiers")).toBe(false);
@@ -144,7 +146,8 @@ describe("navigation et rôles", () => {
     expect(invitableRoles("PRESTATAIRE")).toEqual(["ADMIN", "PRESTATAIRE"]);
     expect(invitableRoles("INDUSTRIEL")).toContain("CONFORMITE");
     expect(roleLabel("PRESTATAIRE", "PRESTATAIRE")).toBe("Membre de l'équipe");
-    expect(roleLabel("PRESTATAIRE", "INDUSTRIEL")).toBe("Prestataire mandaté");
+    expect(roleLabel("PRESTATAIRE", "INDUSTRIEL")).toBe("Agence mandatée");
+    expect(invitableRoles("INDUSTRIEL")).toEqual(["ADMIN", "PROJETS", "CONFORMITE", "PRESTATAIRE"]);
   });
 });
 
@@ -348,5 +351,31 @@ describe("audit : garde-fous", () => {
     ];
     expect(projectRegime(s, "journée", experts)?.regime).toBe("declaration");
     expect(projectRegime(s, "journée", [experts[1]])?.regime).toBe("autorisation");
+  });
+});
+
+describe("devis détaillés", () => {
+  it("relit les lignes sans confiance et calcule HT et TTC", () => {
+    const lines = readLines([{ label: "Cocktail", qty: 60, unitCents: 3200 }, { label: "Service", qty: 1, unitCents: 30000 }, { label: 3, qty: 1, unitCents: 1 }, null, "x"]);
+    expect(lines).toHaveLength(2);
+    expect(linesTotal(lines)).toBe(222000);
+    expect(withVat(222000, 1000)).toBe(244200);
+    expect(withVat(330100, 2000)).toBe(396120);
+    expect(readLines({ label: "pas un tableau" })).toEqual([]);
+  });
+  it("n'accepte que les taux de TVA prévus", () => {
+    expect(isVatBp(2000) && isVatBp(1000) && isVatBp(550) && isVatBp(0)).toBe(true);
+    expect(isVatBp(1960)).toBe(false);
+  });
+  it("rapproche le coût par participant du seuil d'un repas ou d'une nuitée", () => {
+    const s = complianceSettings({});
+    const ok = perParticipant("restauration", 283800, 60, s)!;
+    expect(ok.each).toBeCloseTo(47.3, 2);
+    expect(ok.limit?.what).toBe("repas");
+    expect(ok.over).toBe(false);
+    expect(perParticipant("restauration", 323400, 60, s)!.over).toBe(true);
+    expect(perParticipant("hebergement", 520000, 40, s)!.limit?.what).toBe("nuitée");
+    expect(perParticipant("salle", 129600, 8, s)!.limit).toBeNull();
+    expect(perParticipant("salle", 129600, null, s)).toBeNull();
   });
 });

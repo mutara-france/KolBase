@@ -47,7 +47,6 @@ export function orgNavItems(orgId: string, roles: OrgRole[], kind: string): Shel
     items.push({ key: "praticiens", href: "/annuaire", label: "Praticiens", icon: "Users", match: [`${base}/opportunites`] });
   if (has(roles, PROJECT_VIEW_ROLES))
     items.push({ key: "dossiers", href: `${base}/dossiers`, label: "Dossiers", icon: "Folder", match: [`${base}/relecture`] });
-  else if (has(roles, REVIEW_ROLES)) items.push({ key: "dossiers", href: `${base}/relecture`, label: "Relecture", icon: "FileText" });
   if (has(roles, EVENT_MANAGER_ROLES))
     items.push({
       key: "evenements",
@@ -68,7 +67,7 @@ export function orgMenuLinks(orgId: string, roles: OrgRole[], kind: string): She
   const isSupplier = kind === "PRESTATAIRE";
   if (isSupplier ? roles.includes("ADMIN") : !roles.every((r) => r === "PRESTATAIRE"))
     links.push({ href: `${base}/membres`, label: "Membres et réglages", icon: "Users" });
-  if (!isSupplier && has(roles, ["ADMIN", "EDUCATION", "CUMUL", "CONFORMITE"])) links.push({ href: `${base}/integrations`, label: "Intégrations", icon: "Plug" });
+  if (!isSupplier && has(roles, ["ADMIN", "PROJETS", "CONFORMITE"])) links.push({ href: `${base}/integrations`, label: "Intégrations", icon: "Plug" });
   if (!isSupplier) links.push({ href: `/structures/${orgId}`, label: "Voir notre page publique", icon: "ExternalLink" });
   return links;
 }

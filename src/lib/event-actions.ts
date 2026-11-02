@@ -34,6 +34,10 @@ export async function createEvent(_: ActionState, form: FormData): Promise<Actio
     benefits.push({ catalogId: b.id, label: b.label, valueCents: cents });
   }
 
+  // Rattachement à un dossier de l'organisation (événement créé depuis la fiche du dossier).
+  const projectId = str(form, "projectId");
+  const project = projectId ? await db.project.findFirst({ where: { id: projectId, organizationId: orgId }, select: { id: true } }) : null;
+
   const publish = form.get("publish") === "1";
   if (publish && !isVerifiedOrg(org)) return { error: `Publication impossible pour l'instant : ${ORG_NOT_VERIFIED} Enregistrez l'événement en brouillon.` };
   const event = await db.event.create({
@@ -49,11 +53,12 @@ export async function createEvent(_: ActionState, form: FormData): Promise<Actio
       city: format === "DISTANCIEL" ? null : str(form, "city") || null,
       venue: format === "DISTANCIEL" ? null : str(form, "venue") || null,
       capacity: intOrNull(str(form, "capacity")),
+      projectId: project?.id ?? null,
       publishedAt: publish ? new Date() : null,
       benefits: { create: benefits },
     },
   });
-  await audit(user.id, "event.create", "Event", event.id, { publish, benefits: benefits.length });
+  await audit(user.id, "event.create", "Event", event.id, { publish, benefits: benefits.length, ...(project ? { projectId: project.id } : {}) });
   redirect(`/organisations/${orgId}/evenements/${event.id}`);
 }
 
@@ -182,7 +187,7 @@ export async function createMandate(_: ActionState, form: FormData): Promise<Act
   const m = await db.mandate.create({ data: { mandatorId: orgId, agencyId, scope: str(form, "scope") || null } });
   await audit(user.id, "mandate.create", "Mandate", m.id, { agencyId });
   revalidatePath(`/organisations/${orgId}/prestataires`);
-  return { ok: `${agency.name} est mandatée. Confiez-lui des événements depuis leur fiche, et invitez ses collaborateurs avec le rôle « Prestataire mandaté ».` };
+  return { ok: `${agency.name} est mandatée. Confiez-lui des événements depuis leur fiche, et invitez ses collaborateurs avec le rôle « Agence mandatée ».` };
 }
 
 /** Fin de mandat : l'agence perd l'accès aux événements qui lui étaient confiés. */

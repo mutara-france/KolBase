@@ -25,7 +25,7 @@ export const BENEFIT_CATALOG = [
 export const FORMAT_LABEL = { PRESENTIEL: "Présentiel", DISTANCIEL: "Visioconférence", HYBRIDE: "Hybride" } as const;
 
 /** Organisateurs internes : tous les événements de l'organisation. */
-export const EVENT_ORGANIZER_ROLES: OrgRole[] = ["ADMIN", "EVENEMENTS", "CUMUL"];
+export const EVENT_ORGANIZER_ROLES: OrgRole[] = ["ADMIN", "PROJETS"];
 /** Accès aux événements : organisateurs + prestataire mandaté (limité aux événements confiés, voir eventScope). */
 export const EVENT_MANAGER_ROLES: OrgRole[] = [...EVENT_ORGANIZER_ROLES, "PRESTATAIRE"];
 

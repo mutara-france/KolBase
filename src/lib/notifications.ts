@@ -227,15 +227,15 @@ export function notifyRfqSent(rfqId: string) {
 }
 
 /** Devis reçu : prévient l'auteur de la demande (ou les organisateurs). */
-export function notifyQuote(rfqId: string, supplierId: string) {
+export function notifyQuote(rfqId: string, supplierId: string, revised = false) {
   later(async () => {
     const [r, supplier] = await Promise.all([db.rfq.findUnique({ where: { id: rfqId } }), db.organization.findUnique({ where: { id: supplierId }, select: { name: true } })]);
     if (!r || !supplier) return;
     const team = await members(r.organizationId, EVENT_ORGANIZER_ROLES);
     const creator = team.find((u) => u.id === r.createdById);
     await send(creator ? [creator] : team, {
-      subject: `Devis reçu de ${supplier.name}`,
-      text: `Bonjour,\n\n${supplier.name} a répondu à votre demande de devis.`,
+      subject: revised ? `Devis révisé par ${supplier.name}` : `Devis reçu de ${supplier.name}`,
+      text: revised ? `Bonjour,\n\n${supplier.name} a révisé son devis.` : `Bonjour,\n\n${supplier.name} a répondu à votre demande de devis.`,
       cta: { label: "Comparer les devis", href: `/organisations/${r.organizationId}/prestataires` },
     });
   });

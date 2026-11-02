@@ -49,14 +49,14 @@ export const STATUS_TONE: Record<ProjectStatus, "wait" | "ok" | "bad" | "done"> 
 export const PIPELINE: ProjectStatus[] = ["ATT_EXPERTS", "ACCORD", "EN_VALID", "VALIDE", "SIGNATURE", "SIGNE", "TERMINE"];
 
 /**
- * Rôles (repris du prototype) :
- * - sourcing (annuaire, sollicitations, opportunités) : Éducation, Cumul, Admin ;
- * - pilotage des dossiers : sourcing + Événements ;
- * - lecture des dossiers : pilotage + Conformité ;
- * - la Relecture ne voit que les supports à relire ; le Prestataire mandaté, que les événements confiés.
+ * Rôles :
+ * - Projets (et Administrateur) : annuaire, sollicitations, opportunités, dossiers, événements, prestataires ;
+ * - Conformité (et Administrateur) : lecture des dossiers, validation, relecture des supports, déclarations ;
+ * - Agence mandatée : seulement les événements confiés à son agence.
+ * Les décisions sensibles suivent en plus le contrôle à quatre yeux (lib/four-eyes).
  */
-export const SOURCING_ROLES: OrgRole[] = ["ADMIN", "EDUCATION", "CUMUL"];
-export const PROJECT_ROLES: OrgRole[] = ["ADMIN", "EDUCATION", "EVENEMENTS", "CUMUL"];
+export const SOURCING_ROLES: OrgRole[] = ["ADMIN", "PROJETS"];
+export const PROJECT_ROLES: OrgRole[] = ["ADMIN", "PROJETS"];
 export const PROJECT_VIEW_ROLES: OrgRole[] = [...PROJECT_ROLES, "CONFORMITE"];
 
 /** Transitions possibles : qui peut faire quoi, depuis quel statut. */
@@ -98,4 +98,4 @@ export function fmvCheck(typeId: string, feeCents: number | null, units: number 
 
 export const MATERIAL_KINDS = { diaporama: "Diaporama", article: "Article / texte", video: "Vidéo", programme: "Programme", autre: "Autre" } as const;
 export const MATERIAL_STATUS = { submitted: "En relecture", approved: "Approuvé", changes: "Modifications demandées" } as const;
-export const REVIEW_ROLES: OrgRole[] = ["ADMIN", "RELECTURE", "CONFORMITE"];
+export const REVIEW_ROLES: OrgRole[] = ["ADMIN", "CONFORMITE"];

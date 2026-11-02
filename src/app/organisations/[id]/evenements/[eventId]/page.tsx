@@ -5,6 +5,9 @@ import { db } from "@/lib/db";
 import { requireMembership } from "@/lib/orgs";
 import { EVENT_MANAGER_ROLES, EVENT_ORGANIZER_ROLES, eventScope, eventTypeLabel, formatDate, formatDateTime, formatEUR, FORMAT_LABEL } from "@/lib/events";
 import { setEventAgency, setEventFlag } from "@/lib/event-actions";
+import { RFQ_STATUS, rfqDisplayStatus, SUPPLIER_CATEGORIES, supplierCategoryLabel } from "@/lib/suppliers";
+import { perParticipant, withVat } from "@/lib/quotes";
+import { complianceSettings } from "@/lib/compliance";
 
 export const metadata = { title: "Événement — KolBase" };
 
@@ -16,11 +19,24 @@ export default async function Page({ params }: { params: Promise<{ id: string; e
     where: { id: eventId, organizationId: id, ...eventScope(user, roles) },
     include: {
       agency: { select: { name: true } },
+      project: { select: { id: true, title: true } },
       benefits: true,
       registrations: { include: { user: true, benefits: { include: { benefit: true } } }, orderBy: { createdAt: "asc" } },
     },
   });
   if (!event) notFound();
+  const rfqs = await db.rfq.findMany({
+    where: { organizationId: id, eventId },
+    include: { _count: { select: { suppliers: true } }, quotes: { select: { amountCents: true, vatBp: true, status: true, supplier: { select: { name: true } } }, orderBy: { amountCents: "asc" } } },
+    orderBy: { createdAt: "asc" },
+  });
+  const settings = complianceSettings(org.complianceSettings);
+  const expected = event.capacity ?? (event.registrations.length || null);
+  const askedCats = new Set(rfqs.filter((r) => r.status !== "cancelled").map((r) => r.category));
+  // Catégories utiles selon le format : une visioconférence n'a besoin ni de salle ni d'hébergement.
+  const usefulCats = SUPPLIER_CATEGORIES.filter((c) => event.format !== "DISTANCIEL" || ["audiovisuel", "communication", "evenementiel"].includes(c.id)).filter((c) => !askedCats.has(c.id));
+  const engagedTtc = rfqs.reduce((s, r) => { const k = r.quotes.find((q) => q.status === "retained"); return s + (k ? withVat(k.amountCents, k.vatBp) : 0); }, 0);
+  const newRfq = (cat?: string) => `/organisations/${id}/prestataires?onglet=nouvelle&evenement=${eventId}${cat ? `&cat=${cat}` : ""}`;
   const totalCents = event.registrations.reduce((s, r) => s + r.benefits.reduce((x, b) => x + b.valueCents, 0), 0);
   const withBenefits = event.registrations.filter((r) => r.benefits.length > 0).length;
 
@@ -61,6 +77,7 @@ export default async function Page({ params }: { params: Promise<{ id: string; e
             {formatDateTime(event.startsAt)} · {FORMAT_LABEL[event.format]}{event.city ? ` · ${event.city}` : ""} ·{" "}
             {event.publishedAt ? <Link href={`/evenements/${event.id}`}>publié dans l&apos;agenda</Link> : "brouillon"}
           </p>
+          {isOrganizer && event.project && <p className="muted">Dossier lié (experts, conventions, conformité) : <Link href={`/organisations/${id}/dossiers/${event.project.id}`}>{event.project.title}</Link></p>}
         </div>
         <div className="actions">
           {event.publishedAt ? <Flag flag="unpublish" label="Retirer de l'agenda" ghost /> : org.verification === "VERIFIED" ? <Flag flag="publish" label="Publier dans l'agenda" /> : <span className="muted">Publication possible une fois l&apos;organisation validée par KolBase.</span>}
@@ -76,6 +93,47 @@ export default async function Page({ params }: { params: Promise<{ id: string; e
           <div className="card stat"><span className="muted">Avec hospitalités</span><strong>{withBenefits}</strong></div>
           <div className="card stat"><span className="muted">Valeur totale</span><strong>{formatEUR(totalCents)}</strong></div>
         </div>
+        <section className="card logistics">
+          <div className="card-head">
+            <div>
+              <h2>Logistique et prestataires</h2>
+              <p className="muted">Consultez les prestataires référencés, comparez leurs devis détaillés et retenez la meilleure offre : le coût par participant est rapproché des seuils d&apos;hospitalité.</p>
+            </div>
+            <Link className="btn" href={newRfq()}>Demander des devis</Link>
+          </div>
+          {rfqs.length > 0 && (
+            <ul className="logistics-list">
+              {rfqs.map((r) => {
+                const st = RFQ_STATUS[rfqDisplayStatus(r)];
+                const kept = r.quotes.find((q) => q.status === "retained");
+                const ref = kept ?? r.quotes[0];
+                const ttc = ref ? withVat(ref.amountCents, ref.vatBp) : 0;
+                const pp = ref ? perParticipant(r.category, ttc, r.headcount ?? expected, settings) : null;
+                return (
+                  <li key={r.id}>
+                    <div>
+                      <strong>{supplierCategoryLabel(r.category)}</strong>
+                      <div className="muted text-sm">
+                        {r.quotes.length} devis sur {r._count.suppliers} prestataire{r._count.suppliers > 1 ? "s" : ""} consulté{r._count.suppliers > 1 ? "s" : ""}
+                        {ref ? ` · ${kept ? `retenu : ${kept.supplier.name}` : "meilleure offre"} ${formatEUR(ttc)} TTC` : ""}
+                      </div>
+                      {pp && <div className={`text-xs ${pp.over ? "warn-text" : "muted"}`}>≈ {pp.each.toLocaleString("fr-FR", { maximumFractionDigits: 2 })} € par participant{pp.limit ? (pp.over ? ` · au-dessus du seuil d'un ${pp.limit.what} (${pp.limit.max} €)` : ` · sous le seuil d'un ${pp.limit.what}`) : ""}</div>}
+                    </div>
+                    <span className={`pill ${st.tone}`}>{st.label}</span>
+                    <Link className="btn ghost small" href={`/organisations/${id}/prestataires?onglet=demandes#rfq-${r.id}`}>Comparer</Link>
+                  </li>
+                );
+              })}
+            </ul>
+          )}
+          {usefulCats.length > 0 && (
+            <div className="chips">
+              <span className="muted text-sm">{rfqs.length ? "Autres besoins :" : "Besoins courants :"}</span>
+              {usefulCats.map((c) => <Link key={c.id} className="chip" href={newRfq(c.id)}>+ {c.label}</Link>)}
+            </div>
+          )}
+          {engagedTtc > 0 && <p className="muted text-sm">Coût logistique engagé : <strong>{formatEUR(engagedTtc)} TTC</strong>{expected ? ` · soit ≈ ${formatEUR(Math.round(engagedTtc / expected))} par participant attendu` : ""}.</p>}
+        </section>
         <section className="card">
           <div className="actions spread">
             <h2>Inscrits</h2>

@@ -8,6 +8,8 @@ import { ORG_NOT_VERIFIED, isVerifiedOrg, requireMembership } from "@/lib/orgs";
 import { EVENT_MANAGER_ROLES, eventScope, parseParisDateTime } from "@/lib/events";
 import { SUPPLIER_CATEGORIES } from "@/lib/suppliers";
 import { eurToCents, intOrNull, str } from "@/lib/form";
+import { isVatBp, linesTotal, MAX_LINES, type QuoteLine } from "@/lib/quotes";
+import { MAX_UPLOAD_BYTES, putObject, safeFileName, storageEnabled } from "@/lib/storage";
 import { notifyQuote, notifyRfqSent } from "@/lib/notifications";
 
 export type ActionState = { error?: string; ok?: string } | undefined;
@@ -112,15 +114,57 @@ export async function submitQuote(_: ActionState, form: FormData): Promise<Actio
   const rfqId = str(form, "rfqId");
   const invite = await db.rfqSupplier.findUnique({ where: { rfqId_supplierId: { rfqId, supplierId: orgId } }, include: { rfq: true } });
   if (!invite || invite.rfq.status !== "sent") return { error: "Cette demande n'accepte plus de devis." };
-  const amountCents = eurToCents(str(form, "amount"), { allowZero: false });
-  if (amountCents === null) return { error: "Indiquez le montant du devis." };
-  const data = { amountCents, delay: str(form, "delay") || null, note: str(form, "note") || null, authorId: user.id, status: "submitted" as const };
-  const q = await db.quote.upsert({ where: { rfqId_supplierId: { rfqId, supplierId: orgId } }, update: data, create: { rfqId, supplierId: orgId, ...data } });
+
+  // Devis détaillé (lignes) ou montant global.
+  const labels = form.getAll("line_label").map((v) => String(v).trim().slice(0, 200));
+  const qtys = form.getAll("line_qty").map(String);
+  const units = form.getAll("line_unit").map(String);
+  const lines: QuoteLine[] = [];
+  for (let i = 0; i < labels.length && i < MAX_LINES; i++) {
+    if (!labels[i] && !units[i]) continue;
+    const qty = Number((qtys[i] ?? "1").replace(",", "."));
+    const unitCents = eurToCents(units[i] ?? "");
+    if (!labels[i] || !Number.isFinite(qty) || qty <= 0 || qty > 100000 || unitCents === null) return { error: `Ligne ${i + 1} incomplète : désignation, quantité positive et prix unitaire.` };
+    lines.push({ label: labels[i], qty, unitCents });
+  }
+  const amountCents = lines.length ? linesTotal(lines) : eurToCents(str(form, "amount"), { allowZero: false });
+  if (!amountCents) return { error: "Indiquez le montant du devis, ou détaillez-le ligne par ligne." };
+  if (amountCents > 1_000_000_000) return { error: "Montant trop élevé." };
+  const vatBp = Number(str(form, "vat") || "2000");
+  if (!isVatBp(vatBp)) return { error: "Taux de TVA invalide." };
+  const validRaw = str(form, "validUntil");
+  const validUntil = validRaw ? parseParisDateTime(`${validRaw}T23:59`) : null;
+  if (validRaw && (!validUntil || validUntil < new Date())) return { error: "Date de validité invalide ou passée." };
+
+  // Pièce jointe : le devis signé au format PDF (si le stockage de documents est configuré).
+  const file = form.get("file");
+  let upload: { bytes: Uint8Array; name: string } | null = null;
+  if (file instanceof File && file.size > 0) {
+    if (!storageEnabled()) return { error: "Le dépôt de fichiers n'est pas encore activé : détaillez votre devis ligne par ligne." };
+    if (file.size > MAX_UPLOAD_BYTES) return { error: "Fichier trop lourd : 10 Mo au maximum." };
+    const bytes = new Uint8Array(await file.arrayBuffer());
+    if (String.fromCharCode(...bytes.subarray(0, 5)) !== "%PDF-") return { error: "Joignez le devis au format PDF." };
+    upload = { bytes, name: safeFileName(file.name || "devis.pdf") };
+  }
+
+  const existing = await db.quote.findUnique({ where: { rfqId_supplierId: { rfqId, supplierId: orgId } } });
+  const data = {
+    amountCents, lines, vatBp, validUntil, conditions: str(form, "conditions") || null,
+    delay: str(form, "delay") || null, note: str(form, "note") || null, authorId: user.id, status: "submitted" as const,
+  };
+  const q = existing
+    ? await db.quote.update({ where: { id: existing.id }, data: { ...data, revision: existing.revision + 1 } })
+    : await db.quote.create({ data: { rfqId, supplierId: orgId, ...data } });
+  if (upload) {
+    const key = `devis/${q.id}/${Date.now()}-${upload.name}`;
+    await putObject(key, upload.bytes, "application/pdf");
+    await db.quote.update({ where: { id: q.id }, data: { fileKey: key, fileName: upload.name } });
+  }
   if (invite.declined) await db.rfqSupplier.update({ where: { rfqId_supplierId: { rfqId, supplierId: orgId } }, data: { declined: false } });
-  await audit(user.id, "quote.submit", "Quote", q.id, { rfqId, amountCents });
-  notifyQuote(rfqId, orgId);
+  await audit(user.id, existing ? "quote.revise" : "quote.submit", "Quote", q.id, { rfqId, amountCents, revision: existing ? existing.revision + 1 : 1 });
+  notifyQuote(rfqId, orgId, !!existing);
   revalidatePath(`/organisations/${orgId}/devis`);
-  return { ok: "Devis transmis." };
+  return { ok: existing ? `Devis révisé (version ${existing.revision + 1}).` : "Devis transmis." };
 }
 
 export async function declineRfq(form: FormData) {

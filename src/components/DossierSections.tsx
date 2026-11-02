@@ -2,8 +2,10 @@ import { AlertTriangle, ExternalLink, FileSignature, FileText, Info, ShieldAlert
 import { db } from "@/lib/db";
 import { detectConflicts } from "@/lib/conflicts";
 import { formatDate, formatEUR } from "@/lib/events";
-import { MATERIAL_KINDS, MATERIAL_STATUS } from "@/lib/projects";
+import { MATERIAL_KINDS, MATERIAL_STATUS, REVIEW_ROLES } from "@/lib/projects";
 import { reviewMaterial, updateExpense } from "@/lib/dossier-actions";
+import { FOUR_EYES_BLOCKED, fourEyes } from "@/lib/four-eyes";
+import { getCurrentUser } from "@/lib/auth";
 import { BudgetForm, DocumentUploadForm, ExpenseForm, MaterialForm, RefreshSignatureForm, SendSignatureForm, VersionForm } from "@/components/DossierForms";
 import { deleteDocument } from "@/lib/document-actions";
 import { storageEnabled } from "@/lib/storage";
@@ -78,7 +80,12 @@ export async function BudgetPanel({ orgId, projectId, canEdit }: { orgId: string
           </tbody>
         </table>
       )}
-      {canEdit && <div className="mt-3"><ExpenseForm orgId={orgId} projectId={projectId} /></div>}
+      {canEdit && (
+        <details className="disclosure mt-3">
+          <summary>Ajouter une dépense</summary>
+          <ExpenseForm orgId={orgId} projectId={projectId} />
+        </details>
+      )}
     </section>
   );
 }
@@ -88,6 +95,9 @@ export async function MaterialsPanel({ orgId, projectId, canSubmit, canReview }:
   const users = await db.user.findMany({ where: { id: { in: [...new Set(materials.flatMap((m) => m.versions.flatMap((v) => [v.submittedById, v.reviewerId ?? ""])))] } }, select: { id: true, firstName: true, lastName: true } });
   const who = (id: string | null) => { const u = users.find((x) => x.id === id); return u ? `${u.firstName} ${u.lastName}` : "—"; };
   const { t, locale } = await getT();
+  // Quatre yeux : la personne qui a soumis une version ne l'approuve pas (sauf seule habilitée, avec justification).
+  const me = (await getCurrentUser())?.id ?? "";
+  const ownRule = canReview && me ? await fourEyes(new Set([me]), orgId, me, REVIEW_ROLES) : "ok";
   return (
     <section className="card">
       <div className="flex-between mb-2">
@@ -120,14 +130,18 @@ export async function MaterialsPanel({ orgId, projectId, canSubmit, canReview }:
                         )}
                       </p>
                     )}
-                    {canReview && v.status === "submitted" && (
-                      <form action={reviewMaterial} className="inline wrap mt-2">
-                        <input type="hidden" name="orgId" value={orgId} /><input type="hidden" name="versionId" value={v.id} />
-                        <input name="comment" placeholder="Commentaire (obligatoire pour demander des modifications)" style={{ width: 320 }} />
-                        <button className="btn small" name="decision" value="approve">Approuver</button>
-                        <button className="btn ghost small" name="decision" value="changes">Demander des modifications</button>
-                      </form>
-                    )}
+                    {canReview && v.status === "submitted" && (() => {
+                      const own = v.submittedById === me;
+                      if (own && ownRule === "blocked") return <p className="hint mt-2">{FOUR_EYES_BLOCKED}</p>;
+                      return (
+                        <form action={reviewMaterial} className="inline wrap mt-2">
+                          <input type="hidden" name="orgId" value={orgId} /><input type="hidden" name="versionId" value={v.id} />
+                          <input name="comment" required={own} placeholder={own ? "Justification obligatoire (support que vous avez soumis)" : "Commentaire (obligatoire pour demander des modifications)"} style={{ width: 320 }} />
+                          <button className="btn small" name="decision" value="approve">Approuver</button>
+                          <button className="btn ghost small" name="decision" value="changes">Demander des modifications</button>
+                        </form>
+                      );
+                    })()}
                   </li>
                 ))}
               </ol>
@@ -151,7 +165,7 @@ const fileSize = (n: number, t: T, locale: Locale) => {
  * Documents du dossier. Côté organisation : tous les documents, dépôt pour un expert ou pour tout le dossier.
  * Côté expert (`linkId`) : les documents qui le concernent, et dépôt de sa convention signée ou d'une pièce.
  */
-export async function DocumentsPanel({ projectId, linkId, canUpload }: { projectId: string; linkId?: string; canUpload: boolean }) {
+export async function DocumentsPanel({ projectId, linkId, canUpload, openUpload = false }: { projectId: string; linkId?: string; canUpload: boolean; openUpload?: boolean }) {
   const project = await db.project.findUnique({
     where: { id: projectId },
     include: {
@@ -185,7 +199,15 @@ export async function DocumentsPanel({ projectId, linkId, canUpload }: { project
         </ul>
       )}
       {canUpload && (enabled ? (
-        <DocumentUploadForm projectId={projectId} ownLinkId={linkId} experts={project.experts.map((e) => ({ id: e.id, name: expertName.get(e.id)! }))} />
+        linkId ? (
+          <DocumentUploadForm projectId={projectId} ownLinkId={linkId} experts={[]} />
+        ) : (
+          // Côté organisation, le formulaire reste replié sauf quand des conventions signées sont attendues.
+          <details className="disclosure" open={openUpload}>
+            <summary>{t("Déposer un document")}</summary>
+            <DocumentUploadForm projectId={projectId} experts={project.experts.map((e) => ({ id: e.id, name: expertName.get(e.id)! }))} />
+          </details>
+        )
       ) : (
         <p className="hint">{t("Le dépôt de documents sera disponible une fois le stockage configuré.")}</p>
       ))}
