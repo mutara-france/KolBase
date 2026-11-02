@@ -9,7 +9,7 @@ import { getT } from "@/lib/i18n/server";
 
 export async function generateMetadata() {
   const { t } = await getT();
-  return { title: t("Opportunités — KolBase") };
+  return { title: `${t("Appels à candidatures")} — KolBase` };
 }
 export const dynamic = "force-dynamic";
 

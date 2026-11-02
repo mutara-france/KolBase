@@ -117,11 +117,8 @@ const identifierText = (t: T, p: { rpps: string | null; country?: string; licens
 const eur = (locale: Locale, cents: number) => (cents / 100).toLocaleString(intlLocale(locale), { style: "currency", currency: "EUR" });
 const longDate = (locale: Locale, d: Date) => fmtDate(locale, d, { day: "numeric", month: "long", year: "numeric" });
 
-async function setup(title: string, footer: string) {
-  const doc = await PDFDocument.create();
-  doc.setTitle(title);
-  doc.setProducer("KolBase");
-  doc.setCreator("KolBase");
+/** Polices Unicode embarquées (repli Helvetica) et nettoyage du texte associé : partagé par les PDF de KolBase. */
+export async function embedPdfFonts(doc: PDFDocument) {
   const files = await loadFonts();
   let font: PDFFont, bold: PDFFont, covered: Set<number> | null = null;
   if (files) {
@@ -133,7 +130,16 @@ async function setup(title: string, footer: string) {
     font = await doc.embedFont(StandardFonts.Helvetica);
     bold = await doc.embedFont(StandardFonts.HelveticaBold);
   }
-  return { doc, w: new Writer(doc, font, bold, footer, makeClean(covered)) };
+  return { font, bold, clean: makeClean(covered) };
+}
+
+async function setup(title: string, footer: string) {
+  const doc = await PDFDocument.create();
+  doc.setTitle(title);
+  doc.setProducer("KolBase");
+  doc.setCreator("KolBase");
+  const { font, bold, clean } = await embedPdfFonts(doc);
+  return { doc, w: new Writer(doc, font, bold, footer, clean) };
 }
 
 function header(w: Writer, t: T, locale: Locale, title: string, ref: string, status: string) {

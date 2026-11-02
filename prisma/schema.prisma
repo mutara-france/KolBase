@@ -113,6 +113,7 @@ model PractitionerProfile {
   updatedAt     DateTime @updatedAt
 
   structures    PractitionerStructure[]
+  declaredInterests DeclaredInterest[]
   publications  Publication[]
   projectLinks  ProjectExpert[]
   applications  Application[]
@@ -151,6 +152,20 @@ model PractitionerStructure {
   sharePercent   Int?
   isPayee        Boolean             @default(false)
   since          DateTime?
+}
+
+// Lien d'intérêts noué hors de KolBase, déclaré par le praticien (complète sa déclaration de liens d'intérêts).
+model DeclaredInterest {
+  id             String              @id @default(cuid())
+  practitionerId String
+  practitioner   PractitionerProfile @relation(fields: [practitionerId], references: [id], onDelete: Cascade)
+  organization   String
+  nature         String
+  startYear      Int
+  endYear        Int?
+  createdAt      DateTime            @default(now())
+
+  @@index([practitionerId])
 }
 
 // Validation des organisations par KolBase (SIREN contrôlé, puis validation par un administrateur).
@@ -354,6 +369,9 @@ model ProjectExpert {
   days           Float?              // nombre d'unités (journées, interventions…)
   responseNote   String?
   respondedAt    DateTime?
+  // Paiement des honoraires, indiqué par l'organisation (visible de l'expert dans « Mes revenus »).
+  paidAt         DateTime?
+  paidCents      Int?
   createdAt      DateTime            @default(now())
 
   messages  Message[]

@@ -551,6 +551,14 @@ async function main() {
     if (!exists) await db.follow.create({ data: { userId, ...(kind === "p" ? { practitionerId: target } : { organizationId: target }), createdAt: at(-30) } });
   }
 
+  // ─── Revenus d'un expert : honoraires payés et lien déclaré hors KolBase ───
+  await db.projectExpert.updateMany({ where: { projectId: "demo-prj-webinaire", practitionerId: "demo-p-petit", paidAt: null }, data: { paidAt: at(-20), paidCents: 90000 } });
+  await db.declaredInterest.upsert({
+    where: { id: "demo-interest-petit" },
+    update: {},
+    create: { id: "demo-interest-petit", practitionerId: "demo-p-petit", organization: "Laboratoire Alpha Ortho (fictif)", nature: "Consultante pour la gamme d'aligneurs", startYear: new Date().getFullYear() - 2 },
+  });
+
   // ─── Aperçu : organisations réelles, décrites à partir d'informations publiques ───────────
   // Non référencées (invisibles du public) et sans logo : elles ne sont publiées qu'avec l'accord de l'entreprise,
   // d'un clic dans « Membres et réglages › Organisation ». Visibles par le compte d'aperçu et les DEMO_ADMIN_EMAILS.

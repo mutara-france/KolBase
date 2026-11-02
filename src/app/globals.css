@@ -844,3 +844,7 @@ body:has(.sidebar) .site-footer { padding: 24px 32px; }
 .program { white-space: pre-line; font-size: 14px; line-height: 1.8; margin: 0; font-variant-numeric: tabular-nums; }
 .date-block.muted-block { background: var(--bg-subtle); color: var(--ink-soft); }
 .date-block.muted-block small { font-size: 9.5px; margin: 0; letter-spacing: 0; }
+.interest-list li { display: flex; flex-direction: column; gap: 2px; padding: 10px 12px; border: 1px solid var(--line); border-radius: 12px; }
+.copy-block { white-space: pre-wrap; font-size: 13px; background: var(--bg-subtle); border: 1px solid var(--line); border-radius: 12px; padding: 12px 14px; margin: 8px 0 0; user-select: all; }
+.payment-row { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; padding: 10px 14px; border-radius: 14px; border: 1px dashed var(--line); }
+.payment-row input[name=amount] { width: 110px; }

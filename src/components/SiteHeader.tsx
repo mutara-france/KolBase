@@ -44,6 +44,7 @@ export async function SiteHeader({ variant = "app", section }: { variant?: "app"
           ] satisfies ShellItem[])
         : []),
       { key: "agenda", href: "/inscriptions", label: t("Agenda"), icon: "CalendarDays", match: p.listed ? ["/interventions"] : [] },
+      { key: "revenus", href: "/revenus", label: t("Revenus"), icon: "Wallet" },
       { key: "profil", href: "/compte", label: t("Mon profil"), short: t("Profil"), icon: "UserRound" },
     ];
     spaces.push({
