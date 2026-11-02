@@ -4,6 +4,7 @@ import { useActionState } from "react";
 import { addPublication, addStructure, importOrcid, updateKolVisibility, updateOrgVisibility } from "@/lib/profile-actions";
 import { Notice } from "@/components/AuthForms";
 import { COMPANY_VIS_FIELDS, KOL_VIS_FIELDS, KOL_VISIBILITY_LEVELS, PROJECT_VISIBILITY_LEVELS, VISIBILITY_LEVELS, type CompanyVisibility, type KolVisibility } from "@/lib/visibility";
+import { useLocale, useT } from "@/components/I18nProvider";
 
 function VisRow({ name, label, desc, value, levels }: { name: string; label: string; desc: string; value: string; levels: { id: string; label: string; hint: string }[] }) {
   return (
@@ -23,14 +24,16 @@ function VisRow({ name, label, desc, value, levels }: { name: string; label: str
 
 export function KolVisibilityForm({ v }: { v: KolVisibility }) {
   const [state, action, pending] = useActionState(updateKolVisibility, undefined);
+  const t = useT();
+  const tr = (levels: { id: string; label: string; hint: string }[]) => levels.map((l) => ({ ...l, label: t(l.label), hint: t(l.hint) }));
   return (
     <form action={action} className="card form">
-      <h2>Visibilité de mon profil</h2>
-      <p className="muted">Choisissez, information par information, qui peut la voir sur votre fiche publique.</p>
+      <h2>{t("Visibilité de mon profil")}</h2>
+      <p className="muted">{t("Choisissez, information par information, qui peut la voir sur votre fiche publique.")}</p>
       <Notice state={state} />
-      {KOL_VIS_FIELDS.map((f) => <VisRow key={f.key} name={f.key} label={f.label} desc={f.desc} value={v[f.key]} levels={KOL_VISIBILITY_LEVELS} />)}
-      <VisRow name="projets" label="Collaborations" desc="Organisations et dossiers menés via KolBase." value={v.projets} levels={PROJECT_VISIBILITY_LEVELS} />
-      <button className="btn" disabled={pending}>{pending ? "Enregistrement…" : "Enregistrer la visibilité"}</button>
+      {KOL_VIS_FIELDS.map((f) => <VisRow key={f.key} name={f.key} label={t(f.label)} desc={t(f.desc)} value={v[f.key]} levels={tr(KOL_VISIBILITY_LEVELS)} />)}
+      <VisRow name="projets" label={t("Collaborations")} desc={t("Organisations et dossiers menés via KolBase.")} value={v.projets} levels={tr(PROJECT_VISIBILITY_LEVELS)} />
+      <button className="btn" disabled={pending}>{pending ? t("Enregistrement…") : t("Enregistrer la visibilité")}</button>
     </form>
   );
 }
@@ -51,12 +54,13 @@ export function OrgVisibilityForm({ orgId, v, listed }: { orgId: string; v: Comp
 
 export function OrcidImportForm({ orcid, syncedAt, oauth, verified }: { orcid: string | null; syncedAt: string | null; oauth: boolean; verified: boolean }) {
   const [state, action, pending] = useActionState(importOrcid, undefined);
+  const t = useT();
   // Connexion ORCID activée : l'iD est prouvé en se connectant à son compte, puis importé sans saisie.
   if (oauth && !verified)
     return (
       <div className="form orcid-form">
-        <p className="muted">Connectez votre compte ORCID pour importer vos publications : KolBase vérifie ainsi que l&apos;iD est bien le vôtre.</p>
-        <a className="btn secondary" href="/compte/orcid">Connecter mon compte ORCID</a>
+        <p className="muted">{t("Connectez votre compte ORCID pour importer vos publications : KolBase vérifie ainsi que l'iD est bien le vôtre.")}</p>
+        <a className="btn secondary" href="/compte/orcid">{t("Connecter mon compte ORCID")}</a>
       </div>
     );
   return (
@@ -64,30 +68,31 @@ export function OrcidImportForm({ orcid, syncedAt, oauth, verified }: { orcid: s
       <Notice state={state} />
       <div className="row">
         {oauth ? (
-          <p style={{ alignSelf: "end" }}>ORCID <strong className="mono">{orcid}</strong> <span className="pill ok">vérifié</span></p>
+          <p style={{ alignSelf: "end" }}>ORCID <strong className="mono">{orcid}</strong> <span className="pill ok">{t("vérifié")}</span></p>
         ) : (
-          <label>Identifiant ORCID<input name="orcid" defaultValue={orcid ?? ""} placeholder="0000-0000-0000-0000" /></label>
+          <label>{t("Identifiant ORCID")}<input name="orcid" defaultValue={orcid ?? ""} placeholder="0000-0000-0000-0000" /></label>
         )}
-        <button className="btn secondary" disabled={pending} style={{ alignSelf: "end" }}>{pending ? "Import…" : "Importer depuis ORCID"}</button>
+        <button className="btn secondary" disabled={pending} style={{ alignSelf: "end" }}>{pending ? t("Import…") : t("Importer depuis ORCID")}</button>
       </div>
-      <p className="hint">Récupère les travaux publics de votre profil ORCID, sans doublon.{syncedAt ? ` Dernier import : ${syncedAt}.` : ""}</p>
+      <p className="hint">{t("Récupère les travaux publics de votre profil ORCID, sans doublon.")}{syncedAt ? ` ${t("Dernier import : {date}.", { date: syncedAt })}` : ""}</p>
     </form>
   );
 }
 
 export function PublicationForm() {
   const [state, action, pending] = useActionState(addPublication, undefined);
+  const t = useT();
   return (
     <form action={action} className="form" key={state?.ok ? Date.now() : "pub"}>
       <Notice state={state} />
-      <label>Titre<input name="title" required /></label>
+      <label>{t("Titre")}<input name="title" required /></label>
       <div className="row">
-        <label>Revue<input name="journal" /></label>
-        <label>Année<input name="year" inputMode="numeric" /></label>
+        <label>{t("Revue")}<input name="journal" /></label>
+        <label>{t("Année")}<input name="year" inputMode="numeric" /></label>
         <label>DOI<input name="doi" placeholder="10.xxxx/…" /></label>
       </div>
-      <label>Mots-clés<input name="keywords" placeholder="Séparés par des virgules" /></label>
-      <button className="btn secondary" disabled={pending}>Ajouter la publication</button>
+      <label>{t("Mots-clés")}<input name="keywords" placeholder={t("Séparés par des virgules")} /></label>
+      <button className="btn secondary" disabled={pending}>{t("Ajouter la publication")}</button>
     </form>
   );
 }
@@ -97,20 +102,23 @@ const ROLES = ["Gérant", "Président", "Associé", "Membre du bureau", "Trésor
 
 export function StructureForm() {
   const [state, action, pending] = useActionState(addStructure, undefined);
+  const t = useT();
+  const locale = useLocale();
   return (
     <form action={action} className="form" key={state?.ok ? Date.now() : "struct"}>
       <Notice state={state} />
       <div className="row">
-        <label>Nom<input name="name" required placeholder="SELARL Dr Dupont" /></label>
-        <label>Forme juridique<select name="legalForm" defaultValue="SELARL">{LEGAL_FORMS.map((f) => <option key={f}>{f}</option>)}</select></label>
+        {/* « Nom » désigne ailleurs le nom de famille (« Last name ») : ici, le nom de la structure. */}
+        <label>{locale === "en" ? "Name" : "Nom"}<input name="name" required placeholder="SELARL Dr Dupont" /></label>
+        <label>{t("Forme juridique")}<select name="legalForm" defaultValue="SELARL">{LEGAL_FORMS.map((f) => <option key={f} value={f}>{t(f)}</option>)}</select></label>
       </div>
       <div className="row">
         <label>SIREN<input name="siren" inputMode="numeric" /></label>
-        <label>Fonction<select name="role" defaultValue="Gérant">{ROLES.map((r) => <option key={r}>{r}</option>)}</select></label>
-        <label>Parts (%)<input name="sharePercent" inputMode="numeric" /></label>
+        <label>{t("Fonction")}<select name="role" defaultValue="Gérant">{ROLES.map((r) => <option key={r} value={r}>{t(r)}</option>)}</select></label>
+        <label>{t("Parts (%)")}<input name="sharePercent" inputMode="numeric" /></label>
       </div>
-      <label className="check"><input type="checkbox" name="isPayee" value="1" /> Structure de facturation (reçoit les honoraires)</label>
-      <button className="btn secondary" disabled={pending}>Ajouter la structure</button>
+      <label className="check"><input type="checkbox" name="isPayee" value="1" /> {t("Structure de facturation (reçoit les honoraires)")}</label>
+      <button className="btn secondary" disabled={pending}>{t("Ajouter la structure")}</button>
     </form>
   );
 }

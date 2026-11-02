@@ -9,6 +9,7 @@ import { EVENT_ORGANIZER_ROLES, parseParisDateTime } from "@/lib/events";
 import { collabType, PROJECT_VIEW_ROLES } from "@/lib/projects";
 import { eurToCents, str } from "@/lib/form";
 import { notifyNotRetained, notifySolicitations, notifySpeakerApplication } from "@/lib/notifications";
+import { getT } from "@/lib/i18n/server";
 
 export type ActionState = { error?: string; ok?: string } | undefined;
 
@@ -55,21 +56,22 @@ export async function setSpeakerCallOpen(form: FormData) {
 export async function applyAsSpeaker(_: ActionState, form: FormData): Promise<ActionState> {
   const user = await requireUser();
   const p = user.practitioner;
-  if (!p?.listed) return { error: "Référencez-vous comme expert pour candidater." };
+  const { t } = await getT();
+  if (!p?.listed) return { error: t("Référencez-vous comme expert pour candidater.") };
   const eventId = str(form, "eventId");
   const event = await db.event.findUnique({ where: { id: eventId }, include: { organization: true, speakerApplications: { where: { status: "retained" }, select: { id: true } } } });
-  if (!event || !event.speakerCallOpen || !event.publishedAt || !isVerifiedOrg(event.organization)) return { error: "Cet appel n'est plus ouvert." };
-  if ((event.speakerDeadline && event.speakerDeadline < new Date()) || event.startsAt < new Date()) return { error: "La date limite est dépassée." };
-  if (event.speakerSlots && event.speakerApplications.length >= event.speakerSlots) return { error: "Toutes les places sont pourvues." };
+  if (!event || !event.speakerCallOpen || !event.publishedAt || !isVerifiedOrg(event.organization)) return { error: t("Cet appel n'est plus ouvert.") };
+  if ((event.speakerDeadline && event.speakerDeadline < new Date()) || event.startsAt < new Date()) return { error: t("La date limite est dépassée.") };
+  if (event.speakerSlots && event.speakerApplications.length >= event.speakerSlots) return { error: t("Toutes les places sont pourvues.") };
   const message = str(form, "message");
-  if (message.length < 20) return { error: "Décrivez ce que vous proposez de présenter (20 caractères minimum)." };
+  if (message.length < 20) return { error: t("Décrivez ce que vous proposez de présenter (20 caractères minimum).") };
   const existing = await db.speakerApplication.findUnique({ where: { eventId_practitionerId: { eventId, practitionerId: p.id } } });
-  if (existing) return { error: "Vous avez déjà candidaté." };
+  if (existing) return { error: t("Vous avez déjà candidaté.") };
   const app = await db.speakerApplication.create({ data: { eventId, practitionerId: p.id, message } });
   await audit(user.id, "speaker.apply", "SpeakerApplication", app.id, { eventId });
   notifySpeakerApplication(eventId, p.id);
   revalidatePath("/interventions");
-  return { ok: "Candidature envoyée." };
+  return { ok: t("Candidature envoyée.") };
 }
 
 export async function withdrawSpeaker(form: FormData) {

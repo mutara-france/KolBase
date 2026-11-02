@@ -5,15 +5,20 @@ import { SiteHeader } from "@/components/SiteHeader";
 import { Avatar } from "@/components/Avatar";
 import { db } from "@/lib/db";
 import { requireUser } from "@/lib/auth";
-import { formatDate } from "@/lib/events";
 import { followFeed, seenSince } from "@/lib/follows";
 import { toggleFollow } from "@/lib/follow-actions";
 import { ORG_KIND_LABEL } from "@/lib/orgs";
+import { fmtDate } from "@/lib/i18n";
+import { getT } from "@/lib/i18n/server";
 
-export const metadata = { title: "Mes suivis — KolBase" };
+export async function generateMetadata() {
+  const { t } = await getT();
+  return { title: `${t("Mes suivis")} — KolBase` };
+}
 
 export default async function Page() {
   const user = await requireUser();
+  const { t, locale } = await getT();
   const since = await seenSince(user.id, user.followsSeenAt);
   const [feed, follows] = await Promise.all([
     followFeed(user.id),
@@ -31,21 +36,20 @@ export default async function Page() {
     <>
       <SiteHeader />
       <main className="stack">
-        <h1>Mes suivis</h1>
+        <h1>{t("Mes suivis")}</h1>
         <p className="muted">
-          Suivez des experts et des organisations depuis leur fiche (bouton « Suivre ») : vous voyez ici leurs nouvelles publications, interventions,
-          appels et événements.
+          {t("Suivez des experts et des organisations depuis leur fiche (bouton « Suivre ») : vous voyez ici leurs nouvelles publications, interventions, appels et événements.")}
         </p>
 
         <section className="card">
-          <h2 className="section-title"><BellRing size={16} /> Mises à jour récentes</h2>
-          {feed.length === 0 && <p className="muted">Aucune mise à jour pour l&apos;instant.</p>}
+          <h2 className="section-title"><BellRing size={16} /> {t("Mises à jour récentes")}</h2>
+          {feed.length === 0 && <p className="muted">{t("Aucune mise à jour pour l'instant.")}</p>}
           {feed.length > 0 && (
             <TodoList
               items={feed.slice(0, 40).map((i) => ({
                 href: i.href,
-                title: `${i.subject}${isNew(i.date) ? " · nouveau" : ""}`,
-                detail: `${i.label} · ${formatDate(i.date)}`,
+                title: `${i.subject}${isNew(i.date) ? ` · ${t("nouveau")}` : ""}`,
+                detail: `${t(i.msg.key, i.msg.vars)} · ${fmtDate(locale, i.date)}`,
                 icon: isNew(i.date) ? ("BellRing" as const) : ("Bell" as const),
                 tone: isNew(i.date) ? ("electric" as const) : ("ok" as const),
               }))}
@@ -54,9 +58,9 @@ export default async function Page() {
         </section>
 
         <section className="stack">
-          <h2 className="section-title"><Bell size={16} /> Profils suivis ({follows.length})</h2>
+          <h2 className="section-title"><Bell size={16} /> {t("Profils suivis ({n})", { n: follows.length })}</h2>
           {follows.length === 0 && (
-            <div className="card empty"><Bell size={22} /><p>Vous ne suivez aucun profil. Le bouton « Suivre » se trouve sur chaque fiche d&apos;expert et d&apos;organisation.</p></div>
+            <div className="card empty"><Bell size={22} /><p>{t("Vous ne suivez aucun profil. Le bouton « Suivre » se trouve sur chaque fiche d'expert et d'organisation.")}</p></div>
           )}
           <div className="grid-2">
             {follows.map((f) => {
@@ -69,17 +73,17 @@ export default async function Page() {
                   <div className="actions">
                     <Avatar name={name} size={42} ring={!!p} square={!p} />
                     <div>
-                      <div className="eyebrow-sm">{p ? p.specialty ?? p.profession : o ? ORG_KIND_LABEL[o.kind] : ""}</div>
+                      <div className="eyebrow-sm">{p ? p.specialty ?? t(p.profession) : o ? t(ORG_KIND_LABEL[o.kind]) : ""}</div>
                       <h3 style={{ margin: 0 }}>{name}</h3>
                     </div>
                   </div>
                   <p className="text-sm">{p ? p.bio : o?.about}</p>
                   <div className="actions">
-                    <Link className="btn secondary small" href={href}>Voir la fiche</Link>
+                    <Link className="btn secondary small" href={href}>{t("Voir la fiche")}</Link>
                     <form action={toggleFollow}>
                       <input type="hidden" name="type" value={p ? "practitioner" : "organization"} />
                       <input type="hidden" name="id" value={p ? p.id : o!.id} />
-                      <button className="btn ghost small"><Bell size={13} /> Ne plus suivre</button>
+                      <button className="btn ghost small"><Bell size={13} /> {t("Ne plus suivre")}</button>
                     </form>
                   </div>
                 </div>

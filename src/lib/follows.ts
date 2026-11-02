@@ -1,7 +1,11 @@
 import { db } from "@/lib/db";
 import { companyVisibility, kolVisibility } from "@/lib/visibility";
+import { translate, type Vars } from "@/lib/i18n";
 
-export type FeedItem = { key: string; date: Date; subject: string; href: string; label: string; kind: "practitioner" | "organization" };
+/** `label` : libellé en français ; `msg` : sa clé de traduction et ses variables, pour l'afficher dans la langue de l'utilisateur. */
+export type FeedItem = { key: string; date: Date; subject: string; href: string; label: string; msg: { key: string; vars?: Vars }; kind: "practitioner" | "organization" };
+
+const label = (key: string, vars?: Vars) => ({ label: translate("fr", key, vars), msg: { key, vars } });
 
 const WINDOW_DAYS = 180;
 
@@ -30,10 +34,10 @@ export async function followFeed(userId: string): Promise<FeedItem[]> {
       const name = `Dr ${p.user.firstName} ${p.user.lastName}`;
       const href = `/experts/${p.id}`;
       if (kolVisibility(p.visibility).publications !== "masque")
-        for (const x of p.publications) items.push({ key: `pub-${x.id}`, date: x.createdAt, subject: name, href, kind: "practitioner", label: `Nouvelle publication : ${x.title}` });
+        for (const x of p.publications) items.push({ key: `pub-${x.id}`, date: x.createdAt, subject: name, href, kind: "practitioner", ...label("Nouvelle publication : {title}", { title: x.title }) });
       for (const a of p.speakerApplications)
-        items.push({ key: `spk-${a.id}`, date: a.createdAt, subject: name, href: `/evenements/${a.eventId}`, kind: "practitioner", label: `Intervient à « ${a.event.title} »` });
-      if (p.listedAt && p.listedAt >= since) items.push({ key: `lst-${p.id}`, date: p.listedAt, subject: name, href, kind: "practitioner", label: "Référencé(e) comme expert" });
+        items.push({ key: `spk-${a.id}`, date: a.createdAt, subject: name, href: `/evenements/${a.eventId}`, kind: "practitioner", ...label("Intervient à « {title} »", { title: a.event.title }) });
+      if (p.listedAt && p.listedAt >= since) items.push({ key: `lst-${p.id}`, date: p.listedAt, subject: name, href, kind: "practitioner", ...label("Référencé(e) comme expert") });
     }
   }
 
@@ -48,11 +52,11 @@ export async function followFeed(userId: string): Promise<FeedItem[]> {
     for (const o of orgs) {
       const href = `/structures/${o.id}`;
       if (companyVisibility(o.visibility).projets !== "masque")
-        for (const c of o.openCalls) items.push({ key: `call-${c.id}`, date: c.createdAt, subject: o.name, href: `/opportunites/${c.id}`, kind: "organization", label: `Nouvel appel : ${c.title}` });
+        for (const c of o.openCalls) items.push({ key: `call-${c.id}`, date: c.createdAt, subject: o.name, href: `/opportunites/${c.id}`, kind: "organization", ...label("Nouvel appel : {title}", { title: c.title }) });
       for (const e of o.events) {
-        items.push({ key: `ev-${e.id}`, date: e.publishedAt!, subject: o.name, href: `/evenements/${e.id}`, kind: "organization", label: `Nouvel événement : ${e.title}` });
+        items.push({ key: `ev-${e.id}`, date: e.publishedAt!, subject: o.name, href: `/evenements/${e.id}`, kind: "organization", ...label("Nouvel événement : {title}", { title: e.title }) });
         if (e.speakerCallOpen && e.startsAt > new Date())
-          items.push({ key: `spc-${e.id}`, date: e.updatedAt, subject: o.name, href: `/evenements/${e.id}`, kind: "organization", label: `Appel à intervenants : ${e.title}` });
+          items.push({ key: `spc-${e.id}`, date: e.updatedAt, subject: o.name, href: `/evenements/${e.id}`, kind: "organization", ...label("Appel à intervenants : {title}", { title: e.title }) });
       }
     }
   }

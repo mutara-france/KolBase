@@ -13,6 +13,7 @@ import type { FormState } from "@/lib/auth-actions";
 import { OrgKind, type OrgRole } from "@/generated/prisma/enums";
 import { eurToCents, MAX_NAME, str } from "@/lib/form";
 import { notifyInvitation, notifyPlatformAdmins } from "@/lib/notifications";
+import { getT } from "@/lib/i18n/server";
 
 const sha256 = (v: string) => createHash("sha256").update(v).digest("hex");
 const INVITE_DAYS = 14;
@@ -185,9 +186,10 @@ export async function acceptInvitation(form: FormData) {
 
 export async function updateExpertProfile(_: FormState, form: FormData): Promise<FormState> {
   const user = await requireUser();
-  if (!user.practitioner) return { error: "Réservé aux praticiens." };
+  const { t } = await getT();
+  if (!user.practitioner) return { error: t("Réservé aux praticiens.") };
   const rateNum = eurToCents(str(form, "dayRate"));
-  if (str(form, "dayRate") && rateNum === null) return { error: "Tarif journalier invalide." };
+  if (str(form, "dayRate") && rateNum === null) return { error: t("Tarif journalier invalide.") };
   await db.practitionerProfile.update({
     where: { userId: user.id },
     data: {
@@ -204,7 +206,7 @@ export async function updateExpertProfile(_: FormState, form: FormData): Promise
   });
   await audit(user.id, "practitioner.update_expert", "PractitionerProfile", user.practitioner.id);
   revalidatePath("/compte");
-  return { ok: "Profil expert enregistré." };
+  return { ok: t("Profil expert enregistré.") };
 }
 
 /** Logo de l'organisation : PNG, JPEG ou WebP vérifié sur son contenu, 500 Ko au plus. */

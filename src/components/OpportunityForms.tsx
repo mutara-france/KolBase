@@ -3,6 +3,7 @@
 import { useActionState, useState } from "react";
 import { applyToCall, createOpenCall, retainApplication } from "@/lib/opportunity-actions";
 import { Notice } from "@/components/AuthForms";
+import { useT } from "@/components/I18nProvider";
 
 type CType = { id: string; label: string; category: string; unit: string; fmv: readonly number[] };
 
@@ -42,14 +43,15 @@ export function NewCallForm({ orgId, types }: { orgId: string; types: readonly C
 
 export function ApplyForm({ callId }: { callId: string }) {
   const [state, action, pending] = useActionState(applyToCall, undefined);
-  if (state?.ok) return <p className="notice ok">{state.ok} L&apos;organisation reviendra vers vous via « Sollicitations » si elle vous retient.</p>;
+  const t = useT();
+  if (state?.ok) return <p className="notice ok">{state.ok} {t("L'organisation reviendra vers vous via « Sollicitations » si elle vous retient.")}</p>;
   return (
     <form action={action} className="form">
       <Notice state={state} />
       <input type="hidden" name="callId" value={callId} />
-      <label>Votre candidature<textarea name="message" rows={5} required minLength={20} placeholder="Pourquoi vous, expérience pertinente, disponibilités, conditions…" /></label>
-      <p className="hint">L&apos;organisation verra ce message et votre fiche d&apos;expert.</p>
-      <button className="btn" disabled={pending}>{pending ? "Envoi…" : "Candidater"}</button>
+      <label>{t("Votre candidature")}<textarea name="message" rows={5} required minLength={20} placeholder={t("Pourquoi vous, expérience pertinente, disponibilités, conditions…")} /></label>
+      <p className="hint">{t("L'organisation verra ce message et votre fiche d'expert.")}</p>
+      <button className="btn" disabled={pending}>{pending ? t("Envoi…") : t("Candidater")}</button>
     </form>
   );
 }

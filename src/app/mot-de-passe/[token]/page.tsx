@@ -2,23 +2,27 @@ import Link from "next/link";
 import { SiteHeader } from "@/components/SiteHeader";
 import { ResetPasswordForm } from "@/components/AuthForms";
 import { findToken } from "@/lib/tokens";
+import { getT } from "@/lib/i18n/server";
 
-export const metadata = { title: "Nouveau mot de passe — KolBase", robots: { index: false } };
+export async function generateMetadata() {
+  const { t } = await getT();
+  return { title: `${t("Nouveau mot de passe")} — KolBase`, robots: { index: false } };
+}
 
 export default async function Page({ params }: { params: Promise<{ token: string }> }) {
   const { token } = await params;
-  const t = await findToken(token, "RESET_PASSWORD");
+  const [found, { t }] = await Promise.all([findToken(token, "RESET_PASSWORD"), getT()]);
   return (
     <>
       <SiteHeader variant="public" />
       <main className="narrow">
-        {t ? (
-          <ResetPasswordForm token={token} email={t.user.email} />
+        {found ? (
+          <ResetPasswordForm token={token} email={found.user.email} />
         ) : (
           <section className="card form">
-            <h1>Lien expiré</h1>
-            <p className="muted">Ce lien de réinitialisation n&apos;est plus valable : il sert une seule fois et expire au bout d&apos;une heure.</p>
-            <Link className="btn" href="/mot-de-passe-oublie">Demander un nouveau lien</Link>
+            <h1>{t("Lien expiré")}</h1>
+            <p className="muted">{t("Ce lien de réinitialisation n'est plus valable : il sert une seule fois et expire au bout d'une heure.")}</p>
+            <Link className="btn" href="/mot-de-passe-oublie">{t("Demander un nouveau lien")}</Link>
           </section>
         )}
       </main>
