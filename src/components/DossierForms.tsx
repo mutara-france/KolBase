@@ -3,6 +3,8 @@
 import { useActionState, useState } from "react";
 import { addExpense, addMaterial, addMaterialVersion, proposeCollaboration, setBudget } from "@/lib/dossier-actions";
 import { Notice } from "@/components/AuthForms";
+import { useLocale, useT } from "@/components/I18nProvider";
+import { intlLocale } from "@/lib/i18n";
 import { uploadDocument } from "@/lib/document-actions";
 
 type Hidden = { orgId: string; projectId: string };
@@ -76,26 +78,28 @@ export function ProposeForm({ orgId, orgName, types, defaultFee }: { orgId: stri
   const [state, action, pending] = useActionState(proposeCollaboration, undefined);
   const [open, setOpen] = useState(false);
   const [typeId, setTypeId] = useState(types[0].id);
-  const type = types.find((t) => t.id === typeId)!;
-  if (!open) return <button type="button" className="btn secondary" onClick={() => setOpen(true)}>Proposer une collaboration</button>;
+  const type = types.find((x) => x.id === typeId)!;
+  const t = useT();
+  const locale = useLocale();
+  if (!open) return <button type="button" className="btn secondary" onClick={() => setOpen(true)}>{t("Proposer une collaboration")}</button>;
   return (
     <form action={action} className="card form">
-      <h2>Proposer une collaboration à {orgName}</h2>
-      <p className="muted">Votre proposition ouvre un dossier que l&apos;organisation peut accepter ou décliner.</p>
+      <h2>{t("Proposer une collaboration à {name}", { name: orgName })}</h2>
+      <p className="muted">{t("Votre proposition ouvre un dossier que l'organisation peut accepter ou décliner.")}</p>
       <Notice state={state} />
       <input type="hidden" name="orgId" value={orgId} />
-      <label>Titre<input name="title" required placeholder="Ex. : Webinaire sur la maintenance implantaire" /></label>
+      <label>{t("Titre")}<input name="title" required placeholder={t("Ex. : Webinaire sur la maintenance implantaire")} /></label>
       <div className="row">
-        <label>Type<select name="typeId" value={typeId} onChange={(e) => setTypeId(e.target.value)}>{types.map((t) => <option key={t.id} value={t.id}>{t.label}</option>)}</select></label>
-        <label>Domaine<input name="therapeuticArea" /></label>
+        <label>{t("Type")}<select name="typeId" value={typeId} onChange={(e) => setTypeId(e.target.value)}>{types.map((x) => <option key={x.id} value={x.id}>{t(x.label)}</option>)}</select></label>
+        <label>{t("Domaine")}<input name="therapeuticArea" /></label>
       </div>
       <div className="row">
-        <label>Volume ({type.unit})<input name="units" inputMode="decimal" defaultValue="1" /></label>
-        <label>Honoraires souhaités (€ HT)<input name="fee" inputMode="decimal" defaultValue={defaultFee} /></label>
+        <label>{t("Volume ({unit})", { unit: t(type.unit) })}<input name="units" inputMode="decimal" defaultValue="1" /></label>
+        <label>{t("Honoraires souhaités (€ HT)")}<input name="fee" inputMode="decimal" defaultValue={defaultFee} /></label>
       </div>
-      <p className="hint">Référence : {type.fmv[0].toLocaleString("fr-FR")} à {type.fmv[1].toLocaleString("fr-FR")} € HT par {type.unit}.</p>
-      <label>Votre proposition<textarea name="message" rows={4} required minLength={30} placeholder="Objectif, public, format, dates possibles…" /></label>
-      <button className="btn" disabled={pending}>{pending ? "Envoi…" : "Envoyer la proposition"}</button>
+      <p className="hint">{t("Référence : {min} à {max} € HT par {unit}.", { min: type.fmv[0].toLocaleString(intlLocale(locale)), max: type.fmv[1].toLocaleString(intlLocale(locale)), unit: t(type.unit) })}</p>
+      <label>{t("Votre proposition")}<textarea name="message" rows={4} required minLength={30} placeholder={t("Objectif, public, format, dates possibles…")} /></label>
+      <button className="btn" disabled={pending}>{pending ? t("Envoi…") : t("Envoyer la proposition")}</button>
     </form>
   );
 }
