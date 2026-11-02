@@ -91,7 +91,10 @@ export async function rejectApplication(form: FormData) {
   revalidatePath(`/organisations/${orgId}/opportunites/${app.openCallId}`);
 }
 
-/** Retenir un candidat : ouvre un dossier en accord de principe avec cet expert. */
+/**
+ * Retenir un candidat : ouvre un dossier et adresse à l'expert une proposition d'honoraires.
+ * Le dossier ne passe en accord de principe qu'une fois cette proposition acceptée par l'expert.
+ */
 export async function retainApplication(_: ActionState, form: FormData): Promise<ActionState> {
   const orgId = str(form, "orgId");
   const { user } = await requireMembership(orgId, SOURCING_ROLES);
@@ -114,9 +117,9 @@ export async function retainApplication(_: ActionState, form: FormData): Promise
       therapeuticArea: app.openCall.specialty,
       description: app.openCall.description,
       origin: "Opportunité",
-      status: "ACCORD",
+      status: "ATT_EXPERTS",
       createdById: user.id,
-      experts: { create: { practitionerId: app.practitionerId, status: "ACCORD", feeCents: fee, days: units, respondedAt: new Date() } },
+      experts: { create: { practitionerId: app.practitionerId, status: "ATT_EXPERTS", feeCents: fee, days: units } },
     },
     include: { experts: true },
   });

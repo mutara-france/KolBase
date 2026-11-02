@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { canSee, kolViewer, kolVisibility, DEFAULT_KOL_VISIBILITY } from "@/lib/visibility";
 import { safeNext } from "@/lib/safe-redirect";
 import { eurToCents, intOrNull } from "@/lib/form";
-import { complianceSettings, DEFAULT_COMPLIANCE, hospitalityRegime, remunerationRegime } from "@/lib/compliance";
+import { complianceSettings, DEFAULT_COMPLIANCE, hospitalityRegime, projectRegime, remunerationRegime } from "@/lib/compliance";
 import { fmvCheck, TRANSITIONS } from "@/lib/projects";
 import { csvEscape, eventScope, parseParisDateTime, toCSV } from "@/lib/events";
 import { orgNavItems, orgSectionTabs, itemMatches } from "@/lib/nav";
@@ -141,5 +141,27 @@ describe("navigation et rôles", () => {
     expect(invitableRoles("INDUSTRIEL")).toContain("CONFORMITE");
     expect(roleLabel("PRESTATAIRE", "PRESTATAIRE")).toBe("Membre de l'équipe");
     expect(roleLabel("PRESTATAIRE", "INDUSTRIEL")).toBe("Prestataire mandaté");
+  });
+});
+
+describe("seuils d'autorisation de l'arrêté du 7 août 2020", () => {
+  const s = DEFAULT_COMPLIANCE;
+  it("rémunération : 800 € par demi-journée, soit 1 600 € par journée", () => {
+    expect(remunerationRegime(s, 160000, 1, "journée").regime).toBe("declaration");
+    expect(remunerationRegime(s, 180000, 1, "journée").regime).toBe("autorisation");
+  });
+  it("hospitalité : 15 € par collation", () => {
+    expect(hospitalityRegime(s, [{ catalogId: "cafe", valueCents: 1200 }]).regime).toBe("declaration");
+    expect(hospitalityRegime(s, [{ catalogId: "cafe", valueCents: 1800 }]).regime).toBe("autorisation");
+  });
+  it("dossier : autorisation dès qu'un expert engagé dépasse un seuil", () => {
+    const experts = [
+      { status: "ACCORD", feeCents: 120000, days: 1 },
+      { status: "ACCORD", feeCents: 300000, days: 1 },
+      { status: "DECLINE", feeCents: 900000, days: 1 },
+    ];
+    expect(projectRegime(s, "intervention", experts)?.regime).toBe("autorisation");
+    expect(projectRegime(s, "intervention", experts.slice(0, 1))?.regime).toBe("declaration");
+    expect(projectRegime(s, "intervention", [experts[2]])).toBeNull();
   });
 });

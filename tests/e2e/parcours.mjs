@@ -128,6 +128,77 @@ const text = (page) => page.locator("main").innerText();
   await s2.ctx.close();
 }
 
+// ── Dossiers : les honoraires d'une candidature retenue sont proposés à l'expert ─────────
+{
+  const { ctx, page } = await session();
+  await login(page, "anne.chevalier@demo.kolbase.local");
+  await page.goto(`${BASE}/organisations/demo-org-academie/opportunites/demo-call-tp-cfao`);
+  await page.click('button:has-text("Retenir…")');
+  await page.fill('input[name="units"]', "2");
+  await page.fill('input[name="fee"]', "4000");
+  await Promise.all([page.waitForURL(/\/dossiers\//), page.click('button:has-text("Proposer ces honoraires")')]);
+  const dossier = await text(page);
+  check("Candidature retenue : dossier en attente de l'expert", dossier.includes("En attente des experts") && dossier.includes("Réponse attendue"));
+  check("Candidature retenue : pas de convention avant accord", (await page.locator('a:has-text("Convention (PDF)")').count()) === 0);
+  await ctx.close();
+}
+{
+  const { ctx, page } = await session();
+  await login(page, "olivier.girard@demo.kolbase.local");
+  await page.goto(`${BASE}/opportunites/demo-call-tp-cfao`);
+  check("Expert : la candidature indique une proposition à accepter", (await text(page)).includes("vous propose des honoraires"));
+  await page.goto(`${BASE}/sollicitations`);
+  await Promise.all([page.waitForURL(/\/sollicitations\/[^/]+$/), page.click('a:has-text("Formateur TP CFAO")')]);
+  const t = await text(page);
+  check("Expert : honoraires proposés visibles avant de répondre", /4\s000\s€/.test(t) && t.includes("Votre réponse"), t.match(/Honoraires proposés[^\n]*\n?[^\n]*/)?.[0]);
+  await page.click('button:has-text("Donner mon accord de principe")');
+  await page.waitForTimeout(1200);
+  await page.reload();
+  check("Expert : après accord, la convention devient disponible", (await page.locator('a:has-text("Projet de convention")').count()) === 1);
+  await ctx.close();
+}
+
+// ── Conformité : au-delà des seuils, pas de déclaration simple ─────────────
+{
+  const { ctx, page } = await session();
+  await login(page, "sophie.bernard@demo.kolbase.local");
+  await page.goto(`${BASE}/organisations/demo-org-dentalys/dossiers/demo-prj-symposium`);
+  await page.click('button:has-text("Valider")');
+  await page.waitForTimeout(1200);
+  await ctx.close();
+  const s2 = await session();
+  await login(s2.page, "julien.faure@demo.kolbase.local");
+  await s2.page.goto(`${BASE}/organisations/demo-org-dentalys/dossiers/demo-prj-symposium`);
+  const t = await text(s2.page);
+  check("Dossier à 3 000 € validé : régime d'autorisation", t.includes("Autorisation") && t.includes("Demander l'autorisation à l'Ordre"));
+  check("Dossier à 3 000 € : déclaration simple non proposée", !t.includes("Déclaration simple"));
+  await s2.ctx.close();
+}
+
+// ── Mandats d'agence ───────────────────────────────────────────────────────
+{
+  const agent = await session();
+  await login(agent.page, "karim.benali@demo.kolbase.local");
+  await agent.page.goto(`${BASE}/organisations/demo-org-dentalys/evenements`);
+  check("Agence mandatée : voit l'événement confié", (await text(agent.page)).includes("Soirée"));
+  const { ctx, page } = await session();
+  await login(page, "claire.morel@demo.kolbase.local");
+  await page.goto(`${BASE}/organisations/demo-org-dentalys/prestataires?onglet=agences`);
+  check("Mandats : agence existante listée", (await text(page)).includes("Agence Médiane Événements"));
+  const belleville = await page.locator('select[name="agencyId"] option', { hasText: "Traiteur Belleville" }).getAttribute("value");
+  await page.selectOption('select[name="agencyId"]', belleville);
+  await page.click('button:has-text("Mandater")');
+  await page.waitForTimeout(1200);
+  check("Mandats : nouvelle agence mandatée", (await text(page)).includes("Traiteur Belleville est mandatée"));
+  await page.goto(`${BASE}/organisations/demo-org-dentalys/prestataires?onglet=agences`);
+  await page.locator('section.card:has-text("Agence Médiane") button:has-text("Mettre fin au mandat")').click();
+  await page.waitForTimeout(1200);
+  await agent.page.goto(`${BASE}/organisations/demo-org-dentalys/evenements`);
+  check("Fin de mandat : l'agence ne voit plus l'événement", !(await text(agent.page)).includes("Soirée"));
+  await ctx.close();
+  await agent.ctx.close();
+}
+
 // ── 4. Limitation des tentatives ───────────────────────────────────────────
 {
   const { ctx, page } = await session();

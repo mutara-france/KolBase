@@ -25,4 +25,4 @@ export const rfqDisplayStatus = (r: { status: string; quotes: unknown[] }) => (r
 
 export const QUOTE_STATUS: Record<string, string> = { submitted: "Devis envoyé", retained: "Retenu", rejected: "Non retenu" };
 
-export const SPEAKER_STATUS: Record<string, string> = { pending: "À traiter", retained: "Retenu", rejected: "Non retenu" };
+export const SPEAKER_STATUS: Record<string, string> = { pending: "À traiter", retained: "Retenu", rejected: "Non retenu", declined: "Honoraires déclinés" };

@@ -106,7 +106,7 @@ export default async function Page({ searchParams }: { searchParams: Promise<{ o
                 <li key={a.id}>
                   <div className="actions spread">
                     <strong><Link href={`/evenements/${a.eventId}`}>{a.event.title}</Link></strong>
-                    <span className={`pill ${a.status === "retained" ? "ok" : a.status === "rejected" ? "done" : "wait"}`}>{a.status === "pending" ? "En attente" : SPEAKER_STATUS[a.status]}</span>
+                    <span className={`pill ${a.status === "retained" ? "ok" : ["rejected", "declined"].includes(a.status) ? "done" : "wait"}`}>{a.status === "pending" ? "En attente" : SPEAKER_STATUS[a.status]}</span>
                   </div>
                   <span className="muted">{a.event.organization.name} · {formatDate(a.event.startsAt)} · envoyée le {formatDate(a.createdAt)}</span>
                   {a.message && <p>{a.message}</p>}

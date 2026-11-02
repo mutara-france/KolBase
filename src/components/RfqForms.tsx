@@ -3,6 +3,7 @@
 import { useActionState, useState } from "react";
 import { Check, Plus, Send } from "lucide-react";
 import { createRfq, submitQuote, updateSupplierProfile } from "@/lib/rfq-actions";
+import { createMandate } from "@/lib/event-actions";
 import { Notice } from "@/components/AuthForms";
 import { Avatar } from "@/components/Avatar";
 
@@ -108,6 +109,27 @@ export function SupplierProfileForm({ orgId, categories, current, canEdit }: { o
       <label>Zone couverte<input name="coverage" defaultValue={current.coverage} placeholder="France entière, Grand Ouest…" disabled={!canEdit} /></label>
       <label className="check"><input type="checkbox" name="listed" defaultChecked={current.listed} disabled={!canEdit} /> Apparaître dans l&apos;annuaire des prestataires</label>
       {canEdit && <button className="btn" disabled={pending}>{pending ? "Enregistrement…" : "Enregistrer"}</button>}
+    </form>
+  );
+}
+
+/** Mandater une agence prestataire référencée. */
+export function MandateForm({ orgId, agencies }: { orgId: string; agencies: { id: string; name: string; detail: string }[] }) {
+  const [state, action, pending] = useActionState(createMandate, undefined);
+  return (
+    <form action={action} className="card form">
+      <h2>Mandater une agence</h2>
+      <p className="muted">Une agence mandatée gère les événements que vous lui confiez : ses collaborateurs, invités avec le rôle « Prestataire mandaté », ne voient que ces événements.</p>
+      <Notice state={state} />
+      <input type="hidden" name="orgId" value={orgId} />
+      <label>Agence
+        <select name="agencyId" required defaultValue="">
+          <option value="" disabled>Choisir une agence référencée…</option>
+          {agencies.map((a) => <option key={a.id} value={a.id}>{a.name}{a.detail ? ` — ${a.detail}` : ""}</option>)}
+        </select>
+      </label>
+      <label>Périmètre (facultatif)<input name="scope" placeholder="Logistique des soirées scientifiques 2027…" /></label>
+      <button className="btn" disabled={pending || agencies.length === 0}>{pending ? "…" : "Mandater"}</button>
     </form>
   );
 }

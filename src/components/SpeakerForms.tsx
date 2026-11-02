@@ -80,7 +80,7 @@ export function RetainSpeakerForm({ orgId, applicationId, defaultFee }: { orgId:
       <input type="hidden" name="orgId" value={orgId} />
       <input type="hidden" name="applicationId" value={applicationId} />
       <input name="fee" defaultValue={defaultFee} placeholder="Honoraires € HT" aria-label="Honoraires" required />
-      <button className="btn" disabled={pending}>{pending ? "…" : "Retenir et ouvrir le dossier"}</button>
+      <button className="btn" disabled={pending}>{pending ? "…" : "Retenir et proposer ces honoraires"}</button>
     </form>
   );
 }

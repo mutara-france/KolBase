@@ -4,12 +4,13 @@ import { SiteHeader } from "@/components/SiteHeader";
 import { SectionNav } from "@/components/SectionNav";
 import { orgTabs } from "@/lib/org-overview";
 import { Avatar } from "@/components/Avatar";
-import { NewRfqForm, SupplierLine } from "@/components/RfqForms";
+import { MandateForm, NewRfqForm, SupplierLine } from "@/components/RfqForms";
 import { db } from "@/lib/db";
 import { requireMembership } from "@/lib/orgs";
-import { EVENT_MANAGER_ROLES, eventScope, formatDate, formatEUR } from "@/lib/events";
+import { EVENT_MANAGER_ROLES, EVENT_ORGANIZER_ROLES, eventScope, formatDate, formatEUR } from "@/lib/events";
 import { QUOTE_STATUS, RFQ_STATUS, rfqDisplayStatus, SUPPLIER_CATEGORIES, supplierCategoryLabel } from "@/lib/suppliers";
 import { awardQuote, cancelRfq, sendRfq } from "@/lib/rfq-actions";
+import { endMandate } from "@/lib/event-actions";
 
 export const metadata = { title: "Prestataires — KolBase" };
 
@@ -20,6 +21,7 @@ export default async function Page({ params, searchParams }: { params: Promise<{
   const { org, user, roles } = await requireMembership(id, EVENT_MANAGER_ROLES);
   const scope = eventScope(user, roles);
   const scoped = Object.keys(scope).length > 0;
+  const isOrganizer = roles.some((r) => EVENT_ORGANIZER_ROLES.includes(r));
 
   const [rfqs, suppliersRaw, events] = await Promise.all([
     db.rfq.findMany({
@@ -30,11 +32,21 @@ export default async function Page({ params, searchParams }: { params: Promise<{
     db.organization.findMany({ where: { kind: "PRESTATAIRE", listed: true, NOT: { supplierCategories: { isEmpty: true } } }, orderBy: { name: "asc" } }),
     db.event.findMany({ where: { organizationId: id, ...scope, startsAt: { gte: new Date() } }, orderBy: { startsAt: "asc" } }),
   ]);
+  const mandates = isOrganizer
+    ? await db.mandate.findMany({
+        where: { mandatorId: id, OR: [{ endsAt: null }, { endsAt: { gt: new Date() } }] },
+        include: { agency: { select: { id: true, name: true, _count: { select: { agencyEvents: { where: { organizationId: id } } } } } } },
+        orderBy: { startsAt: "desc" },
+      })
+    : [];
   const suppliers = suppliersRaw.map((s) => ({ id: s.id, name: s.name, categories: s.supplierCategories, city: s.headquarters, coverage: s.coverage, about: s.about, since: s.createdAt.getFullYear() }));
   const awarded = rfqs.filter((r) => r.status === "awarded");
   const engaged = awarded.reduce((s, r) => s + (r.quotes.find((q) => q.status === "retained")?.amountCents ?? 0), 0);
   const list = cat ? suppliers.filter((s) => s.categories.includes(cat)) : suppliers;
-  const tabs = [["demandes", `Demandes de devis (${rfqs.length})`], ["nouvelle", "Nouvelle demande"], ["annuaire", `Annuaire (${suppliers.length})`]] as const;
+  const tabs = [
+    ["demandes", `Demandes de devis (${rfqs.length})`], ["nouvelle", "Nouvelle demande"], ["annuaire", `Annuaire (${suppliers.length})`],
+    ...(isOrganizer ? [["agences", `Agences mandatées (${mandates.length})`] as const] : []),
+  ] as const;
 
   const sectionTabs = await orgTabs("evenements", id);
   return (
@@ -133,6 +145,38 @@ export default async function Page({ params, searchParams }: { params: Promise<{
             events={events.map((e) => ({ id: e.id, label: `${formatDate(e.startsAt)} — ${e.title}`, city: e.city, capacity: e.capacity }))}
             defaultEventId={evenement}
           />
+        )}
+
+        {onglet === "agences" && isOrganizer && (
+          <section className="stack">
+            {mandates.length === 0 && <p className="muted">Aucune agence mandatée pour l&apos;instant.</p>}
+            {mandates.map((m) => (
+              <section key={m.id} className="card actions spread">
+                <span>
+                  <strong>{m.agency.name}</strong>
+                  <br />
+                  <span className="muted">
+                    {m.scope ? `${m.scope} · ` : ""}depuis le {formatDate(m.startsAt)} · {m.agency._count.agencyEvents} événement{m.agency._count.agencyEvents > 1 ? "s" : ""} confié{m.agency._count.agencyEvents > 1 ? "s" : ""}
+                  </span>
+                </span>
+                <form action={endMandate}>
+                  <input type="hidden" name="orgId" value={id} />
+                  <input type="hidden" name="mandateId" value={m.id} />
+                  <button className="btn ghost small">Mettre fin au mandat</button>
+                </form>
+              </section>
+            ))}
+            <MandateForm
+              orgId={id}
+              agencies={suppliersRaw
+                .filter((s) => !mandates.some((m) => m.agency.id === s.id))
+                .map((s) => ({ id: s.id, name: s.name, detail: s.supplierCategories.map(supplierCategoryLabel).join(", ") }))}
+            />
+            <div className="info-note">
+              <Info size={15} />
+              <span>Mettre fin au mandat retire à l&apos;agence l&apos;accès aux événements qui lui étaient confiés. Pensez aussi à retirer ses collaborateurs dans « Membres et réglages ».</span>
+            </div>
+          </section>
         )}
 
         {onglet === "annuaire" && (
