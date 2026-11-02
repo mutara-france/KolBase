@@ -221,3 +221,13 @@ describe("e-mails", () => {
     else process.env.MAIL_DELIVER_RESERVED = saved;
   });
 });
+
+describe("textes légaux", () => {
+  it("champ manquant affiché « à compléter » et listé", async () => {
+    const { legal, missingLegal } = await import("@/lib/legal");
+    expect(legal("editor")).toBe("MUTARA");
+    expect(legal("capital")).toBe("100 €");
+    expect(legal("storageProvider")).toBe("[hébergeur des documents à compléter]");
+    expect(missingLegal()).toEqual(["hébergeur des documents"]);
+  });
+});

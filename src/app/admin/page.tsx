@@ -7,6 +7,10 @@ import { ORG_KIND_LABEL, VERIFICATION_LABEL } from "@/lib/org-roles";
 import { formatDate } from "@/lib/events";
 import { normalize } from "@/lib/search";
 import { recheckSiren, reviewOrganization, reviewRpps } from "@/lib/admin-actions";
+import { missingLegal } from "@/lib/legal";
+import { mailEnabled } from "@/lib/mail";
+import { storageEnabled } from "@/lib/storage";
+import { orcidOAuth } from "@/lib/orcid";
 
 export const metadata = { title: "Administration — KolBase" };
 export const dynamic = "force-dynamic";
@@ -16,7 +20,8 @@ const TONE = { PENDING: "wait", VERIFIED: "ok", REJECTED: "bad" } as const;
 /** Administration de la plateforme : validation des organisations (SIREN) et des praticiens (RPPS). */
 export default async function Page({ searchParams }: { searchParams: Promise<{ onglet?: string }> }) {
   await requirePlatformAdmin();
-  const onglet = (await searchParams).onglet === "praticiens" ? "praticiens" : "organisations";
+  const o = (await searchParams).onglet;
+  const onglet = o === "praticiens" || o === "lancement" ? o : "organisations";
 
   const [orgs, rppsQueue, rppsDone] = await Promise.all([
     db.organization.findMany({
@@ -50,6 +55,7 @@ export default async function Page({ searchParams }: { searchParams: Promise<{ o
         <nav className="tabs">
           <Link href="?onglet=organisations" className={onglet === "organisations" ? "active" : ""}>Organisations ({pending.length} à valider)</Link>
           <Link href="?onglet=praticiens" className={onglet === "praticiens" ? "active" : ""}>RPPS ({rppsQueue.length} à vérifier)</Link>
+          <Link href="?onglet=lancement" className={onglet === "lancement" ? "active" : ""}>Lancement</Link>
         </nav>
 
         {onglet === "organisations" &&
@@ -121,6 +127,8 @@ export default async function Page({ searchParams }: { searchParams: Promise<{ o
             </section>
           ))}
 
+        {onglet === "lancement" && <LaunchChecklist demoOrgs={orgs.filter((x) => x.id.startsWith("demo-")).length} />}
+
         {onglet === "praticiens" && (
           <>
             <p className="muted">
@@ -163,5 +171,34 @@ export default async function Page({ searchParams }: { searchParams: Promise<{ o
         )}
       </main>
     </>
+  );
+}
+
+/** État de la configuration en production (lecture seule) : ce qui reste à faire avant l'ouverture. */
+function LaunchChecklist({ demoOrgs }: { demoOrgs: number }) {
+  const legalGaps = missingLegal();
+  const items: { ok: boolean; optional?: boolean; label: string; detail: string }[] = [
+    { ok: !!process.env.APP_URL, label: "Adresse du site (APP_URL)", detail: process.env.APP_URL || "Non définie : les liens des e-mails et du plan du site sont incomplets." },
+    { ok: mailEnabled(), label: "Envoi d'e-mails (SMTP_URL, MAIL_FROM)", detail: mailEnabled() ? `Expéditeur : ${process.env.MAIL_FROM ?? "par défaut"}` : "Non configuré : aucun e-mail n'est envoyé (mot de passe oublié, notifications)." },
+    { ok: storageEnabled(), label: "Stockage des documents (S3_*)", detail: storageEnabled() ? `Compartiment : ${process.env.S3_BUCKET}` : "Non configuré : le dépôt de documents est désactivé." },
+    { ok: !!orcidOAuth(), optional: true, label: "Connexion ORCID (facultatif)", detail: orcidOAuth() ? "Active." : "Non configurée : l'iD ORCID se saisit à la main." },
+    { ok: legalGaps.length === 0, label: "Textes légaux (src/lib/legal.ts)", detail: legalGaps.length ? `À compléter : ${legalGaps.join(", ")}.` : "Complets." },
+    { ok: process.env.SEED_DEMO !== "1", label: "Rechargement de la démo (SEED_DEMO)", detail: process.env.SEED_DEMO === "1" ? "Actif : la démo est rechargée à chaque déploiement. Passer à 0 avant l'ouverture." : "Désactivé." },
+    { ok: demoOrgs === 0, label: "Données de démonstration", detail: demoOrgs ? `${demoOrgs} organisations fictives présentes : npm run db:purge-demo -- --confirmer (shell Render).` : "Aucune." },
+  ];
+  return (
+    <section className="card stack-sm">
+      <h2>Avant l&apos;ouverture au public</h2>
+      <ul className="pub-list">
+        {items.map((i) => (
+          <li key={i.label}>
+            <strong>
+              <span className={`pill ${i.ok ? "ok" : i.optional ? "done" : "wait"}`}>{i.ok ? "OK" : i.optional ? "Facultatif" : "À faire"}</span> {i.label}
+            </strong>
+            <span className="text-xs">{i.detail}</span>
+          </li>
+        ))}
+      </ul>
+    </section>
   );
 }

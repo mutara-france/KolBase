@@ -545,6 +545,18 @@ async function submitNewOrg(page, siren) {
   await ctx.close();
 }
 
+// ── Lancement : état de la configuration et textes légaux ──────────────────
+{
+  const { ctx, page } = await session();
+  await login(page, "anne.chevalier@demo.kolbase.local");
+  await page.goto(`${BASE}/admin?onglet=lancement`);
+  const t = await text(page);
+  check("Administration : état du lancement", t.includes("Avant l'ouverture au public") && t.includes("Envoi d'e-mails") && t.includes("À compléter : hébergeur des documents"));
+  await page.goto(`${BASE}/mentions-legales`);
+  check("Mentions légales : éditeur complet", (await page.locator("main").innerText()).includes("MUTARA, société par actions simplifiée (SAS) au capital de 100 €"));
+  await ctx.close();
+}
+
 // ── 4. Limitation des tentatives ───────────────────────────────────────────
 {
   const { ctx, page } = await session();
