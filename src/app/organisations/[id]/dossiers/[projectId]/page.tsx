@@ -157,9 +157,14 @@ export default async function Page({ params }: { params: Promise<{ id: string; p
               <FmvBadge typeId={project.typeId} feeCents={e.feeCents} units={e.days} />
             </p>
             {e.status !== "ATT_EXPERTS" && e.status !== "DECLINE" && (
-              <a className="btn ghost small" href={`/organisations/${id}/dossiers/${projectId}/convention/${e.id}`} target="_blank" rel="noreferrer">
-                Convention (PDF)
-              </a>
+              <span className="actions">
+                <a className="btn ghost small" href={`/organisations/${id}/dossiers/${projectId}/convention/${e.id}`} target="_blank" rel="noreferrer">
+                  Convention (PDF)
+                </a>
+                <a className="link" href={`/organisations/${id}/dossiers/${projectId}/convention/${e.id}?lang=en`} target="_blank" rel="noreferrer" title="Traduction de courtoisie : la version française fait foi">
+                  version anglaise
+                </a>
+              </span>
             )}
             <Thread messages={e.messages} meId={user.id} />
             {e.status !== "DECLINE" && <MessageForm linkId={e.id} />}

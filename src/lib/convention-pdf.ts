@@ -1,5 +1,6 @@
 import { drPrefix } from "@/lib/professions";
 import { conventionClause, country, licenseRule, practicesInFrance } from "@/lib/countries";
+import { fmtDate, intlLocale, makeT, type Locale, type T } from "@/lib/i18n";
 import "server-only";
 import { readFile } from "node:fs/promises";
 import path from "node:path";
@@ -93,13 +94,13 @@ class Writer {
       this.y -= Math.max(1, lines.length) * 14 + 4;
     }
   }
-  signatures(left: string, right: string) {
+  signatures(left: string, right: string, caption = "Date, nom, qualité et signature :") {
     this.ensure(120);
     this.y -= 10;
     const w = (A4[0] - 2 * M - 30) / 2;
     [[left, M], [right, M + w + 30]].forEach(([label, x]) => {
       this.page.drawText(this.clean(label as string), { x: x as number, y: this.y - 10, size: 10, font: this.bold, color: INK });
-      this.page.drawText("Date, nom, qualité et signature :", { x: x as number, y: this.y - 26, size: 9, font: this.font, color: MUTED });
+      this.page.drawText(this.clean(caption), { x: x as number, y: this.y - 26, size: 9, font: this.font, color: MUTED });
       this.page.drawRectangle({ x: x as number, y: this.y - 110, width: w, height: 76, borderColor: MUTED, borderWidth: 0.5 });
     });
     this.y -= 120;
@@ -107,11 +108,11 @@ class Writer {
 }
 
 /** « , n° RPPS … » en France, « , numéro INAMI … » (ou l'identifiant du pays) ailleurs. */
-const identifierText = (p: { rpps: string | null; country?: string; licenseNumber?: string | null }) =>
-  practicesInFrance(p.country) ? (p.rpps ? `, n° RPPS ${p.rpps}` : "") : p.licenseNumber ? `, ${licenseRule(p.country!).short} ${p.licenseNumber}` : "";
+const identifierText = (t: T, p: { rpps: string | null; country?: string; licenseNumber?: string | null }) =>
+  practicesInFrance(p.country) ? (p.rpps ? `, ${t("n° RPPS")} ${p.rpps}` : "") : p.licenseNumber ? `, ${t(licenseRule(p.country!).label)} ${p.licenseNumber}` : "";
 
-const eur = (cents: number) => (cents / 100).toLocaleString("fr-FR", { style: "currency", currency: "EUR" });
-const dateFr = (d: Date) => d.toLocaleDateString("fr-FR", { timeZone: "Europe/Paris", day: "numeric", month: "long", year: "numeric" });
+const eur = (locale: Locale, cents: number) => (cents / 100).toLocaleString(intlLocale(locale), { style: "currency", currency: "EUR" });
+const longDate = (locale: Locale, d: Date) => fmtDate(locale, d, { day: "numeric", month: "long", year: "numeric" });
 
 async function setup(title: string, footer: string) {
   const doc = await PDFDocument.create();
@@ -132,10 +133,12 @@ async function setup(title: string, footer: string) {
   return { doc, w: new Writer(doc, font, bold, footer, makeClean(covered)) };
 }
 
-function header(w: Writer, title: string, ref: string, status: string) {
+function header(w: Writer, t: T, locale: Locale, title: string, ref: string, status: string) {
   w.text("KOLBASE", { size: 9, bold: true, color: BRAND, gap: 0 });
   w.text(title, { size: 18, bold: true, gap: 2 });
-  w.text(`Réf. ${ref} - ${status} - éditée le ${dateFr(new Date())}`, { size: 9, color: MUTED, gap: 8 });
+  w.text(t("Réf. {ref} - {statut} - éditée le {date}", { ref, statut: status, date: longDate(locale, new Date()) }), { size: 9, color: MUTED, gap: 8 });
+  // Version anglaise : traduction de courtoisie, la version française fait foi.
+  if (locale !== "fr") w.text(t("Traduction fournie à titre d'information : en cas de divergence, la version française fait foi."), { size: 9, color: MUTED, gap: 8 });
   w.rule();
 }
 
@@ -149,54 +152,74 @@ export type CollabConventionInput = {
   fmv: { min: number; max: number; perUnit: number; verdict: "ok" | "above" | "below" } | null;
 };
 
-export async function buildCollaborationConvention(i: CollabConventionInput) {
-  const { doc, w } = await setup(`Convention - ${i.project.title}`, `KolBase - Convention ${i.ref} - document généré, à faire valider par le service juridique avant signature.`);
-  header(w, "Convention de collaboration", i.ref, i.statusLabel);
+/** Titre « Dr » selon la langue. */
+const dr = (t: T, profession: string) => (drPrefix(profession) ? `${t("Dr")} ` : "");
 
-  w.heading("Entre les soussignés");
-  w.text(`${i.org.name}${i.org.headquarters ? `, ${i.org.headquarters}` : ""}${i.org.contactEmail ? ` (${i.org.contactEmail})` : ""}, ci-après « l'Organisation »,`);
-  w.text("et", { color: MUTED });
+export async function buildCollaborationConvention(i: CollabConventionInput, locale: Locale = "fr") {
+  const t = makeT(locale);
+  const { doc, w } = await setup(`${t("Convention")} - ${i.project.title}`, t("KolBase - Convention {ref} - document généré, à faire valider par le service juridique avant signature.", { ref: i.ref }));
+  header(w, t, locale, t("Convention de collaboration"), i.ref, t(i.statusLabel));
+
+  w.heading(t("Entre les soussignés"));
+  w.text(`${i.org.name}${i.org.headquarters ? `, ${i.org.headquarters}` : ""}${i.org.contactEmail ? ` (${i.org.contactEmail})` : ""}, ${t("ci-après « l'Organisation »,")}`);
+  w.text(t("et"), { color: MUTED });
   const e = i.expert;
   w.text(
-    `${drPrefix(e.profession)}${e.firstName} ${e.lastName}, ${e.profession}${e.city ? ` exerçant à ${e.city}` : ""}${practicesInFrance(e.country) ? "" : ` (${country(e.country).name})`}${identifierText(e)}, ${e.email}` +
-      (e.structure ? `, agissant pour le compte de ${e.structure.name} (${e.structure.legalForm}${e.structure.siren ? `, SIREN ${e.structure.siren}` : ""})` : "") +
-      ", ci-après « l'Expert ».",
+    `${dr(t, e.profession)}${e.firstName} ${e.lastName}, ${t(e.profession)}${e.city ? ` ${t("exerçant à {ville}", { ville: e.city })}` : ""}${practicesInFrance(e.country) ? "" : ` (${t(country(e.country).name)})`}${identifierText(t, e)}, ${e.email}` +
+      (e.structure ? `, ${t("agissant pour le compte de {structure}", { structure: `${e.structure.name} (${e.structure.legalForm}${e.structure.siren ? `, SIREN ${e.structure.siren}` : ""})` })}` : "") +
+      `, ${t("ci-après « l'Expert ».")}`,
   );
 
-  w.heading("Article 1 - Objet");
-  w.text(`L'Organisation confie à l'Expert, qui l'accepte, la prestation suivante : ${i.project.typeLabel} - « ${i.project.title} »${i.project.therapeuticArea ? ` (domaine : ${i.project.therapeuticArea})` : ""}.`);
+  w.heading(t("Article 1 - Objet"));
+  w.text(
+    t("L'Organisation confie à l'Expert, qui l'accepte, la prestation suivante : {nature} - « {titre} »{domaine}.", {
+      nature: t(i.project.typeLabel),
+      titre: i.project.title,
+      domaine: i.project.therapeuticArea ? ` (${t("domaine : {domaine}", { domaine: t(i.project.therapeuticArea) })})` : "",
+    }),
+  );
   if (i.project.description) w.text(i.project.description, { color: MUTED });
 
-  w.heading("Article 2 - Prestations et rémunération");
+  w.heading(t("Article 2 - Prestations et rémunération"));
   const units = i.link.units ?? 1;
+  const unit = t(i.project.unit);
   w.rows([
-    ["Nature", i.project.typeLabel],
-    ["Volume", `${units} ${i.project.unit}${units > 1 ? "s" : ""}`],
-    ["Honoraires", i.link.feeCents != null ? `${eur(i.link.feeCents)} HT, forfaitaires et définitifs` : "À définir"],
+    [t("Nature"), t(i.project.typeLabel)],
+    [t("Volume"), `${units} ${unit}${units > 1 ? "s" : ""}`],
+    [t("Honoraires"), i.link.feeCents != null ? t("{montant} HT, forfaitaires et définitifs", { montant: eur(locale, i.link.feeCents) }) : t("À définir")],
     ...(i.fmv
-      ? ([["Juste contrepartie", `${Math.round(i.fmv.perUnit).toLocaleString("fr-FR")} € HT par ${i.project.unit} - référence ${i.fmv.min.toLocaleString("fr-FR")} à ${i.fmv.max.toLocaleString("fr-FR")} € (${i.fmv.verdict === "ok" ? "conforme" : i.fmv.verdict === "above" ? "au-dessus, justification requise" : "en dessous"})`]] as [string, string][])
+      ? ([[
+          t("Juste contrepartie"),
+          t("{prix} € HT par {unite} - référence {min} à {max} € ({verdict})", {
+            prix: Math.round(i.fmv.perUnit).toLocaleString(intlLocale(locale)),
+            unite: unit,
+            min: i.fmv.min.toLocaleString(intlLocale(locale)),
+            max: i.fmv.max.toLocaleString(intlLocale(locale)),
+            verdict: t(i.fmv.verdict === "ok" ? "conforme" : i.fmv.verdict === "above" ? "au-dessus, justification requise" : "en dessous"),
+          }),
+        ]] as [string, string][])
       : []),
-    ["Paiement", "Par virement, à 30 jours après réalisation de la prestation et réception de la facture."],
+    [t("Paiement"), t("Par virement, à 30 jours après réalisation de la prestation et réception de la facture.")],
   ]);
-  w.text("Les frais de déplacement et d'hébergement éventuellement pris en charge par l'Organisation sont limités au strict nécessaire à la prestation et font l'objet d'une déclaration distincte.", { color: MUTED });
+  w.text(t("Les frais de déplacement et d'hébergement éventuellement pris en charge par l'Organisation sont limités au strict nécessaire à la prestation et font l'objet d'une déclaration distincte."), { color: MUTED });
 
-  w.heading("Article 3 - Encadrement réglementaire");
-  for (const line of conventionClause(e.country ?? "FR")) w.text(line);
+  w.heading(t("Article 3 - Encadrement réglementaire"));
+  for (const line of conventionClause(e.country ?? "FR", t)) w.text(line);
   if (practicesInFrance(e.country)) {
-    w.text(i.project.ordreRef ? `Elle a été soumise à l'instance ordinale compétente : ${i.project.ordreRef}.` : "Elle est soumise, selon le montant en jeu, à déclaration ou à autorisation préalable auprès de l'instance ordinale compétente, avant son exécution.");
-    w.text("Son existence, son objet et les rémunérations versées sont rendus publics sur la base Transparence Santé, conformément à la réglementation.");
+    w.text(i.project.ordreRef ? t("Elle a été soumise à l'instance ordinale compétente : {ref}.", { ref: i.project.ordreRef }) : t("Elle est soumise, selon le montant en jeu, à déclaration ou à autorisation préalable auprès de l'instance ordinale compétente, avant son exécution."));
+    w.text(t("Son existence, son objet et les rémunérations versées sont rendus publics sur la base Transparence Santé, conformément à la réglementation."));
   }
 
-  w.heading("Article 4 - Indépendance et confidentialité");
-  w.text("L'Expert conserve une totale indépendance scientifique. Il s'engage à déclarer ses liens d'intérêts lors de toute intervention publique en lien avec l'Organisation, et à garder confidentielles les informations non publiques portées à sa connaissance.");
+  w.heading(t("Article 4 - Indépendance et confidentialité"));
+  w.text(t("L'Expert conserve une totale indépendance scientifique. Il s'engage à déclarer ses liens d'intérêts lors de toute intervention publique en lien avec l'Organisation, et à garder confidentielles les informations non publiques portées à sa connaissance."));
 
-  w.heading("Article 5 - Durée");
-  w.text("La convention prend effet à sa signature par les deux parties et, le cas échéant, après obtention de l'autorisation ordinale. Elle prend fin à l'achèvement de la prestation.");
+  w.heading(t("Article 5 - Durée"));
+  w.text(t("La convention prend effet à sa signature par les deux parties et, le cas échéant, après obtention de l'autorisation ordinale. Elle prend fin à l'achèvement de la prestation."));
 
-  if (i.org.policy) { w.heading("Politique de collaboration de l'Organisation"); w.text(i.org.policy, { color: MUTED }); }
+  if (i.org.policy) { w.heading(t("Politique de collaboration de l'Organisation")); w.text(i.org.policy, { color: MUTED }); }
 
-  w.heading("Signatures");
-  w.signatures(`Pour ${i.org.name}`, `${drPrefix(e.profession)}${e.firstName} ${e.lastName}`);
+  w.heading(t("Signatures"));
+  w.signatures(t("Pour {org}", { org: i.org.name }), `${dr(t, e.profession)}${e.firstName} ${e.lastName}`, t("Date, nom, qualité et signature :"));
   return doc.save();
 }
 
@@ -210,35 +233,36 @@ export type HospitalityConventionInput = {
   declarationRef: string | null;
 };
 
-export async function buildHospitalityConvention(i: HospitalityConventionInput) {
-  const { doc, w } = await setup(`Convention d'hospitalité - ${i.event.title}`, `KolBase - Convention d'hospitalité ${i.ref}`);
-  header(w, "Convention d'hospitalité", i.ref, i.declared ? `Déclarée${i.declarationRef ? ` (${i.declarationRef})` : ""}` : "À déclarer");
+export async function buildHospitalityConvention(i: HospitalityConventionInput, locale: Locale = "fr") {
+  const t = makeT(locale);
+  const { doc, w } = await setup(`${t("Convention d'hospitalité")} - ${i.event.title}`, t("KolBase - Convention d'hospitalité {ref}", { ref: i.ref }));
+  header(w, t, locale, t("Convention d'hospitalité"), i.ref, i.declared ? `${t("Déclarée")}${i.declarationRef ? ` (${i.declarationRef})` : ""}` : t("À déclarer"));
 
-  w.heading("Parties");
-  w.text(`${i.org.name}${i.org.headquarters ? `, ${i.org.headquarters}` : ""}, organisateur, et`);
+  w.heading(t("Parties"));
+  w.text(`${i.org.name}${i.org.headquarters ? `, ${i.org.headquarters}` : ""}, ${t("organisateur, et")}`);
   const b = i.beneficiary;
-  w.text(`${b.firstName} ${b.lastName}${b.profession ? `, ${b.profession}` : ""}${practicesInFrance(b.country) ? "" : ` (${country(b.country).name})`}${identifierText(b)}${b.structure ? `, ${b.structure}` : ""} (${b.email}), bénéficiaire.`);
+  w.text(`${b.firstName} ${b.lastName}${b.profession ? `, ${t(b.profession)}` : ""}${practicesInFrance(b.country) ? "" : ` (${t(country(b.country).name)})`}${identifierText(t, b)}${b.structure ? `, ${b.structure}` : ""} (${b.email}), ${t("bénéficiaire.")}`);
 
-  w.heading("Manifestation");
+  w.heading(t("Manifestation"));
   w.rows([
-    ["Événement", `${i.event.title} (${i.event.typeLabel})`],
-    ["Date", dateFr(i.event.startsAt)],
-    ["Lieu", [i.event.venue, i.event.city].filter(Boolean).join(", ") || "-"],
+    [t("Événement"), `${i.event.title} (${t(i.event.typeLabel)})`],
+    [t("Date"), longDate(locale, i.event.startsAt)],
+    [t("Lieu"), [i.event.venue, i.event.city].filter(Boolean).join(", ") || "-"],
   ]);
 
-  w.heading("Avantages acceptés par le bénéficiaire");
-  w.rows(i.benefits.map((x) => [x.label, `${eur(x.valueCents)} TTC`] as [string, string]));
+  w.heading(t("Avantages acceptés par le bénéficiaire"));
+  w.rows(i.benefits.map((x) => [t(x.label), t("{montant} TTC", { montant: eur(locale, x.valueCents) })] as [string, string]));
   const total = i.benefits.reduce((s, x) => s + x.valueCents, 0);
-  w.rows([["Total", `${eur(total)} TTC`]]);
+  w.rows([[t("Total"), t("{montant} TTC", { montant: eur(locale, total) })]]);
 
-  w.heading("Engagements");
-  w.text("L'hospitalité offerte est d'un niveau raisonnable, strictement limitée à l'objet scientifique ou professionnel de la manifestation, et ne s'étend pas aux personnes accompagnant le bénéficiaire.");
-  if (practicesInFrance(b.country)) w.text("Conformément aux articles L.1453-1 et suivants du Code de la santé publique, la présente convention est déclarée à l'instance ordinale compétente et rendue publique sur la base Transparence Santé.");
-  else for (const line of conventionClause(b.country ?? "XX")) w.text(line.replace("L'Expert exerce", "Le bénéficiaire exerce"));
-  w.text("Le bénéficiaire a accepté chacun de ces avantages individuellement lors de son inscription sur KolBase.", { color: MUTED });
+  w.heading(t("Engagements"));
+  w.text(t("L'hospitalité offerte est d'un niveau raisonnable, strictement limitée à l'objet scientifique ou professionnel de la manifestation, et ne s'étend pas aux personnes accompagnant le bénéficiaire."));
+  if (practicesInFrance(b.country)) w.text(t("Conformément aux articles L.1453-1 et suivants du Code de la santé publique, la présente convention est déclarée à l'instance ordinale compétente et rendue publique sur la base Transparence Santé."));
+  else for (const line of conventionClause(b.country ?? "XX", t)) w.text(line.replace(t("L'Expert exerce"), t("Le bénéficiaire exerce")));
+  w.text(t("Le bénéficiaire a accepté chacun de ces avantages individuellement lors de son inscription sur KolBase."), { color: MUTED });
 
-  w.heading("Signatures");
-  w.signatures(`Pour ${i.org.name}`, `${b.firstName} ${b.lastName}`);
+  w.heading(t("Signatures"));
+  w.signatures(t("Pour {org}", { org: i.org.name }), `${b.firstName} ${b.lastName}`, t("Date, nom, qualité et signature :"));
   return doc.save();
 }
 

@@ -112,17 +112,17 @@ export function foreignObligations(code: string): string[] {
 }
 
 /** Clause « encadrement réglementaire » de la convention, selon le pays d'exercice de l'expert. */
-export function conventionClause(code: string): string[] {
+export function conventionClause(code: string, t: (fr: string, vars?: Record<string, string>) => string = (fr, v) => (v ? fr.replace(/\{(\w+)\}/g, (m, k: string) => v[k] ?? m) : fr)): string[] {
   if (practicesInFrance(code))
     return [
-      "La présente convention est conclue dans le respect des articles L.1453-1 et suivants du Code de la santé publique (dispositif dit « anti-cadeaux » et transparence des liens d'intérêts).",
+      t("La présente convention est conclue dans le respect des articles L.1453-1 et suivants du Code de la santé publique (dispositif dit « anti-cadeaux » et transparence des liens d'intérêts)."),
     ];
   const c = country(code);
   const extra =
     c.regulation === "BE"
-      ? " L'Organisation déclare les avantages accordés sur la plateforme betransparent.be conformément à la loi belge dite « Sunshine Act »."
+      ? ` ${t("L'Organisation déclare les avantages accordés sur la plateforme betransparent.be conformément à la loi belge dite « Sunshine Act ».")}`
       : c.regulation === "US"
-        ? " Le cas échéant, l'Organisation déclare la rémunération au programme américain Open Payments."
+        ? ` ${t("Le cas échéant, l'Organisation déclare la rémunération au programme américain Open Payments.")}`
         : "";
-  return [`L'Expert exerce ${c.in}. La présente convention est conclue dans le respect des règles applicables dans son pays d'exercice, notamment en matière de transparence des liens d'intérêts.${extra}`];
+  return [`${t("L'Expert exerce {pays}. La présente convention est conclue dans le respect des règles applicables dans son pays d'exercice, notamment en matière de transparence des liens d'intérêts.", { pays: t(c.in) })}${extra}`];
 }
