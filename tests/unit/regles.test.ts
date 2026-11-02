@@ -135,8 +135,14 @@ describe("navigation et rôles", () => {
     expect(orgSectionTabs("dossiers", "o", ["ADMIN"], "PRESTATAIRE")).toEqual([]);
   });
   it("la conformité voit les dossiers et la conformité, pas les praticiens ni les événements", () => {
-    expect(orgNavItems("o", ["CONFORMITE"], "INDUSTRIEL").map((i) => i.key)).toEqual(["accueil", "dossiers", "conformite"]);
-    expect(orgNavItems("o", ["PROJETS"], "INDUSTRIEL").map((i) => i.key)).toEqual(["accueil", "praticiens", "dossiers", "evenements"]);
+    expect(orgNavItems("o", ["CONFORMITE"], "INDUSTRIEL").map((i) => i.key)).toEqual(["accueil", "dossiers", "conformite", "statistiques"]);
+    expect(orgNavItems("o", ["PROJETS"], "INDUSTRIEL").map((i) => i.key)).toEqual(["accueil", "praticiens", "dossiers", "evenements", "statistiques"]);
+  });
+  it("les statistiques sont réservées au pilotage et absentes de la barre mobile au-delà de cinq entrées", () => {
+    expect(orgNavItems("o", ["PRESTATAIRE"], "INDUSTRIEL").map((i) => i.key)).not.toContain("statistiques");
+    const admin = orgNavItems("o", ["ADMIN"], "INDUSTRIEL");
+    expect(admin.length).toBe(6);
+    expect(admin.filter((i) => !i.secondary).length).toBe(5);
   });
   it("la relecture des supports est rangée dans la conformité, sur un seul niveau d'onglets", () => {
     expect(orgSectionTabs("dossiers", "o", ["ADMIN"], "INDUSTRIEL").map((t) => t.key)).toEqual(["dossiers"]);

@@ -1,6 +1,7 @@
 import type { OrgRole } from "@/generated/prisma/client";
 import { COMPLIANCE_ROLES, EVENT_MANAGER_ROLES, EVENT_ORGANIZER_ROLES } from "@/lib/events";
 import { PROJECT_VIEW_ROLES, REVIEW_ROLES, SOURCING_ROLES } from "@/lib/projects";
+import { STATS_ROLES } from "@/lib/org-roles";
 
 /**
  * Navigation de l'espace connecté : cinq rubriques au plus par espace (praticien ou organisation),
@@ -8,7 +9,7 @@ import { PROJECT_VIEW_ROLES, REVIEW_ROLES, SOURCING_ROLES } from "@/lib/projects
  */
 
 export type ShellIcon = "House" | "Users" | "Folder" | "FileText" | "CalendarDays" | "ShieldCheck" | "Send" | "Megaphone" | "UserRound" | "Receipt" | "Plug" | "ExternalLink" | "Wallet" | "BarChart3";
-export type ShellItem = { key: string; href: string; label: string; short?: string; icon: ShellIcon; badge?: number; match?: string[]; exact?: boolean };
+export type ShellItem = { key: string; href: string; label: string; short?: string; icon: ShellIcon; badge?: number; match?: string[]; exact?: boolean; /** Absente de la barre du bas (mobile) quand elle compterait plus de cinq entrées. */ secondary?: boolean };
 export type ShellLink = { href: string; label: string; icon: ShellIcon };
 export type ShellSpace = {
   key: string;
@@ -57,6 +58,7 @@ export function orgNavItems(orgId: string, roles: OrgRole[], kind: string): Shel
       match: [`${base}/prestataires`],
     });
   if (has(roles, COMPLIANCE_ROLES)) items.push({ key: "conformite", href: `${base}/conformite`, label: "Conformité", icon: "ShieldCheck", match: [`${base}/hospitalites`, `${base}/relecture`] });
+  if (has(roles, STATS_ROLES)) items.push({ key: "statistiques", href: `${base}/statistiques`, label: "Statistiques", short: "Stats", icon: "BarChart3", secondary: true });
   return items;
 }
 

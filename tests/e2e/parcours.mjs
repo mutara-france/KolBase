@@ -1271,6 +1271,44 @@ async function submitNewOrg(page, siren) {
   await ctx.close();
 }
 
+// ── Statistiques de l'organisation ─────────────────────────────────────────
+{
+  const { ctx, page } = await session();
+  await login(page, "claire.morel@demo.kolbase.local");
+  check("Statistiques : entrée dans la navigation", (await page.locator('aside a[href="/organisations/demo-org-dentalys/statistiques"]').count()) === 1);
+  // Les dossiers clos de la démo sont validés il y a 281 jours (comité consultatif) : on lit cette année-là.
+  const y = new Date(Date.now() - 281 * 86400e3).getUTCFullYear();
+  await page.goto(`${BASE}/organisations/demo-org-dentalys/statistiques?annee=${y}`);
+  let t = await text(page);
+  check("Statistiques : budget, types et concentration", t.includes("Budget engagé par trimestre") && t.includes("Comité consultatif") && t.includes("Antoine Martin") && t.includes("Concentration des honoraires"));
+  check("Statistiques : délais et conformité", t.includes("Validation par la conformité") && t.includes("Transparence Santé"));
+  const band = page.locator(".viz-band").first();
+  await band.hover();
+  const tip = await page.locator(".viz-tip").innerText().catch(() => "");
+  check("Graphique : info-bulle au survol", tip.includes("T1") && tip.includes("Honoraires des experts"), tip.replace(/\s+/g, " "));
+  await page.locator(".viz-table summary").first().click();
+  check("Graphique : vue tableau", (await page.locator(".viz-table table").first().innerText()).includes("T4"));
+  const csv = await (await ctx.request.get(`${BASE}/organisations/demo-org-dentalys/statistiques/export?annee=${y}`)).text();
+  check("Statistiques : export CSV", csv.includes("Budget par trimestre") && csv.includes("Honoraires par type") && csv.includes("Comité consultatif"));
+  await page.goto(`${BASE}/organisations/demo-org-dentalys/statistiques?annee=${y - 1}`);
+  t = await text(page);
+  check("Statistiques : année précédente", t.includes("Vincent Moreau") && !t.includes("Formation DPC"));
+  await ctx.close();
+  // Ni un praticien extérieur, ni un prestataire, ni un visiteur anonyme.
+  const ext = await session();
+  await login(ext.page, "camille.petit@demo.kolbase.local");
+  const r1 = await ext.page.goto(`${BASE}/organisations/demo-org-dentalys/statistiques`);
+  check("Statistiques : refusées hors de l'organisation", r1?.status() === 404);
+  const r2 = await ext.ctx.request.get(`${BASE}/organisations/demo-org-dentalys/statistiques/export`);
+  check("Export des statistiques : refusé hors de l'organisation", r2.status() === 404);
+  await ext.ctx.close();
+  const sup = await session();
+  await login(sup.page, "ludovic.perrin@demo.kolbase.local");
+  await sup.page.goto(`${BASE}/organisations/demo-sup-belleville/statistiques`);
+  check("Statistiques : sans objet pour un prestataire", !sup.page.url().includes("/statistiques"), sup.page.url());
+  await sup.ctx.close();
+}
+
 // ── 4. Limitation des tentatives ───────────────────────────────────────────
 {
   const { ctx, page } = await session();

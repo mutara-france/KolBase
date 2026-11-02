@@ -43,6 +43,8 @@ export const INTERVENTION_TYPES = [
 
 /** Rôles proposés à l'invitation : une organisation prestataire n'a que des administrateurs et des membres d'équipe. */
 export const SUPPLIER_ROLES: OrgRole[] = ["ADMIN", "PRESTATAIRE"];
+/** Rôles qui voient les statistiques de l'organisation (pilotage, budget, conformité). */
+export const STATS_ROLES: OrgRole[] = ["ADMIN", "PROJETS", "CONFORMITE"];
 /** Organisation cliente : trois rôles internes. Une agence n'est pas invitée : son mandat donne accès à ses membres. */
 export const invitableRoles = (kind: OrgKind): OrgRole[] => (kind === "PRESTATAIRE" ? SUPPLIER_ROLES : ["ADMIN", "PROJETS", "CONFORMITE"]);
 

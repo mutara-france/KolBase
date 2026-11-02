@@ -6,6 +6,7 @@ import { requireMembership } from "@/lib/orgs";
 import { orgOverview } from "@/lib/org-overview";
 import { formatEUR } from "@/lib/events";
 import { supplierCategoryLabel } from "@/lib/suppliers";
+import { STATS_ROLES } from "@/lib/org-roles";
 
 export const metadata = { title: "Accueil — KolBase" };
 
@@ -14,7 +15,7 @@ const plural = (n: number, one: string, many: string) => `${n} ${n > 1 ? many : 
 /** Accueil d'une organisation : ce qui attend une action, puis ce qui arrive. Le reste est dans les rubriques. */
 export default async function Page({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
-  const { user, isAdmin } = await requireMembership(id);
+  const { user, isAdmin, roles } = await requireMembership(id);
   const o = await orgOverview(id);
   if (!o) notFound();
   const { org, can, todos, projects, events, calls, hosp, rfqs } = o;
@@ -92,6 +93,9 @@ export default async function Page({ params }: { params: Promise<{ id: string }>
           </p>
         )}
         <DashStats stats={stats} />
+        {org.kind !== "PRESTATAIRE" && roles.some((r) => STATS_ROLES.includes(r)) && (
+          <p className="text-sm"><Link href={`${base}/statistiques`}>Voir les statistiques de l&apos;organisation</Link> : budget engagé, experts, événements, délais.</p>
+        )}
         <div className={`dash-layout${timeline.length ? "" : " single"}`}>
           <section className="card dash-card" aria-labelledby="a-faire">
             <h2 id="a-faire" className="dash-title">
