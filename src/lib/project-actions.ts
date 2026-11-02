@@ -12,6 +12,7 @@ import { complianceSettings, projectRegime } from "@/lib/compliance";
 import { missingSignedConventions } from "@/lib/project-documents";
 import { eurToCents, str, unitsOrNull, UNITS_INVALID } from "@/lib/form";
 import { notifyCompliance, notifyExpertAnswer, notifyMessage, notifySolicitations } from "@/lib/notifications";
+import { getT } from "@/lib/i18n/server";
 
 export type ActionState = { error?: string; ok?: string } | undefined;
 
@@ -79,11 +80,12 @@ export async function respondToSolicitation(_: ActionState, form: FormData): Pro
   const user = await requireUser();
   const linkId = str(form, "linkId");
   const answer = str(form, "answer");
+  const { t } = await getT();
   const link = await db.projectExpert.findFirst({ where: { id: linkId, practitioner: { userId: user.id } }, include: { project: true } });
-  if (!link) return { error: "Sollicitation introuvable." };
-  if (link.status !== "ATT_EXPERTS") return { error: "Vous avez déjà répondu." };
-  if (link.project.status === "DECLINE") return { error: "Ce dossier a été abandonné par l'organisation." };
-  if (!["accept", "decline"].includes(answer)) return { error: "Réponse invalide." };
+  if (!link) return { error: t("Sollicitation introuvable.") };
+  if (link.status !== "ATT_EXPERTS") return { error: t("Vous avez déjà répondu.") };
+  if (link.project.status === "DECLINE") return { error: t("Ce dossier a été abandonné par l'organisation.") };
+  if (!["accept", "decline"].includes(answer)) return { error: t("Réponse invalide.") };
   const status: ProjectStatus = answer === "accept" ? "ACCORD" : "DECLINE";
   await db.projectExpert.update({ where: { id: link.id }, data: { status, responseNote: str(form, "note") || null, respondedAt: new Date() } });
   if (str(form, "note")) {
@@ -98,7 +100,7 @@ export async function respondToSolicitation(_: ActionState, form: FormData): Pro
   await audit(user.id, answer === "accept" ? "solicitation.accept" : "solicitation.decline", "ProjectExpert", link.id, { projectId: link.projectId });
   notifyExpertAnswer(link.id, answer === "accept");
   revalidatePath(`/sollicitations/${link.id}`);
-  return { ok: answer === "accept" ? "Accord de principe envoyé. L'organisation va préparer la convention." : "Sollicitation déclinée." };
+  return { ok: answer === "accept" ? t("Accord de principe envoyé. L'organisation va préparer la convention.") : t("Sollicitation déclinée.") };
 }
 
 /** Message dans le fil organisation ↔ expert. Accessible aux deux parties. */
@@ -106,18 +108,19 @@ export async function postMessage(_: ActionState, form: FormData): Promise<Actio
   const user = await requireUser();
   const linkId = str(form, "linkId");
   const body = str(form, "body");
-  if (!body) return { error: "Message vide." };
-  if (body.length > 5000) return { error: "Message trop long." };
+  const { t } = await getT();
+  if (!body) return { error: t("Message vide.") };
+  if (body.length > 5000) return { error: t("Message trop long.") };
   const link = await db.projectExpert.findUnique({ where: { id: linkId }, include: { project: true, practitioner: true } });
-  if (!link) return { error: "Fil introuvable." };
+  if (!link) return { error: t("Fil introuvable.") };
   const isExpert = link.practitioner.userId === user.id;
   const isOrg = user.memberships.some((m) => m.organizationId === link.project.organizationId && PROJECT_VIEW_ROLES.includes(m.role));
-  if (!isExpert && !isOrg) return { error: "Accès refusé." };
+  if (!isExpert && !isOrg) return { error: t("Accès refusé.") };
   await db.message.create({ data: { projectId: link.projectId, projectExpertId: link.id, authorId: user.id, body } });
   notifyMessage(link.id, user.id);
   revalidatePath(`/sollicitations/${link.id}`);
   revalidatePath(`/organisations/${link.project.organizationId}/dossiers/${link.projectId}`);
-  return { ok: "Message envoyé." };
+  return { ok: t("Message envoyé.") };
 }
 
 /** Fait avancer le dossier dans le circuit réglementaire. */

@@ -3,6 +3,7 @@
 import { useActionState, useMemo, useState } from "react";
 import { createProject, postMessage, respondToSolicitation } from "@/lib/project-actions";
 import { Notice } from "@/components/AuthForms";
+import { useT } from "@/components/I18nProvider";
 
 type CType = { id: string; label: string; category: string; unit: string; fmv: readonly number[] };
 type Expert = { id: string; name: string; detail: string; dayRateCents: number | null };
@@ -82,29 +83,31 @@ export function NewProjectForm({ orgId, types, experts, preselected }: { orgId: 
 
 export function MessageForm({ linkId }: { linkId: string }) {
   const [state, action, pending] = useActionState(postMessage, undefined);
+  const t = useT();
   return (
     <form action={action} className="form" key={state?.ok ? Date.now() : "msg"}>
       {state?.error && <Notice state={state} />}
-      <textarea name="body" rows={3} placeholder="Votre message…" required />
+      <textarea name="body" rows={3} placeholder={t("Votre message…")} required />
       <input type="hidden" name="linkId" value={linkId} />
-      <button className="btn ghost" disabled={pending}>{pending ? "Envoi…" : "Envoyer"}</button>
+      <button className="btn ghost" disabled={pending}>{pending ? t("Envoi…") : t("Envoyer")}</button>
     </form>
   );
 }
 
 export function RespondForm({ linkId }: { linkId: string }) {
   const [state, action, pending] = useActionState(respondToSolicitation, undefined);
+  const t = useT();
   if (state?.ok) return <p className="notice ok">{state.ok}</p>;
   return (
     <form action={action} className="form">
       <Notice state={state} />
       <input type="hidden" name="linkId" value={linkId} />
-      <label>Commentaire (facultatif)<textarea name="note" rows={2} placeholder="Disponibilités, conditions, questions…" /></label>
+      <label>{t("Commentaire (facultatif)")}<textarea name="note" rows={2} placeholder={t("Disponibilités, conditions, questions…")} /></label>
       <div className="actions">
-        <button className="btn" name="answer" value="accept" disabled={pending}>Donner mon accord de principe</button>
-        <button className="btn ghost" name="answer" value="decline" disabled={pending}>Décliner</button>
+        <button className="btn" name="answer" value="accept" disabled={pending}>{t("Donner mon accord de principe")}</button>
+        <button className="btn ghost" name="answer" value="decline" disabled={pending}>{t("Décliner")}</button>
       </div>
-      <p className="hint">L&apos;accord de principe n&apos;engage pas encore : la convention vous sera soumise après validation par la conformité.</p>
+      <p className="hint">{t("L'accord de principe n'engage pas encore : la convention vous sera soumise après validation par la conformité.")}</p>
     </form>
   );
 }

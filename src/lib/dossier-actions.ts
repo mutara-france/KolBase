@@ -82,39 +82,41 @@ async function canSubmit(userId: string, projectId: string) {
 
 export async function addMaterial(_: ActionState, form: FormData): Promise<ActionState> {
   const user = await requireUser();
+  const { t } = await getT();
   const projectId = str(form, "projectId");
   const project = await canSubmit(user.id, projectId);
-  if (!project) return { error: "Accès refusé." };
+  if (!project) return { error: t("Accès refusé.") };
   const title = str(form, "title"); const kind = str(form, "kind"); const url = str(form, "url");
-  if (!title) return { error: "Donnez un titre au support." };
-  if (!(kind in MATERIAL_KINDS)) return { error: "Type de support invalide." };
-  if (!okUrl(url)) return { error: "Le lien doit commencer par http:// ou https://." };
-  if (!url && !str(form, "notes")) return { error: "Indiquez un lien vers le document ou son contenu." };
+  if (!title) return { error: t("Donnez un titre au support.") };
+  if (!(kind in MATERIAL_KINDS)) return { error: t("Type de support invalide.") };
+  if (!okUrl(url)) return { error: t("Le lien doit commencer par http:// ou https://.") };
+  if (!url && !str(form, "notes")) return { error: t("Indiquez un lien vers le document ou son contenu.") };
   const m = await db.material.create({
     data: { projectId, title, kind, versions: { create: { version: 1, url: url || null, notes: str(form, "notes") || null, submittedById: user.id } } },
   });
   await audit(user.id, "material.submit", "Project", projectId, { materialId: m.id, version: 1, title });
   revalidatePath(`/organisations/${project.organizationId}/dossiers/${projectId}`);
   revalidatePath("/sollicitations", "layout");
-  return { ok: "Support soumis à la relecture." };
+  return { ok: t("Support soumis à la relecture.") };
 }
 
 export async function addMaterialVersion(_: ActionState, form: FormData): Promise<ActionState> {
   const user = await requireUser();
+  const { t } = await getT();
   const materialId = str(form, "materialId");
   const material = await db.material.findUnique({ where: { id: materialId }, include: { versions: { orderBy: { version: "desc" }, take: 1 } } });
-  if (!material) return { error: "Support introuvable." };
+  if (!material) return { error: t("Support introuvable.") };
   const project = await canSubmit(user.id, material.projectId);
-  if (!project) return { error: "Accès refusé." };
+  if (!project) return { error: t("Accès refusé.") };
   const url = str(form, "url");
-  if (!okUrl(url)) return { error: "Le lien doit commencer par http:// ou https://." };
-  if (!url && !str(form, "notes")) return { error: "Indiquez un lien ou décrivez les modifications." };
+  if (!okUrl(url)) return { error: t("Le lien doit commencer par http:// ou https://.") };
+  if (!url && !str(form, "notes")) return { error: t("Indiquez un lien ou décrivez les modifications.") };
   const version = (material.versions[0]?.version ?? 0) + 1;
   await db.materialVersion.create({ data: { materialId, version, url: url || null, notes: str(form, "notes") || null, submittedById: user.id } });
   await audit(user.id, "material.submit", "Project", material.projectId, { materialId, version, title: material.title });
   revalidatePath(`/organisations/${project.organizationId}/dossiers/${material.projectId}`);
   revalidatePath("/sollicitations", "layout");
-  return { ok: `Version ${version} soumise.` };
+  return { ok: t("Version {n} soumise.", { n: version }) };
 }
 
 export async function reviewMaterial(form: FormData) {

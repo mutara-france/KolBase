@@ -11,6 +11,7 @@ import { SOURCING_ROLES } from "@/lib/projects";
 import { unseenFollowCount } from "@/lib/follows";
 import { drPrefix } from "@/lib/professions";
 import { isPlatformAdmin } from "@/lib/platform";
+import { getT } from "@/lib/i18n/server";
 import type { OrgKind, OrgRole } from "@/generated/prisma/client";
 
 /**
@@ -25,6 +26,7 @@ export async function SiteHeader({ variant = "app", section }: { variant?: "app"
 
   if (!user || variant === "public") return <PublicNav loggedIn={!!user} />;
 
+  const { t } = await getT();
   const fullName = `${user.firstName} ${user.lastName}`;
   const p = user.practitioner;
   const spaces: ShellSpace[] = [];
@@ -34,27 +36,27 @@ export async function SiteHeader({ variant = "app", section }: { variant?: "app"
       ? await db.projectExpert.count({ where: { practitionerId: p.id, status: "ATT_EXPERTS", project: { status: { not: "DECLINE" } } } })
       : 0;
     const items: ShellItem[] = [
-      { key: "accueil", href: "/tableau-de-bord", label: "Accueil", icon: "House" },
+      { key: "accueil", href: "/tableau-de-bord", label: t("Accueil"), icon: "House" },
       ...(p.listed
         ? ([
-            { key: "sollicitations", href: "/sollicitations", label: "Sollicitations", icon: "Send", badge: pending },
-            { key: "opportunites", href: "/opportunites", label: "Opportunités", icon: "Megaphone", match: ["/interventions"] },
+            { key: "sollicitations", href: "/sollicitations", label: t("Sollicitations"), icon: "Send", badge: pending },
+            { key: "opportunites", href: "/opportunites", label: t("Opportunités"), icon: "Megaphone", match: ["/interventions"] },
           ] satisfies ShellItem[])
         : []),
-      { key: "agenda", href: "/inscriptions", label: "Agenda", icon: "CalendarDays", match: p.listed ? ["/interventions"] : [] },
-      { key: "profil", href: "/compte", label: "Mon profil", short: "Profil", icon: "UserRound" },
+      { key: "agenda", href: "/inscriptions", label: t("Agenda"), icon: "CalendarDays", match: p.listed ? ["/interventions"] : [] },
+      { key: "profil", href: "/compte", label: t("Mon profil"), short: t("Profil"), icon: "UserRound" },
     ];
     spaces.push({
       key: "praticien",
-      title: "Espace praticien",
-      subtitle: [p.specialty || p.profession, p.city].filter(Boolean).join(" · ") || (p.listed ? "Expert référencé" : "Praticien"),
-      chip: p.listed ? "Expert référencé" : "Praticien",
+      title: t("Espace praticien"),
+      subtitle: [p.specialty || t(p.profession), p.city].filter(Boolean).join(" · ") || t(p.listed ? "Expert référencé" : "Praticien"),
+      chip: t(p.listed ? "Expert référencé" : "Praticien"),
       initials: initialsOf(fullName),
       color: avatarColor(fullName),
       square: false,
       home: "/tableau-de-bord",
       items,
-      links: p.listed ? [{ href: `/experts/${p.id}`, label: "Voir ma fiche publique", icon: "ExternalLink" }] : [],
+      links: p.listed ? [{ href: `/experts/${p.id}`, label: t("Voir ma fiche publique"), icon: "ExternalLink" }] : [],
     });
   }
 
@@ -66,11 +68,11 @@ export async function SiteHeader({ variant = "app", section }: { variant?: "app"
   }
   for (const [id, o] of orgs) {
     const overview = await orgOverview(id);
-    const hrefs = (overview?.todos ?? []).map((t) => t.href);
+    const hrefs = (overview?.todos ?? []).map((todo) => todo.href);
     spaces.push({
       key: id,
       title: o.name,
-      subtitle: `${ORG_KIND_LABEL[o.kind]} · ${o.roles.map((r) => roleLabel(r, o.kind)).join(", ")}`,
+      subtitle: `${t(ORG_KIND_LABEL[o.kind])} · ${o.roles.map((r) => t(roleLabel(r, o.kind))).join(", ")}`,
       chip: o.name,
       initials: initialsOf(o.name),
       color: avatarColor(o.name),

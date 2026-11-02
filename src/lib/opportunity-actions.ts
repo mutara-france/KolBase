@@ -9,6 +9,7 @@ import { parseParisDateTime } from "@/lib/events";
 import { collabType, SOURCING_ROLES } from "@/lib/projects";
 import { eurToCents, str, unitsOrNull, UNITS_INVALID } from "@/lib/form";
 import { notifyApplication, notifyNotRetained, notifySolicitations } from "@/lib/notifications";
+import { getT } from "@/lib/i18n/server";
 
 export type ActionState = { error?: string; ok?: string } | undefined;
 
@@ -57,20 +58,21 @@ export async function setOpenCallStatus(form: FormData) {
 
 export async function applyToCall(_: ActionState, form: FormData): Promise<ActionState> {
   const user = await requireUser();
-  if (!user.practitioner?.listed) return { error: "Référencez-vous comme expert pour candidater." };
+  const { t } = await getT();
+  if (!user.practitioner?.listed) return { error: t("Référencez-vous comme expert pour candidater.") };
   const callId = str(form, "callId");
   const call = await db.openCall.findUnique({ where: { id: callId }, include: { organization: true } });
-  if (!call || call.status !== "open" || !isVerifiedOrg(call.organization)) return { error: "Cet appel n'est plus ouvert." };
-  if (call.deadline && call.deadline < new Date()) return { error: "La date limite est dépassée." };
+  if (!call || call.status !== "open" || !isVerifiedOrg(call.organization)) return { error: t("Cet appel n'est plus ouvert.") };
+  if (call.deadline && call.deadline < new Date()) return { error: t("La date limite est dépassée.") };
   const message = str(form, "message");
-  if (message.length < 20) return { error: "Présentez votre candidature en quelques lignes (20 caractères minimum)." };
+  if (message.length < 20) return { error: t("Présentez votre candidature en quelques lignes (20 caractères minimum).") };
   const existing = await db.application.findUnique({ where: { openCallId_practitionerId: { openCallId: callId, practitionerId: user.practitioner.id } } });
-  if (existing) return { error: "Vous avez déjà candidaté." };
+  if (existing) return { error: t("Vous avez déjà candidaté.") };
   const app = await db.application.create({ data: { openCallId: callId, practitionerId: user.practitioner.id, message } });
   await audit(user.id, "application.create", "Application", app.id, { callId });
   notifyApplication(callId, user.practitioner.id);
   revalidatePath(`/opportunites/${callId}`);
-  return { ok: "Candidature envoyée." };
+  return { ok: t("Candidature envoyée.") };
 }
 
 export async function withdrawApplication(form: FormData) {

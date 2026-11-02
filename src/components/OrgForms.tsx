@@ -4,6 +4,7 @@ import { useActionState, useState } from "react";
 import { createInvitation, createOrganization, removeOrgLogo, submitSiren, updateOrganization, updateExpertProfile, updateOrgLogo, type InviteState } from "@/lib/org-actions";
 import { Avatar } from "@/components/Avatar";
 import { Notice } from "@/components/AuthForms";
+import { useT } from "@/components/I18nProvider";
 
 type Opt = { value: string; label: string };
 
@@ -88,32 +89,33 @@ type Expert = { bio: string | null; hospital: string | null; subspecialty: strin
 
 export function ExpertProfileForm({ p, types }: { p: Expert; types: string[] }) {
   const [state, action, pending] = useActionState(updateExpertProfile, undefined);
+  const t = useT();
   return (
     <form action={action} className="card form">
-      <h2>Profil expert</h2>
-      <p className="muted">Ces informations apparaissent dans l&apos;annuaire, consulté par les organisations.</p>
+      <h2>{t("Profil expert")}</h2>
+      <p className="muted">{t("Ces informations apparaissent dans l'annuaire, consulté par les organisations.")}</p>
       <Notice state={state} />
-      <label>Présentation<textarea name="bio" rows={4} defaultValue={p.bio ?? ""} placeholder="Parcours, domaines d'expertise, publications marquantes…" /></label>
+      <label>{t("Présentation")}<textarea name="bio" rows={4} defaultValue={p.bio ?? ""} placeholder={t("Parcours, domaines d'expertise, publications marquantes…")} /></label>
       <div className="row">
-        <label>Établissement / cabinet<input name="hospital" defaultValue={p.hospital ?? ""} /></label>
-        <label>Sur-spécialité<input name="subspecialty" defaultValue={p.subspecialty ?? ""} /></label>
+        <label>{t("Établissement / cabinet")}<input name="hospital" defaultValue={p.hospital ?? ""} /></label>
+        <label>{t("Sur-spécialité")}<input name="subspecialty" defaultValue={p.subspecialty ?? ""} /></label>
       </div>
       <div className="row">
-        <label>Langues<input name="languages" defaultValue={p.languages.join(", ")} placeholder="fr, en" /></label>
+        <label>{t("Langues")}<input name="languages" defaultValue={p.languages.join(", ")} placeholder="fr, en" /></label>
         <label>ORCID<input name="orcid" defaultValue={p.orcid ?? ""} placeholder="0000-0000-0000-0000" /></label>
       </div>
       <fieldset>
-        <legend>Types d&apos;intervention</legend>
+        <legend>{t("Types d'intervention")}</legend>
         <div className="checks">
-          {types.map((t) => (
-            <label key={t} className="check"><input type="checkbox" name="interventionTypes" value={t} defaultChecked={p.interventionTypes.includes(t)} /> {t}</label>
+          {types.map((type) => (
+            <label key={type} className="check"><input type="checkbox" name="interventionTypes" value={type} defaultChecked={p.interventionTypes.includes(type)} /> {t(type)}</label>
           ))}
         </div>
       </fieldset>
-      <label>Tarif journalier indicatif (€ HT)<input name="dayRate" inputMode="decimal" defaultValue={p.dayRateCents != null ? String(p.dayRateCents / 100) : ""} />
-        <span className="hint">Visible uniquement des organisations. Sert de base à la vérification de juste contrepartie.</span>
+      <label>{t("Tarif journalier indicatif (€ HT)")}<input name="dayRate" inputMode="decimal" defaultValue={p.dayRateCents != null ? String(p.dayRateCents / 100) : ""} />
+        <span className="hint">{t("Visible uniquement des organisations. Sert de base à la vérification de juste contrepartie.")}</span>
       </label>
-      <button className="btn" disabled={pending}>{pending ? "Enregistrement…" : "Enregistrer le profil expert"}</button>
+      <button className="btn" disabled={pending}>{pending ? t("Enregistrement…") : t("Enregistrer le profil expert")}</button>
     </form>
   );
 }

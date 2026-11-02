@@ -2,10 +2,12 @@ import Link from "next/link";
 import { ArrowRight, ChevronDown, Plus } from "lucide-react";
 import { TodoList, type TodoItem } from "@/components/Todo";
 import { TZ } from "@/lib/events";
+import { fmtDate, intlLocale, type Locale } from "@/lib/i18n";
+import { getT } from "@/lib/i18n/server";
 
 /** Briques communes des tableaux de bord : en-tête, compteurs, « À faire », « À venir ». */
 
-export const todayLabel = () => new Date().toLocaleDateString("fr-FR", { timeZone: TZ, weekday: "long", day: "numeric", month: "long" });
+export const todayLabel = (locale: Locale = "fr") => new Date().toLocaleDateString(intlLocale(locale), { timeZone: TZ, weekday: "long", day: "numeric", month: "long" });
 
 export function DashHead({ kicker, title, lede, action }: { kicker: string; title: string; lede?: string; action?: React.ReactNode }) {
   return (
@@ -93,14 +95,15 @@ export function TodoGroups({ todos, empty, limit = 15, moreHref }: { todos: Todo
 export type TimelineItem = { date: Date; title: string; detail?: string | null; href: string; strong?: boolean };
 
 /** Prochaines échéances et prochains événements, dans l'ordre du calendrier. */
-export function Timeline({ items, empty }: { items: TimelineItem[]; empty?: React.ReactNode }) {
+export async function Timeline({ items, empty }: { items: TimelineItem[]; empty?: React.ReactNode }) {
   if (items.length === 0) return empty ? <p className="muted">{empty}</p> : null;
+  const { locale } = await getT();
   return (
     <ol className="timeline">
       {items.map((i, n) => (
         <li key={n}>
           <span className={`timeline-date${i.strong ? " strong" : ""}`}>
-            {i.date.toLocaleDateString("fr-FR", { timeZone: TZ, day: "2-digit", month: "2-digit" })}
+            {fmtDate(locale, i.date, { day: "2-digit", month: "2-digit" })}
           </span>
           <Link href={i.href}>
             <strong>{i.title}</strong>
