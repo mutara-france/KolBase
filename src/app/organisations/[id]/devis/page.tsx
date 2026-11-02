@@ -47,7 +47,6 @@ export default async function Page({ params, searchParams }: { params: Promise<{
         {!org.listed && <p className="notice warn">Votre organisation n&apos;apparaît pas dans l&apos;annuaire des prestataires. Complétez la fiche prestataire pour être consulté.</p>}
         <div className="stats">
           <div className="card stat"><span className="muted">À traiter</span><strong>{todo.length}</strong></div>
-          <div className="card stat"><span className="muted">Demandes reçues</span><strong>{invites.length}</strong></div>
           <div className="card stat"><span className="muted">Devis retenus</span><strong>{won.length}</strong></div>
           <div className="card stat"><span className="muted">Montant retenu</span><strong>{formatEUR(won.reduce((s, i) => s + i.rfq.quotes[0].amountCents, 0))}</strong></div>
         </div>

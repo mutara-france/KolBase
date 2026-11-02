@@ -358,4 +358,7 @@ export const PUBLIC: Record<string, string> = {
   "Audiovisuel et captation": "Audiovisual and recording",
   "Impression et signalétique": "Printing and signage",
   "Zone : {zone}": "Area: {zone}",
+  "Inscription réservée aux membres KolBase : elle est nominative, car les hospitalités acceptées sont rattachées à votre nom. Créez votre compte en une minute, vous reviendrez ici pour vous inscrire.": "Registration is for KolBase members: it is personal, because the hospitality you accept is recorded in your name. Create your account in a minute and you will come back here to register.",
+  "Créer mon compte et m'inscrire": "Create my account and register",
+  "J'ai déjà un compte": "I already have an account",
 };

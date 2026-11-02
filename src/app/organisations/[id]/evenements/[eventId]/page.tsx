@@ -43,8 +43,19 @@ export default async function Page({ params }: { params: Promise<{ id: string; e
       include: { _count: { select: { suppliers: true } }, quotes: { select: { id: true, amountCents: true, vatBp: true, status: true, supplier: { select: { name: true } } }, orderBy: { amountCents: "asc" } } },
       orderBy: { createdAt: "asc" },
     }),
+    // Agences proposées : les agences événementielles référencées, et celles déjà mandatées.
     isOrganizer
-      ? db.mandate.findMany({ where: { mandatorId: id, OR: [{ endsAt: null }, { endsAt: { gt: new Date() } }] }, include: { agency: { select: { id: true, name: true } } } })
+      ? db.organization.findMany({
+          where: {
+            kind: "PRESTATAIRE",
+            OR: [
+              { listed: true, supplierCategories: { has: "evenementiel" } },
+              { mandatesReceived: { some: { mandatorId: id, OR: [{ endsAt: null }, { endsAt: { gt: new Date() } }] } } },
+            ],
+          },
+          select: { id: true, name: true, mandatesReceived: { where: { mandatorId: id, OR: [{ endsAt: null }, { endsAt: { gt: new Date() } }] }, select: { id: true } } },
+          orderBy: { name: "asc" },
+        })
       : Promise.resolve([]),
   ]);
 
@@ -103,10 +114,12 @@ export default async function Page({ params }: { params: Promise<{ id: string; e
               <dt><Users size={13} /> Participants</dt>
               <dd>{participants}{event.capacity ? ` / ${event.capacity}` : ""}<small>{event.internal ? (event.project ? "experts du dossier lié" : "réunion interne") : "inscrits"}</small></dd>
             </div>
-            <div>
-              <dt><Gift size={13} /> Hospitalités</dt>
-              <dd>{formatEUR(totalCents)}<small>{withBenefits} bénéficiaire{withBenefits > 1 ? "s" : ""} · valeur déclarée</small></dd>
-            </div>
+            {!event.internal && (
+              <div>
+                <dt><Gift size={13} /> Hospitalités</dt>
+                <dd>{formatEUR(totalCents)}<small>{withBenefits} bénéficiaire{withBenefits > 1 ? "s" : ""} · valeur déclarée</small></dd>
+              </div>
+            )}
             <div>
               <dt><Truck size={13} /> Logistique</dt>
               <dd>{engagedTtc ? `${formatEUR(engagedTtc)} TTC` : `${rfqs.length} demande${rfqs.length > 1 ? "s" : ""}`}<small>{engagedTtc ? "devis retenus" : rfqs.length ? "devis en cours" : "aucun devis demandé"}</small></dd>
@@ -230,20 +243,21 @@ export default async function Page({ params }: { params: Promise<{ id: string; e
 
             {isOrganizer && (
               <section className="card stack-sm">
-                <h2 className="section-title">Agence mandatée</h2>
-                {agencies.length === 0 ? (
-                  <p className="muted text-sm">{event.agency ? `Confié à ${event.agency.name}.` : "Géré en interne."} Mandatez une agence dans <Link href={`/organisations/${id}/prestataires?onglet=agences`}>Prestataires et devis</Link> pour lui confier l&apos;événement.</p>
-                ) : (
+                <h2 className="section-title">Agence</h2>
+                <p className="muted text-sm">
+                  {event.agency ? `Confié à ${event.agency.name} : son équipe gère cet événement avec son propre compte.` : "Géré par votre équipe. Vous pouvez le confier à une agence événementielle : elle est mandatée au passage et prévenue par e-mail."}
+                </p>
+                {agencies.length > 0 && (
                   <form action={setEventAgency} className="form">
                     <input type="hidden" name="orgId" value={id} />
                     <input type="hidden" name="eventId" value={eventId} />
-                    <label>Événement confié à
+                    <label>Confier à
                       <select name="agencyId" defaultValue={event.agencyId ?? ""}>
-                        <option value="">— aucune (géré en interne) —</option>
-                        {agencies.map((m) => <option key={m.agency.id} value={m.agency.id}>{m.agency.name}</option>)}
+                        <option value="">— personne (géré en interne) —</option>
+                        {agencies.map((a) => <option key={a.id} value={a.id}>{a.name}{a.mandatesReceived.length ? "" : " (nouveau mandat)"}</option>)}
                       </select>
                     </label>
-                    <button className="btn ghost small">Confier</button>
+                    <button className="btn ghost small">{event.agency ? "Changer" : "Confier l'événement"}</button>
                   </form>
                 )}
               </section>

@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { SiteHeader } from "@/components/SiteHeader";
-import { CreateMenu, DashHead, DashStats, Timeline, TodoGroups, todayLabel, type TimelineItem } from "@/components/Dashboard";
+import { CreateMenu, DashHead, DashStats, Timeline, TodoGroups, type TimelineItem } from "@/components/Dashboard";
 import { requireMembership } from "@/lib/orgs";
 import { orgOverview } from "@/lib/org-overview";
 import { formatEUR } from "@/lib/events";
@@ -69,8 +69,8 @@ export default async function Page({ params }: { params: Promise<{ id: string }>
   const create = [
     can.sourcing && { href: `${base}/dossiers/nouveau`, label: "Un dossier de collaboration" },
     can.organizer && { href: `${base}/evenements/nouveau`, label: "Un événement" },
-    can.sourcing && { href: `${base}/opportunites#nouvel-appel`, label: "Un appel aux praticiens" },
-    can.organizer && { href: `${base}/intervenants`, label: "Un appel à intervenants" },
+    can.sourcing && { href: `${base}/opportunites#nouvel-appel`, label: "Un appel à experts (collaboration rémunérée)" },
+    can.organizer && { href: `${base}/intervenants`, label: "Un appel à intervenants (prise de parole à un événement)" },
   ].filter((c): c is Exclude<typeof c, false> => !!c);
 
   const urgent = todos.filter((t) => t.tone === "danger").length;
@@ -83,7 +83,7 @@ export default async function Page({ params }: { params: Promise<{ id: string }>
     <>
       <SiteHeader />
       <main className="stack dash">
-        <DashHead kicker={`${todayLabel()} · ${org.name}`} title={`Bonjour ${user.firstName}.`} lede={lede} action={<CreateMenu items={create} />} />
+        <DashHead title={`Bonjour ${user.firstName}.`} lede={lede} action={<CreateMenu items={create} />} />
         {org.verification !== "VERIFIED" && (
           <p className={`notice ${org.verification === "REJECTED" ? "error" : "warn"}`}>
             {org.verification === "REJECTED"

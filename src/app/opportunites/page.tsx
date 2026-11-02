@@ -43,8 +43,8 @@ export default async function Page({ searchParams }: { searchParams: Promise<{ t
       <main className="stack">
         <SectionNav tabs={practitionerSectionTabs("opportunites").map((tab) => ({ ...tab, label: t(tab.label) }))} active="appels" label={t("Rubrique Opportunités")} />
         <div>
-          <h1>{t("Appels ouverts")}</h1>
-          <p className="muted">{t("Appels ouverts publiés par les organisations. Candidatez à ceux qui correspondent à votre expertise.")}</p>
+          <h1>{t("Appels à experts")}</h1>
+          <p className="muted">{t("Collaborations rémunérées proposées par les organisations : board, étude, rédaction, formation… Pour prendre la parole lors d'un événement, voyez les appels à intervenants.")}</p>
         </div>
         <form className="card form search">
           <div className="row">
