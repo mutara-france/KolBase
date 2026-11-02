@@ -241,6 +241,72 @@ export function notifyQuote(rfqId: string, supplierId: string, revised = false) 
   });
 }
 
+async function supplierTeam(supplierId: string) {
+  const ms = await db.membership.findMany({ where: { organizationId: supplierId }, include: { user: { select: userSelect } } });
+  return ms.map((m) => m.user);
+}
+
+/** Décision sur une demande de devis : le prestataire retenu et les autres sont prévenus. */
+export function notifyAward(rfqId: string) {
+  later(async () => {
+    const r = await db.rfq.findUnique({ where: { id: rfqId }, include: { organization: { select: { name: true } }, event: { select: { title: true } }, quotes: true } });
+    if (!r) return;
+    const what = r.event ? `pour « ${r.event.title} »` : "";
+    for (const q of r.quotes) {
+      const kept = q.status === "retained";
+      await send(await supplierTeam(q.supplierId), {
+        subject: kept ? `Votre devis est retenu par ${r.organization.name}` : `Votre devis n'est pas retenu par ${r.organization.name}`,
+        text: kept
+          ? `Bonjour,\n\n${r.organization.name} a retenu votre devis ${what}. Vous pouvez échanger avec l'organisation depuis la demande pour préparer la prestation.`
+          : `Bonjour,\n\n${r.organization.name} a retenu une autre offre ${what}. Merci pour votre proposition.`,
+        cta: { label: "Voir la demande", href: `/organisations/${q.supplierId}/devis?onglet=toutes` },
+      });
+    }
+  });
+}
+
+/** Demande annulée : les prestataires consultés ne travaillent plus dessus. */
+export function notifyRfqCancelled(rfqId: string) {
+  later(async () => {
+    const r = await db.rfq.findUnique({ where: { id: rfqId }, include: { organization: { select: { name: true } }, suppliers: true } });
+    if (!r) return;
+    for (const s of r.suppliers) {
+      if (s.declined) continue;
+      await send(await supplierTeam(s.supplierId), {
+        subject: `Demande de devis annulée par ${r.organization.name}`,
+        text: `Bonjour,\n\n${r.organization.name} a annulé sa demande de devis. Aucune réponse n'est plus attendue.`,
+        cta: { label: "Voir mes demandes", href: `/organisations/${s.supplierId}/devis?onglet=toutes` },
+      });
+    }
+  });
+}
+
+/** Question ou réponse sur une demande de devis : prévient l'autre partie du fil. */
+export function notifyRfqMessage(rfqId: string, supplierId: string, fromSupplier: boolean, authorId: string) {
+  later(async () => {
+    const [r, supplier] = await Promise.all([
+      db.rfq.findUnique({ where: { id: rfqId }, include: { organization: { select: { name: true } } } }),
+      db.organization.findUnique({ where: { id: supplierId }, select: { name: true } }),
+    ]);
+    if (!r || !supplier) return;
+    if (fromSupplier) {
+      const team = await members(r.organizationId, EVENT_ORGANIZER_ROLES);
+      const creator = team.find((u) => u.id === r.createdById);
+      await send(creator ? [creator] : team, {
+        subject: `Question de ${supplier.name} sur votre demande de devis`,
+        text: `Bonjour,\n\n${supplier.name} vous a écrit au sujet de votre demande de devis.`,
+        cta: { label: "Répondre", href: `/organisations/${r.organizationId}/prestataires#rfq-${r.id}` },
+      }, authorId);
+    } else {
+      await send(await supplierTeam(supplierId), {
+        subject: `Message de ${r.organization.name} sur une demande de devis`,
+        text: `Bonjour,\n\n${r.organization.name} vous a écrit au sujet de sa demande de devis.`,
+        cta: { label: "Répondre", href: `/organisations/${supplierId}/devis` },
+      }, authorId);
+    }
+  });
+}
+
 // ─── E-mails de service (toujours envoyés) ─────────────────────────────────
 
 /** Invitation à rejoindre une organisation, quand l'adresse est connue. */

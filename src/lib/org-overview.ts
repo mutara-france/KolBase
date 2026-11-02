@@ -105,7 +105,7 @@ export const orgOverview = cache(async (orgId: string) => {
     todos.push({ href: `${base}/relecture`, title: `Support à relire : ${v.material.title} (v${v.version})`, detail: v.material.project.title, icon: "CircleDot" });
   if (can.events) {
     for (const e of events)
-      if (!e.publishedAt && e.startsAt >= now)
+      if (!e.publishedAt && !e.internal && e.startsAt >= now)
         todos.push({ href: `${base}/evenements/${e.id}`, title: `Brouillon à publier : ${e.title}`, detail: formatDate(e.startsAt), icon: "CalendarClock", tone: "warn" });
   }
   if (can.organizer) {
@@ -123,6 +123,27 @@ export const orgOverview = cache(async (orgId: string) => {
   }
   for (const w of waitingQuotes)
     todos.push({ href: `${base}/devis`, title: `Devis demandé par ${w.rfq.organization.name}`, detail: w.rfq.event?.title ?? w.rfq.needs.slice(0, 60), icon: "Receipt", tone: "warn" });
+
+  // Questions sur les demandes de devis restées sans réponse : la dernière parole revient à l'autre partie.
+  const isSupplier = org.kind === "PRESTATAIRE";
+  if (isSupplier || can.organizer) {
+    const msgs = await db.rfqMessage.findMany({
+      where: { rfq: { status: { in: ["sent", "awarded"] }, ...(isSupplier ? {} : { organizationId: orgId }) }, ...(isSupplier ? { supplierId: orgId } : {}) },
+      include: { supplier: { select: { name: true } }, rfq: { select: { id: true, organization: { select: { name: true } }, event: { select: { title: true } } } } },
+      orderBy: { createdAt: "desc" },
+      take: 200,
+    });
+    const seen = new Set<string>();
+    for (const m of msgs) {
+      const key = `${m.rfqId}:${m.supplierId}`;
+      if (seen.has(key)) continue;
+      seen.add(key);
+      if (isSupplier && !m.fromSupplier)
+        todos.push({ href: `${base}/devis`, title: `Message de ${m.rfq.organization.name}`, detail: m.rfq.event?.title ?? "Demande de devis", icon: "MessageSquare", tone: "warn" });
+      if (!isSupplier && m.fromSupplier)
+        todos.push({ href: `${base}/prestataires#rfq-${m.rfqId}`, title: `Question de ${m.supplier.name}`, detail: m.rfq.event?.title ?? "Demande de devis", icon: "MessageSquare", tone: "warn" });
+    }
+  }
 
   // Les urgences d'abord, puis l'ordre de découverte.
   todos.sort((a, b) => Number(b.tone === "danger") - Number(a.tone === "danger"));

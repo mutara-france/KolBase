@@ -3,6 +3,7 @@ import { db } from "@/lib/db";
 import { detectConflicts } from "@/lib/conflicts";
 import { formatDate, formatEUR } from "@/lib/events";
 import { MATERIAL_KINDS, MATERIAL_STATUS, REVIEW_ROLES } from "@/lib/projects";
+import { supplierCategoryLabel } from "@/lib/suppliers";
 import { reviewMaterial, updateExpense } from "@/lib/dossier-actions";
 import { FOUR_EYES_BLOCKED, fourEyes } from "@/lib/four-eyes";
 import { getCurrentUser } from "@/lib/auth";
@@ -37,9 +38,16 @@ export async function ConflictsPanel({ projectId }: { projectId: string }) {
 export async function BudgetPanel({ orgId, projectId, canEdit }: { orgId: string; projectId: string; canEdit: boolean }) {
   const project = await db.project.findUnique({ where: { id: projectId }, include: { experts: { where: { status: { notIn: ["DECLINE"] } } }, expenses: { orderBy: { date: "asc" } } } });
   if (!project) return null;
+  // Devis retenus pour les événements rattachés au dossier : ils comptent dans le budget (HT).
+  const quotes = await db.quote.findMany({
+    where: { status: "retained", rfq: { event: { projectId } } },
+    include: { supplier: { select: { name: true } }, rfq: { select: { category: true } } },
+    orderBy: { updatedAt: "asc" },
+  });
   const fees = project.experts.reduce((s, e) => s + (e.feeCents ?? 0), 0);
   const exp = project.expenses.reduce((s, e) => s + e.amountCents, 0);
-  const total = fees + exp;
+  const sup = quotes.reduce((s, q) => s + q.amountCents, 0);
+  const total = fees + exp + sup;
   const budget = project.budgetCents;
   const realPct = budget ? Math.round((total / budget) * 100) : null;
   const pct = realPct != null ? Math.min(100, realPct) : null;
@@ -53,15 +61,25 @@ export async function BudgetPanel({ orgId, projectId, canEdit }: { orgId: string
       <div className="stats-row" style={{ marginBottom: 12 }}>
         <div className="stat-card"><div className="stat-value">{budget != null ? formatEUR(budget) : "—"}</div><div className="stat-label">Budget prévu (HT)</div></div>
         <div className="stat-card"><div className="stat-value">{formatEUR(fees)}</div><div className="stat-label">Honoraires des experts</div></div>
+        {sup > 0 && <div className="stat-card"><div className="stat-value">{formatEUR(sup)}</div><div className="stat-label">Prestataires (devis retenus)</div></div>}
         <div className="stat-card"><div className="stat-value">{formatEUR(exp)}</div><div className="stat-label">Autres dépenses</div></div>
         <div className="stat-card"><div className={`stat-value${over ? " tone-danger" : " tone-electric"}`}>{formatEUR(total)}</div><div className="stat-label">Total engagé{realPct != null ? ` · ${realPct} % du budget` : ""}</div></div>
       </div>
       {pct != null && <div className="gauge-track"><div className={`gauge-fill${over ? " over" : ""}`} style={{ width: `${pct}%` }} /></div>}
       {over && <p className="notice error mt-2">Le total engagé dépasse le budget prévu de {formatEUR(total - budget!)}.</p>}
-      {project.expenses.length > 0 && (
+      {(project.expenses.length > 0 || quotes.length > 0) && (
         <table className="table mt-3">
           <thead><tr><th>Date</th><th>Poste</th><th>Montant</th><th>Statut</th>{canEdit && <th />}</tr></thead>
           <tbody>
+            {quotes.map((q) => (
+              <tr key={q.id}>
+                <td>{formatDate(q.updatedAt)}</td>
+                <td>{supplierCategoryLabel(q.rfq.category)} : {q.supplier.name}</td>
+                <td>{formatEUR(q.amountCents)}</td>
+                <td><span className="pill ok">Devis retenu</span></td>
+                {canEdit && <td><a className="link" href={`/organisations/${orgId}/prestataires#rfq-${q.rfqId}`}>Voir le devis</a></td>}
+              </tr>
+            ))}
             {project.expenses.map((e) => (
               <tr key={e.id}>
                 <td>{formatDate(e.date)}</td><td>{e.label}</td><td>{formatEUR(e.amountCents)}</td>

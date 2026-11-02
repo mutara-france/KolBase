@@ -1,15 +1,22 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
+import { CalendarDays, Euro, Gift, MapPin, Truck, Users } from "lucide-react";
 import { SiteHeader } from "@/components/SiteHeader";
+import { StatusPill } from "@/components/ProjectBits";
 import { db } from "@/lib/db";
 import { requireMembership } from "@/lib/orgs";
-import { EVENT_MANAGER_ROLES, EVENT_ORGANIZER_ROLES, eventScope, eventTypeLabel, formatDate, formatDateTime, formatEUR, FORMAT_LABEL } from "@/lib/events";
+import { EVENT_MANAGER_ROLES, EVENT_ORGANIZER_ROLES, eventScope, eventTypeLabel, formatDate, formatEUR, formatTime, FORMAT_LABEL } from "@/lib/events";
 import { setEventAgency, setEventFlag } from "@/lib/event-actions";
+import { applyQuoteToBenefit } from "@/lib/rfq-actions";
 import { RFQ_STATUS, rfqDisplayStatus, SUPPLIER_CATEGORIES, supplierCategoryLabel } from "@/lib/suppliers";
 import { perParticipant, withVat } from "@/lib/quotes";
 import { complianceSettings } from "@/lib/compliance";
+import { drPrefix } from "@/lib/professions";
 
 export const metadata = { title: "Événement — KolBase" };
+
+/** Prestations dont le coût par participant se rapproche d'une hospitalité déclarée (repas, nuitée). */
+const HOSPITALITY_CATS = ["restauration", "hebergement"];
 
 export default async function Page({ params }: { params: Promise<{ id: string; eventId: string }> }) {
   const { id, eventId } = await params;
@@ -19,42 +26,47 @@ export default async function Page({ params }: { params: Promise<{ id: string; e
     where: { id: eventId, organizationId: id, ...eventScope(user, roles) },
     include: {
       agency: { select: { name: true } },
-      project: { select: { id: true, title: true } },
+      project: {
+        select: {
+          id: true, title: true, status: true,
+          experts: { where: { status: { not: "DECLINE" } }, include: { practitioner: { include: { user: { select: { firstName: true, lastName: true } } } } } },
+        },
+      },
       benefits: true,
       registrations: { include: { user: true, benefits: { include: { benefit: true } } }, orderBy: { createdAt: "asc" } },
     },
   });
   if (!event) notFound();
-  const rfqs = await db.rfq.findMany({
-    where: { organizationId: id, eventId },
-    include: { _count: { select: { suppliers: true } }, quotes: { select: { amountCents: true, vatBp: true, status: true, supplier: { select: { name: true } } }, orderBy: { amountCents: "asc" } } },
-    orderBy: { createdAt: "asc" },
-  });
+  const [rfqs, agencies] = await Promise.all([
+    db.rfq.findMany({
+      where: { organizationId: id, eventId },
+      include: { _count: { select: { suppliers: true } }, quotes: { select: { id: true, amountCents: true, vatBp: true, status: true, supplier: { select: { name: true } } }, orderBy: { amountCents: "asc" } } },
+      orderBy: { createdAt: "asc" },
+    }),
+    isOrganizer
+      ? db.mandate.findMany({ where: { mandatorId: id, OR: [{ endsAt: null }, { endsAt: { gt: new Date() } }] }, include: { agency: { select: { id: true, name: true } } } })
+      : Promise.resolve([]),
+  ]);
+
   const settings = complianceSettings(org.complianceSettings);
-  const expected = event.capacity ?? (event.registrations.length || null);
-  const askedCats = new Set(rfqs.filter((r) => r.status !== "cancelled").map((r) => r.category));
-  // Catégories utiles selon le format : une visioconférence n'a besoin ni de salle ni d'hébergement.
-  const usefulCats = SUPPLIER_CATEGORIES.filter((c) => event.format !== "DISTANCIEL" || ["audiovisuel", "communication", "evenementiel"].includes(c.id)).filter((c) => !askedCats.has(c.id));
-  const engagedTtc = rfqs.reduce((s, r) => { const k = r.quotes.find((q) => q.status === "retained"); return s + (k ? withVat(k.amountCents, k.vatBp) : 0); }, 0);
-  const newRfq = (cat?: string) => `/organisations/${id}/prestataires?onglet=nouvelle&evenement=${eventId}${cat ? `&cat=${cat}` : ""}`;
+  const experts = event.project?.experts ?? [];
+  const participants = event.internal ? experts.length : event.registrations.length;
+  const expected = event.capacity ?? (participants || null);
   const totalCents = event.registrations.reduce((s, r) => s + r.benefits.reduce((x, b) => x + b.valueCents, 0), 0);
   const withBenefits = event.registrations.filter((r) => r.benefits.length > 0).length;
-
-  const agencies = isOrganizer ? await db.mandate.findMany({ where: { mandatorId: id, OR: [{ endsAt: null }, { endsAt: { gt: new Date() } }] }, include: { agency: { select: { id: true, name: true } } } }) : [];
-  const AgencyForm = () =>
-    agencies.length === 0 ? null : (
-      <form action={setEventAgency} className="inline wrap">
-        <input type="hidden" name="orgId" value={id} />
-        <input type="hidden" name="eventId" value={eventId} />
-        <label className="muted">Agence mandatée
-          <select name="agencyId" defaultValue={event.agencyId ?? ""}>
-            <option value="">— aucune (géré en interne) —</option>
-            {agencies.map((m) => <option key={m.agency.id} value={m.agency.id}>{m.agency.name}</option>)}
-          </select>
-        </label>
-        <button className="btn ghost small">Confier</button>
-      </form>
-    );
+  const askedCats = new Set(rfqs.filter((r) => r.status !== "cancelled").map((r) => r.category));
+  // Catégories utiles selon le format : une visioconférence n'a besoin ni de salle ni d'hébergement.
+  // Raccourcis vers les besoins logistiques courants ; les autres catégories restent accessibles par « Demander des devis ».
+  const shortcutIds = event.format === "DISTANCIEL" ? ["audiovisuel", "communication"] : ["salle", "restauration", "hebergement", "transport", "audiovisuel"];
+  const usefulCats = SUPPLIER_CATEGORIES.filter((c) => shortcutIds.includes(c.id) && !askedCats.has(c.id));
+  const engagedTtc = rfqs.reduce((s, r) => { const k = r.quotes.find((q) => q.status === "retained"); return s + (k ? withVat(k.amountCents, k.vatBp) : 0); }, 0);
+  const newRfq = (cat?: string) => `/organisations/${id}/prestataires?onglet=nouvelle&evenement=${eventId}${cat ? `&cat=${cat}` : ""}`;
+  const status = event.internal
+    ? { label: "Réunion interne", tone: "electric" }
+    : event.publishedAt
+      ? { label: event.registrationOpen ? "Publié · inscriptions ouvertes" : "Publié · inscriptions closes", tone: event.registrationOpen ? "ok" : "done" }
+      : { label: "Brouillon", tone: "wait" };
+  const duration = event.durationMinutes ? (event.durationMinutes >= 60 ? `${Math.floor(event.durationMinutes / 60)} h${event.durationMinutes % 60 ? ` ${event.durationMinutes % 60}` : ""}` : `${event.durationMinutes} min`) : null;
 
   const Flag = ({ flag, label, ghost }: { flag: string; label: string; ghost?: boolean }) => (
     <form action={setEventFlag}>
@@ -70,101 +82,211 @@ export default async function Page({ params }: { params: Promise<{ id: string; e
       <SiteHeader />
       <main className="stack">
         <p className="muted"><Link href={`/organisations/${id}`}>{org.name}</Link> / <Link href={`/organisations/${id}/evenements`}>Événements</Link></p>
-        <div>
-          <span className="tag">{eventTypeLabel(event.typeId)}</span>
+
+        <header className="page-hero">
+          <div className="hero-top">
+            <span className="eyebrow-sm">{eventTypeLabel(event.typeId)}{event.therapeuticArea ? ` · ${event.therapeuticArea}` : ""} · {FORMAT_LABEL[event.format]}</span>
+            <span className={`pill ${status.tone}`}>{status.label}</span>
+          </div>
           <h1>{event.title}</h1>
-          <p className="muted">
-            {formatDateTime(event.startsAt)} · {FORMAT_LABEL[event.format]}{event.city ? ` · ${event.city}` : ""} ·{" "}
-            {event.publishedAt ? <Link href={`/evenements/${event.id}`}>publié dans l&apos;agenda</Link> : "brouillon"}
-          </p>
-          {isOrganizer && event.project && <p className="muted">Dossier lié (experts, conventions, conformité) : <Link href={`/organisations/${id}/dossiers/${event.project.id}`}>{event.project.title}</Link></p>}
-        </div>
-        <div className="actions">
-          {event.publishedAt ? <Flag flag="unpublish" label="Retirer de l'agenda" ghost /> : org.verification === "VERIFIED" ? <Flag flag="publish" label="Publier dans l'agenda" /> : <span className="muted">Publication possible une fois l&apos;organisation validée par KolBase.</span>}
-          {event.registrationOpen ? <Flag flag="close" label="Fermer les inscriptions" ghost /> : <Flag flag="open" label="Rouvrir les inscriptions" ghost />}
-        </div>
-        {isOrganizer ? (
-          <AgencyForm />
-        ) : (
-          <p className="notice ok">Événement confié à {event.agency?.name ?? "votre agence"} par {org.name}.</p>
-        )}
-        <div className="stats">
-          <div className="card stat"><span className="muted">Inscrits</span><strong>{event.registrations.length}{event.capacity ? ` / ${event.capacity}` : ""}</strong></div>
-          <div className="card stat"><span className="muted">Avec hospitalités</span><strong>{withBenefits}</strong></div>
-          <div className="card stat"><span className="muted">Valeur totale</span><strong>{formatEUR(totalCents)}</strong></div>
-        </div>
-        <section className="card logistics">
-          <div className="card-head">
+          {event.description && <p className="lead">{event.description}</p>}
+          <dl className="facts">
             <div>
-              <h2>Logistique et prestataires</h2>
-              <p className="muted">Consultez les prestataires référencés, comparez leurs devis détaillés et retenez la meilleure offre : le coût par participant est rapproché des seuils d&apos;hospitalité.</p>
+              <dt><CalendarDays size={13} /> Date</dt>
+              <dd>{formatDate(event.startsAt)}<small>à {formatTime(event.startsAt)}{duration ? ` · ${duration}` : ""}</small></dd>
             </div>
-            <Link className="btn" href={newRfq()}>Demander des devis</Link>
-          </div>
-          {rfqs.length > 0 && (
-            <ul className="logistics-list">
-              {rfqs.map((r) => {
-                const st = RFQ_STATUS[rfqDisplayStatus(r)];
-                const kept = r.quotes.find((q) => q.status === "retained");
-                const ref = kept ?? r.quotes[0];
-                const ttc = ref ? withVat(ref.amountCents, ref.vatBp) : 0;
-                const pp = ref ? perParticipant(r.category, ttc, r.headcount ?? expected, settings) : null;
-                return (
-                  <li key={r.id}>
-                    <div>
-                      <strong>{supplierCategoryLabel(r.category)}</strong>
-                      <div className="muted text-sm">
-                        {r.quotes.length} devis sur {r._count.suppliers} prestataire{r._count.suppliers > 1 ? "s" : ""} consulté{r._count.suppliers > 1 ? "s" : ""}
-                        {ref ? ` · ${kept ? `retenu : ${kept.supplier.name}` : "meilleure offre"} ${formatEUR(ttc)} TTC` : ""}
-                      </div>
-                      {pp && <div className={`text-xs ${pp.over ? "warn-text" : "muted"}`}>≈ {pp.each.toLocaleString("fr-FR", { maximumFractionDigits: 2 })} € par participant{pp.limit ? (pp.over ? ` · au-dessus du seuil d'un ${pp.limit.what} (${pp.limit.max} €)` : ` · sous le seuil d'un ${pp.limit.what}`) : ""}</div>}
-                    </div>
-                    <span className={`pill ${st.tone}`}>{st.label}</span>
-                    <Link className="btn ghost small" href={`/organisations/${id}/prestataires?onglet=demandes#rfq-${r.id}`}>Comparer</Link>
-                  </li>
-                );
-              })}
-            </ul>
-          )}
-          {usefulCats.length > 0 && (
-            <div className="chips">
-              <span className="muted text-sm">{rfqs.length ? "Autres besoins :" : "Besoins courants :"}</span>
-              {usefulCats.map((c) => <Link key={c.id} className="chip" href={newRfq(c.id)}>+ {c.label}</Link>)}
+            <div>
+              <dt><MapPin size={13} /> Lieu</dt>
+              <dd>{event.format === "DISTANCIEL" ? "En ligne" : event.city ?? "À définir"}<small>{event.venue ?? (event.format === "HYBRIDE" ? "et en ligne" : "lieu à préciser")}</small></dd>
             </div>
-          )}
-          {engagedTtc > 0 && <p className="muted text-sm">Coût logistique engagé : <strong>{formatEUR(engagedTtc)} TTC</strong>{expected ? ` · soit ≈ ${formatEUR(Math.round(engagedTtc / expected))} par participant attendu` : ""}.</p>}
-        </section>
-        <section className="card">
-          <div className="actions spread">
-            <h2>Inscrits</h2>
-            {event.registrations.length > 0 && <a className="btn ghost" href={`/organisations/${id}/evenements/${eventId}/export`}>Exporter (CSV)</a>}
+            <div>
+              <dt><Users size={13} /> Participants</dt>
+              <dd>{participants}{event.capacity ? ` / ${event.capacity}` : ""}<small>{event.internal ? (event.project ? "experts du dossier lié" : "réunion interne") : "inscrits"}</small></dd>
+            </div>
+            <div>
+              <dt><Gift size={13} /> Hospitalités</dt>
+              <dd>{formatEUR(totalCents)}<small>{withBenefits} bénéficiaire{withBenefits > 1 ? "s" : ""} · valeur déclarée</small></dd>
+            </div>
+            <div>
+              <dt><Truck size={13} /> Logistique</dt>
+              <dd>{engagedTtc ? `${formatEUR(engagedTtc)} TTC` : `${rfqs.length} demande${rfqs.length > 1 ? "s" : ""}`}<small>{engagedTtc ? "devis retenus" : rfqs.length ? "devis en cours" : "aucun devis demandé"}</small></dd>
+            </div>
+          </dl>
+        </header>
+
+        {!isOrganizer && <p className="notice ok">Événement confié à {event.agency?.name ?? "votre agence"} par {org.name}.</p>}
+
+        <div className="page-grid">
+          <div className="page-main">
+            <section className="card logistics">
+              <div className="card-head">
+                <div>
+                  <h2>Logistique et prestataires</h2>
+                  <p className="muted">Consultez les prestataires référencés, comparez leurs devis détaillés et retenez la meilleure offre : le coût par participant est rapproché des seuils d&apos;hospitalité.</p>
+                </div>
+                <Link className="btn" href={newRfq()}>Demander des devis</Link>
+              </div>
+              {rfqs.length > 0 && (
+                <ul className="logistics-list">
+                  {rfqs.map((r) => {
+                    const st = RFQ_STATUS[rfqDisplayStatus(r)];
+                    const kept = r.quotes.find((q) => q.status === "retained");
+                    const ref = kept ?? r.quotes[0];
+                    const ttc = ref ? withVat(ref.amountCents, ref.vatBp) : 0;
+                    const pp = ref ? perParticipant(r.category, ttc, r.headcount ?? expected, settings) : null;
+                    return (
+                      <li key={r.id}>
+                        <div className="logistics-row">
+                          <div>
+                            <strong>{supplierCategoryLabel(r.category)}</strong>
+                            <div className="muted text-sm">
+                              {r.quotes.length} devis sur {r._count.suppliers} prestataire{r._count.suppliers > 1 ? "s" : ""} consulté{r._count.suppliers > 1 ? "s" : ""}
+                              {ref ? ` · ${kept ? `retenu : ${kept.supplier.name}` : "meilleure offre"} ${formatEUR(ttc)} TTC` : ""}
+                            </div>
+                            {pp && <div className={`text-xs ${pp.over ? "warn-text" : "muted"}`}>≈ {pp.each.toLocaleString("fr-FR", { maximumFractionDigits: 2 })} € par participant{pp.limit ? (pp.over ? ` · au-dessus du seuil d'un ${pp.limit.what} (${pp.limit.max} €)` : ` · sous le seuil d'un ${pp.limit.what}`) : ""}</div>}
+                          </div>
+                          <span className={`pill ${st.tone}`}>{st.label}</span>
+                          <Link className="btn ghost small" href={`/organisations/${id}/prestataires?onglet=demandes#rfq-${r.id}`}>{kept ? "Voir" : "Comparer"}</Link>
+                        </div>
+                        {isOrganizer && kept && pp && HOSPITALITY_CATS.includes(r.category) && event.benefits.length > 0 && (
+                          <form action={applyQuoteToBenefit} className="apply-benefit">
+                            <input type="hidden" name="orgId" value={id} />
+                            <input type="hidden" name="quoteId" value={kept.id} />
+                            <span className="text-sm">Reporter le coût réel dans la valeur déclarée</span>
+                            <select name="benefitId" aria-label="Hospitalité concernée">
+                              {event.benefits.map((b) => <option key={b.id} value={b.id}>{b.label} (déclaré {formatEUR(b.valueCents)})</option>)}
+                            </select>
+                            <input name="value" inputMode="decimal" defaultValue={pp.each.toFixed(2).replace(".", ",")} aria-label="Valeur par participant (€ TTC)" />
+                            <span className="text-sm">€ TTC</span>
+                            <button className="btn ghost small">Mettre à jour</button>
+                            <span className="hint">Si le devis couvre plusieurs prestations, répartissez sa valeur. Les inscriptions déjà déclarées gardent la leur.</span>
+                          </form>
+                        )}
+                      </li>
+                    );
+                  })}
+                </ul>
+              )}
+              {usefulCats.length > 0 && (
+                <div className="chips">
+                  <span className="muted text-sm">{rfqs.length ? "Autres besoins :" : "Besoins courants :"}</span>
+                  {usefulCats.map((c) => <Link key={c.id} className="chip" href={newRfq(c.id)}>+ {c.label}</Link>)}
+                </div>
+              )}
+            </section>
+
+            {event.internal && (
+              <section className="card">
+                <h2>Participants</h2>
+                {experts.length === 0 ? (
+                  <p className="muted">{event.project ? "Aucun expert engagé dans le dossier pour l'instant." : "Réunion interne sans dossier rattaché : les participants ne sont pas suivis ici."}</p>
+                ) : (
+                  <ul className="plain stack-sm">
+                    {experts.map((e) => (
+                      <li key={e.id} className="flex-between">
+                        <span>{drPrefix(e.practitioner.profession)}{e.practitioner.user.firstName} {e.practitioner.user.lastName}</span>
+                        <span className={`pill ${e.status === "ATT_EXPERTS" ? "wait" : "ok"}`}>{e.status === "ATT_EXPERTS" ? "Réponse attendue" : "Engagé"}</span>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+                <p className="hint">Les hospitalités offertes aux experts (repas, nuitée) relèvent de leur convention : précisez-les dans le dossier.</p>
+              </section>
+            )}
+
+            <section className="card">
+              <h2>Hospitalités proposées</h2>
+              {event.benefits.length === 0 ? <p className="muted">Aucune.</p> : (
+                <ul className="plain stack-sm">
+                  {event.benefits.map((b) => (
+                    <li key={b.id} className="flex-between"><span>{b.label}</span><span className="muted">{formatEUR(b.valueCents)} TTC par personne</span></li>
+                  ))}
+                </ul>
+              )}
+            </section>
           </div>
-          {event.registrations.length === 0 ? (
-            <p className="muted">Aucune inscription pour l&apos;instant.</p>
-          ) : (
-            <table className="table" tabIndex={0}>
-              <thead><tr><th>Nom</th><th>Profession</th><th>Structure</th><th>Prestations acceptées</th><th>Valeur</th><th>Inscrit le</th></tr></thead>
-              <tbody>
-                {event.registrations.map((r) => (
-                  <tr key={r.id}>
-                    <td>{r.user.firstName} {r.user.lastName}</td>
-                    <td>{r.profession ?? "—"}</td>
-                    <td>{r.structure ?? "—"}</td>
-                    <td>{r.benefits.map((b) => b.benefit.label).join(", ") || "Aucune"}</td>
-                    <td>{formatEUR(r.benefits.reduce((s, b) => s + b.valueCents, 0))}</td>
-                    <td>{formatDate(r.createdAt)}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          )}
-        </section>
-        <section className="card">
-          <h2>Prestations proposées</h2>
-          {event.benefits.length === 0 ? <p className="muted">Aucune.</p> : (
-            <ul className="plain">{event.benefits.map((b) => <li key={b.id}>{b.label} — {formatEUR(b.valueCents)}</li>)}</ul>
-          )}
-        </section>
+
+          <aside className="page-aside">
+            <section className="card next-step">
+              <span className="eyebrow-sm">Diffusion</span>
+              {event.internal ? (
+                <>
+                  <p className="next-hint">Réunion interne : ni publication dans l&apos;agenda, ni inscriptions en ligne.{event.project ? " Les participants sont les experts du dossier." : ""}</p>
+                  {isOrganizer && <div className="transitions-stack"><Flag flag="public" label="Ouvrir au public" ghost /></div>}
+                </>
+              ) : (
+                <>
+                  <p className="next-hint">
+                    {event.publishedAt ? <>Publié dans <Link href={`/evenements/${event.id}`}>l&apos;agenda</Link>. Inscriptions {event.registrationOpen ? "ouvertes" : "fermées"}.</> : "Brouillon : l'événement n'est pas encore visible des praticiens."}
+                  </p>
+                  <div className="transitions-stack">
+                    {event.publishedAt ? <Flag flag="unpublish" label="Retirer de l'agenda" ghost /> : org.verification === "VERIFIED" ? <Flag flag="publish" label="Publier dans l'agenda" /> : <span className="hint">Publication possible une fois l&apos;organisation validée par KolBase.</span>}
+                    {event.registrationOpen ? <Flag flag="close" label="Fermer les inscriptions" ghost /> : <Flag flag="open" label="Rouvrir les inscriptions" ghost />}
+                    {isOrganizer && !event.publishedAt && <Flag flag="internal" label="En faire une réunion interne" ghost />}
+                  </div>
+                </>
+              )}
+            </section>
+
+            {isOrganizer && (
+              <section className="card stack-sm">
+                <h2 className="section-title">Agence mandatée</h2>
+                {agencies.length === 0 ? (
+                  <p className="muted text-sm">{event.agency ? `Confié à ${event.agency.name}.` : "Géré en interne."} Mandatez une agence dans <Link href={`/organisations/${id}/prestataires?onglet=agences`}>Prestataires et devis</Link> pour lui confier l&apos;événement.</p>
+                ) : (
+                  <form action={setEventAgency} className="form">
+                    <input type="hidden" name="orgId" value={id} />
+                    <input type="hidden" name="eventId" value={eventId} />
+                    <label>Événement confié à
+                      <select name="agencyId" defaultValue={event.agencyId ?? ""}>
+                        <option value="">— aucune (géré en interne) —</option>
+                        {agencies.map((m) => <option key={m.agency.id} value={m.agency.id}>{m.agency.name}</option>)}
+                      </select>
+                    </label>
+                    <button className="btn ghost small">Confier</button>
+                  </form>
+                )}
+              </section>
+            )}
+
+            {isOrganizer && event.project && (
+              <section className="card stack-sm">
+                <h2 className="section-title">Dossier lié</h2>
+                <Link href={`/organisations/${id}/dossiers/${event.project.id}`}><strong>{event.project.title}</strong></Link>
+                <span><StatusPill status={event.project.status} /></span>
+                <p className="hint">Experts, conventions et conformité se suivent dans le dossier ; les devis retenus ici s&apos;ajoutent à son budget.</p>
+              </section>
+            )}
+          </aside>
+        </div>
+
+        {!event.internal && (
+              <section className="card">
+                <div className="actions spread">
+                  <h2>Inscrits</h2>
+                  {event.registrations.length > 0 && <a className="btn ghost small" href={`/organisations/${id}/evenements/${eventId}/export`}>Exporter (CSV)</a>}
+                </div>
+                {event.registrations.length === 0 ? (
+                  <p className="muted">Aucune inscription pour l&apos;instant.</p>
+                ) : (
+                  <table className="table" tabIndex={0}>
+                    <thead><tr><th>Nom</th><th>Profession</th><th>Structure</th><th>Prestations acceptées</th><th>Valeur</th><th>Inscrit le</th></tr></thead>
+                    <tbody>
+                      {event.registrations.map((r) => (
+                        <tr key={r.id}>
+                          <td>{r.user.firstName} {r.user.lastName}</td>
+                          <td>{r.profession ?? "—"}</td>
+                          <td>{r.structure ?? "—"}</td>
+                          <td>{r.benefits.map((b) => b.benefit.label).join(", ") || "Aucune"}</td>
+                          <td>{formatEUR(r.benefits.reduce((s, b) => s + b.valueCents, 0))}</td>
+                          <td>{formatDate(r.createdAt)}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                )}
+              </section>
+        )}
       </main>
     </>
   );

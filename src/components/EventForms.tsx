@@ -13,6 +13,8 @@ export function NewEventForm({ orgId, types, formats, catalog, project }: { orgI
   const [state, action, pending] = useActionState(createEvent, undefined);
   const [format, setFormat] = useState("PRESENTIEL");
   const [picked, setPicked] = useState<Record<string, boolean>>({});
+  // Créé depuis un dossier (board, comité) : réunion interne par défaut.
+  const [internal, setInternal] = useState(!!project);
   return (
     <form action={action} className="card form">
       <h1>Nouvel événement</h1>
@@ -59,7 +61,10 @@ export function NewEventForm({ orgId, types, formats, catalog, project }: { orgI
           ))}
         </div>
       </fieldset>
-      <label className="check"><input type="checkbox" name="publish" value="1" /> Publier immédiatement dans l&apos;agenda</label>
+      <label className="check">
+        <input type="checkbox" name="internal" value="1" checked={internal} onChange={(e) => setInternal(e.target.checked)} /> Réunion interne (board, comité, réunion d&apos;experts) : ni publication dans l&apos;agenda, ni inscriptions en ligne
+      </label>
+      {!internal && <label className="check"><input type="checkbox" name="publish" value="1" /> Publier immédiatement dans l&apos;agenda</label>}
       <button className="btn" disabled={pending}>{pending ? "Création…" : "Créer l'événement"}</button>
     </form>
   );

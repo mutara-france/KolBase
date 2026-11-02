@@ -43,7 +43,7 @@ export default async function Page({ params }: { params: Promise<{ id: string }>
     ...upcoming.map((e) => ({
       date: e.startsAt,
       title: e.title,
-      detail: [e.city ?? (e.format === "DISTANCIEL" ? "En ligne" : null), `${plural(e._count.registrations, "inscrit", "inscrits")}${e.capacity ? ` sur ${e.capacity}` : ""}`, e.publishedAt ? null : "brouillon"]
+      detail: [e.city ?? (e.format === "DISTANCIEL" ? "En ligne" : null), e.internal ? "réunion interne" : `${plural(e._count.registrations, "inscrit", "inscrits")}${e.capacity ? ` sur ${e.capacity}` : ""}`, e.publishedAt || e.internal ? null : "brouillon"]
         .filter(Boolean)
         .join(" · "),
       href: can.events ? `${base}/evenements/${e.id}` : `/evenements/${e.id}`,

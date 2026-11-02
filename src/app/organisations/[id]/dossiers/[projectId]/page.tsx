@@ -8,7 +8,7 @@ import { MessageForm } from "@/components/ProjectForms";
 import { db } from "@/lib/db";
 import { requireMembership } from "@/lib/orgs";
 import { COMPLIANCE_ROLES, formatDate, formatDateTime, formatEUR } from "@/lib/events";
-import { collabType, PROJECT_ROLES, PROJECT_VIEW_ROLES, recruitmentOpen, REVIEW_ROLES, STATUS_LABEL, TRANSITIONS, type TransitionKey } from "@/lib/projects";
+import { collabType, needsMeeting, PROJECT_ROLES, PROJECT_VIEW_ROLES, recruitmentOpen, REVIEW_ROLES, STATUS_LABEL, TRANSITIONS, type TransitionKey } from "@/lib/projects";
 import { storageEnabled } from "@/lib/storage";
 import { advanceProject } from "@/lib/project-actions";
 import { BudgetPanel, ConflictsPanel, ConventionSignatureBlock, DocumentsPanel, MaterialsPanel } from "@/components/DossierSections";
@@ -80,7 +80,7 @@ export default async function Page({ params }: { params: Promise<{ id: string; p
       expenses: { select: { amountCents: true } },
       events: {
         orderBy: { startsAt: "asc" },
-        include: { rfqs: { include: { quotes: { select: { status: true } } } } },
+        include: { rfqs: { include: { quotes: { select: { status: true, amountCents: true } } } } },
       },
     },
   });
@@ -131,7 +131,9 @@ export default async function Page({ params }: { params: Promise<{ id: string; p
   const waiting = closed ? [] : live.filter((e) => e.status === "ATT_EXPERTS");
   const total = engaged.reduce((s, e) => s + (e.feeCents ?? 0), 0);
   const proposed = waiting.reduce((s, e) => s + (e.feeCents ?? 0), 0);
-  const spent = live.reduce((s, e) => s + (e.feeCents ?? 0), 0) + project.expenses.reduce((s, e) => s + e.amountCents, 0);
+  const supplierCents = project.events.flatMap((ev) => ev.rfqs.flatMap((r) => r.quotes)).filter((q) => q.status === "retained").reduce((s, q) => s + q.amountCents, 0);
+  const spent = live.reduce((s, e) => s + (e.feeCents ?? 0), 0) + project.expenses.reduce((s, e) => s + e.amountCents, 0) + supplierCents;
+  const showLogistics = needsMeeting(project.typeId) || project.events.length > 0;
   const budgetPct = project.budgetCents ? Math.round((spent / project.budgetCents) * 100) : null;
   const recent = history.slice(0, 8);
   const older = history.slice(8);
@@ -155,7 +157,7 @@ export default async function Page({ params }: { params: Promise<{ id: string; p
       <main className="stack">
         <p className="muted"><Link href={`/organisations/${id}`}>{org.name}</Link> / <Link href={`/organisations/${id}/dossiers`}>Dossiers</Link></p>
 
-        <header className="dossier-hero">
+        <header className="page-hero">
           <div className="hero-top">
             <span className="eyebrow-sm">{type?.label ?? project.typeId}{project.therapeuticArea ? ` · ${project.therapeuticArea}` : ""}{project.origin ? ` · ${project.origin}` : ""}</span>
             <StatusPill status={project.status} />
@@ -173,7 +175,7 @@ export default async function Page({ params }: { params: Promise<{ id: string; p
             </div>
             <div>
               <dt><Wallet size={13} /> Budget</dt>
-              <dd>{project.budgetCents != null ? formatEUR(project.budgetCents) : "Non défini"}<small>{budgetPct != null ? `${budgetPct} % engagé ou proposé` : "à renseigner plus bas"}</small></dd>
+              <dd>{project.budgetCents != null ? formatEUR(project.budgetCents) : "Non défini"}<small>{budgetPct != null ? `${budgetPct} % engagé ou proposé${supplierCents ? ", prestataires compris" : ""}` : "à renseigner plus bas"}</small></dd>
             </div>
             <div>
               <dt><Scale size={13} /> Régime</dt>
@@ -189,8 +191,8 @@ export default async function Page({ params }: { params: Promise<{ id: string; p
 
         {project.status === "ATT_IND" && <p className="notice warn">Proposition spontanée de l&apos;expert : acceptez-la pour ouvrir le circuit, ou déclinez-la.</p>}
 
-        <div className="dossier-grid">
-          <div className="dossier-main">
+        <div className="page-grid">
+          <div className="page-main">
             <section className="stack-sm">
               <div className="block-head">
                 <h2>Experts</h2>
@@ -275,7 +277,7 @@ export default async function Page({ params }: { params: Promise<{ id: string; p
             </section>
           </div>
 
-          <aside className="dossier-aside">
+          <aside className="page-aside">
             <section className="card next-step">
               <span className="eyebrow-sm">Prochaine étape</span>
               <p className="next-hint">{NEXT_HINT[project.status]}</p>
@@ -349,7 +351,7 @@ export default async function Page({ params }: { params: Promise<{ id: string; p
               </section>
             )}
 
-            <section className="card stack-sm">
+            {showLogistics && <section className="card stack-sm">
               <h2 className="section-title"><CalendarDays size={15} /> Événement et logistique</h2>
               {project.events.length === 0 ? (
                 <p className="muted text-sm">Réunion, formation ou symposium : créez l&apos;événement rattaché au dossier pour consulter les prestataires (salle, traiteur, hébergement, transport) et comparer leurs devis.</p>
@@ -377,7 +379,7 @@ export default async function Page({ params }: { params: Promise<{ id: string; p
                   {project.events[0] ? "Demander des devis" : "Créer l'événement du dossier"}
                 </Link>
               )}
-            </section>
+            </section>}
           </aside>
         </div>
       </main>

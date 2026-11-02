@@ -5,12 +5,12 @@ import { revalidatePath } from "next/cache";
 import { db } from "@/lib/db";
 import { audit } from "@/lib/auth";
 import { ORG_NOT_VERIFIED, isVerifiedOrg, requireMembership } from "@/lib/orgs";
-import { EVENT_MANAGER_ROLES, eventScope, parseParisDateTime } from "@/lib/events";
+import { EVENT_MANAGER_ROLES, EVENT_ORGANIZER_ROLES, eventScope, parseParisDateTime } from "@/lib/events";
 import { SUPPLIER_CATEGORIES } from "@/lib/suppliers";
 import { eurToCents, intOrNull, str } from "@/lib/form";
-import { isVatBp, linesTotal, MAX_LINES, type QuoteLine } from "@/lib/quotes";
+import { isVatBp, linesTotal, MAX_LINES, withVat, type QuoteLine } from "@/lib/quotes";
 import { MAX_UPLOAD_BYTES, putObject, safeFileName, storageEnabled } from "@/lib/storage";
-import { notifyQuote, notifyRfqSent } from "@/lib/notifications";
+import { notifyAward, notifyQuote, notifyRfqCancelled, notifyRfqMessage, notifyRfqSent } from "@/lib/notifications";
 
 export type ActionState = { error?: string; ok?: string } | undefined;
 
@@ -76,6 +76,7 @@ export async function cancelRfq(form: FormData) {
   const { count } = await db.rfq.updateMany({ where: { id: rfqId, organizationId: orgId, ...rfqScope(user, roles), status: { in: ["draft", "sent"] } }, data: { status: "cancelled" } });
   if (!count) return;
   await audit(user.id, "rfq.cancel", "Rfq", rfqId);
+  notifyRfqCancelled(rfqId);
   revalidatePath(`/organisations/${orgId}/prestataires`);
 }
 
@@ -85,6 +86,8 @@ export async function awardQuote(form: FormData) {
   const { user, roles } = await requireMembership(orgId, EVENT_MANAGER_ROLES);
   const quote = await db.quote.findFirst({ where: { id: str(form, "quoteId"), rfq: { organizationId: orgId, ...rfqScope(user, roles), status: "sent" } } });
   if (!quote) return;
+  // Une offre expirée n'engage plus le prestataire : il faut d'abord lui demander une version à jour.
+  if (quote.validUntil && quote.validUntil < new Date()) return;
   // Conflit d'intérêts : un membre du prestataire (agence mandatée, par exemple) ne retient pas son propre devis.
   if (user.memberships.some((m) => m.organizationId === quote.supplierId)) return;
   // La demande n'est attribuée qu'une fois : deux décisions simultanées ne retiennent pas deux devis.
@@ -97,7 +100,53 @@ export async function awardQuote(form: FormData) {
   });
   if (!awarded) return;
   await audit(user.id, "rfq.award", "Rfq", quote.rfqId, { quoteId: quote.id, supplierId: quote.supplierId, amountCents: quote.amountCents });
+  notifyAward(quote.rfqId);
   revalidatePath(`/organisations/${orgId}/prestataires`);
+}
+
+/**
+ * Report du coût réel d'un devis retenu dans la valeur déclarée d'une hospitalité de l'événement.
+ * Les inscriptions déjà déclarées (Transparence Santé) gardent leur valeur ; les autres sont mises à jour.
+ */
+export async function applyQuoteToBenefit(form: FormData) {
+  const orgId = str(form, "orgId");
+  const { user } = await requireMembership(orgId, EVENT_ORGANIZER_ROLES);
+  const quote = await db.quote.findFirst({ where: { id: str(form, "quoteId"), status: "retained", rfq: { organizationId: orgId, eventId: { not: null } } }, include: { rfq: true } });
+  if (!quote?.rfq.eventId) return;
+  const benefit = await db.eventBenefit.findFirst({ where: { id: str(form, "benefitId"), eventId: quote.rfq.eventId } });
+  if (!benefit) return;
+  const valueCents = eurToCents(str(form, "value"), { allowZero: false });
+  if (!valueCents || valueCents > 1_000_000) return;
+  await db.$transaction([
+    db.eventBenefit.update({ where: { id: benefit.id }, data: { valueCents } }),
+    db.registrationBenefit.updateMany({ where: { benefitId: benefit.id, registration: { declared: false } }, data: { valueCents } }),
+  ]);
+  await audit(user.id, "event.benefit_value", "Event", quote.rfq.eventId, { benefit: benefit.label, from: benefit.valueCents, to: valueCents, quoteId: quote.id, ttcCents: withVat(quote.amountCents, quote.vatBp) });
+  revalidatePath(`/organisations/${orgId}/evenements/${quote.rfq.eventId}`);
+}
+
+// ─── Questions et échanges sur une demande ─────────────────────────────────
+
+/** Message dans le fil privé entre le demandeur et un prestataire consulté (de part et d'autre). */
+export async function postRfqMessage(_: ActionState, form: FormData): Promise<ActionState> {
+  const orgId = str(form, "orgId");
+  const rfqId = str(form, "rfqId");
+  const supplierId = str(form, "supplierId");
+  const body = str(form, "body");
+  if (!body) return { error: "Écrivez votre message." };
+  if (body.length > 4000) return { error: "Message trop long (4 000 caractères au maximum)." };
+  const { user, roles, org } = await requireMembership(orgId);
+  const fromSupplier = org.kind === "PRESTATAIRE" && orgId === supplierId;
+  if (!fromSupplier && (org.kind === "PRESTATAIRE" || !roles.some((r) => EVENT_MANAGER_ROLES.includes(r)))) return { error: "Action non autorisée." };
+  const invite = await db.rfqSupplier.findFirst({
+    where: { rfqId, supplierId, rfq: { status: { in: ["sent", "awarded"] }, ...(fromSupplier ? {} : { organizationId: orgId, ...rfqScope(user, roles) }) } },
+  });
+  if (!invite) return { error: "Cette demande n'accepte plus de messages." };
+  await db.rfqMessage.create({ data: { rfqId, supplierId, authorId: user.id, body, fromSupplier } });
+  await audit(user.id, "rfq.message", "Rfq", rfqId, { supplierId, fromSupplier });
+  notifyRfqMessage(rfqId, supplierId, fromSupplier, user.id);
+  revalidatePath(fromSupplier ? `/organisations/${orgId}/devis` : `/organisations/${orgId}/prestataires`);
+  return { ok: "Message envoyé." };
 }
 
 // ─── Côté prestataire ───────────────────────────────────────────────────────

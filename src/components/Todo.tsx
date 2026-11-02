@@ -1,8 +1,8 @@
 import Link from "next/link";
-import { AlertTriangle, ArrowRight, CalendarClock, CheckCircle2, CircleDot, FileSignature, Inbox, ShieldCheck, UserRound, Mic, Receipt, Bell, BellRing } from "lucide-react";
+import { AlertTriangle, ArrowRight, CalendarClock, CheckCircle2, CircleDot, FileSignature, Inbox, ShieldCheck, UserRound, Mic, Receipt, Bell, BellRing, MessageSquare } from "lucide-react";
 import { getT } from "@/lib/i18n/server";
 
-const ICONS = { AlertTriangle, Bell, BellRing, CalendarClock, CheckCircle2, CircleDot, FileSignature, Inbox, Mic, Receipt, ShieldCheck, UserRound };
+const ICONS = { AlertTriangle, Bell, BellRing, CalendarClock, CheckCircle2, CircleDot, FileSignature, Inbox, MessageSquare, Mic, Receipt, ShieldCheck, UserRound };
 export type TodoItem = { href: string; title: string; detail?: string; icon: keyof typeof ICONS; tone?: "electric" | "warn" | "danger" | "ok" };
 
 export async function TodoList({ items, empty }: { items: TodoItem[]; empty?: string }) {

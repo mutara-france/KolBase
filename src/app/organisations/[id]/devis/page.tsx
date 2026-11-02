@@ -2,7 +2,8 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 import { Receipt } from "lucide-react";
 import { SiteHeader } from "@/components/SiteHeader";
-import { QuoteForm, SupplierProfileForm } from "@/components/RfqForms";
+import { QuoteForm, RfqMessageForm, SupplierProfileForm } from "@/components/RfqForms";
+import { Thread } from "@/components/ProjectBits";
 import { db } from "@/lib/db";
 import { requireMembership } from "@/lib/orgs";
 import { formatDate, formatEUR } from "@/lib/events";
@@ -16,18 +17,27 @@ export const metadata = { title: "Demandes de devis — KolBase" };
 export default async function Page({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: Promise<{ onglet?: string }> }) {
   const { id } = await params;
   const { onglet = "en-cours" } = await searchParams;
-  const { org, isAdmin } = await requireMembership(id);
+  const { org, isAdmin, user } = await requireMembership(id);
   if (org.kind !== "PRESTATAIRE") redirect(`/organisations/${id}`);
 
   const invites = await db.rfqSupplier.findMany({
     where: { supplierId: id, rfq: { status: { not: "draft" } } },
-    include: { rfq: { include: { organization: true, event: true, quotes: { where: { supplierId: id } } } } },
+    include: {
+      rfq: {
+        include: {
+          organization: true, event: true, quotes: { where: { supplierId: id } },
+          messages: { where: { supplierId: id }, include: { author: { select: { firstName: true, lastName: true } } }, orderBy: { createdAt: "asc" } },
+        },
+      },
+    },
     orderBy: { rfq: { sentAt: "desc" } },
   });
   const todo = invites.filter((i) => i.rfq.status === "sent" && i.rfq.quotes.length === 0 && !i.declined);
-  const shown = onglet === "en-cours" ? invites.filter((i) => i.rfq.status === "sent" && !i.declined) : invites;
+  // En cours : demandes ouvertes, et prestations qui vous sont attribuées (à préparer avec l'organisation).
+  const current = invites.filter((i) => (i.rfq.status === "sent" && !i.declined) || (i.rfq.status === "awarded" && i.rfq.quotes[0]?.status === "retained" && (!i.rfq.event || i.rfq.event.startsAt >= new Date())));
+  const shown = onglet === "en-cours" ? current : invites;
   const won = invites.filter((i) => i.rfq.quotes[0]?.status === "retained");
-  const tabs = [["en-cours", `En cours (${invites.filter((i) => i.rfq.status === "sent" && !i.declined).length})`], ["toutes", `Toutes (${invites.length})`], ["fiche", "Fiche prestataire"]] as const;
+  const tabs = [["en-cours", `En cours (${current.length})`], ["toutes", `Toutes (${invites.length})`], ["fiche", "Fiche prestataire"]] as const;
 
   return (
     <>
@@ -100,6 +110,20 @@ export default async function Page({ params, searchParams }: { params: Promise<{
                         </form>
                       )}
                     </>
+                  )}
+                  {q?.status === "retained" && <p className="notice ok">{r.organization.name} a retenu votre devis. Échangez ci-dessous pour préparer la prestation.</p>}
+                  {(r.status === "sent" || (r.status === "awarded" && q?.status === "retained") || r.messages.length > 0) && (
+                    <details className="rfq-thread" open={r.messages.length > 0}>
+                      <summary>
+                        <strong>Questions et échanges avec {r.organization.name}</strong>
+                        <span className="muted text-xs">{r.messages.length ? `${r.messages.length} message${r.messages.length > 1 ? "s" : ""}` : "posez une question sur le besoin"}</span>
+                        {r.messages.at(-1) && !r.messages.at(-1)!.fromSupplier && <span className="pill electric">Nouveau message</span>}
+                      </summary>
+                      <Thread messages={r.messages} meId={user.id} />
+                      {(r.status === "sent" || q?.status === "retained") && !declined && (
+                        <RfqMessageForm orgId={id} rfqId={r.id} supplierId={id} placeholder={`Votre question à ${r.organization.name}…`} />
+                      )}
+                    </details>
                   )}
                 </section>
               );

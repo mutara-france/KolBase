@@ -29,7 +29,7 @@ export async function requireMembership(orgId: string, roles?: OrgRole[], { allo
   return { user, org, roles: userRoles, isAdmin: userRoles.includes("ADMIN") };
 }
 
-/** L'annuaire (sourcing) est réservé aux équipes Éducation, Cumul et aux administrateurs d'une organisation validée. Les autres voient l'annuaire public. */
+/** L'annuaire (sourcing) est réservé aux équipes Projets et aux administrateurs d'une organisation validée. Les autres voient l'annuaire public. */
 export async function requireDirectoryAccess() {
   const user = await requireUser();
   if (!user.memberships.some((m) => SOURCING_ROLES.includes(m.role) && m.organization.kind !== "PRESTATAIRE" && m.organization.verification === "VERIFIED")) redirect("/experts");

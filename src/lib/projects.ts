@@ -25,6 +25,26 @@ export const COLLAB_TYPES = [
 
 export const collabType = (id: string) => COLLAB_TYPES.find((t) => t.id === id);
 
+/** Collaborations qui réunissent des participants (réunion, intervention, formation) : elles ont une logistique. */
+const MEETING_TYPES = new Set(["advisory", "comite-sci", "symposium", "pleniere", "table-ronde", "webinaire", "travaux-pratiques", "dpc", "live-surgery"]);
+export const needsMeeting = (typeId: string) => MEETING_TYPES.has(typeId);
+
+/** Qui doit agir, selon l'étape du dossier (listes et tableaux de bord). */
+export const NEXT_ACTOR: Record<ProjectStatus, { who: string; what: string } | null> = {
+  ATT_EXPERTS: { who: "Experts", what: "réponse aux sollicitations" },
+  ATT_IND: { who: "Projets", what: "examiner la proposition de l'expert" },
+  ACCORD: { who: "Projets", what: "soumettre à la conformité" },
+  EN_VALID: { who: "Conformité", what: "valider ou bloquer" },
+  BLOQUE: { who: "Projets", what: "corriger et reprendre" },
+  VALIDE: { who: "Projets", what: "démarche EPS puis signature" },
+  ORDRE: { who: "Ordre", what: "réponse à la demande d'autorisation" },
+  REFUS_ORDRE: { who: "Projets", what: "revoir ou abandonner" },
+  SIGNATURE: { who: "Signataires", what: "signature des conventions" },
+  SIGNE: { who: "Projets", what: "clôturer après la prestation" },
+  TERMINE: null,
+  DECLINE: null,
+};
+
 export const STATUS_LABEL: Record<ProjectStatus, string> = {
   ATT_EXPERTS: "En attente des experts",
   ATT_IND: "En attente de l'organisation",
