@@ -19,6 +19,7 @@
     "db:purge-demo": "tsx scripts/purge-demo.ts"
   },
   "dependencies": {
+    "@aws-sdk/client-s3": "^3.1161.0",
     "@fontsource/figtree": "^5.3.0",
     "@fontsource/ibm-plex-mono": "^5.3.0",
     "@fontsource/montserrat": "^5.3.0",

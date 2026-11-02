@@ -351,21 +351,34 @@ model ProjectExpert {
   respondedAt    DateTime?
   createdAt      DateTime            @default(now())
 
-  messages Message[]
+  messages  Message[]
+  documents Document[]
 
   @@unique([projectId, practitionerId])
 }
 
+// Pièce d'un dossier, stockée dans le stockage objet (S3 compatible) : convention signée d'un expert ou autre pièce.
+enum DocumentKind {
+  CONVENTION_SIGNEE
+  PIECE
+}
+
 model Document {
-  id         String   @id @default(cuid())
-  projectId  String
-  project    Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
-  type       String   // convention, programme, support…
-  name       String
-  version    Int      @default(1)
-  storageKey String?
-  approved   Boolean  @default(false)
-  createdAt  DateTime @default(now())
+  id              String         @id @default(cuid())
+  projectId       String
+  project         Project        @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  // Expert concerné (convention signée, pièce qui le concerne) : il voit et télécharge le document.
+  projectExpertId String?
+  projectExpert   ProjectExpert? @relation(fields: [projectExpertId], references: [id], onDelete: Cascade)
+  kind            DocumentKind   @default(PIECE)
+  name            String         // nom du fichier déposé
+  contentType     String
+  size            Int
+  storageKey      String         @unique
+  uploadedById    String?
+  createdAt       DateTime       @default(now())
+
+  @@index([projectId])
 }
 
 model Message {
