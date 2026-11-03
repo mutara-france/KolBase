@@ -8,6 +8,7 @@ import { makeT } from "@/lib/i18n";
 import { cancelSignatureRequest, signatureOpen } from "@/lib/yousign";
 import { payeeEntity, sirenOf } from "@/lib/structures";
 import { PAYMENT_TERMS } from "@/lib/fee-notes";
+import { professionalId } from "@/lib/countries";
 import { costHeadcount, expertSplit, feeTotals, isAbsent, speakerConfirmed, toDeclare } from "@/lib/indicators";
 
 describe("contrat de sous-traitance exigé avant d'engager un tiers", () => {
@@ -155,5 +156,14 @@ describe("une seule structure de facturation, un seul délai de paiement", () =>
   it("note d'honoraires et convention : paiement à 30 jours (même texte, traduit dans la convention)", () => {
     expect(PAYMENT_TERMS).toContain("à 30 jours");
     expect(makeT("en")(PAYMENT_TERMS)).toBe("By bank transfer, 30 days after the service is performed and the invoice is received.");
+  });
+});
+
+describe("identifiant professionnel demandé selon le pays d'exercice", () => {
+  it("RPPS en France, identifiant du pays ailleurs", () => {
+    expect(professionalId({ country: "FR", rpps: "10101010105", licenseNumber: null })).toEqual({ value: "10101010105", label: "N° RPPS", short: "numéro RPPS" });
+    expect(professionalId({ country: "BE", rpps: null, licenseNumber: null })).toMatchObject({ value: null, short: "numéro INAMI" });
+    expect(professionalId({ country: "US", rpps: "10101010105", licenseNumber: "1234567893" })).toMatchObject({ value: "1234567893", short: "NPI" });
+    expect(professionalId({ country: "CH", rpps: null, licenseNumber: null }).short).toBe("numéro d'inscription professionnelle");
   });
 });

@@ -109,7 +109,8 @@ export function PasswordForm({ email }: { email: string }) {
   );
 }
 
-export function ListingForm({ listed, eligible, hasRpps }: { listed: boolean; eligible: boolean; hasRpps: boolean }) {
+/** Référencement comme expert ; `idMissing` : identifiant professionnel à renseigner d'abord (RPPS, ou celui du pays d'exercice). */
+export function ListingForm({ listed, eligible, idMissing }: { listed: boolean; eligible: boolean; idMissing: string | null }) {
   const [state, action, pending] = useActionState(setListed, undefined);
   const t = useT();
   if (!listed && !eligible)
@@ -130,7 +131,7 @@ export function ListingForm({ listed, eligible, hasRpps }: { listed: boolean; el
           <li>{t("Votre profil apparaît dans l'annuaire des experts et sur le site public.")}</li>
           <li>{t("Vous recevez des sollicitations et accédez aux opportunités.")}</li>
           <li>{t("Toute rémunération ou avantage reçu fera l'objet d'une convention, que l'organisation déclare sur Transparence Santé.")}</li>
-          {!hasRpps && <li><strong>{t("Prérequis : renseignez votre numéro RPPS")}</strong> {t("(Informations personnelles, plus bas).")}</li>}
+          {idMissing && <li><strong>{t("Prérequis : renseignez votre {id}", { id: t(idMissing) })}</strong> {t("(Informations personnelles, plus bas).")}</li>}
         </ul>
       )}
       <input type="hidden" name="listed" value={listed ? "0" : "1"} />

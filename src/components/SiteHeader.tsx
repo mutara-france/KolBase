@@ -9,7 +9,7 @@ import { countFor, orgMenuLinks, orgNavItems, type ShellItem, type ShellSpace } 
 import { orgOverview } from "@/lib/org-overview";
 import { SOURCING_ROLES } from "@/lib/projects";
 import { unseenFollowCount } from "@/lib/follows";
-import { drPrefix } from "@/lib/professions";
+import { canBeExpert, drPrefix } from "@/lib/professions";
 import { isPlatformAdmin } from "@/lib/platform";
 import { getT } from "@/lib/i18n/server";
 import type { OrgKind, OrgRole } from "@/generated/prisma/client";
@@ -44,7 +44,8 @@ export async function SiteHeader({ variant = "app", section }: { variant?: "app"
           ] satisfies ShellItem[])
         : []),
       { key: "agenda", href: "/inscriptions", label: t("Agenda"), icon: "CalendarDays", match: p.listed ? ["/interventions"] : [] },
-      { key: "revenus", href: "/revenus", label: t("Revenus"), icon: "Wallet" },
+      // Revenus (honoraires, notes, liens d'intérêts) : pour les professions qui peuvent être expertes.
+      ...(canBeExpert(p.profession) || p.listed ? [{ key: "revenus", href: "/revenus", label: t("Revenus"), icon: "Wallet" } satisfies ShellItem] : []),
       { key: "profil", href: "/compte", label: t("Mon profil"), short: t("Profil"), icon: "UserRound" },
     ];
     spaces.push({

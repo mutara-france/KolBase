@@ -146,4 +146,8 @@ export const COMMON: Record<string, string> = {
   "Elle figure sur vos conventions et vos notes d'honoraires. Laissez vide si vous facturez en votre nom propre.": "It appears on your agreements and fee notes. Leave empty if you invoice in your own name.",
   "Société d'exercice": "Practice company",
   "EURL": "EURL",
+  "Renseigner votre {id}": "Enter your {id}",
+  "Vos inscriptions aux événements.": "Your event registrations.",
+  "Prérequis : renseignez votre {id}": "Prerequisite: enter your {id}",
+  "numéro RPPS": "RPPS number",
 };

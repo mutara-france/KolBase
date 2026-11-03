@@ -2792,6 +2792,37 @@ async function submitNewOrg(page, siren) {
     await d.ctx.close();
   }
 
+  // 8. Professions non éligibles (pas de référencement, ni Revenus, Publications, Structures) et praticiens hors de France.
+  {
+    await pgc.query(`insert into "User" (id, email, "firstName", "lastName", "passwordHash", "emailVerifiedAt", "updatedAt") select 'e2e-lot2-u-asst', 'lot2.assistante@exemple.fr', 'Lou', 'Assistante', "passwordHash", now(), now() from "User" where id = 'demo-u-durand'`);
+    await pgc.query(`insert into "PractitionerProfile" (id, "userId", profession, city, country, "updatedAt") values ('e2e-lot2-p-asst', 'e2e-lot2-u-asst', 'Assistant(e) dentaire', 'Lyon', 'FR', now())`);
+    await pgc.query(`insert into "User" (id, email, "firstName", "lastName", "passwordHash", "emailVerifiedAt", "updatedAt") select 'e2e-lot2-u-us', 'lot2.boston@exemple.fr', 'Ana', 'Boston', "passwordHash", now(), now() from "User" where id = 'demo-u-durand'`);
+    await pgc.query(`insert into "PractitionerProfile" (id, "userId", profession, city, country, "updatedAt") values ('e2e-lot2-p-us', 'e2e-lot2-u-us', 'Chirurgien-dentiste', 'Boston, MA', 'US', now())`);
+    const a = await session();
+    await login(a.page, "lot2.assistante@exemple.fr");
+    await a.page.goto(`${BASE}/tableau-de-bord`);
+    const dash = await text(a.page);
+    const nav = await a.page.locator("body").innerText();
+    check("Profession non éligible : pas de « Me référencer » ni d'entrée Revenus", !dash.includes("Devenir expert référencé") && (await a.page.locator('a[href="/compte"]:has-text("Me référencer")').count()) === 0 && (await a.page.locator('a[href="/revenus"]').count()) === 0 && !dash.includes("Référencez-vous comme expert"), nav.slice(0, 200));
+    await a.page.goto(`${BASE}/compte`);
+    const acc = await text(a.page);
+    check("Profession non éligible : ni Publications ni Structures juridiques dans Mon compte", !/Publications \(\d+\)/.test(acc) && !/Structures juridiques \(\d+\)/.test(acc) && acc.includes("réservé aux chirurgiens-dentistes"));
+    await a.ctx.close();
+    await pgc.query(`update "PractitionerProfile" set "licenseNumber" = null where id = 'demo-p-janssens'`);
+    const be = await session();
+    await login(be.page, "sophie.janssens@demo.kolbase.local");
+    await be.page.goto(`${BASE}/tableau-de-bord`);
+    const bed = await text(be.page);
+    check("Hors de France (Belgique) : identifiant du pays demandé, pas le RPPS", bed.includes("Renseigner votre numéro INAMI") && !bed.includes("RPPS"));
+    await be.ctx.close();
+    const us = await session();
+    await login(us.page, "lot2.boston@exemple.fr");
+    await us.page.goto(`${BASE}/compte`);
+    const usc = await text(us.page);
+    check("Hors de France (États-Unis) : prérequis du référencement = NPI, pas de RPPS", usc.includes("Prérequis : renseignez votre NPI") && !usc.includes("numéro RPPS") && (await us.page.locator('input[name="rpps"]').count()) === 0 && (await us.page.locator('input[name="licenseNumber"]').count()) === 1);
+    await us.ctx.close();
+  }
+
   await pgc.end();
 }
 
