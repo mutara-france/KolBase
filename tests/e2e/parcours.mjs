@@ -710,6 +710,17 @@ async function submitNewOrg(page, siren) {
   check("Administration : état du lancement", t.includes("Avant l'ouverture au public") && t.includes("Envoi d'e-mails") && t.includes("À compléter : hébergeur des documents"));
   await page.goto(`${BASE}/mentions-legales`);
   check("Mentions légales : éditeur complet", (await page.locator("main").innerText()).includes("MUTARA, société par actions simplifiée (SAS) au capital de 100 €"));
+  const ml = (await page.locator("main").innerText()).replace(/\s/g, " ");
+  check("Mentions légales : hébergeur, prestataires, signalement", ml.includes("Render Services, Inc.") && ml.includes("Stripe Payments Europe") && ml.includes("Signaler un contenu"));
+  await page.goto(`${BASE}/conditions-de-vente`);
+  const cgv = (await page.locator("main").innerText()).replace(/\s/g, " ");
+  check("Conditions de vente : tarifs et services à jour", cgv.includes("599 € HT par mois") && cgv.includes("5 990 € HT par an") && cgv.includes("249 € HT par mois") && cgv.includes("Pack visibilité") && cgv.includes("40 €"));
+  await page.goto(`${BASE}/cgu`);
+  check("CGU : sommaire et renvois", (await page.locator(".legal-toc li").count()) >= 15 && (await page.locator('.legal-others a[href="/conditions-de-vente"]').count()) === 1);
+  await page.goto(`${BASE}/confidentialite`);
+  const pc = await page.locator("main").innerText();
+  check("Confidentialité : durées et cookies", pc.includes("kb_src") && pc.includes("13 mois") && pc.includes("10 ans"));
+  check("Pied de page : conditions de vente", (await page.locator('footer a[href="/conditions-de-vente"]').count()) === 1);
   await ctx.close();
 }
 

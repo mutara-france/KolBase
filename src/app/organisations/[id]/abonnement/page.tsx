@@ -78,7 +78,7 @@ export default async function Page({ params, searchParams }: { params: Promise<{
             </div>
           )}
           {!isAdmin && !ok && stripeEnabled() && <p className="hint">Seul un administrateur peut activer l&apos;abonnement : {admins.map((a) => `${a.user.firstName} ${a.user.lastName}`).join(", ")}.</p>}
-          <p className="hint">Paiement par carte ou prélèvement SEPA, facture envoyée par e-mail à chaque échéance (TVA en sus). Résiliable à tout moment, effet à la fin de la période en cours (mois ou année).</p>
+          <p className="hint">Paiement par carte ou prélèvement SEPA, facture envoyée par e-mail à chaque échéance (TVA en sus). Résiliable à tout moment, effet à la fin de la période en cours (mois ou année). En activant l&apos;abonnement, vous acceptez les <Link href="/conditions-de-vente" target="_blank">conditions générales de vente</Link>.</p>
         </section>
 
         <section className="card stack-sm">

@@ -32,6 +32,7 @@ export function ServiceOffers({ orgId, eventId, offers, maxDate }: { orgId: stri
                 <input type="hidden" name="offerId" value={o.id} />
                 <label>Consignes (facultatif)<textarea name="brief" rows={3} maxLength={2000} placeholder="Public visé, points à mettre en avant, visuels fournis…" /></label>
                 <label>Date souhaitée (facultatif)<input type="date" name="wishedAt" max={maxDate} /></label>
+                <p className="hint">Facturé une fois réalisé ; annulable sans frais tant que la commande n&apos;est pas planifiée. <a href="/conditions-de-vente#art-8" target="_blank" rel="noopener">Conditions de vente</a></p>
                 <div className="actions">
                   <button className="btn small" disabled={pending}>{pending ? "Envoi…" : `Commander — ${o.price}`}</button>
                   <button type="button" className="link" onClick={() => setOpen(null)}>Annuler</button>

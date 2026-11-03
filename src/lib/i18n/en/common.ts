@@ -82,4 +82,5 @@ export const COMMON: Record<string, string> = {
   "Impossible : {orgs} exige la double authentification de ses membres.": "Not possible: {orgs} requires two-factor authentication for its members.",
   "Impossible : la double authentification est obligatoire pour les administrateurs de KolBase.": "Not possible: two-factor authentication is mandatory for KolBase administrators.",
   "Double authentification désactivée.": "Two-factor authentication turned off.",
+  "Conditions de vente": "Terms of sale",
 };

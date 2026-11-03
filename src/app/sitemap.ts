@@ -14,7 +14,7 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
     db.article.findMany({ where: { publishedAt: { not: null, lte: new Date() } }, select: { slug: true, updatedAt: true } }),
   ]);
   return [
-    ...["", "/experts", "/evenements", "/appels", "/structures", "/actualites", "/aide", "/cgu", "/confidentialite", "/mentions-legales"].map((p) => ({ url: `${base}${p}` })),
+    ...["", "/experts", "/evenements", "/appels", "/structures", "/actualites", "/aide", "/cgu", "/conditions-de-vente", "/confidentialite", "/mentions-legales"].map((p) => ({ url: `${base}${p}` })),
     ...experts.map((e) => ({ url: `${base}/experts/${e.id}`, lastModified: e.updatedAt })),
     ...orgs.map((o) => ({ url: `${base}/structures/${o.id}`, lastModified: o.updatedAt })),
     ...events.map((e) => ({ url: `${base}/evenements/${e.id}`, lastModified: e.updatedAt })),
