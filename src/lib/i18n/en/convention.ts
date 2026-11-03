@@ -65,7 +65,6 @@ export const CONVENTION: Record<string, string> = {
   "Total": "Total",
   "Engagements": "Commitments",
   "L'hospitalité offerte est d'un niveau raisonnable, strictement limitée à l'objet scientifique ou professionnel de la manifestation, et ne s'étend pas aux personnes accompagnant le bénéficiaire.": "The hospitality offered is of a reasonable level, strictly limited to the scientific or professional purpose of the event, and does not extend to persons accompanying the beneficiary.",
-  "Conformément aux articles L.1453-1 et suivants du Code de la santé publique, la présente convention est déclarée à l'instance ordinale compétente et rendue publique sur la base Transparence Santé.": "In accordance with Articles L.1453-1 et seq. of the French Public Health Code, this agreement is declared to the competent professional council and made public on the Transparence Santé database.",
   "Le bénéficiaire a accepté chacun de ces avantages individuellement lors de son inscription sur KolBase.": "The beneficiary accepted each of these benefits individually when registering on KolBase.",
   // Unités de prestation
   "heure": "hour",
@@ -103,4 +102,7 @@ export const CONVENTION: Record<string, string> = {
   "en Algérie": "in Algeria",
   "au Liban": "in Lebanon",
   "hors de France": "outside France",
+  "Soumise à autorisation": "Subject to authorisation",
+  "Conformément aux articles L.1453-1 et suivants du Code de la santé publique, la présente convention, dont le montant dépasse un seuil fixé par arrêté, est soumise à l'autorisation préalable de l'instance ordinale compétente avant son exécution, et rendue publique sur la base Transparence Santé.": "In accordance with Articles L.1453-1 et seq. of the French Public Health Code, this agreement, whose amount exceeds a threshold set by ministerial order, is subject to prior authorisation by the competent professional council before it is performed, and is made public on the Transparence Santé database.",
+  "Conformément aux articles L.1453-1 et suivants du Code de la santé publique, la présente convention, sous les seuils d'autorisation, est déclarée à l'instance ordinale compétente avant son exécution et rendue publique sur la base Transparence Santé.": "In accordance with Articles L.1453-1 et seq. of the French Public Health Code, this agreement, below the authorisation thresholds, is declared to the competent professional council before it is performed and made public on the Transparence Santé database.",
 };

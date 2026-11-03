@@ -245,7 +245,8 @@ main.narrow { max-width: 760px; }
 .form legend { font-size: 12px; font-weight: 600; color: var(--ink-soft); padding: 0 6px; }
 .checks { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 8px; }
 .benefits { display: flex; flex-direction: column; gap: 8px; }
-.benefit-row { display: flex; align-items: center; gap: 8px; }
+.benefit-row { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.benefit-row .benefit-over { flex-basis: 100%; }
 .benefit-row label.check { flex: 1; }
 .benefit-row input[inputmode] { width: 96px !important; flex: none; }
 .fee-row { display: flex; flex-wrap: wrap; gap: 10px; align-items: flex-end; padding: 10px 0; border-bottom: 1px solid var(--line); }

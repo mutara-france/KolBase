@@ -2473,6 +2473,8 @@ async function submitNewOrg(page, siren) {
   const pgc = new pg.Client({ connectionString: process.env.DATABASE_URL });
   await pgc.connect();
   const q1 = async (sql, args = []) => (await pgc.query(sql, args)).rows[0];
+  /** Valeur d'un champ « date et heure » (heure de Paris), dans `days` jours. */
+  const parisInput = (days, hm) => `${new Date(Date.now() + days * 864e5).toLocaleDateString("sv-SE", { timeZone: "Europe/Paris" })}T${hm}`;
 
   // 1. Contrat de sous-traitance exigé avant la première action qui engage un tiers (organisation neuve,
   //    abonnement offert pour isoler le contrat).
@@ -2552,6 +2554,40 @@ async function submitNewOrg(page, siren) {
     await pgc.query(`delete from "ProjectExpert" where id in ('e2e-lot2-pe-signe', 'e2e-lot2-pe-accord')`);
     await pgc.query(`delete from "Project" where id in ('e2e-lot2-prj-signe', 'e2e-lot2-prj-accord')`);
     await pgc.query(`delete from "DeclaredInterest" where id = 'e2e-lot2-di'`);
+  }
+
+  // 3. Seuils d'hospitalité : alerte à la saisie, régime par prestation, Hospitalités, Autorisations, convention.
+  {
+    const { ctx, page } = await session();
+    await login(page, "claire.morel@demo.kolbase.local");
+    await page.goto(`${BASE}/organisations/demo-org-dentalys/evenements/nouveau`);
+    await page.fill('input[name="title"]', "Congrès Lot Deux — hospitalités");
+    await page.fill('input[name="startsAt"]', parisInput(90, "09:00"));
+    await page.check('input[name="benefit_nuitee"]');
+    await page.fill('input[name="value_nuitee"]', "180");
+    let t = await text(page);
+    check("Saisie d'un événement : alerte en direct au-delà du seuil (nuitée)", t.includes("Au-delà de 150 € TTC par nuitée : autorisation") && t.includes("soumise à autorisation de l'Ordre, à demander au moins 60 jours avant"));
+    await page.fill('input[name="value_nuitee"]', "140");
+    t = await text(page);
+    check("Saisie d'un événement : sous les seuils, déclaration", !t.includes("Au-delà de 150 €") && t.includes("Sous les seuils d'autorisation de votre organisation : convention d'hospitalité déclarée"));
+    await page.fill('input[name="value_nuitee"]', "180");
+    await page.check('input[name="benefit_dejeuner"]');
+    await Promise.all([page.waitForURL(/\/evenements\/(?!nouveau)[^/?]+$/), page.click('button:has-text("Créer l\'événement")')]);
+    const evId = page.url().split("/").pop();
+    const night = await page.locator('section.card:has(h2:has-text("Hospitalités proposées")) li:has-text("Nuitée d\'hôtel")').innerText();
+    const lunch = await page.locator('section.card:has(h2:has-text("Hospitalités proposées")) li:has-text("Déjeuner sur place")').innerText();
+    check("Fiche de l'événement : régime par prestation", night.includes("Autorisation") && lunch.includes("Déclaration") && (await text(page)).includes("Participant qui accepte toutes les prestations : convention soumise à autorisation"), `${night} | ${lunch}`);
+    await pgc.query(`insert into "Registration" (id, "eventId", "userId", profession) values ('e2e-lot2-reg-hosp', $1, 'demo-u-durand', 'Chirurgien-dentiste')`, [evId]);
+    await pgc.query(`insert into "RegistrationBenefit" ("registrationId", "benefitId", "valueCents") select 'e2e-lot2-reg-hosp', id, "valueCents" from "EventBenefit" where "eventId" = $1 and "catalogId" in ('nuitee', 'dejeuner')`, [evId]);
+    await page.goto(`${BASE}/organisations/demo-org-dentalys/hospitalites`);
+    const row = await page.locator('section.card:has-text("Congrès Lot Deux") tr:has-text("DURAND")').innerText();
+    check("Hospitalités : colonne Régime", (await page.locator('section.card:has-text("Congrès Lot Deux") th:has-text("Régime")').count()) === 1 && row.includes("Autorisation"), row);
+    await page.goto(`${BASE}/organisations/demo-org-dentalys/conformite?onglet=autorisations`);
+    const auth = await page.locator('tr:has-text("Congrès Lot Deux")').innerText().catch(() => "");
+    check("Autorisations : l'hospitalité soumise à autorisation y remonte", (await text(page)).includes("Hospitalités soumises à autorisation") && auth.includes("DURAND Hélène") && auth.includes("Nuitée 180 € > 150 €") && auth.includes("Avant le"), auth);
+    const conv = await page.request.get(`${BASE}/organisations/demo-org-dentalys/hospitalites/convention/e2e-lot2-reg-hosp`);
+    check("Convention d'hospitalité (PDF) disponible pour une hospitalité soumise à autorisation", conv.status() === 200 && (conv.headers()["content-type"] ?? "").includes("pdf"));
+    await ctx.close();
   }
 
   await pgc.end();

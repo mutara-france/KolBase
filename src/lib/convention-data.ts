@@ -2,6 +2,8 @@ import "server-only";
 import { db } from "@/lib/db";
 import { collabType, fmvCheck, STATUS_LABEL } from "@/lib/projects";
 import { eventTypeLabel } from "@/lib/events";
+import { complianceSettings, hospitalityRegime } from "@/lib/compliance";
+import { practicesInFrance } from "@/lib/countries";
 import type { CollabConventionInput, HospitalityConventionInput } from "@/lib/convention-pdf";
 
 /** Référence d'une convention de collaboration (dossier et expert). */
@@ -50,7 +52,9 @@ export async function loadHospitalityConvention(registrationId: string, organiza
     include: { user: { include: { practitioner: true } }, event: { include: { organization: true } }, benefits: { include: { benefit: true } } },
   });
   if (!r) return null;
+  const country = r.user.practitioner?.country ?? "FR";
   return {
+    regime: practicesInFrance(country) ? hospitalityRegime(complianceSettings(r.event.organization.complianceSettings), r.benefits.map((b) => ({ catalogId: b.benefit.catalogId, valueCents: b.valueCents }))).regime : "hors_france",
     ref: `KB-H-${r.id.slice(-8).toUpperCase()}`,
     org: { name: r.event.organization.name, headquarters: r.event.organization.headquarters },
     beneficiary: { firstName: r.user.firstName, lastName: r.user.lastName, email: r.user.email, profession: r.profession, rpps: r.user.practitioner?.rpps ?? null, structure: r.structure, country: r.user.practitioner?.country ?? "FR", licenseNumber: r.user.practitioner?.licenseNumber ?? null },

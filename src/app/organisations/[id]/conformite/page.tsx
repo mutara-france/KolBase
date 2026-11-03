@@ -8,7 +8,7 @@ import { db } from "@/lib/db";
 import { requireMembership } from "@/lib/orgs";
 import { COMPLIANCE_ROLES, formatDate, formatEUR } from "@/lib/events";
 import { collabType, STATUS_LABEL } from "@/lib/projects";
-import { complianceSettings, foreignRegime, legalBound, remunerationRegime, REGIME_LABEL, SETTING_FIELDS, type Regime } from "@/lib/compliance";
+import { complianceSettings, foreignRegime, hospitalityRegime, legalBound, remunerationRegime, REGIME_LABEL, SETTING_FIELDS, type Regime } from "@/lib/compliance";
 import { country, practicesInFrance } from "@/lib/countries";
 import { registerRows } from "@/lib/compliance-data";
 import { markProjectPublished, markSemesterPublished } from "@/lib/compliance-actions";
@@ -54,9 +54,22 @@ export default async function Page({ params, searchParams }: { params: Promise<{
   const toValidate = projects.filter((p) => p.status === "EN_VALID");
   const authorizations = projects.filter((p) => p.status === "ORDRE" || p.status === "REFUS_ORDRE" || (p.status === "VALIDE" && regimeOf(p).regime === "autorisation"));
   const toPublish = projects.filter((p) => ["SIGNE", "TERMINE"].includes(p.status));
+  // Hospitalités soumises à autorisation (praticiens exerçant en France) : événements à venir, ou passés et pas encore
+  // déclarés ; l'avantage d'un absent au pointage n'est pas consommé, il n'est pas repris.
+  const now = new Date();
+  const hospRegs = await db.registration.findMany({
+    where: { event: { organizationId: id }, profession: { not: null }, benefits: { some: {} }, OR: [{ event: { startsAt: { gte: now } } }, { declared: false }] },
+    include: { user: { select: { firstName: true, lastName: true, practitioner: { select: { country: true } } } }, event: { select: { id: true, title: true, startsAt: true } }, benefits: { include: { benefit: { select: { catalogId: true } } } } },
+    orderBy: { event: { startsAt: "asc" } },
+  });
+  const pointedEvents = new Set((await db.registration.groupBy({ by: ["eventId"], where: { event: { organizationId: id, startsAt: { lt: now } }, checkedInAt: { not: null } } })).map((g) => g.eventId));
+  const hospAuthorizations = hospRegs
+    .filter((r) => practicesInFrance(r.user.practitioner?.country ?? "FR") && !(pointedEvents.has(r.event.id) && !r.checkedInAt))
+    .map((r) => ({ r, regime: hospitalityRegime(s, r.benefits.map((b) => ({ catalogId: b.benefit.catalogId, valueCents: b.valueCents }))) }))
+    .filter((x) => x.regime.regime === "autorisation");
   const counts: Record<string, number> = {
     "a-valider": toValidate.length,
-    autorisations: authorizations.filter((p) => p.status !== "REFUS_ORDRE").length,
+    autorisations: authorizations.filter((p) => p.status !== "REFUS_ORDRE").length + hospAuthorizations.filter((x) => x.r.event.startsAt >= now).length,
     transparence: toPublish.filter((p) => !p.declared).length,
   };
 
@@ -90,6 +103,27 @@ export default async function Page({ params, searchParams }: { params: Promise<{
                       <td>{p.status === "VALIDE" ? <span className="pill wait">Demande à faire</span> : <StatusPill status={p.status} />}{p.ordreRef ? <span className="muted"> · {p.ordreRef}</span> : null}</td>
                     </tr>
                   ))}
+                </tbody>
+              </table>
+            )}
+            <h2>Hospitalités soumises à autorisation</h2>
+            <p className="muted">Conventions d&apos;hospitalité dont une prestation ou le total dépasse un seuil : l&apos;autorisation de l&apos;Ordre est à demander au moins {s.authorizationDays} jours avant l&apos;événement.</p>
+            {hospAuthorizations.length === 0 ? <p className="muted">Aucune hospitalité soumise à autorisation.</p> : (
+              <table className="table" tabIndex={0}>
+                <thead><tr><th>Événement</th><th>Bénéficiaire</th><th>Valeur</th><th>Motif</th><th>Demande</th></tr></thead>
+                <tbody>
+                  {hospAuthorizations.map(({ r, regime }) => {
+                    const by = new Date(r.event.startsAt.getTime() - s.authorizationDays * 864e5);
+                    return (
+                      <tr key={r.id}>
+                        <td><Link href={`/organisations/${id}/evenements/${r.event.id}`}>{r.event.title}</Link><span className="muted"> · {formatDate(r.event.startsAt)}</span></td>
+                        <td>{r.user.lastName.toUpperCase()} {r.user.firstName}</td>
+                        <td>{formatEUR(r.benefits.reduce((x, b) => x + b.valueCents, 0))} TTC</td>
+                        <td>{regime.reason}</td>
+                        <td>{r.event.startsAt < now ? <span className="pill">Événement passé</span> : <span className={`pill ${by < now ? "bad" : "wait"}`}>{by < now ? "Délai dépassé" : `Avant le ${formatDate(by)}`}</span>}{" "}<a className="link" href={`/organisations/${id}/hospitalites/convention/${r.id}`} target="_blank" rel="noreferrer">convention</a></td>
+                      </tr>
+                    );
+                  })}
                 </tbody>
               </table>
             )}

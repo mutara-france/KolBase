@@ -15,7 +15,7 @@ import { engagementBlock } from "@/lib/billing";
 import { applyQuoteToBenefit } from "@/lib/rfq-actions";
 import { RFQ_STATUS, rfqDisplayStatus, SUPPLIER_CATEGORIES, supplierCategoryLabel } from "@/lib/suppliers";
 import { perParticipant, withVat } from "@/lib/quotes";
-import { complianceSettings } from "@/lib/compliance";
+import { complianceSettings, hospitalityRegime, REGIME_LABEL } from "@/lib/compliance";
 import { drPrefix } from "@/lib/professions";
 import { checkinOpen } from "@/lib/checkin";
 import { eventEnded, fmtRating, surveySummary } from "@/lib/event-followup";
@@ -289,7 +289,8 @@ export default async function Page({ params, searchParams }: { params: Promise<{
                 formats={Object.entries(FORMAT_LABEL).map(([value, label]) => ({ value, label }))}
                 catalog={BENEFIT_CATALOG}
                 registrations={event.registrations.length}
-                frozen={frozenBenefits ? event.benefits.map((b) => ({ label: b.label, valueCents: b.valueCents })) : undefined}
+                frozen={frozenBenefits ? event.benefits.map((b) => ({ catalogId: b.catalogId, label: b.label, valueCents: b.valueCents })) : undefined}
+                limits={settings}
                 initial={{
                   title: event.title, typeId: event.typeId, therapeuticArea: event.therapeuticArea ?? "", description: event.description ?? "",
                   startsAt: toParisInput(event.startsAt), durationMinutes: event.durationMinutes != null ? String(event.durationMinutes) : "",
@@ -471,11 +472,28 @@ export default async function Page({ params, searchParams }: { params: Promise<{
             <section className="card">
               <h2>Hospitalités proposées</h2>
               {event.benefits.length === 0 ? <p className="muted">Aucune.</p> : (
-                <ul className="plain stack-sm">
-                  {event.benefits.map((b) => (
-                    <li key={b.id} className="flex-between"><span>{b.label}</span><span className="muted">{formatEUR(b.valueCents)} TTC par personne</span></li>
-                  ))}
-                </ul>
+                <>
+                  {/* Régime par prestation, avec les seuils de l'organisation (participant exerçant en France). */}
+                  <ul className="plain stack-sm">
+                    {event.benefits.map((b) => {
+                      const r = hospitalityRegime(settings, [b]);
+                      return (
+                        <li key={b.id} className="flex-between">
+                          <span>{b.label}</span>
+                          <span className="muted">{formatEUR(b.valueCents)} TTC par personne <span className={`pill ${r.regime === "autorisation" ? "wait" : "ok"}`} title={r.reason}>{REGIME_LABEL[r.regime]}</span></span>
+                        </li>
+                      );
+                    })}
+                  </ul>
+                  {(() => {
+                    const all = hospitalityRegime(settings, event.benefits);
+                    return (
+                      <p className={all.regime === "autorisation" ? "notice warn" : "hint"}>
+                        Participant qui accepte toutes les prestations : convention {all.regime === "autorisation" ? `soumise à autorisation de l'Ordre (${all.reason}), à demander au moins ${settings.authorizationDays} jours avant l'événement` : `déclarée à l'Ordre (sous les seuils d'autorisation)`}.
+                      </p>
+                    );
+                  })()}
+                </>
               )}
             </section>
           </div>

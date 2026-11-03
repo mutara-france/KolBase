@@ -6,6 +6,7 @@ import { db } from "@/lib/db";
 import { BillingNotice } from "@/components/BillingNotice";
 import { engagementBlock } from "@/lib/billing";
 import { BENEFIT_CATALOG, EVENT_ORGANIZER_ROLES, EVENT_TYPES, FORMAT_LABEL } from "@/lib/events";
+import { complianceSettings } from "@/lib/compliance";
 
 export const metadata = { title: "Nouvel événement — KolBase" };
 
@@ -26,6 +27,7 @@ export default async function Page({ params, searchParams }: { params: Promise<{
           types={EVENT_TYPES.map((t) => ({ value: t.id, label: t.label }))}
           formats={Object.entries(FORMAT_LABEL).map(([value, label]) => ({ value, label }))}
           catalog={BENEFIT_CATALOG}
+          limits={complianceSettings(org.complianceSettings)}
           project={project ? { id: project.id, title: project.title, area: project.therapeuticArea } : undefined}
         />
       </main>
