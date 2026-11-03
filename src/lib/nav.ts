@@ -7,7 +7,7 @@ import { PROJECT_VIEW_ROLES, REVIEW_ROLES, SOURCING_ROLES } from "@/lib/projects
  * les pages d'une même rubrique se retrouvant en onglets. Module sans dépendance serveur (utilisé aussi côté client).
  */
 
-export type ShellIcon = "House" | "Users" | "Folder" | "FileText" | "CalendarDays" | "ShieldCheck" | "Send" | "Megaphone" | "UserRound" | "Receipt" | "Plug" | "ExternalLink";
+export type ShellIcon = "House" | "Users" | "Folder" | "FileText" | "CalendarDays" | "ShieldCheck" | "Send" | "Megaphone" | "UserRound" | "Receipt" | "Plug" | "ExternalLink" | "Wallet" | "BarChart3";
 export type ShellItem = { key: string; href: string; label: string; short?: string; icon: ShellIcon; badge?: number; match?: string[]; exact?: boolean };
 export type ShellLink = { href: string; label: string; icon: ShellIcon };
 export type ShellSpace = {

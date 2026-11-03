@@ -172,6 +172,30 @@ export function notifyApplication(callId: string, practitionerId: string) {
   });
 }
 
+/** Honoraires payés : l'expert est prévenu (ses revenus sont à jour dans KolBase). */
+export function notifyFeePaid(linkId: string) {
+  later(async () => {
+    const l = await db.projectExpert.findUnique({ where: { id: linkId }, include: linkInclude });
+    if (!l?.paidCents) return;
+    await send([l.practitioner.user], (t, locale) => ({
+      subject: t("Honoraires payés par {org}", { org: l.project.organization.name }),
+      text: t("Bonjour,\n\n{org} indique avoir payé vos honoraires pour « {title} » : {amount} HT.", { org: l.project.organization.name, title: l.project.title, amount: fmtEur(locale, l.paidCents!) }),
+      cta: { label: t("Voir mes revenus"), href: "/revenus" },
+    }));
+  });
+}
+
+/** Erreur signalée par un praticien sur une déclaration Transparence Santé : l'équipe conformité est prévenue. */
+export function notifyTransparencyIssue(orgId: string, who: string, label: string, comment: string) {
+  later(async () => {
+    await send(await members(orgId, COMPLIANCE_ROLES), {
+      subject: `Transparence Santé : erreur signalée par ${who}`,
+      text: `Bonjour,\n\n${who} signale une erreur sur : ${label}.\n\n« ${comment} »\n\nVérifiez la déclaration avant publication (ou corrigez-la sur la plateforme Transparence Santé).`,
+      cta: { label: "Ouvrir l'espace conformité", href: `/organisations/${orgId}/conformite?onglet=transparence` },
+    });
+  });
+}
+
 /** Circuit de conformité : dossier soumis (→ conformité), validé ou bloqué (→ équipe projet). */
 export function notifyCompliance(projectId: string, step: "submit" | "validate" | "block", actorId: string) {
   later(async () => {

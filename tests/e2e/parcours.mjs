@@ -1161,6 +1161,48 @@ async function submitNewOrg(page, siren) {
   await ctx.close();
 }
 
+// ── Mes revenus : honoraires, liens d'intérêts, Transparence, paiement ────
+{
+  const { ctx, page } = await session();
+  await login(page, "camille.petit@demo.kolbase.local");
+  await page.goto(`${BASE}/revenus`);
+  let t = await text(page);
+  check("Revenus : honoraires payés et conventions de l'année", t.includes("Webinaire planification numérique") && t.includes("Payé le") && /900\s€/.test(t) && t.includes("Comité scientifique aligneurs"));
+  const csv = await (await ctx.request.get(`${BASE}/revenus/export?annee=${new Date().getFullYear()}`)).text();
+  check("Revenus : export CSV", csv.includes("Webinaire planification numérique") && csv.includes("Honoraires"));
+  await page.goto(`${BASE}/revenus?onglet=liens`);
+  t = await text(page);
+  check("Liens d'intérêts : KolBase et liens déclarés réunis", t.includes("OrthoNova") && t.includes("Comité scientifique") && t.includes("Laboratoire Alpha Ortho (fictif)"));
+  await page.fill('input[name="organization"]', "Société Beta Dental (fictive)");
+  await page.fill('input[name="nature"]', "Oratrice lors d'un congrès");
+  await page.click('button:has-text("Ajouter le lien")');
+  await page.waitForTimeout(1200);
+  check("Liens d'intérêts : ajout d'un lien hors KolBase", (await text(page)).includes("Société Beta Dental (fictive)"));
+  const pdf = await ctx.request.get(`${BASE}/revenus/liens-interets`);
+  const body = await pdf.body();
+  check("Liens d'intérêts : diapositive PDF", pdf.ok() && body.subarray(0, 5).toString() === "%PDF-");
+  await page.goto(`${BASE}/revenus?onglet=transparence`);
+  const item = page.locator('li:has-text("Comité scientifique aligneurs")');
+  await item.locator('summary:has-text("Signaler une erreur")').click();
+  await item.locator('textarea[name="comment"]').fill("Le nombre de séances indiqué est erroné : trois et non quatre.");
+  await item.locator('button:has-text("Envoyer à l\'organisation")').click();
+  check("Transparence : signalement envoyé à la conformité", !!(await waitMail("lea.rousseau@demo.kolbase.local", "erreur signalée par Camille Petit")));
+  const other = await session();
+  const r = await other.page.goto(`${BASE}/revenus/export`);
+  check("Revenus : réservés au praticien connecté", r?.url().includes("/connexion") ?? false, r?.url());
+  await other.ctx.close();
+  // L'organisation indique le paiement : l'expert est prévenu.
+  const org = await session();
+  await login(org.page, "thomas.garnier@demo.kolbase.local");
+  await org.page.goto(`${BASE}/organisations/demo-org-orthonova/dossiers/demo-prj-aligneurs`);
+  await org.page.click('button:has-text("Marquer payé")');
+  await org.page.waitForTimeout(1200);
+  check("Dossier : honoraires marqués payés", (await text(org.page)).includes("Honoraires payés le"));
+  check("E-mail à l'expert : honoraires payés", !!(await waitMail("camille.petit@demo.kolbase.local", "Honoraires payés par OrthoNova")));
+  await org.ctx.close();
+  await ctx.close();
+}
+
 // ── 4. Limitation des tentatives ───────────────────────────────────────────
 {
   const { ctx, page } = await session();

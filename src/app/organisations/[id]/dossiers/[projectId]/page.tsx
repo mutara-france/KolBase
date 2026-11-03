@@ -11,6 +11,7 @@ import { COMPLIANCE_ROLES, formatDate, formatDateTime, formatEUR } from "@/lib/e
 import { collabType, needsMeeting, PROJECT_ROLES, PROJECT_VIEW_ROLES, recruitmentOpen, REVIEW_ROLES, STATUS_LABEL, TRANSITIONS, type TransitionKey } from "@/lib/projects";
 import { storageEnabled } from "@/lib/storage";
 import { advanceProject } from "@/lib/project-actions";
+import { markExpertPaid } from "@/lib/revenue-actions";
 import { BudgetPanel, ConflictsPanel, ConventionSignatureBlock, DocumentsPanel, MaterialsPanel } from "@/components/DossierSections";
 import { missingSignedConventions } from "@/lib/project-documents";
 import { FOUR_EYES_BLOCKED, FOUR_EYES_JUSTIFY, fourEyes, projectAuthors } from "@/lib/four-eyes";
@@ -235,6 +236,31 @@ export default async function Page({ params }: { params: Promise<{ id: string; p
                           </a>
                         </span>
                         <ConventionSignatureBlock orgId={id} linkId={e.id} signature={e.signature} projectStatus={project.status} canSend={isProject} />
+                      </div>
+                    )}
+                    {active && ["SIGNE", "TERMINE"].includes(e.status) && (
+                      <div className="payment-row">
+                        {e.paidAt ? (
+                          <>
+                            <span className="pill ok">Honoraires payés le {formatDate(e.paidAt)} · {formatEUR(e.paidCents ?? 0)} HT</span>
+                            {isProject && (
+                              <form action={markExpertPaid}>
+                                <input type="hidden" name="orgId" value={id} /><input type="hidden" name="linkId" value={e.id} /><input type="hidden" name="undo" value="1" />
+                                <button className="link">Annuler</button>
+                              </form>
+                            )}
+                          </>
+                        ) : isProject ? (
+                          <form action={markExpertPaid} className="inline wrap">
+                            <input type="hidden" name="orgId" value={id} /><input type="hidden" name="linkId" value={e.id} />
+                            <span className="text-sm">Paiement des honoraires</span>
+                            <input name="amount" inputMode="decimal" defaultValue={e.feeCents != null ? String(e.feeCents / 100) : ""} aria-label="Montant payé (€ HT)" />
+                            <input name="date" type="date" defaultValue={new Date().toISOString().slice(0, 10)} aria-label="Date du paiement" />
+                            <button className="btn ghost small">Marquer payé</button>
+                          </form>
+                        ) : (
+                          <span className="pill wait">Honoraires à payer</span>
+                        )}
                       </div>
                     )}
                     <div className="exchanges">
