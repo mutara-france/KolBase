@@ -7,7 +7,7 @@ import { FmvBadge, Pipeline, StatusPill, Thread } from "@/components/ProjectBits
 import { MessageForm } from "@/components/ProjectForms";
 import { db } from "@/lib/db";
 import { requireMembership } from "@/lib/orgs";
-import { COMPLIANCE_ROLES, formatDate, formatDateTime, formatEUR } from "@/lib/events";
+import { COMPLIANCE_ROLES, formatDate, formatDateTime, formatEUR, parisToday } from "@/lib/events";
 import { collabType, needsMeeting, PROJECT_ROLES, PROJECT_VIEW_ROLES, recruitmentOpen, REVIEW_ROLES, STATUS_LABEL, TRANSITIONS, type TransitionKey } from "@/lib/projects";
 import { storageEnabled } from "@/lib/storage";
 import { advanceProject } from "@/lib/project-actions";
