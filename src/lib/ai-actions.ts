@@ -5,8 +5,11 @@ import { audit, requireUser } from "@/lib/auth";
 import { requireMembership } from "@/lib/orgs";
 import { aiComplete, aiEnabled } from "@/lib/ai";
 import { blockedFor, hit } from "@/lib/rate-limit";
-import { EVENT_MANAGER_ROLES, EVENT_ORGANIZER_ROLES, eventScope, eventTypeLabel, FORMAT_LABEL } from "@/lib/events";
-import { collabType, SOURCING_ROLES } from "@/lib/projects";
+import { COMPLIANCE_ROLES, EVENT_MANAGER_ROLES, EVENT_ORGANIZER_ROLES, eventScope, eventTypeLabel, FORMAT_LABEL } from "@/lib/events";
+import { collabType, fmvCheck, SOURCING_ROLES } from "@/lib/projects";
+import { complianceSettings, projectRegime, REGIME_LABEL } from "@/lib/compliance";
+import { detectConflicts } from "@/lib/conflicts";
+import { suggestExperts, type Suggestion } from "@/lib/expert-suggest";
 import { supplierCategoryLabel } from "@/lib/suppliers";
 import { drPrefix } from "@/lib/professions";
 import { str } from "@/lib/form";
@@ -100,6 +103,92 @@ export async function aiDraft(form: FormData): Promise<AiResult> {
   try {
     const text = await aiComplete(prompt, kind === "programme" ? 1600 : 900);
     await audit(user.id, "ai.draft", "Organization", orgId, { kind });
+    return { text };
+  } catch (e) {
+    console.error("[assistant]", e);
+    return { error: "L'assistant n'a pas pu répondre. Réessayez dans un instant." };
+  }
+}
+
+// ─── Suggestion d'experts et relecture assistée d'un dossier ──────────────────
+
+export type SuggestResult = { suggestions?: Suggestion[]; summary?: string; error?: string };
+
+/**
+ * Experts suggérés pour un besoin (classement explicable, sans IA) ; l'assistant, s'il est activé,
+ * résume en quelques lignes quels profils solliciter et pourquoi, à partir des seules données transmises.
+ */
+export async function suggestExpertsAction(form: FormData): Promise<SuggestResult> {
+  const orgId = str(form, "orgId");
+  const { user } = await requireMembership(orgId, SOURCING_ROLES);
+  const need = { title: cut(str(form, "title"), 200), typeId: str(form, "typeId"), area: cut(str(form, "therapeuticArea"), 100), description: cut(str(form, "description"), 1500) };
+  if (!need.title && !need.area && !need.description) return { error: "Renseignez au moins le titre ou le domaine thérapeutique." };
+  const suggestions = await suggestExperts(orgId, need);
+  if (suggestions.length === 0) return { suggestions, summary: undefined };
+  let summary: string | undefined;
+  const key = `ai:${user.id}`;
+  if (aiEnabled() && !blockedFor(key, PER_HOUR, 60 * 60 * 1000)) {
+    hit(key);
+    const type = collabType(need.typeId);
+    const prompt = `Besoin d'une organisation du secteur dentaire : « ${need.title || "[sans titre]"} », ${type?.label ?? "collaboration"}${need.area ? `, domaine : ${need.area}` : ""}.${need.description ? `\nObjet : ${need.description}` : ""}\n\nExperts présélectionnés par KolBase (données du profil, liens d'intérêts connus) :\n${suggestions.map((s, i) => `${i + 1}. ${s.name} (${s.detail}) — atouts : ${s.reasons.join(" ; ") || "aucun"}${s.notes.length ? ` — ${s.notes.join(" ; ")}` : ""}${s.warnings.length ? ` — vigilance : ${s.warnings.join(" ; ")}` : ""}`).join("\n")}\n\nEn 4 à 6 lignes, recommande quels experts solliciter en priorité et pourquoi, en t'appuyant uniquement sur ces informations. Favorise la diversité des experts sollicités et signale les liens d'intérêts à examiner. Pas de liste numérotée, pas de jugement sur les personnes.`;
+    try {
+      summary = await aiComplete(prompt, 500);
+      await audit(user.id, "ai.suggest", "Organization", orgId, { candidates: suggestions.length });
+    } catch (e) {
+      console.error("[assistant]", e);
+    }
+  }
+  return { suggestions, summary };
+}
+
+/** Relecture assistée d'un dossier pour l'équipe conformité : points à vérifier, avis proposé, message au chef de projet. */
+export async function aiReviewProject(form: FormData): Promise<AiResult> {
+  const orgId = str(form, "orgId");
+  const { user, org } = await requireMembership(orgId, COMPLIANCE_ROLES);
+  if (!aiEnabled()) return { error: "L'assistant n'est pas activé sur cette plateforme." };
+  const key = `ai:${user.id}`;
+  if (blockedFor(key, PER_HOUR, 60 * 60 * 1000)) return { error: "Vous avez beaucoup sollicité l'assistant : réessayez dans une heure." };
+  const p = await db.project.findFirst({
+    where: { id: str(form, "projectId"), organizationId: orgId },
+    include: {
+      experts: { where: { status: { not: "DECLINE" } }, include: { practitioner: { include: { user: { select: { firstName: true, lastName: true } } } } } },
+      events: { include: { benefits: true } },
+      documents: { select: { name: true } },
+      expenses: { select: { label: true, amountCents: true } },
+    },
+  });
+  if (!p) return { error: "Dossier introuvable." };
+  const settings = complianceSettings(org.complianceSettings);
+  const type = collabType(p.typeId);
+  const regime = projectRegime(settings, type?.unit ?? "", p.experts.map((e) => ({ ...e, country: e.practitioner.country })));
+  const conflicts = await detectConflicts(p.id);
+  const eur = (c: number | null) => (c == null ? "?" : `${(c / 100).toLocaleString("fr-FR")} €`);
+  const lines = p.experts.map((e) => {
+    const f = fmvCheck(p.typeId, e.feeCents, e.days);
+    const fmv = f ? `${Math.round(f.perUnit).toLocaleString("fr-FR")} € par ${f.unit} (repère ${f.min}–${f.max} € : ${f.verdict === "ok" ? "dans la fourchette" : f.verdict === "above" ? "AU-DESSUS" : "en dessous"})` : "juste contrepartie non calculable";
+    return `- ${drPrefix(e.practitioner.profession)}${e.practitioner.user.firstName} ${e.practitioner.user.lastName}${e.practitioner.specialty ? ` (${e.practitioner.specialty})` : ""} : ${eur(e.feeCents)} HT pour ${e.days ?? "?"} ${type?.unit ?? "unité"}(s) ; ${fmv}`;
+  });
+  const prompt = [
+    `Dossier soumis à l'équipe conformité d'une entreprise du secteur dentaire (loi anti-cadeaux et Transparence Santé).`,
+    `Titre : « ${cut(p.title, 200)} ». Type : ${type?.label ?? p.typeId}${p.therapeuticArea ? `, domaine : ${p.therapeuticArea}` : ""}.`,
+    `Objet et déroulé : ${p.description ? cut(p.description, 1500) : "[non renseigné]"}`,
+    `Experts et honoraires :\n${lines.join("\n") || "- aucun expert engagé"}`,
+    regime ? `Régime calculé : ${REGIME_LABEL[regime.regime]} (${regime.reason}).` : "Régime : à déterminer.",
+    p.events.length ? `Événements liés : ${p.events.map((e) => `« ${e.title} »${e.benefits.length ? ` avec hospitalités ${e.benefits.map((b) => `${b.label} ${eur(b.valueCents)} TTC`).join(", ")}` : ""}`).join(" ; ")}.` : "",
+    p.expenses.length ? `Dépenses : ${p.expenses.map((x) => `${x.label} ${eur(x.amountCents)}`).join(" ; ")}.` : "",
+    `Documents joints : ${p.documents.length ? p.documents.map((d) => d.name).join(", ") : "aucun"}.`,
+    conflicts.length ? `Contrôles automatiques KolBase : ${conflicts.map((c) => `${c.who} — ${c.detail}`).join(" ; ")}.` : "Contrôles automatiques KolBase : aucun conflit détecté.",
+    "",
+    "Rédige pour l'équipe conformité, en texte brut :",
+    "1) « Points à vérifier : » puis 3 à 7 lignes commençant par « - » (juste contrepartie et cohérence honoraires / temps de travail, besoin réel et légitime, précision de l'objet : livrables, calendrier, modalités, hospitalités raisonnables et accessoires, conflits signalés, pièces manquantes).",
+    "2) « Avis proposé : » valider, demander des précisions ou bloquer, avec une justification en une phrase.",
+    "3) « Message proposé au chef de projet : » 3 à 5 lignes, courtoises et précises.",
+    "Tu ne rends pas d'avis juridique : ta lecture est une aide, la décision appartient à l'équipe conformité.",
+  ].filter(Boolean).join("\n");
+  hit(key);
+  try {
+    const text = await aiComplete(prompt, 1100);
+    await audit(user.id, "ai.review", "Project", p.id);
     return { text };
   } catch (e) {
     console.error("[assistant]", e);

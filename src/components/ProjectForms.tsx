@@ -1,6 +1,7 @@
 "use client";
 
 import { AiDraft } from "@/components/AiDraft";
+import { ExpertSuggestions } from "@/components/ExpertSuggestions";
 import { useActionState, useMemo, useState } from "react";
 import { createProject, postMessage, respondToSolicitation } from "@/lib/project-actions";
 import { Notice } from "@/components/AuthForms";
@@ -14,6 +15,8 @@ export function NewProjectForm({ orgId, types, experts, preselected, ai = false 
   const [typeId, setTypeId] = useState(types[0].id);
   const [selected, setSelected] = useState<string[]>(preselected);
   const [filter, setFilter] = useState("");
+  const [extra, setExtra] = useState<Expert[]>([]);
+  const all = useMemo(() => [...experts, ...extra.filter((x) => !experts.some((e) => e.id === x.id))], [experts, extra]);
   const type = types.find((t) => t.id === typeId)!;
   const visible = useMemo(
     () => experts.filter((e) => !filter || `${e.name} ${e.detail}`.toLowerCase().includes(filter.toLowerCase())).slice(0, 30),
@@ -44,6 +47,14 @@ export function NewProjectForm({ orgId, types, experts, preselected, ai = false 
 
       <fieldset>
         <legend>Experts sollicités</legend>
+        <ExpertSuggestions
+          orgId={orgId}
+          selected={selected}
+          onAdd={(e) => {
+            setExtra((xs) => (xs.some((x) => x.id === e.id) ? xs : [...xs, e]));
+            setSelected((sel) => (sel.includes(e.id) ? sel : [...sel, e.id]));
+          }}
+        />
         <input className="filter" placeholder="Filtrer par nom, spécialité, ville…" value={filter} onChange={(e) => setFilter(e.target.value)} />
         <div className="expert-pick">
           {visible.map((e) => (
@@ -64,7 +75,7 @@ export function NewProjectForm({ orgId, types, experts, preselected, ai = false 
         <fieldset>
           <legend>Conditions proposées</legend>
           {selected.map((id) => {
-            const e = experts.find((x) => x.id === id);
+            const e = all.find((x) => x.id === id);
             if (!e) return null;
             return (
               <div key={id} className="fee-row">

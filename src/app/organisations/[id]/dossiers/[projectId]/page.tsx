@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { CalendarDays, Clock, Euro, Scale, User, Users, Wallet } from "lucide-react";
+import { CalendarDays, Clock, Euro, Scale, Sparkles, User, Users, Wallet } from "lucide-react";
+import { aiEnabled } from "@/lib/ai";
 import { Avatar } from "@/components/Avatar";
 import { SiteHeader } from "@/components/SiteHeader";
 import { FmvBadge, Pipeline, StatusPill, Thread } from "@/components/ProjectBits";
@@ -20,6 +21,7 @@ import type { ProjectStatus } from "@/generated/prisma/client";
 import { complianceSettings, projectRegime, REGIME_LABEL } from "@/lib/compliance";
 import { country, foreignObligations, practicesInFrance } from "@/lib/countries";
 import { drPrefix } from "@/lib/professions";
+import { AiReview } from "@/components/AiReview";
 import { signatureEnabled } from "@/lib/yousign";
 
 export const metadata = { title: "Dossier — KolBase" };
@@ -345,6 +347,13 @@ export default async function Page({ params }: { params: Promise<{ id: string; p
                 </p>
               )}
             </section>
+
+            {isCompliance && aiEnabled() && (
+              <section className="card stack-sm">
+                <h2 className="section-title"><Sparkles size={15} /> Relecture assistée</h2>
+                <AiReview orgId={id} projectId={projectId} />
+              </section>
+            )}
 
             <section className="card stack-sm">
               <h2 className="section-title"><Scale size={15} /> Conformité</h2>
