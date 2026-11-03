@@ -270,6 +270,17 @@ async function main() {
   for (const [user, minutes] of [["demo-u-lambert", 52], ["demo-u-robert", 58]] as const)
     await db.registration.updateMany({ where: { eventId: "demo-ev-passe", userId: user, checkedInAt: null }, data: { checkedInAt: new Date(at(-40, 18).getTime() + minutes * 60e3), checkedInById: "demo-u-julien" } });
 
+  // Avant et après l'édition précédente : rappel, remerciement envoyé aux présents, un avis reçu.
+  await db.registration.updateMany({ where: { eventId: "demo-ev-passe", reminderSentAt: null }, data: { reminderSentAt: at(-41, 18) } });
+  await db.registration.updateMany({ where: { eventId: "demo-ev-passe", checkedInAt: { not: null }, followUpSentAt: null }, data: { followUpSentAt: at(-39, 10) } });
+  const lambertPast = await db.registration.findUnique({ where: { eventId_userId: { eventId: "demo-ev-passe", userId: "demo-u-lambert" } }, select: { id: true } });
+  if (lambertPast)
+    await db.surveyResponse.upsert({
+      where: { registrationId: lambertPast.id },
+      update: {},
+      create: { registrationId: lambertPast.id, eventId: "demo-ev-passe", overall: 5, content: 5, logistics: 4, comment: "Cas cliniques très concrets ; un peu juste pour le cocktail en fin de soirée.", createdAt: at(-38, 21) },
+    });
+
   // ─── Dossiers de collaboration à différents stades ───────────────────────
   type Proj = {
     id: string; org: string; title: string; type: string; area: string; status: ProjectStatus; desc: string; note?: string; ordre?: string;

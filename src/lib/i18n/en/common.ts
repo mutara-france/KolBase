@@ -20,4 +20,8 @@ export const COMMON: Record<string, string> = {
   "Environnement de démonstration — données simulées": "Demo environment — simulated data",
   "Langue": "Language",
   "Les documents juridiques font foi en français.": "Legal documents are binding in their French version.",
+  "Notifications": "Notifications",
+  "Navigation": "Navigation",
+  "https://… (Drive, SharePoint, Dropbox…)": "https://… (Drive, SharePoint, Dropbox…)",
+  "Document": "Document",
 };

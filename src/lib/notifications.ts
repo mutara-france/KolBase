@@ -361,3 +361,63 @@ export function notifyPlatformAdmins(subject: string, text: string, href: string
     for (const to of platformAdminEmails()) await sendMail({ to, subject, text: `Bonjour,\n\n${text}`, cta: { label: "Ouvrir l'administration", href } });
   });
 }
+
+// ─── Avant et après l'événement (tâche planifiée ou envoi par l'organisateur) ───
+
+/** Rappel aux inscrits pas encore prévenus : date, lieu, programme, badge d'accueil. Renvoie le nombre d'inscriptions traitées. */
+export async function sendEventReminders(eventId: string, now = new Date()) {
+  const ev = await db.event.findUnique({
+    where: { id: eventId },
+    include: { organization: { select: { name: true } }, registrations: { where: { reminderSentAt: null }, include: { user: { select: { ...userSelect, firstName: true } } } } },
+  });
+  if (!ev || ev.internal || ev.startsAt <= now) return 0;
+  const inPerson = ev.format !== "DISTANCIEL";
+  const program = ev.program ? (ev.program.length > 700 ? `${ev.program.slice(0, 700).trimEnd()}…` : ev.program) : null;
+  for (const r of ev.registrations) {
+    await send([r.user], (t, locale) => {
+      const when = ev.startsAt.toLocaleString(locale === "en" ? "en-GB" : "fr-FR", { timeZone: "Europe/Paris", weekday: "long", day: "numeric", month: "long", hour: "2-digit", minute: "2-digit" });
+      const place = ev.format === "DISTANCIEL" ? t("En ligne : le lien de connexion vous est communiqué par l'organisateur.") : t("Lieu : {place}", { place: [ev.venue, ev.city].filter(Boolean).join(", ") || t("à préciser par l'organisateur") });
+      return {
+        subject: t("Rappel : « {title} », {when}", { title: ev.title, when }),
+        text: [
+          t("Bonjour {name},", { name: r.user.firstName }),
+          t("Vous êtes inscrit à « {title} » ({org}), {when}.", { title: ev.title, org: ev.organization.name, when }),
+          place,
+          program ? `${t("Programme")} :\n${program}` : null,
+          inPerson ? t("À l'accueil, présentez votre badge : le lien ci-dessous l'affiche sur votre téléphone.") : null,
+        ].filter(Boolean).join("\n\n"),
+        cta: inPerson ? { label: t("Mon badge d'accueil"), href: `/inscriptions/${r.id}/badge` } : { label: t("Voir l'événement"), href: `/evenements/${ev.id}` },
+      };
+    });
+    await db.registration.update({ where: { id: r.id }, data: { reminderSentAt: now } });
+  }
+  return ev.registrations.length;
+}
+
+/**
+ * Après l'événement : remerciement, attestation de présence (présents au pointage) et questionnaire.
+ * Si personne n'a été pointé, le questionnaire part à tous les inscrits (sans attestation).
+ */
+export async function sendEventFollowUps(eventId: string, now = new Date()) {
+  const ev = await db.event.findUnique({
+    where: { id: eventId },
+    include: { organization: { select: { name: true } }, registrations: { include: { user: { select: { ...userSelect, firstName: true } } } } },
+  });
+  if (!ev || ev.internal) return 0;
+  const pointed = ev.registrations.some((r) => r.checkedInAt);
+  const targets = ev.registrations.filter((r) => !r.followUpSentAt && (!pointed || r.checkedInAt));
+  for (const r of targets) {
+    await send([r.user], (t) => ({
+      subject: t("Merci pour votre participation à « {title} »", { title: ev.title }),
+      text: [
+        t("Bonjour {name},", { name: r.user.firstName }),
+        t("Merci d'avoir participé à « {title} » ({org}).", { title: ev.title, org: ev.organization.name }),
+        r.checkedInAt ? t("Votre attestation de présence est disponible dans « Mes inscriptions ».") : null,
+        t("Votre avis aide l'organisateur à améliorer les prochaines éditions : une minute suffit, vos réponses lui sont transmises sans votre nom."),
+      ].filter(Boolean).join("\n\n"),
+      cta: { label: t("Donner mon avis"), href: `/evenements/${ev.id}/avis` },
+    }));
+    await db.registration.update({ where: { id: r.id }, data: { followUpSentAt: now } });
+  }
+  return targets.length;
+}

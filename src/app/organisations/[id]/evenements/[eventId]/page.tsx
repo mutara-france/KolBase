@@ -2,7 +2,7 @@ import { aiEnabled } from "@/lib/ai";
 import { ProgramForm } from "@/components/EventForms";
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { CalendarDays, ClipboardCheck, Euro, FileDown, Gift, MapPin, QrCode, Truck, Users } from "lucide-react";
+import { Bell, CalendarDays, ClipboardCheck, Euro, FileDown, Gift, MapPin, QrCode, Star, Truck, Users } from "lucide-react";
 import { SiteHeader } from "@/components/SiteHeader";
 import { StatusPill } from "@/components/ProjectBits";
 import { db } from "@/lib/db";
@@ -15,6 +15,8 @@ import { perParticipant, withVat } from "@/lib/quotes";
 import { complianceSettings } from "@/lib/compliance";
 import { drPrefix } from "@/lib/professions";
 import { checkinOpen } from "@/lib/checkin";
+import { eventEnded, fmtRating, surveySummary } from "@/lib/event-followup";
+import { SendNowButton } from "@/components/FollowupForms";
 
 export const metadata = { title: "Événement — KolBase" };
 
@@ -37,6 +39,7 @@ export default async function Page({ params }: { params: Promise<{ id: string; e
       },
       benefits: true,
       registrations: { include: { user: true, benefits: { include: { benefit: true } } }, orderBy: { createdAt: "asc" } },
+      surveys: { orderBy: { createdAt: "desc" } },
     },
   });
   if (!event) notFound();
@@ -92,6 +95,12 @@ export default async function Page({ params }: { params: Promise<{ id: string; e
   const hospConsumed = pointed ? hospOf(present) : totalCents;
   const realCost = hospConsumed + engagedTtc;
   const isCompliance = roles.some((r) => COMPLIANCE_ROLES.includes(r));
+  // Rappel de la veille, puis remerciement (attestation, questionnaire) : automatiques, ou envoyés d'un clic.
+  const ended = eventEnded(event, now);
+  const reminded = event.registrations.filter((r) => r.reminderSentAt);
+  const followed = event.registrations.filter((r) => r.followUpSentAt);
+  const lastSent = (rs: typeof event.registrations, k: "reminderSentAt" | "followUpSentAt") => rs.reduce<Date | null>((m, r) => (r[k] && (!m || r[k]! > m) ? r[k] : m), null);
+  const survey = surveySummary(event.surveys);
   const newRfq = (cat?: string) => `/organisations/${id}/prestataires?onglet=nouvelle&evenement=${eventId}${cat ? `&cat=${cat}` : ""}`;
   const status = event.internal
     ? { label: "Réunion interne", tone: "electric" }
@@ -172,6 +181,45 @@ export default async function Page({ params }: { params: Promise<{ id: string; e
               </p>
             )}
             <p className="hint"><Link href={`/organisations/${id}/evenements/${eventId}/pointage`}>Corriger le pointage</Link> si une arrivée n&apos;a pas été enregistrée.</p>
+            <div className="followup-row">
+              <div>
+                <strong>Attestations et questionnaire</strong>
+                <p className="muted text-sm">
+                  {followed.length
+                    ? `Envoyés le ${formatDate(lastSent(followed, "followUpSentAt")!)} à ${followed.length} participant${followed.length > 1 ? "s" : ""}${pointed ? " présents" : ""}.`
+                    : ended
+                      ? `Envoi automatique une heure après la fin : remerciement, ${pointed ? "attestation de présence et " : ""}questionnaire de satisfaction.`
+                      : "Envoyés automatiquement une heure après la fin de l'événement."}
+                </p>
+              </div>
+              <div className="actions">
+                {pointed && <a className="btn ghost small" href={`/organisations/${id}/evenements/${eventId}/attestations`}><FileDown size={14} /> Attestations (PDF)</a>}
+                {ended && followed.length < (pointed ? present.length : event.registrations.length) && <SendNowButton kind="followups" orgId={id} eventId={eventId} label={followed.length ? "Envoyer aux autres participants" : "Envoyer maintenant"} />}
+              </div>
+            </div>
+          </section>
+        )}
+
+        {isPast && !event.internal && (
+          <section className="card stack-sm" aria-labelledby="avis">
+            <h2 id="avis"><Star size={18} /> Avis des participants</h2>
+            {survey.count === 0 ? (
+              <p className="muted">Aucune réponse pour l&apos;instant.{followed.length ? "" : " Le questionnaire part avec le remerciement, après l'événement."}</p>
+            ) : (
+              <>
+                <dl className="hero-facts">
+                  <div><dt>Satisfaction globale</dt><dd>{fmtRating(survey.overall)} / 5<small>{survey.count} réponse{survey.count > 1 ? "s" : ""}{followed.length ? ` sur ${followed.length} envoi${followed.length > 1 ? "s" : ""}` : ""}</small></dd></div>
+                  <div><dt>Contenu scientifique</dt><dd>{fmtRating(survey.content)} / 5</dd></div>
+                  <div><dt>Organisation et accueil</dt><dd>{fmtRating(survey.logistics)} / 5</dd></div>
+                </dl>
+                {event.surveys.some((r) => r.comment) && (
+                  <ul className="survey-comments">
+                    {event.surveys.filter((r) => r.comment).map((r) => <li key={r.id}><span className="rating">{"★".repeat(r.overall)}</span> « {r.comment} »</li>)}
+                  </ul>
+                )}
+                <p className="hint">Réponses anonymes : le nom des participants n&apos;est pas communiqué.</p>
+              </>
+            )}
           </section>
         )}
 
@@ -339,6 +387,13 @@ export default async function Page({ params }: { params: Promise<{ id: string; e
                   <Link className={canPoint ? "btn" : "btn ghost"} href={`/organisations/${id}/evenements/${eventId}/pointage`}>{canPoint ? "Ouvrir le pointage" : "Préparer le pointage"}</Link>
                   <a className="btn ghost" href={`/organisations/${id}/evenements/${eventId}/emargement`}>Feuille d&apos;émargement (PDF)</a>
                 </div>
+                <p className="muted text-sm reminder-status">
+                  <Bell size={13} />{" "}
+                  {reminded.length
+                    ? `Rappel envoyé le ${formatDate(lastSent(reminded, "reminderSentAt")!)} à ${formatTime(lastSent(reminded, "reminderSentAt")!)} (${reminded.length} inscrit${reminded.length > 1 ? "s" : ""}).`
+                    : "Rappel envoyé automatiquement la veille aux inscrits : date, lieu, programme et badge."}
+                </p>
+                {event.registrations.length > reminded.length && <SendNowButton kind="reminders" orgId={id} eventId={eventId} label={reminded.length ? "Prévenir les nouveaux inscrits" : "Envoyer le rappel maintenant"} />}
               </section>
             )}
 
@@ -395,7 +450,7 @@ export default async function Page({ params }: { params: Promise<{ id: string; e
                           <td>{r.benefits.map((b) => b.benefit.label).join(", ") || "Aucune"}</td>
                           <td>{formatEUR(r.benefits.reduce((s, b) => s + b.valueCents, 0))}</td>
                           <td>{formatDate(r.createdAt)}</td>
-                          {canPoint && <td>{r.checkedInAt ? <span className="pill ok">{formatTime(r.checkedInAt)}</span> : isPast && pointed ? <span className="pill wait">Absent</span> : "—"}</td>}
+                          {canPoint && <td>{r.checkedInAt ? <><span className="pill ok">{formatTime(r.checkedInAt)}</span>{ended && <> <a className="link" href={`/organisations/${id}/evenements/${eventId}/attestations?inscription=${r.id}`}>attestation</a></>}</> : isPast && pointed ? <span className="pill wait">Absent</span> : "—"}</td>}
                         </tr>
                       ))}
                     </tbody>

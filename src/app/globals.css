@@ -950,3 +950,16 @@ body:has(.sidebar) .site-footer { padding: 24px 32px; }
 .reg-tile-link { display: flex; flex-direction: column; gap: 6px; color: var(--ink); text-decoration: none !important; }
 .reg-tile > .btn { align-self: flex-start; }
 .bilan h2 { display: flex; align-items: center; gap: 8px; }
+
+/* ─── Après l'événement : envois, avis, attestation ──────────── */
+.followup-row { display: flex; justify-content: space-between; align-items: flex-start; gap: 12px 20px; flex-wrap: wrap; padding-top: 12px; border-top: 1px solid var(--line); }
+.followup-row .actions { margin-top: 0; }
+.reminder-status { display: flex; align-items: flex-start; gap: 6px; }
+.reminder-status svg { flex: none; margin-top: 3px; color: var(--outremer); }
+.survey-comments { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 8px; font-size: 13.5px; color: var(--ink); }
+.survey-comments li { padding: 10px 12px; border: 1px solid var(--line); border-radius: 12px; }
+.survey-form .survey-q { border: 0; padding: 0; margin: 0; display: flex; flex-direction: column; gap: 6px; }
+.survey-form legend { font-size: 14px; font-weight: 600; color: var(--ink); margin-bottom: 4px; }
+.reg-actions { margin-top: 0; gap: 8px; }
+.verify-card h1 { margin: 6px 0 0; }
+.verify-card .pill { align-self: flex-start; }

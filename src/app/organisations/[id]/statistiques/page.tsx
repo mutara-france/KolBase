@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { AlertTriangle, CalendarDays, Clock, Download, Euro, Gift, ShieldCheck, Truck, Users } from "lucide-react";
+import { AlertTriangle, CalendarDays, Clock, Download, Euro, Gift, ShieldCheck, Star, Truck, Users } from "lucide-react";
 import { SiteHeader } from "@/components/SiteHeader";
 import { Meter, RankedBars, StackedColumns } from "@/components/Charts";
 import { requireMembership } from "@/lib/orgs";
@@ -46,6 +46,7 @@ export default async function Page({ params, searchParams }: { params: Promise<{
           </div>
           <div><dt><Users size={13} /> Experts rémunérés</dt><dd>{s.expertCount}<small>{s.engagedProjects} dossier{s.engagedProjects > 1 ? "s" : ""} engagé{s.engagedProjects > 1 ? "s" : ""}</small></dd></div>
           <div><dt><CalendarDays size={13} /> Événements</dt><dd>{s.events.length}<small>{s.participants} participant{s.participants > 1 ? "s" : ""} inscrit{s.participants > 1 ? "s" : ""}</small></dd></div>
+          <div><dt><Star size={13} /> Satisfaction</dt><dd>{s.satisfaction.average != null ? `${s.satisfaction.average.toFixed(1).replace(".", ",")} / 5` : "—"}<small>{s.satisfaction.responses} avis de participants</small></dd></div>
           <div><dt><ShieldCheck size={13} /> Transparence Santé</dt><dd>{declaredTotal ? `${s.compliance.declared} / ${declaredTotal}` : "—"}<small>dossiers déclarés</small></dd></div>
         </dl>
 
@@ -101,7 +102,7 @@ export default async function Page({ params, searchParams }: { params: Promise<{
             <table className="table stats-table" tabIndex={0}>
               <caption className="sr-only">Événements {year} : inscrits, hospitalités, prestataires et coût par inscrit</caption>
               <thead>
-                <tr><th>Événement</th><th>Date</th><th className="num">Inscrits</th><th className="num">Hospitalités</th><th className="num">Prestataires</th><th className="num">Par inscrit</th></tr>
+                <tr><th>Événement</th><th>Date</th><th className="num">Inscrits</th><th className="num">Présents</th><th className="num">Hospitalités</th><th className="num">Prestataires</th><th className="num">Par inscrit</th><th className="num">Avis</th></tr>
               </thead>
               <tbody>
                 {s.events.map((e) => (
@@ -109,9 +110,11 @@ export default async function Page({ params, searchParams }: { params: Promise<{
                     <td><Link href={`${base}/evenements/${e.id}`}>{e.title}</Link>{e.internal && <span className="muted text-xs"> · réunion interne</span>}</td>
                     <td>{formatDate(e.date)}{!e.past && <span className="muted text-xs"> · à venir</span>}</td>
                     <td className="num">{e.registrations}{e.capacity ? <span className="muted"> / {e.capacity}</span> : null}</td>
+                    <td className="num">{e.present || (e.past ? "—" : "")}</td>
                     <td className="num">{formatEUR(e.hospitality)}</td>
                     <td className="num">{formatEUR(e.suppliers)}</td>
                     <td className="num">{e.perParticipant != null ? formatEUR(e.perParticipant) : "—"}</td>
+                    <td className="num">{e.rating != null ? `${e.rating.toFixed(1).replace(".", ",")} ★` : "—"}</td>
                   </tr>
                 ))}
               </tbody>

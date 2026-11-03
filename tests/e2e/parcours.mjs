@@ -1383,6 +1383,80 @@ async function submitNewOrg(page, siren) {
   await pgc.end();
 }
 
+// ── Avant et après l'événement : rappel, attestation, questionnaire ──────────
+{
+  const pgc = new pg.Client({ connectionString: process.env.DATABASE_URL });
+  await pgc.connect();
+  const orig = (await pgc.query(`select "startsAt", "durationMinutes" from "Event" where id='demo-ev-soiree-implanto'`)).rows[0];
+  const taches = (auth = true) => fetch(`${BASE}/api/taches`, { method: "POST", headers: auth ? { Authorization: `Bearer ${process.env.CRON_SECRET ?? "secret-des-taches-de-test"}` } : {} });
+  check("Tâches planifiées : secret exigé", (await taches(false)).status === 401);
+  // La veille : rappel automatique, une seule fois.
+  await pgc.query(`update "Event" set "startsAt" = now() + interval '20 hours', "durationMinutes" = 180 where id='demo-ev-soiree-implanto'`);
+  const r1 = await (await taches()).json();
+  check("Rappel de la veille : envoyé", r1.reminders >= 3, JSON.stringify(r1));
+  const mail = await waitMail("ines.lambert@demo.kolbase.local", "Rappel : « Soirée implantologie");
+  check("Rappel : lieu, programme et badge", !!mail && mail.text.includes("Hôtel des Célestins") && /\/inscriptions\/\S+\/badge/.test(mail.text));
+  const r2 = await (await taches()).json();
+  check("Rappel : pas de second envoi", r2.reminders === 0, JSON.stringify(r2));
+  const org = await session();
+  await login(org.page, "julien.faure@demo.kolbase.local");
+  await org.page.goto(`${BASE}/organisations/demo-org-dentalys/evenements/demo-ev-soiree-implanto`);
+  check("Événement : rappel indiqué à l'organisateur", (await text(org.page)).includes("Rappel envoyé le"));
+  // Après l'événement : remerciement, attestation pour les présents, questionnaire.
+  await pgc.query(`update "Event" set "startsAt" = now() - interval '5 hours' where id='demo-ev-soiree-implanto'`);
+  await pgc.query(`update "Registration" set "checkedInAt" = now() - interval '5 hours' where "eventId"='demo-ev-soiree-implanto' and "userId"='demo-u-lambert'`);
+  await pgc.query(`update "Registration" set "checkedInAt" = null where "eventId"='demo-ev-soiree-implanto' and "userId"<>'demo-u-lambert'`);
+  const r3 = await (await taches()).json();
+  check("Après l'événement : envoi aux seuls présents", r3.followUps === 1, JSON.stringify(r3));
+  const thanks = await waitMail("ines.lambert@demo.kolbase.local", "Merci pour votre participation");
+  check("Remerciement : attestation et questionnaire", !!thanks && thanks.text.includes("attestation") && thanks.text.includes("/evenements/demo-ev-soiree-implanto/avis"));
+  check("Remerciement : pas d'envoi aux absents", !mails.some((m) => m.to === "hugo.robert@demo.kolbase.local" && m.subject.includes("Merci pour votre participation")));
+  // Le participant : attestation (PDF vérifiable) et avis.
+  const part = await session();
+  await login(part.page, "ines.lambert@demo.kolbase.local");
+  await part.page.goto(`${BASE}/inscriptions`);
+  const href = await part.page.locator('.reg-tile:has-text("Soirée implantologie") a:has-text("Mon attestation de présence")').getAttribute("href");
+  const pdf = await part.ctx.request.get(`${BASE}${href}`);
+  const doc = pdf.ok() ? await PDFDocument.load(await pdf.body()) : null;
+  check("Attestation : PDF du participant", doc?.getPageCount() === 1 && (doc?.getTitle() ?? "").includes("Inès Lambert"), doc?.getTitle());
+  const code = (await pgc.query(`select "certificateCode" from "Registration" where "eventId"='demo-ev-soiree-implanto' and "userId"='demo-u-lambert'`)).rows[0].certificateCode;
+  const anon = await session();
+  await anon.page.goto(`${BASE}/attestation/${code}`);
+  const vt = await text(anon.page);
+  check("Attestation : vérification publique", vt.includes("Attestation authentique") && vt.includes("Inès Lambert") && vt.includes("Soirée implantologie"), `${code} ${vt.replace(/\s+/g, " ").slice(0, 160)}`);
+  const bad = await anon.page.goto(`${BASE}/attestation/AAAAAAAAAAAAAAAAAAAA`);
+  check("Attestation : code inconnu introuvable", bad?.status() === 404);
+  await anon.ctx.close();
+  const robertReg = (await pgc.query(`select id from "Registration" where "eventId"='demo-ev-soiree-implanto' and "userId"='demo-u-robert'`)).rows[0].id;
+  const rob = await session();
+  await login(rob.page, "hugo.robert@demo.kolbase.local");
+  const ra = await rob.ctx.request.get(`${BASE}/inscriptions/${robertReg}/attestation`);
+  check("Attestation : refusée sans présence enregistrée", ra.status() === 404);
+  await rob.ctx.close();
+  await part.page.goto(`${BASE}/evenements/demo-ev-soiree-implanto/avis`);
+  await part.page.locator(".survey-q").nth(0).locator(".stars label").nth(3).click();
+  await part.page.locator(".survey-q").nth(1).locator(".stars label").nth(4).click();
+  await part.page.fill('textarea[name="comment"]', "Très bons échanges sur les cas complexes.");
+  await part.page.click('button:has-text("Envoyer mon avis")');
+  await part.page.waitForTimeout(1000);
+  check("Questionnaire : avis enregistré", (await text(part.page)).includes("votre avis est transmis à l'organisateur"));
+  await part.page.goto(`${BASE}/evenements/demo-ev-soiree-implanto/avis`);
+  check("Questionnaire : une seule réponse", (await part.page.locator("form.survey-form").count()) === 0 && (await pgc.query(`select count(*)::int n from "SurveyResponse" where "eventId"='demo-ev-soiree-implanto'`)).rows[0].n === 1);
+  await part.ctx.close();
+  // L'organisateur : avis anonymes, attestations, statistiques.
+  await org.page.goto(`${BASE}/organisations/demo-org-dentalys/evenements/demo-ev-soiree-implanto`);
+  let t = await text(org.page);
+  check("Organisateur : avis des participants", t.includes("Avis des participants") && /4,0\s*\/\s*5/.test(t) && t.includes("Très bons échanges") && !/Lambert[^\n]*Très bons/.test(t));
+  check("Organisateur : envoi après l'événement indiqué", t.includes("Envoyés le"));
+  const all = await org.ctx.request.get(`${BASE}/organisations/demo-org-dentalys/evenements/demo-ev-soiree-implanto/attestations`);
+  check("Organisateur : attestations des présents (PDF)", all.ok() && (await PDFDocument.load(await all.body())).getPageCount() === 1);
+  await org.page.goto(`${BASE}/organisations/demo-org-dentalys/statistiques`);
+  check("Statistiques : satisfaction", /satisfaction/i.test(await text(org.page)) && /4,0 ★/.test(await text(org.page)));
+  await org.ctx.close();
+  await pgc.query(`update "Event" set "startsAt" = $1, "durationMinutes" = $2 where id='demo-ev-soiree-implanto'`, [orig.startsAt, orig.durationMinutes]);
+  await pgc.end();
+}
+
 // ── 4. Limitation des tentatives ───────────────────────────────────────────
 {
   const { ctx, page } = await session();
