@@ -1062,3 +1062,13 @@ p.service-stats { color: var(--ink-soft); }
 .plan-option strong { display: flex; align-items: center; gap: 8px; }
 .plan-price { font-size: 1.25rem; font-weight: 600; color: var(--ink); }
 .plan-option .btn { margin-top: auto; align-self: flex-start; }
+
+/* Double authentification */
+.code-input { font-size: 1.25rem; letter-spacing: .2em; max-width: 14rem; }
+.two-factor-qr { display: flex; gap: 16px; align-items: center; flex-wrap: wrap; }
+.two-factor-qr .qr { display: inline-block; width: 180px; height: 180px; border: 1px solid var(--line); border-radius: 12px; padding: 6px; background: #fff; }
+.two-factor-qr .qr svg { width: 100%; height: 100%; }
+.totp-secret { word-break: break-all; }
+.steps-list { margin: 0; padding-left: 1.2rem; display: grid; gap: 4px; }
+.recovery-box { border: 1px dashed var(--line-strong); border-radius: 12px; padding: 14px; background: var(--bg-subtle); }
+.recovery-codes { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(auto-fill, minmax(9rem, 1fr)); gap: 6px 16px; font-size: 1.05rem; }

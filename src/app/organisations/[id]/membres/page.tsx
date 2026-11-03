@@ -14,6 +14,7 @@ import { DPA_VERSION } from "@/lib/dpa";
 import { formatDate } from "@/lib/events";
 import { ShieldCheck } from "lucide-react";
 import { companyVisibility } from "@/lib/visibility";
+import { OrgTwoFactorForm } from "@/components/TwoFactorForms";
 
 export const metadata = { title: "Membres et réglages — KolBase" };
 
@@ -80,7 +81,7 @@ export default async function Page({ params, searchParams }: { params: Promise<{
                     <Avatar name={`${p.user.firstName} ${p.user.lastName}`} size={40} />
                     <div className="grow" style={{ minWidth: 0 }}>
                       <strong>{p.user.firstName} {p.user.lastName}</strong>{p.userId === user.id && <span className="muted"> (vous)</span>}
-                      <div className="text-xs muted">{p.user.email} · membre depuis le {fmt(p.since)}</div>
+                      <div className="text-xs muted">{p.user.email} · membre depuis le {fmt(p.since)}{isAdmin ? (p.user.totpEnabledAt ? " · double authentification activée" : " · sans double authentification") : ""}</div>
                       {isAdmin ? (
                         <MemberRolesForm orgId={id} userId={p.userId} roles={p.roles} options={roleOpts} canRemove={!(p.roles.includes("ADMIN") && adminCount <= 1)} />
                       ) : (
@@ -143,6 +144,14 @@ export default async function Page({ params, searchParams }: { params: Promise<{
         ) : (
           <>
             <VerificationCard orgId={id} canEdit={isAdmin} v={{ status: org.verification, siren: org.siren, legalName: org.legalName, note: org.verificationNote }} />
+            <section className="card stack-sm" id="double-authentification">
+              <h2 className="section-title"><ShieldCheck size={15} /> Double authentification</h2>
+              {isAdmin ? (
+                <OrgTwoFactorForm orgId={id} required={org.require2fa} adminReady={!!user.totpEnabledAt} missing={people.filter((p) => !p.user.totpEnabledAt).length} />
+              ) : (
+                <p className="muted">{org.require2fa ? "Exigée par l'organisation pour tous ses membres." : "Facultative : vous pouvez l'activer depuis « Mon compte »."}</p>
+              )}
+            </section>
             {!isSupplier && (
               <section className="card stack-sm" id="sous-traitance">
                 <h2 className="section-title"><ShieldCheck size={15} /> Contrat de sous-traitance (RGPD)</h2>

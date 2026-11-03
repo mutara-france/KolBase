@@ -162,6 +162,16 @@ Toute erreur serveur (page, action, route) est journalisée en JSON (Render › 
 e-mail aux `PLATFORM_ADMIN_EMAILS` (`src/instrumentation.ts`), au plus une fois par erreur toutes les 30 minutes et
 dix fois par heure. `/api/health` vérifie l'application et la base (contrôle de santé Render).
 
+## Double authentification
+
+Chaque compte peut activer, depuis « Mon compte › Sécurité », un code à 6 chiffres donné par une application
+d'authentification (TOTP, `src/lib/totp.ts`), avec dix codes de secours à usage unique. Elle est **obligatoire pour
+les administrateurs de KolBase** (`PLATFORM_ADMIN_2FA=optional` la rend facultative, pour les tests) et chaque
+organisation peut l'exiger de tous ses membres (« Membres et réglages › Organisation »). Un membre qui ne l'a pas
+activée est renvoyé vers « Mon compte » ; chaque activation, désactivation ou utilisation d'un code de secours est
+signalée par e-mail. En cas de perte du téléphone et des codes, un administrateur de la base peut remettre à zéro
+`totpSecret`, `totpEnabledAt` et `recoveryCodes` du compte, après vérification de l'identité.
+
 ## Données personnelles
 
 Depuis « Mon compte » : téléchargement des données du compte (JSON) et suppression du compte. La suppression
