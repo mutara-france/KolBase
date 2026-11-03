@@ -1,5 +1,5 @@
 import { aiEnabled } from "@/lib/ai";
-import { ProgramForm } from "@/components/EventForms";
+import { EditEventForm, ProgramForm } from "@/components/EventForms";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { Bell, CalendarDays, ClipboardCheck, Euro, FileDown, Gift, MapPin, Megaphone, QrCode, Star, Truck, Users } from "lucide-react";
@@ -7,8 +7,9 @@ import { SiteHeader } from "@/components/SiteHeader";
 import { StatusPill } from "@/components/ProjectBits";
 import { db } from "@/lib/db";
 import { requireMembership } from "@/lib/orgs";
-import { COMPLIANCE_ROLES, EVENT_MANAGER_ROLES, EVENT_ORGANIZER_ROLES, eventScope, eventTypeLabel, formatDate, formatEUR, formatTime, FORMAT_LABEL } from "@/lib/events";
-import { setEventAgency, setEventFlag } from "@/lib/event-actions";
+import { BENEFIT_CATALOG, COMPLIANCE_ROLES, EVENT_MANAGER_ROLES, EVENT_ORGANIZER_ROLES, EVENT_TYPES, eventScope, eventTypeLabel, formatDate, formatEUR, formatTime, FORMAT_LABEL, needsOnlineLink, toParisInput } from "@/lib/events";
+import { deleteEventDraft, setEventAgency, setEventFlag } from "@/lib/event-actions";
+import { deletableDraft } from "@/lib/event-drafts";
 import { applyQuoteToBenefit } from "@/lib/rfq-actions";
 import { RFQ_STATUS, rfqDisplayStatus, SUPPLIER_CATEGORIES, supplierCategoryLabel } from "@/lib/suppliers";
 import { perParticipant, withVat } from "@/lib/quotes";
@@ -43,8 +44,9 @@ export default async function Page({ params, searchParams }: { params: Promise<{
           experts: { where: { status: { not: "DECLINE" } }, include: { practitioner: { include: { user: { select: { firstName: true, lastName: true } } } } } },
         },
       },
-      benefits: true,
+      benefits: { include: { _count: { select: { accepted: true } } } },
       registrations: { include: { user: true, benefits: { include: { benefit: true } } }, orderBy: { createdAt: "asc" } },
+      _count: { select: { registrations: true, rfqs: true, calls: true, serviceOrders: true } },
       surveys: { orderBy: { createdAt: "desc" } },
       serviceOrders: { include: { offer: { select: { kind: true } } }, orderBy: { createdAt: "desc" } },
     },
@@ -131,6 +133,10 @@ export default async function Page({ params, searchParams }: { params: Promise<{
     : event.publishedAt
       ? { label: event.registrationOpen ? "Publié · inscriptions ouvertes" : "Publié · inscriptions closes", tone: event.registrationOpen ? "ok" : "done" }
       : { label: "Brouillon", tone: "wait" };
+  // Modification : les hospitalités déjà acceptées par un inscrit sont figées ; un brouillon jamais publié se supprime.
+  const frozenBenefits = event.benefits.some((b) => b._count.accepted > 0);
+  const canDelete = isOrganizer && (await deletableDraft(event));
+  const missingLink = needsOnlineLink(event, now);
   const duration = event.durationMinutes ? (event.durationMinutes >= 60 ? `${Math.floor(event.durationMinutes / 60)} h${event.durationMinutes % 60 ? ` ${event.durationMinutes % 60}` : ""}` : `${event.durationMinutes} min`) : null;
 
   const Flag = ({ flag, label, ghost }: { flag: string; label: string; ghost?: boolean }) => (
@@ -162,7 +168,7 @@ export default async function Page({ params, searchParams }: { params: Promise<{
             </div>
             <div>
               <dt><MapPin size={13} /> Lieu</dt>
-              <dd>{event.format === "DISTANCIEL" ? "En ligne" : event.city ?? "À définir"}<small>{event.venue ?? (event.format === "HYBRIDE" ? "et en ligne" : "lieu à préciser")}</small></dd>
+              <dd>{event.format === "DISTANCIEL" ? "En ligne" : event.city ?? "À définir"}<small>{event.format === "DISTANCIEL" ? (event.onlineUrl ? "lien de connexion renseigné" : "lien de connexion à ajouter") : event.venue ?? (event.format === "HYBRIDE" ? "et en ligne" : "lieu à préciser")}{event.format === "HYBRIDE" && event.venue ? (event.onlineUrl ? " · lien renseigné" : " · lien à ajouter") : ""}</small></dd>
             </div>
             <div>
               <dt><Users size={13} /> Participants</dt>
@@ -196,6 +202,12 @@ export default async function Page({ params, searchParams }: { params: Promise<{
         )}
 
         {!isOrganizer && <p className="notice ok">Événement confié à {event.agency?.name ?? "votre agence"} par {org.name}.</p>}
+
+        {missingLink && (
+          <p className="notice error" role="alert">
+            Lien de connexion manquant : l&apos;événement commence le {formatDate(event.startsAt)} à {formatTime(event.startsAt)} et les inscrits ne peuvent pas se connecter. <a href="#modifier">Ajouter le lien de connexion</a>
+          </p>
+        )}
 
         {isPast && !event.internal && (
           <section className="card stack-sm bilan" aria-labelledby="bilan">
@@ -263,6 +275,25 @@ export default async function Page({ params, searchParams }: { params: Promise<{
 
         <div className="page-grid">
           <div className="page-main">
+            <details className="card edit-event" id="modifier" open={missingLink}>
+              <summary><h2>Modifier l&apos;événement</h2></summary>
+              <EditEventForm
+                orgId={id}
+                eventId={eventId}
+                types={EVENT_TYPES.map((t) => ({ value: t.id, label: t.label }))}
+                formats={Object.entries(FORMAT_LABEL).map(([value, label]) => ({ value, label }))}
+                catalog={BENEFIT_CATALOG}
+                registrations={event.registrations.length}
+                frozen={frozenBenefits ? event.benefits.map((b) => ({ label: b.label, valueCents: b.valueCents })) : undefined}
+                initial={{
+                  title: event.title, typeId: event.typeId, therapeuticArea: event.therapeuticArea ?? "", description: event.description ?? "",
+                  startsAt: toParisInput(event.startsAt), durationMinutes: event.durationMinutes != null ? String(event.durationMinutes) : "",
+                  format: event.format, capacity: event.capacity != null ? String(event.capacity) : "", city: event.city ?? "", venue: event.venue ?? "",
+                  onlineUrl: event.onlineUrl ?? "", benefits: event.benefits.map((b) => ({ catalogId: b.catalogId, valueCents: b.valueCents })),
+                }}
+              />
+            </details>
+
             <section className="card logistics">
               <div className="card-head">
                 <div>
@@ -463,6 +494,14 @@ export default async function Page({ params, searchParams }: { params: Promise<{
                     {isOrganizer && !event.publishedAt && <Flag flag="internal" label="En faire une réunion interne" ghost />}
                   </div>
                 </>
+              )}
+              {canDelete && (
+                <form action={deleteEventDraft} className="transitions-stack">
+                  <input type="hidden" name="orgId" value={id} />
+                  <input type="hidden" name="eventId" value={eventId} />
+                  <button className="link danger">Supprimer le brouillon</button>
+                  <span className="hint">Jamais publié, sans inscrit ni demande rattachée : il peut être supprimé.</span>
+                </form>
               )}
             </section>
 

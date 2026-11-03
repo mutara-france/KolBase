@@ -4,7 +4,7 @@ import { db } from "@/lib/db";
 import { sendMail, type Mail } from "@/lib/mail";
 import { platformAdminEmails } from "@/lib/platform";
 import { drPrefix } from "@/lib/professions";
-import { COMPLIANCE_ROLES, EVENT_ORGANIZER_ROLES } from "@/lib/events";
+import { COMPLIANCE_ROLES, EVENT_ORGANIZER_ROLES, FORMAT_LABEL, type EventChange } from "@/lib/events";
 import { fmtEur, isLocale, makeT, type Locale, type T } from "@/lib/i18n";
 import { PROJECT_ROLES, SOURCING_ROLES, STATUS_LABEL } from "@/lib/projects";
 import { orderStats } from "@/lib/services";
@@ -392,13 +392,16 @@ export async function sendEventReminders(eventId: string, now = new Date()) {
   for (const r of ev.registrations) {
     await send([r.user], (t, locale) => {
       const when = ev.startsAt.toLocaleString(locale === "en" ? "en-GB" : "fr-FR", { timeZone: "Europe/Paris", weekday: "long", day: "numeric", month: "long", hour: "2-digit", minute: "2-digit" });
-      const place = ev.format === "DISTANCIEL" ? t("En ligne : le lien de connexion vous est communiqué par l'organisateur.") : t("Lieu : {place}", { place: [ev.venue, ev.city].filter(Boolean).join(", ") || t("à préciser par l'organisateur") });
+      const place = ev.format === "DISTANCIEL" ? null : t("Lieu : {place}", { place: [ev.venue, ev.city].filter(Boolean).join(", ") || t("à préciser par l'organisateur") });
+      // Lien de connexion (en ligne, hybride) : réservé aux inscrits, donné dans le rappel.
+      const online = ev.format === "PRESENTIEL" ? null : ev.onlineUrl ? t("Lien de connexion : {url}", { url: ev.onlineUrl }) : t("En ligne : le lien de connexion vous est communiqué par l'organisateur.");
       return {
         subject: t("Rappel : « {title} », {when}", { title: ev.title, when }),
         text: [
           t("Bonjour {name},", { name: r.user.firstName }),
           t("Vous êtes inscrit à « {title} » ({org}), {when}.", { title: ev.title, org: ev.organization.name, when }),
           place,
+          online,
           program ? `${t("Programme")} :\n${program}` : null,
           inPerson ? t("À l'accueil, présentez votre badge : le lien ci-dessous l'affiche sur votre téléphone.") : null,
         ].filter(Boolean).join("\n\n"),
@@ -408,6 +411,41 @@ export async function sendEventReminders(eventId: string, now = new Date()) {
     await db.registration.update({ where: { id: r.id }, data: { reminderSentAt: now } });
   }
   return ev.registrations.length;
+}
+
+/** Événement modifié (date, heure, lieu, format ou lien de connexion) : chaque inscrit reçoit les nouvelles informations. */
+export function notifyEventChanged(eventId: string, changes: EventChange[]) {
+  later(async () => {
+    const ev = await db.event.findUnique({
+      where: { id: eventId },
+      include: { organization: { select: { name: true } }, registrations: { include: { user: { select: { ...userSelect, firstName: true } } } } },
+    });
+    if (!ev || ev.internal) return;
+    for (const r of ev.registrations) {
+      await send([r.user], (t, locale) => {
+        const when = ev.startsAt.toLocaleString(locale === "en" ? "en-GB" : "fr-FR", { timeZone: "Europe/Paris", weekday: "long", day: "numeric", month: "long", year: "numeric", hour: "2-digit", minute: "2-digit" });
+        const place = [ev.venue, ev.city].filter(Boolean).join(", ");
+        const lines = [
+          changes.includes("date") ? t("Nouvelle date : {when}.", { when }) : null,
+          changes.includes("format") ? t("Nouveau format : {format}.", { format: t(FORMAT_LABEL[ev.format]) }) : null,
+          (changes.includes("lieu") || changes.includes("format")) && ev.format !== "DISTANCIEL" ? t("Lieu : {place}", { place: place || t("à préciser par l'organisateur") }) : null,
+          (changes.includes("lien") || changes.includes("format")) && ev.format !== "PRESENTIEL"
+            ? ev.onlineUrl ? t("Lien de connexion : {url}", { url: ev.onlineUrl }) : t("En ligne : le lien de connexion vous est communiqué par l'organisateur.")
+            : null,
+        ];
+        return {
+          subject: t("Changement : « {title} »", { title: ev.title }),
+          text: [
+            t("Bonjour {name},", { name: r.user.firstName }),
+            t("{org} a modifié « {title} », auquel vous êtes inscrit.", { org: ev.organization.name, title: ev.title }),
+            lines.filter(Boolean).join("\n"),
+            t("Si vous ne pouvez plus y participer, annulez votre inscription depuis la page de l'événement."),
+          ].filter(Boolean).join("\n\n"),
+          cta: { label: t("Voir l'événement"), href: `/evenements/${ev.id}` },
+        };
+      });
+    }
+  });
 }
 
 /**

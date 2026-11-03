@@ -38,6 +38,8 @@ export default async function Page({ params }: { params: Promise<{ id: string }>
   const [event, user] = await Promise.all([
     db.event.findFirst({
       where: { id, publishedAt: { not: null }, organization: { verification: "VERIFIED" } },
+      // Le lien de connexion n'est lu que pour une personne inscrite (plus bas).
+      omit: { onlineUrl: true },
       include: {
         organization: true, benefits: true, _count: { select: { registrations: true } },
         calls: { where: { status: "open" }, include: { _count: { select: { applications: { where: { status: "retained" } } } } }, orderBy: { createdAt: "asc" } },
@@ -50,6 +52,7 @@ export default async function Page({ params }: { params: Promise<{ id: string }>
   const reg = user
     ? await db.registration.findUnique({ where: { eventId_userId: { eventId: id, userId: user.id } }, include: { benefits: { include: { benefit: true } }, survey: { select: { id: true } } } })
     : null;
+  const onlineUrl = reg && event.format !== "PRESENTIEL" ? (await db.event.findUnique({ where: { id }, select: { onlineUrl: true } }))?.onlineUrl ?? null : null;
   const full = event.capacity != null && event._count.registrations >= event.capacity;
   const past = event.startsAt < new Date();
   const back = encodeURIComponent(`/evenements/${id}`);
@@ -142,6 +145,12 @@ export default async function Page({ params }: { params: Promise<{ id: string }>
               {reg ? (
                 <>
                   <p className="notice ok">{t("Vous êtes inscrit à cet événement.")}</p>
+                  {/* Lien de connexion : affiché aux seuls inscrits, jusqu'à la fin de l'événement. */}
+                  {event.format !== "PRESENTIEL" && !eventEnded(event) && (
+                    onlineUrl
+                      ? <p className="online-link text-sm">{t("Lien de connexion :")} <a href={onlineUrl} target="_blank" rel="noopener noreferrer">{onlineUrl}</a></p>
+                      : <p className="muted text-sm">{t("Le lien de connexion vous sera communiqué par l'organisateur avant l'événement.")}</p>
+                  )}
                   <p className="muted text-sm">
                     {reg.benefits.length === 0
                       ? t("Vous n'avez accepté aucune prestation.")

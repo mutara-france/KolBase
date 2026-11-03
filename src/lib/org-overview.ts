@@ -3,7 +3,7 @@ import { cookies } from "next/headers";
 import type { TodoItem } from "@/components/Todo";
 import { getCurrentUser } from "@/lib/auth";
 import { db } from "@/lib/db";
-import { COMPLIANCE_ROLES, EVENT_MANAGER_ROLES, EVENT_ORGANIZER_ROLES, eventScope, formatDate } from "@/lib/events";
+import { COMPLIANCE_ROLES, EVENT_MANAGER_ROLES, EVENT_ORGANIZER_ROLES, eventScope, formatDate, needsOnlineLink } from "@/lib/events";
 import { PROJECT_ROLES, PROJECT_VIEW_ROLES, REVIEW_ROLES, SOURCING_ROLES } from "@/lib/projects";
 import { countFor, orgSectionTabs, type OrgSectionKey, type SectionTab } from "@/lib/nav";
 import type { OrgRole } from "@/generated/prisma/client";
@@ -106,6 +106,10 @@ export const orgOverview = cache(async (orgId: string) => {
     for (const e of events)
       if (!e.publishedAt && !e.internal && e.startsAt >= now)
         todos.push({ href: `${base}/evenements/${e.id}`, title: `Brouillon à publier : ${e.title}`, detail: formatDate(e.startsAt), icon: "CalendarClock", tone: "warn" });
+    // Événement en ligne ou hybride à deux jours sans lien de connexion : les inscrits ne pourraient pas se connecter.
+    for (const e of events)
+      if (needsOnlineLink(e, now))
+        todos.push({ href: `${base}/evenements/${e.id}#modifier`, title: `Ajouter le lien de connexion : ${e.title}`, detail: `${formatDate(e.startsAt)} · ${e._count.registrations} inscrit${e._count.registrations > 1 ? "s" : ""}`, icon: "AlertTriangle", tone: "danger" });
   }
   if (can.organizer) {
     for (const r of rfqs) {

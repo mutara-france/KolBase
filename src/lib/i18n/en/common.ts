@@ -83,4 +83,12 @@ export const COMMON: Record<string, string> = {
   "Impossible : la double authentification est obligatoire pour les administrateurs de KolBase.": "Not possible: two-factor authentication is mandatory for KolBase administrators.",
   "Double authentification désactivée.": "Two-factor authentication turned off.",
   "Conditions de vente": "Terms of sale",
+  "Lien de connexion : {url}": "Joining link: {url}",
+  "Lien de connexion :": "Joining link:",
+  "Le lien de connexion vous sera communiqué par l'organisateur avant l'événement.": "The organiser will send you the joining link before the event.",
+  "Nouvelle date : {when}.": "New date: {when}.",
+  "Nouveau format : {format}.": "New format: {format}.",
+  "Changement : « {title} »": "Change: “{title}”",
+  "{org} a modifié « {title} », auquel vous êtes inscrit.": "{org} has changed “{title}”, which you are registered for.",
+  "Si vous ne pouvez plus y participer, annulez votre inscription depuis la page de l'événement.": "If you can no longer attend, cancel your registration from the event page.",
 };

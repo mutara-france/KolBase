@@ -15,8 +15,10 @@ export async function publicEvents(take?: number): Promise<EventCardData[]> {
   const featured = [...codes.keys()];
   const where = { publishedAt: { not: null }, startsAt: { gte: new Date() }, organization: { verification: "VERIFIED" as const } };
   const include = { organization: { select: { name: true } }, _count: { select: { registrations: true } } } as const;
-  const top = featured.length ? await db.event.findMany({ where: { ...where, id: { in: featured } }, include, take }) : [];
-  const rest = await db.event.findMany({ where: { ...where, id: { notIn: top.map((e) => e.id) } }, include, orderBy: { startsAt: "asc" }, take: take != null ? Math.max(take - top.length, 0) : undefined });
+  // Le lien de connexion (réservé aux inscrits) n'est jamais lu pour les pages publiques.
+  const omit = { onlineUrl: true } as const;
+  const top = featured.length ? await db.event.findMany({ where: { ...where, id: { in: featured } }, include, omit, take }) : [];
+  const rest = await db.event.findMany({ where: { ...where, id: { notIn: top.map((e) => e.id) } }, include, omit, orderBy: { startsAt: "asc" }, take: take != null ? Math.max(take - top.length, 0) : undefined });
   const sorted = top.sort((a, b) => featured.indexOf(a.id) - featured.indexOf(b.id));
   // Lien suivi de la mise à la une : visites et inscriptions comptées dans le bilan de l'organisateur.
   return [...sorted.map((e) => ({ ...e, featured: true, trackedHref: codes.get(e.id) ? trackedPath(codes.get(e.id)!) : undefined })), ...rest].map((e) => ({ ...e, registrations: e._count.registrations }));

@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { FileDown, QrCode, Star } from "lucide-react";
+import { FileDown, QrCode, Star, Video } from "lucide-react";
 import { eventEnded } from "@/lib/event-followup";
 import { SiteHeader } from "@/components/SiteHeader";
 import { SectionNav } from "@/components/SectionNav";
@@ -44,6 +44,11 @@ export default async function Page() {
           </span>
         </Link>
         {badge && <Link className="btn small secondary" href={`/inscriptions/${r.id}/badge`}><QrCode size={14} /> {t("Mon badge d'accueil")}</Link>}
+        {r.event.format !== "PRESENTIEL" && !eventEnded(r.event, now) && (
+          r.event.onlineUrl
+            ? <p className="online-link text-sm"><Video size={14} /> {t("Lien de connexion :")} <a href={r.event.onlineUrl} target="_blank" rel="noopener noreferrer">{r.event.onlineUrl}</a></p>
+            : <p className="muted text-sm"><Video size={14} /> {t("Le lien de connexion vous sera communiqué par l'organisateur avant l'événement.")}</p>
+        )}
         {eventEnded(r.event, now) && (r.checkedInAt || !r.survey) && (
           <div className="actions reg-actions">
             {r.checkedInAt && <a className="btn small secondary" href={`/inscriptions/${r.id}/attestation`}><FileDown size={14} /> {t("Mon attestation de présence")}</a>}

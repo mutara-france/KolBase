@@ -82,6 +82,47 @@ export function parseParisDateTime(value: string): Date | null {
   return new Date(asUtc - (parisAsUtc - asUtc));
 }
 
+/** Valeur d'un champ « date et heure » (« AAAA-MM-JJTHH:MM », heure de Paris) : inverse de parseParisDateTime. */
+export function toParisInput(d: Date): string {
+  const p = new Intl.DateTimeFormat("en-GB", { timeZone: TZ, hour12: false, year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit" })
+    .formatToParts(d)
+    .reduce<Record<string, string>>((acc, x) => (x.type !== "literal" ? { ...acc, [x.type]: x.value } : acc), {});
+  return `${p.year}-${p.month}-${p.day}T${p.hour === "24" ? "00" : p.hour}:${p.minute}`;
+}
+
+/**
+ * Lien de connexion d'un événement en ligne : https uniquement (pas de lien en clair ni de schéma exotique).
+ * Vide : null. Invalide : undefined (à refuser).
+ */
+export function parseOnlineUrl(v: string): string | null | undefined {
+  const s = v.trim();
+  if (!s) return null;
+  if (s.length > 500 || /\s/.test(s)) return undefined;
+  try {
+    const u = new URL(s);
+    return u.protocol === "https:" && !!u.hostname && u.hostname.includes(".") && !u.username && !u.password ? u.toString() : undefined;
+  } catch {
+    return undefined;
+  }
+}
+export const ONLINE_URL_INVALID = "Lien de connexion invalide : indiquez une adresse complète commençant par https://.";
+
+/** Événement en ligne ou hybride sans lien de connexion à deux jours (ou moins) de son début : l'organisateur est relancé. */
+export const needsOnlineLink = (e: { format: string; internal: boolean; onlineUrl: string | null; startsAt: Date }, now = new Date()) =>
+  e.format !== "PRESENTIEL" && !e.internal && !e.onlineUrl && e.startsAt > now && e.startsAt.getTime() - now.getTime() <= 2 * 864e5;
+
+export type EventChange = "date" | "lieu" | "format" | "lien";
+type Logistics = { startsAt: Date; durationMinutes?: number | null; city: string | null; venue: string | null; format: string; onlineUrl: string | null };
+/** Changements qui concernent les inscrits (ils sont prévenus par e-mail) : date ou heure, lieu, format, lien de connexion. */
+export function eventChanges(before: Logistics, after: Logistics): EventChange[] {
+  const out: EventChange[] = [];
+  if (before.startsAt.getTime() !== after.startsAt.getTime()) out.push("date");
+  if ((before.city ?? "") !== (after.city ?? "") || (before.venue ?? "") !== (after.venue ?? "")) out.push("lieu");
+  if (before.format !== after.format) out.push("format");
+  if ((before.onlineUrl ?? "") !== (after.onlineUrl ?? "")) out.push("lien");
+  return out;
+}
+
 export const csvEscape = (v: unknown) => {
   let s = v == null ? "" : String(v);
   // Injection de formule : un nom saisi « =HYPERLINK(…) » serait exécuté par Excel à l'ouverture.

@@ -1069,6 +1069,7 @@ p.service-stats { color: var(--ink-soft); }
 .two-factor-qr .qr { display: inline-block; width: 180px; height: 180px; border: 1px solid var(--line); border-radius: 12px; padding: 6px; background: #fff; }
 .two-factor-qr .qr svg { width: 100%; height: 100%; }
 .totp-secret { word-break: break-all; }
+.online-link a { word-break: break-all; }
 .steps-list { margin: 0; padding-left: 1.2rem; display: grid; gap: 4px; }
 .recovery-box { border: 1px dashed var(--line-strong); border-radius: 12px; padding: 14px; background: var(--bg-subtle); }
 .recovery-codes { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(auto-fill, minmax(9rem, 1fr)); gap: 6px 16px; font-size: 1.05rem; }
@@ -1085,3 +1086,11 @@ p.service-stats { color: var(--ink-soft); }
 .legal-table tbody tr:hover { background: none; }
 .legal section.card { scroll-margin-top: 80px; }
 .legal .lead-sm p { margin: 8px 0 0; color: var(--ink-soft); }
+
+/* Modification d'un événement (fiche organisation) : bloc repliable. */
+.edit-event > summary { cursor: pointer; list-style: none; display: flex; align-items: center; gap: 8px; }
+.edit-event > summary::-webkit-details-marker { display: none; }
+.edit-event > summary::before { content: "▸"; color: var(--outremer); font-size: 13px; }
+.edit-event[open] > summary::before { content: "▾"; }
+.edit-event > summary h2 { margin: 0; }
+.edit-event[open] > summary { margin-bottom: 12px; }
