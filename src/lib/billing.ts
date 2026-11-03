@@ -1,7 +1,8 @@
 import "server-only";
 import { db } from "@/lib/db";
 import { stripe, stripeEnabled, type StripeSubscription } from "@/lib/stripe";
-import { asInterval, asObjectId, canEngage, ENGAGING, fromStripeStatus, planFor, planPrice, PLANS, TRIAL_DAYS, type Interval, type Motive } from "@/lib/billing-plans";
+import { asInterval, asObjectId, canEngage, ENGAGING, fromStripeStatus, planFor, planPrice, PLANS, subscribeHref, TRIAL_DAYS, type Blocked, type GateLink, type Interval, type Motive } from "@/lib/billing-plans";
+import { dpaCurrent, dpaHref, dpaMessage } from "@/lib/dpa";
 
 export { stripeEnabled };
 
@@ -19,6 +20,29 @@ export const gateMessage = (motive: Motive) => `Pour ${ENGAGING[motive]}, un adm
 export async function billingBlocked(orgId: string, motive: Motive) {
   if (!stripeEnabled()) return false;
   return motive === "reponse" ? !(await supplierCanQuote(orgId)) : !(await engagementAllowed(orgId));
+}
+
+/** Contrat de sous-traitance (RGPD) accepté dans sa version en vigueur ? (toujours vrai pour un prestataire) */
+export async function dpaAccepted(orgId: string) {
+  const org = await db.organization.findUnique({ where: { id: orgId }, select: { kind: true, dpaVersion: true } });
+  return !!org && dpaCurrent(org);
+}
+
+/**
+ * Contrôle commun des actions qui engagent un tiers (sollicitations, appel, événement, demande de devis) :
+ * contrat de sous-traitance accepté, puis abonnement. Renvoie le refus (message et lien vers la page qui lève
+ * le blocage) ou null. `objet` : l'action à reprendre ensuite (événement, dossier, demande de devis).
+ */
+export async function engagementGate(orgId: string, motive: Motive, objet?: string | null): Promise<{ error: string; fix: GateLink } | null> {
+  if (!(await dpaAccepted(orgId))) return { error: dpaMessage(motive), fix: { href: dpaHref(orgId, motive, objet), label: "Accepter le contrat de sous-traitance" } };
+  if (!(await engagementAllowed(orgId))) return { error: gateMessage(motive), fix: { href: subscribeHref(orgId, motive, objet), label: "Activer l'abonnement" } };
+  return null;
+}
+
+/** Ce qui bloque l'action sur la page (bouton désactivé, bandeau) : le contrat, puis l'abonnement. */
+export async function engagementBlock(orgId: string, motive: Motive): Promise<Blocked> {
+  if (motive !== "reponse" && !(await dpaAccepted(orgId))) return "contrat";
+  return (await billingBlocked(orgId, motive)) ? "abonnement" : null;
 }
 
 /** Un prestataire peut-il répondre à de nouvelles demandes ? Gratuit jusqu'à son premier devis retenu. */

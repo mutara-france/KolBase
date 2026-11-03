@@ -9,10 +9,11 @@ import { parseParisDateTime } from "@/lib/events";
 import { collabType, SOURCING_ROLES } from "@/lib/projects";
 import { eurToCents, str, unitsOrNull, UNITS_INVALID } from "@/lib/form";
 import { notifyApplication, notifyNotRetained, notifySolicitations } from "@/lib/notifications";
-import { engagementAllowed, gateMessage } from "@/lib/billing";
+import { engagementGate } from "@/lib/billing";
+import type { GateLink } from "@/lib/billing-plans";
 import { getT } from "@/lib/i18n/server";
 
-export type ActionState = { error?: string; ok?: string } | undefined;
+export type ActionState = { error?: string; ok?: string; fix?: GateLink } | undefined;
 
 /**
  * Appel à candidatures : pour une collaboration (board, étude, rédaction…) ou pour intervenir à un événement
@@ -22,7 +23,8 @@ export async function createOpenCall(_: ActionState, form: FormData): Promise<Ac
   const orgId = str(form, "orgId");
   const { user, org } = await requireMembership(orgId, SOURCING_ROLES);
   if (!isVerifiedOrg(org)) return { error: ORG_NOT_VERIFIED };
-  if (!(await engagementAllowed(orgId))) return { error: gateMessage("appel") };
+  const gate = await engagementGate(orgId, "appel");
+  if (gate) return gate;
   const title = str(form, "title");
   const typeId = str(form, "typeId");
   if (!title) return { error: "Le titre est obligatoire." };

@@ -56,6 +56,16 @@ export const asMotive = (v: unknown): Motive | null => (typeof v === "string" &&
 /** Identifiant d'objet (événement, dossier, demande de devis) passé dans une adresse : sinon ignoré. */
 export const asObjectId = (v: unknown): string | null => (typeof v === "string" && /^[A-Za-z0-9_-]{1,64}$/.test(v) ? v : null);
 
+/** Lien joint au refus d'une action engageante : la page qui lève le blocage. */
+export type GateLink = { href: string; label: string };
+/** Ce qui bloque une action engageante sur une page (bouton désactivé) : contrat de sous-traitance, puis abonnement. */
+export type Blocked = "contrat" | "abonnement" | null;
+/** Fin de la consigne affichée sous un bouton désactivé (« Envoi possible … »). */
+export const BLOCKED_UNTIL = {
+  contrat: "une fois le contrat de sous-traitance accepté par un administrateur",
+  abonnement: "une fois l'abonnement activé",
+} as const;
+
 /** Page d'abonnement avec le motif (et l'objet) de l'action en attente : le retour de paiement y ramène. */
 export const subscribeHref = (orgId: string, motive: Motive, objet?: string | null) =>
   `/organisations/${orgId}/abonnement?motif=${motive}${asObjectId(objet) ? `&objet=${objet}` : ""}`;

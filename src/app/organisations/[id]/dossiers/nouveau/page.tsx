@@ -6,7 +6,7 @@ import { db } from "@/lib/db";
 import { isVerifiedOrg, ORG_NOT_VERIFIED, requireMembership } from "@/lib/orgs";
 import { COLLAB_TYPES, SOURCING_ROLES } from "@/lib/projects";
 import { BillingNotice } from "@/components/BillingNotice";
-import { billingBlocked } from "@/lib/billing";
+import { engagementBlock } from "@/lib/billing";
 import { canSee, kolVisibility } from "@/lib/visibility";
 
 export const metadata = { title: "Nouveau dossier — KolBase" };
@@ -45,7 +45,7 @@ export default async function Page({ params, searchParams }: { params: Promise<{
         <p className="muted"><Link href={`/organisations/${id}`}>{org.name}</Link> / <Link href={`/organisations/${id}/dossiers`}>Dossiers</Link></p>
         <NewProjectForm
           ai={aiEnabled()}
-          blocked={await billingBlocked(id, "sollicitation")}
+          blocked={await engagementBlock(id, "sollicitation")}
           orgId={id}
           types={COLLAB_TYPES}
           preselected={expert && experts.some((e) => e.id === expert) ? [expert] : []}

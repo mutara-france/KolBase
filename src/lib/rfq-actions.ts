@@ -10,11 +10,11 @@ import { SUPPLIER_CATEGORIES } from "@/lib/suppliers";
 import { eurToCents, intOrNull, str } from "@/lib/form";
 import { isVatBp, linesTotal, MAX_LINES, withVat, type QuoteLine } from "@/lib/quotes";
 import { MAX_UPLOAD_BYTES, putObject, safeFileName, storageEnabled } from "@/lib/storage";
-import { engagementAllowed, gateMessage, markSupplierTriggered, stripeEnabled, supplierCanQuote } from "@/lib/billing";
-import { subscribeHref } from "@/lib/billing-plans";
+import { engagementGate, gateMessage, markSupplierTriggered, stripeEnabled, supplierCanQuote } from "@/lib/billing";
+import type { GateLink } from "@/lib/billing-plans";
 import { notifyAward, notifyQuote, notifyRfqCancelled, notifyRfqMessage, notifyRfqSent, notifySupplierBilling } from "@/lib/notifications";
 
-export type ActionState = { error?: string; ok?: string } | undefined;
+export type ActionState = { error?: string; ok?: string; fix?: GateLink } | undefined;
 
 // ─── Côté organisation ──────────────────────────────────────────────────────
 
@@ -46,7 +46,8 @@ export async function createRfq(_: ActionState, form: FormData): Promise<ActionS
   const headcount = intOrNull(str(form, "headcount")) || event?.capacity || null;
   const send = str(form, "intent") === "send";
   if (send && !isVerifiedOrg(org)) return { error: `Envoi impossible pour l'instant : ${ORG_NOT_VERIFIED} Enregistrez la demande en brouillon.` };
-  if (send && !(await engagementAllowed(orgId))) return { error: `${gateMessage("devis")} Vous pouvez l'enregistrer en brouillon.` };
+  const gate = send ? await engagementGate(orgId, "devis") : null;
+  if (gate) return { ...gate, error: `${gate.error} Vous pouvez l'enregistrer en brouillon.` };
 
   const rfq = await db.rfq.create({
     data: {
@@ -65,7 +66,8 @@ export async function sendRfq(form: FormData) {
   const { user, roles, org } = await requireMembership(orgId, EVENT_MANAGER_ROLES);
   if (!isVerifiedOrg(org)) return;
   const rfqId = str(form, "rfqId");
-  if (!(await engagementAllowed(orgId))) redirect(subscribeHref(orgId, "devis", rfqId));
+  const gate = await engagementGate(orgId, "devis", rfqId);
+  if (gate) redirect(gate.fix.href);
   const { count } = await db.rfq.updateMany({ where: { id: rfqId, organizationId: orgId, ...rfqScope(user, roles), status: "draft" }, data: { status: "sent", sentAt: new Date() } });
   if (!count) return;
   await audit(user.id, "rfq.send", "Rfq", rfqId);

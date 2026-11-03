@@ -1579,6 +1579,11 @@ async function submitNewOrg(page, siren) {
 
 // ── Prise en main, contrat de sous-traitance, purge et lancement ────────────
 {
+  // La démo accepte la version en vigueur du contrat : on simule un texte modifié depuis l'acceptation.
+  const pgd = new pg.Client({ connectionString: process.env.DATABASE_URL });
+  await pgd.connect();
+  await pgd.query(`update "Organization" set "dpaVersion" = '2026-01' where id = 'demo-org-dentalys'`);
+  await pgd.end();
   const { ctx, page } = await session();
   await login(page, "claire.morel@demo.kolbase.local");
   await page.goto(`${BASE}/organisations/demo-org-dentalys`);
@@ -2451,10 +2456,77 @@ async function submitNewOrg(page, siren) {
     await m.page.click('button:has-text("Activer l\'abonnement mensuel")');
     await m.page.waitForURL(/\/abonnement\?session=cs_/, { timeout: 15000 });
     check("Retour de paiement : « Abonnement activé », motif et objet conservés", m.page.url().includes("motif=evenement&objet=e2e-lot1-ev") && (await text(m.page)).includes("Abonnement activé"), m.page.url());
+    // Organisation neuve : le contrat de sous-traitance n'est pas encore accepté, la publication y mène d'abord.
+    await Promise.all([m.page.waitForURL(/\/membres\?onglet=organisation&motif=evenement&objet=e2e-lot1-ev/), m.page.click('button:has-text("Publier maintenant")')]);
+    check("Contrat non accepté : « Publier maintenant » mène au contrat de sous-traitance", !(await q1(`select "publishedAt" from "Event" where id = 'e2e-lot1-ev'`)).publishedAt && (await text(m.page)).includes("Pour publier un événement dans l'agenda, ce contrat doit d'abord être accepté"));
+    await m.page.click('button:has-text("Accepter au nom de Laboratoire Lot Un")');
+    await m.page.waitForSelector('button:has-text("Publier maintenant")');
     await Promise.all([m.page.waitForURL(/\?publie=1/), m.page.click('button:has-text("Publier maintenant")')]);
     check("Retour de paiement : « Publier maintenant » publie l'événement", !!(await q1(`select "publishedAt" from "Event" where id = 'e2e-lot1-ev'`)).publishedAt);
     await m.ctx.close();
   }
+  await pgc.end();
+}
+
+// ── Lot 2 : conformité et chiffres justes ──────────────────────────────────
+{
+  const pgc = new pg.Client({ connectionString: process.env.DATABASE_URL });
+  await pgc.connect();
+  const q1 = async (sql, args = []) => (await pgc.query(sql, args)).rows[0];
+
+  // 1. Contrat de sous-traitance exigé avant la première action qui engage un tiers (organisation neuve,
+  //    abonnement offert pour isoler le contrat).
+  {
+    await pgc.query(`insert into "Organization" (id, name, kind, verification, "verifiedAt", listed, areas, "updatedAt") values ('e2e-lot2-cs', 'Société Lot Deux', 'SOCIETE_SAVANTE', 'VERIFIED', now(), true, '{}', now())`);
+    await pgc.query(`insert into "Membership" (id, "userId", "organizationId", role) select 'e2e-lot2-m1', id, 'e2e-lot2-cs', 'ADMIN' from "User" where email = 'marc.lefevre@demo.kolbase.local'`);
+    await pgc.query(`insert into "Membership" (id, "userId", "organizationId", role) select 'e2e-lot2-m2', id, 'e2e-lot2-cs', 'PROJETS' from "User" where email = 'nadia.haddad@demo.kolbase.local'`);
+    await pgc.query(`insert into "Subscription" ("organizationId", plan, status, "exemptUntil", "updatedAt") values ('e2e-lot2-cs', 'organisation', 'a_activer', now() + interval '1 year', now())`);
+    const dpaLink = (motif) => `a[href="/organisations/e2e-lot2-cs/membres?onglet=organisation&motif=${motif}#sous-traitance"]`;
+    const p = await session();
+    await login(p.page, "nadia.haddad@demo.kolbase.local");
+    await p.page.goto(`${BASE}/organisations/e2e-lot2-cs/dossiers/nouveau`);
+    let t = await text(p.page);
+    check("Contrat non accepté : bandeau avec lien vers Membres et réglages › Organisation", t.includes("doit d'abord accepter le contrat de sous-traitance (RGPD)") && (await p.page.locator(dpaLink("sollicitation")).count()) === 1 && !t.includes("l'abonnement de l'organisation doit être activé"));
+    check("Contrat non accepté : envoi désactivé, consigne", (await p.page.locator('button:has-text("Envoyer les sollicitations")').isDisabled()) && t.includes("Envoi possible une fois le contrat de sous-traitance accepté par un administrateur"));
+    await p.page.fill('input[name="title"]', "Board Lot Deux");
+    await p.page.locator(".expert-pick label.check input").first().check();
+    const fee = p.page.locator('input[name^="fee_"]').first();
+    if (!(await fee.inputValue())) await fee.fill("1200");
+    await p.page.locator('button:has-text("Envoyer les sollicitations")').evaluate((b) => { b.disabled = false; });
+    await p.page.click('button:has-text("Envoyer les sollicitations")');
+    await p.page.waitForTimeout(1500);
+    t = await text(p.page);
+    check("Contrat non accepté : sollicitation refusée par le serveur, message et lien", t.includes("un administrateur de l'organisation doit d'abord accepter le contrat de sous-traitance (RGPD) : Membres et réglages › Organisation.") && (await p.page.locator('.notice.error a:has-text("Accepter le contrat de sous-traitance")').count()) === 1 && (await q1(`select count(*)::int n from "Project" where "organizationId" = 'e2e-lot2-cs'`)).n === 0);
+    for (const [path, motif] of [["opportunites", "appel"], ["evenements/nouveau", "evenement"], ["prestataires?onglet=nouvelle", "devis"]]) {
+      await p.page.goto(`${BASE}/organisations/e2e-lot2-cs/${path}`);
+      check(`Contrat non accepté : bandeau sur ${path.split("?")[0]}`, (await p.page.locator(dpaLink(motif)).count()) === 1);
+    }
+    await p.page.goto(`${BASE}/organisations/e2e-lot2-cs/membres?onglet=organisation&motif=sollicitation#sous-traitance`);
+    t = await text(p.page);
+    check("Contrat : un membre non administrateur ne peut pas l'accepter", t.includes("ce contrat doit d'abord être accepté par un administrateur") && (await p.page.locator('button:has-text("Accepter au nom de")').count()) === 0);
+    const a = await session();
+    await login(a.page, "marc.lefevre@demo.kolbase.local");
+    await a.page.goto(`${BASE}/organisations/e2e-lot2-cs`);
+    check("Contrat : étape de prise en main pour l'administrateur", (await text(a.page)).includes("Accepter le contrat de sous-traitance (RGPD)"));
+    await a.page.goto(`${BASE}/organisations/e2e-lot2-cs/membres?onglet=organisation&motif=sollicitation#sous-traitance`);
+    await a.page.click('button:has-text("Accepter au nom de Société Lot Deux")');
+    await a.page.waitForTimeout(1200);
+    t = await text(a.page);
+    const dpa = await q1(`select "dpaVersion", "dpaAcceptedById" from "Organization" where id = 'e2e-lot2-cs'`);
+    check("Contrat accepté : tracé, et reprise de l'action proposée", !!dpa.dpaVersion && !!dpa.dpaAcceptedById && t.includes("Contrat accepté : vous pouvez reprendre votre action") && (await a.page.locator('a.btn[href="/organisations/e2e-lot2-cs/dossiers/nouveau"]').count()) === 1, JSON.stringify(dpa));
+    await a.ctx.close();
+    await p.page.goto(`${BASE}/organisations/e2e-lot2-cs/dossiers/nouveau`);
+    check("Contrat accepté : plus de bandeau, envoi possible", !(await text(p.page)).includes("accepter le contrat de sous-traitance") && !(await p.page.locator('button:has-text("Envoyer les sollicitations")').isDisabled()));
+    await p.page.fill('input[name="title"]', "Board Lot Deux");
+    await p.page.locator(".expert-pick label.check input").first().check();
+    const fee2 = p.page.locator('input[name^="fee_"]').first();
+    if (!(await fee2.inputValue())) await fee2.fill("1200");
+    await p.page.click('button:has-text("Envoyer les sollicitations")');
+    await p.page.waitForTimeout(1500);
+    check("Contrat accepté : sollicitation envoyée", /\/dossiers\/[^/]+$/.test(p.page.url()) && !p.page.url().endsWith("/nouveau"), p.page.url());
+    await p.ctx.close();
+  }
+
   await pgc.end();
 }
 

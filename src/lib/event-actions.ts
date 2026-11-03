@@ -10,13 +10,13 @@ import { BENEFIT_CATALOG, COMPLIANCE_ROLES, EVENT_MANAGER_ROLES, EVENT_ORGANIZER
 import { EventFormat } from "@/generated/prisma/enums";
 import { eurToCents, intOrNull, str } from "@/lib/form";
 import { getT } from "@/lib/i18n/server";
-import { engagementAllowed, gateMessage } from "@/lib/billing";
-import { subscribeHref } from "@/lib/billing-plans";
+import { engagementGate } from "@/lib/billing";
+import type { GateLink } from "@/lib/billing-plans";
 import { notifyEventChanged, notifyEventConfided } from "@/lib/notifications";
 import { SOURCE_COOKIE } from "@/lib/services";
 import { deletableDraft, DRAFT_COUNTS } from "@/lib/event-drafts";
 
-export type ActionState = { error?: string; ok?: string } | undefined;
+export type ActionState = { error?: string; ok?: string; fix?: GateLink } | undefined;
 
 /** Champs communs à la création et à la modification d'un événement (valeurs lues et contrôlées). */
 function readEventFields(form: FormData) {
@@ -69,7 +69,8 @@ export async function createEvent(_: ActionState, form: FormData): Promise<Actio
   const internal = form.get("internal") === "1";
   const publish = !internal && form.get("publish") === "1";
   if (publish && !isVerifiedOrg(org)) return { error: `Publication impossible pour l'instant : ${ORG_NOT_VERIFIED} Enregistrez l'événement en brouillon.` };
-  if (publish && !(await engagementAllowed(orgId))) return { error: `${gateMessage("evenement")} Vous pouvez l'enregistrer en brouillon.` };
+  const gate = publish ? await engagementGate(orgId, "evenement") : null;
+  if (gate) return { ...gate, error: `${gate.error} Vous pouvez l'enregistrer en brouillon.` };
   const event = await db.event.create({
     data: {
       organizationId: orgId,
@@ -156,7 +157,9 @@ export async function setEventFlag(form: FormData) {
   const { user, roles, org } = await requireMembership(orgId, EVENT_MANAGER_ROLES);
   const flag = str(form, "flag");
   if (flag === "publish" && !isVerifiedOrg(org)) return;
-  if (flag === "publish" && !(await engagementAllowed(orgId))) redirect(subscribeHref(orgId, "evenement", eventId));
+  // Contrat de sous-traitance puis abonnement : la page qui lève le blocage ramène ensuite à la publication.
+  const gate = flag === "publish" ? await engagementGate(orgId, "evenement", eventId) : null;
+  if (gate) redirect(gate.fix.href);
   // Passer en réunion interne (ou l'ouvrir au public) relève de l'équipe organisatrice, pas d'une agence.
   if ((flag === "internal" || flag === "public") && !roles.some((r) => EVENT_ORGANIZER_ROLES.includes(r))) return;
   const data =

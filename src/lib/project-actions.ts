@@ -14,16 +14,18 @@ import { complianceSettings, projectRegime } from "@/lib/compliance";
 import { missingSignedConventions } from "@/lib/project-documents";
 import { eurToCents, str, unitsOrNull, UNITS_INVALID } from "@/lib/form";
 import { notifyCompliance, notifyExpertAnswer, notifyMessage, notifyNewProposal, notifySolicitations } from "@/lib/notifications";
-import { engagementAllowed, gateMessage } from "@/lib/billing";
+import { engagementGate } from "@/lib/billing";
+import type { GateLink } from "@/lib/billing-plans";
 import { getT } from "@/lib/i18n/server";
 
-export type ActionState = { error?: string; ok?: string } | undefined;
+export type ActionState = { error?: string; ok?: string; fix?: GateLink } | undefined;
 
 export async function createProject(_: ActionState, form: FormData): Promise<ActionState> {
   const orgId = str(form, "orgId");
   const { user, org } = await requireMembership(orgId, SOURCING_ROLES);
   if (!isVerifiedOrg(org)) return { error: ORG_NOT_VERIFIED };
-  if (!(await engagementAllowed(orgId))) return { error: gateMessage("sollicitation") };
+  const gate = await engagementGate(orgId, "sollicitation");
+  if (gate) return gate;
   const title = str(form, "title");
   const typeId = str(form, "typeId");
   if (!title) return { error: "Le titre est obligatoire." };
@@ -268,7 +270,8 @@ export async function addProjectExpert(_: ActionState, form: FormData): Promise<
   const { user, org, project, error } = await editableProject(orgId, projectId);
   if (!project) return { error: error ?? "Dossier introuvable." };
   if (!isVerifiedOrg(org)) return { error: ORG_NOT_VERIFIED };
-  if (!(await engagementAllowed(orgId))) return { error: gateMessage("sollicitation") };
+  const gate = await engagementGate(orgId, "sollicitation", projectId);
+  if (gate) return gate;
   const practitionerId = str(form, "expertId");
   const expert = await db.practitionerProfile.findFirst({ where: { id: practitionerId, listed: true }, select: { id: true } });
   if (!expert) return { error: "Choisissez un expert référencé." };

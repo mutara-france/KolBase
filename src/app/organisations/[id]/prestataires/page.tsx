@@ -17,7 +17,7 @@ import { lineTotal, perParticipant, readLines, vatLabel, withVat } from "@/lib/q
 import { complianceSettings } from "@/lib/compliance";
 import { logoSrc } from "@/lib/logos";
 import { BillingNotice } from "@/components/BillingNotice";
-import { billingBlocked } from "@/lib/billing";
+import { engagementBlock } from "@/lib/billing";
 import { Thread } from "@/components/ProjectBits";
 
 export const metadata = { title: "Prestataires — KolBase" };
@@ -31,7 +31,7 @@ export default async function Page({ params, searchParams }: { params: Promise<{
   const scope = eventScope(user, roles);
   const scoped = Object.keys(scope).length > 0;
   const isOrganizer = roles.some((r) => EVENT_ORGANIZER_ROLES.includes(r));
-  const blocked = await billingBlocked(id, "devis");
+  const blocked = await engagementBlock(id, "devis");
 
   const [rfqs, suppliersRaw, events] = await Promise.all([
     db.rfq.findMany({
@@ -203,7 +203,7 @@ export default async function Page({ params, searchParams }: { params: Promise<{
                       <form action={sendRfq}>
                         <input type="hidden" name="orgId" value={id} />
                         <input type="hidden" name="rfqId" value={r.id} />
-                        <button className="btn" disabled={blocked}><Send size={14} /> {r.suppliers.length > 1 ? `Envoyer aux ${r.suppliers.length} prestataires` : "Envoyer au prestataire"}</button>
+                        <button className="btn" disabled={!!blocked}><Send size={14} /> {r.suppliers.length > 1 ? `Envoyer aux ${r.suppliers.length} prestataires` : "Envoyer au prestataire"}</button>
                       </form>
                     )}
                     {(r.status === "draft" || r.status === "sent") && (

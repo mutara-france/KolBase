@@ -11,7 +11,7 @@ import { BENEFIT_CATALOG, COMPLIANCE_ROLES, EVENT_MANAGER_ROLES, EVENT_ORGANIZER
 import { deleteEventDraft, setEventAgency, setEventFlag } from "@/lib/event-actions";
 import { deletableDraft } from "@/lib/event-drafts";
 import { BillingNotice } from "@/components/BillingNotice";
-import { billingBlocked } from "@/lib/billing";
+import { engagementBlock } from "@/lib/billing";
 import { applyQuoteToBenefit } from "@/lib/rfq-actions";
 import { RFQ_STATUS, rfqDisplayStatus, SUPPLIER_CATEGORIES, supplierCategoryLabel } from "@/lib/suppliers";
 import { perParticipant, withVat } from "@/lib/quotes";
@@ -139,7 +139,7 @@ export default async function Page({ params, searchParams }: { params: Promise<{
   const frozenBenefits = event.benefits.some((b) => b._count.accepted > 0);
   const canDelete = isOrganizer && (await deletableDraft(event));
   const missingLink = needsOnlineLink(event, now);
-  const publishBlocked = !event.publishedAt && !event.internal && (await billingBlocked(id, "evenement"));
+  const publishBlocked = !event.publishedAt && !event.internal ? await engagementBlock(id, "evenement") : null;
   const duration = event.durationMinutes ? (event.durationMinutes >= 60 ? `${Math.floor(event.durationMinutes / 60)} h${event.durationMinutes % 60 ? ` ${event.durationMinutes % 60}` : ""}` : `${event.durationMinutes} min`) : null;
 
   const Flag = ({ flag, label, ghost, disabled }: { flag: string; label: string; ghost?: boolean; disabled?: boolean }) => (
@@ -494,7 +494,7 @@ export default async function Page({ params, searchParams }: { params: Promise<{
                     {event.publishedAt ? <>Publié dans <Link href={`/evenements/${event.id}`}>l&apos;agenda</Link>. Inscriptions {event.registrationOpen ? "ouvertes" : "fermées"}.</> : "Brouillon : l'événement n'est pas encore visible des praticiens."}
                   </p>
                   <div className="transitions-stack">
-                    {event.publishedAt ? <Flag flag="unpublish" label="Retirer de l'agenda" ghost /> : org.verification === "VERIFIED" ? <Flag flag="publish" label="Publier dans l'agenda" disabled={publishBlocked} /> : <span className="hint">Publication possible une fois l&apos;organisation validée par KolBase.</span>}
+                    {event.publishedAt ? <Flag flag="unpublish" label="Retirer de l'agenda" ghost /> : org.verification === "VERIFIED" ? <Flag flag="publish" label="Publier dans l'agenda" disabled={!!publishBlocked} /> : <span className="hint">Publication possible une fois l&apos;organisation validée par KolBase.</span>}
                     {event.registrationOpen ? <Flag flag="close" label="Fermer les inscriptions" ghost /> : <Flag flag="open" label="Rouvrir les inscriptions" ghost />}
                     {isOrganizer && !event.publishedAt && <Flag flag="internal" label="En faire une réunion interne" ghost />}
                   </div>

@@ -8,7 +8,7 @@ import { db } from "@/lib/db";
 import { requireMembership } from "@/lib/orgs";
 import { formatDate } from "@/lib/events";
 import { BillingNotice } from "@/components/BillingNotice";
-import { billingBlocked } from "@/lib/billing";
+import { engagementBlock } from "@/lib/billing";
 import { COLLAB_TYPES, collabType, SOURCING_ROLES } from "@/lib/projects";
 
 export const metadata = { title: "Appels à candidatures — KolBase" };
@@ -80,7 +80,7 @@ export default async function Page({ params, searchParams }: { params: Promise<{
         )}
         <div id="nouvel-appel">
           <NewCallForm
-            blocked={await billingBlocked(id, "appel")}
+            blocked={await engagementBlock(id, "appel")}
             orgId={id}
             types={COLLAB_TYPES}
             ai={aiEnabled()}

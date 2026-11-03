@@ -5,6 +5,7 @@ import { Check, Plus, Send } from "lucide-react";
 import { createRfq, postRfqMessage, submitQuote, updateSupplierProfile } from "@/lib/rfq-actions";
 import { Notice } from "@/components/AuthForms";
 import { ActionForm } from "@/components/ActionForm";
+import { BLOCKED_UNTIL, type Blocked } from "@/lib/billing-plans";
 import { defaultVatBp, VAT_OPTIONS } from "@/lib/quotes";
 import { Avatar } from "@/components/Avatar";
 import { AiDraft } from "@/components/AiDraft";
@@ -34,7 +35,7 @@ export function SupplierLine({ s, catLabel, selected, onToggle }: { s: Supplier;
   );
 }
 
-export function NewRfqForm({ orgId, categories, suppliers, events, defaultEventId, defaultCategory, ai = false, blocked = false }: { orgId: string; categories: Cat[]; suppliers: Supplier[]; events: EventOpt[]; defaultEventId?: string; defaultCategory?: string; ai?: boolean; blocked?: boolean }) {
+export function NewRfqForm({ orgId, categories, suppliers, events, defaultEventId, defaultCategory, ai = false, blocked = null }: { orgId: string; categories: Cat[]; suppliers: Supplier[]; events: EventOpt[]; defaultEventId?: string; defaultCategory?: string; ai?: boolean; blocked?: Blocked }) {
   const [state, action, pending] = useActionState(createRfq, undefined);
   const [category, setCategory] = useState(categories.some((c) => c.id === defaultCategory) ? defaultCategory! : categories[0].id);
   const [picked, setPicked] = useState<string[]>([]);
@@ -77,10 +78,10 @@ export function NewRfqForm({ orgId, categories, suppliers, events, defaultEventI
         <label>Réponse attendue avant<input name="deadline" type="date" /></label>
       </div>
       <div className="actions">
-        <button className="btn" name="intent" value="send" disabled={pending || picked.length === 0 || blocked}><Send size={14} /> {picked.length > 1 ? `Envoyer aux ${picked.length} prestataires` : "Envoyer au prestataire"}</button>
+        <button className="btn" name="intent" value="send" disabled={pending || picked.length === 0 || !!blocked}><Send size={14} /> {picked.length > 1 ? `Envoyer aux ${picked.length} prestataires` : "Envoyer au prestataire"}</button>
         <button className="btn ghost" name="intent" value="draft" disabled={pending || picked.length === 0}>Enregistrer en brouillon</button>
       </div>
-      {blocked && <p className="hint">Envoi possible une fois l&apos;abonnement activé ; le brouillon reste possible dès maintenant.</p>}
+      {blocked && <p className="hint">Envoi possible {BLOCKED_UNTIL[blocked]} ; le brouillon reste possible dès maintenant.</p>}
     </ActionForm>
   );
 }
