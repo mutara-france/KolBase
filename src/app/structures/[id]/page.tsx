@@ -22,7 +22,13 @@ export async function generateMetadata({ params }: { params: Promise<{ id: strin
   const { t } = await getT();
   const o = await db.organization.findFirst({ where: { id, listed: true, verification: "VERIFIED" }, select: { name: true, kind: true, about: true } });
   if (!o) return { title: t("Organisation — KolBase"), robots: { index: false } };
-  return { title: `${o.name} — ${t(ORG_KIND_LABEL[o.kind])} — KolBase`, description: (o.about ?? t("{name} sur KolBase.", { name: o.name })).slice(0, 160) };
+  const description = (o.about ?? t("{name} sur KolBase.", { name: o.name })).slice(0, 160);
+  return {
+    title: `${o.name} — ${t(ORG_KIND_LABEL[o.kind])} — KolBase`,
+    description,
+    alternates: { canonical: `/structures/${id}` },
+    openGraph: { type: "website", siteName: "KolBase", url: `/structures/${id}`, title: `${o.name} — ${t(ORG_KIND_LABEL[o.kind])}`, description },
+  };
 }
 
 export default async function Page({ params }: { params: Promise<{ id: string }> }) {

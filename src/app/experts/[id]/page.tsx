@@ -19,7 +19,13 @@ export async function generateMetadata({ params }: { params: Promise<{ id: strin
   if (!p) return { title: t("Profil expert — KolBase"), robots: { index: false } };
   const name = `${drPrefix(p.profession)}${p.user.firstName} ${p.user.lastName}`;
   const what = [t(p.specialty || p.profession), p.subspecialty].filter(Boolean).join(" · ");
-  return { title: `${name}${what ? ` — ${what}` : ""} — KolBase`, description: (p.bio ?? t("{name}, expert référencé sur KolBase.", { name })).slice(0, 160) };
+  const description = (p.bio ?? t("{name}, expert référencé sur KolBase.", { name })).slice(0, 160);
+  return {
+    title: `${name}${what ? ` — ${what}` : ""} — KolBase`,
+    description,
+    alternates: { canonical: `/experts/${id}` },
+    openGraph: { type: "profile", siteName: "KolBase", url: `/experts/${id}`, title: `${name}${what ? ` — ${what}` : ""}`, description },
+  };
 }
 
 export default async function Page({ params }: { params: Promise<{ id: string }> }) {
