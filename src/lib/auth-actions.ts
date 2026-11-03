@@ -14,6 +14,7 @@ import { sendLater } from "@/lib/mail";
 import { notifyPlatformAdmins } from "@/lib/notifications";
 import { consumeToken, findToken, issueToken } from "@/lib/tokens";
 import { anonymizeAccount, soleAdminOrgs } from "@/lib/account";
+import { startSecondFactor } from "@/lib/two-factor";
 import { MAX_NAME, str } from "@/lib/form";
 import { normalize } from "@/lib/search";
 import { getLocale, getT, LOCALE_COOKIE } from "@/lib/i18n/server";
@@ -112,6 +113,11 @@ export async function signIn(_: FormState, form: FormData): Promise<FormState> {
     return { error: t("E-mail ou mot de passe incorrect.") };
   }
   reset(emailKey);
+  // Double authentification : le mot de passe ne suffit pas, le code de l'application est demandé ensuite.
+  if (user.totpEnabledAt) {
+    await audit(user.id, "user.signin_password", "User", user.id);
+    await startSecondFactor(user.id, str(form, "next"));
+  }
   await audit(user.id, "user.signin", "User", user.id);
   await createSession(user.id);
   redirect(safeNext(str(form, "next"), "/tableau-de-bord"));
@@ -279,6 +285,8 @@ export async function resetPassword(_: FormState, form: FormData): Promise<FormS
   await db.session.deleteMany({ where: { userId: t.userId } });
   reset(`signin:email:${t.user.email}`);
   await audit(t.userId, "user.reset_password", "User", t.userId);
+  // Le lien reçu par e-mail ne remplace pas le second facteur.
+  if (t.user.totpEnabledAt) await startSecondFactor(t.userId, "/tableau-de-bord");
   await createSession(t.userId);
   redirect("/tableau-de-bord");
 }

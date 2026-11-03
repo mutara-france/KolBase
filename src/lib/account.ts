@@ -85,7 +85,7 @@ export async function anonymizeAccount(userId: string) {
       where: { id: userId },
       data: {
         email: `supprime-${userId}@kolbase.invalid`,
-        passwordHash: null, phone: null, notifyPrefs: {}, emailVerifiedAt: null, followsSeenAt: null,
+        passwordHash: null, totpSecret: null, totpEnabledAt: null, totpLastStep: null, recoveryCodes: [], unsubscribeToken: null, phone: null, notifyPrefs: {}, emailVerifiedAt: null, followsSeenAt: null,
         ...(keep ? {} : { firstName: "Compte", lastName: "supprimé" }),
       },
     }),

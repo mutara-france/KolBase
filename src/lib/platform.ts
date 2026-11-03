@@ -3,6 +3,7 @@ import { notFound } from "next/navigation";
 import { redirect } from "next/navigation";
 import { requireUser } from "@/lib/auth";
 import { mailEnabled } from "@/lib/mail";
+import { adminTwoFactorRequired } from "@/lib/two-factor";
 
 /**
  * Administrateurs de la plateforme KolBase (validation des organisations et des praticiens).
@@ -25,5 +26,7 @@ export async function requirePlatformAdmin() {
   // Adresse listée mais pas encore confirmée : direction « Mon compte », où le lien peut être renvoyé.
   if (listed(user) && !isPlatformAdmin(user)) redirect("/compte?admin=confirmer");
   if (!isPlatformAdmin(user)) notFound();
+  // Administration de KolBase : double authentification obligatoire (sauf PLATFORM_ADMIN_2FA=optional).
+  if (adminTwoFactorRequired() && !user.totpEnabledAt) redirect("/compte?securite=admin#securite");
   return user;
 }

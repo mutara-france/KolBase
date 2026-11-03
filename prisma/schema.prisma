@@ -23,6 +23,12 @@ model User {
   notifyPrefs  Json      @default("{}")
   emailVerifiedAt DateTime? // adresse confirmée par le lien reçu par e-mail
   unsubscribeToken String?  @unique // désinscription de la lettre d'information en un clic
+  // Double authentification (application d'authentification, RFC 6238) : secret, activation, dernier pas utilisé
+  // (un code ne sert qu'une fois), codes de secours (hachés, à usage unique).
+  totpSecret    String?
+  totpEnabledAt DateTime?
+  totpLastStep  Int?
+  recoveryCodes String[]  @default([])
   followsSeenAt DateTime?
   createdAt    DateTime  @default(now())
   updatedAt    DateTime  @updatedAt
@@ -44,6 +50,7 @@ model User {
 enum AuthTokenPurpose {
   RESET_PASSWORD
   VERIFY_EMAIL
+  TWO_FACTOR
 }
 
 // Jeton à usage unique envoyé par e-mail (réinitialisation du mot de passe, confirmation d'adresse) : seul son hash est stocké.
@@ -197,6 +204,7 @@ model Organization {
   id           String   @id @default(cuid())
   name         String
   kind         OrgKind
+  require2fa   Boolean  @default(false) // double authentification exigée de tous les membres
   sector       String?
   headquarters String?
   size         String?

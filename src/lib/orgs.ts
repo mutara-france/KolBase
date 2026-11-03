@@ -26,6 +26,8 @@ export async function requireMembership(orgId: string, roles?: OrgRole[], { allo
   // Une organisation prestataire n'a que son tableau de bord, ses demandes de devis et ses membres :
   // les espaces réservés à des rôles (dossiers, événements, conformité…) concernent les organisations clientes.
   if (roles && org.kind === "PRESTATAIRE" && !allowSupplier) redirect(`/organisations/${orgId}`);
+  // Organisation qui exige la double authentification : le membre l'active d'abord (Mon compte › Sécurité).
+  if (org.require2fa && !user.totpEnabledAt) redirect(`/compte?securite=${encodeURIComponent(orgId)}#securite`);
   return { user, org, roles: userRoles, isAdmin: userRoles.includes("ADMIN") };
 }
 

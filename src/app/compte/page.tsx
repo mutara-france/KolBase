@@ -15,6 +15,11 @@ import { removePublication, removeStructure } from "@/lib/profile-actions";
 import { fmtDate } from "@/lib/i18n";
 import { getT } from "@/lib/i18n/server";
 import { subscribed } from "@/lib/newsletter";
+import { isPlatformAdmin } from "@/lib/platform";
+import QRCode from "qrcode";
+import { TwoFactorCard } from "@/components/TwoFactorForms";
+import { otpauthUri } from "@/lib/totp";
+import { adminTwoFactorRequired, requiringOrgs } from "@/lib/two-factor";
 
 export async function generateMetadata() {
   const { t } = await getT();
@@ -32,13 +37,18 @@ const EMAIL_NOTICE = {
   "lien-invalide": ["error", "Ce lien de confirmation n'est plus valable. Demandez-en un nouveau ci-dessous."],
 } as const;
 
-export default async function Page({ searchParams }: { searchParams: Promise<{ annuaire?: string; orcid?: string; email?: string; admin?: string }> }) {
-  const { annuaire, orcid, email, admin } = await searchParams;
+export default async function Page({ searchParams }: { searchParams: Promise<{ annuaire?: string; orcid?: string; email?: string; admin?: string; securite?: string }> }) {
+  const { annuaire, orcid, email, admin, securite } = await searchParams;
   const emailNotice = email && email in EMAIL_NOTICE ? EMAIL_NOTICE[email as keyof typeof EMAIL_NOTICE] : null;
   const orcidNotice = orcid && orcid in ORCID_NOTICE ? ORCID_NOTICE[orcid as keyof typeof ORCID_NOTICE] : null;
   const user = await requireUser();
   const { t, locale } = await getT();
   const p = user.practitioner;
+  // Double authentification en cours d'activation : QR code du secret (pas encore actif).
+  const requiring = requiringOrgs(user);
+  const twoFactorSetup = !user.totpEnabledAt && user.totpSecret
+    ? { qr: await QRCode.toString(otpauthUri(user.totpSecret, user.email), { type: "svg", margin: 1, width: 180, errorCorrectionLevel: "M" }), secret: user.totpSecret }
+    : null;
   const [pubs, structs] = p
     ? await Promise.all([
         db.publication.findMany({ where: { practitionerId: p.id }, orderBy: [{ year: "desc" }, { createdAt: "desc" }] }),
@@ -129,6 +139,23 @@ export default async function Page({ searchParams }: { searchParams: Promise<{ a
         />
         <NotificationsForm email={wantsEmail(user)} newsletter={subscribed(user)} />
         <PasswordForm email={user.email} />
+        <section className="card stack-sm" id="securite" aria-labelledby="securite-titre">
+          <h2 id="securite-titre">{t("Sécurité : double authentification")}</h2>
+          {securite && !user.totpEnabledAt && (
+            <p className="notice warn" role="alert">
+              {securite === "admin"
+                ? t("L'administration de KolBase exige la double authentification : activez-la pour continuer.")
+                : t("{org} exige la double authentification de ses membres : activez-la pour accéder à son espace.", { org: requiring.find((o) => o.id === securite)?.name ?? t("Votre organisation") })}
+            </p>
+          )}
+          <p className="muted">{t("Après votre mot de passe, un code à 6 chiffres affiché par une application de votre téléphone vous est demandé : un mot de passe dérobé ne suffit plus pour accéder à votre compte.")}</p>
+          <TwoFactorCard
+            enabledAt={user.totpEnabledAt ? fmtDate(locale, user.totpEnabledAt, { day: "numeric", month: "long", year: "numeric" }) : null}
+            setup={twoFactorSetup}
+            recoveryLeft={user.recoveryCodes.length}
+            locked={requiring.length > 0 || (isPlatformAdmin(user) && adminTwoFactorRequired())}
+          />
+        </section>
         <MyDataCard keep={await retentionReasons(user.id)} />
         <section className="card">
           <h2>{t("Organisations")}</h2>

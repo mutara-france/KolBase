@@ -1970,6 +1970,99 @@ async function submitNewOrg(page, siren) {
   check("Robots : liens suivis et désinscription exclus", robots.includes("Disallow: /r/") && robots.includes("Disallow: /desinscription"));
 }
 
+// ── Double authentification : activation, exigence par l'organisation, connexion ──
+{
+  const pgc = new pg.Client({ connectionString: process.env.DATABASE_URL });
+  await pgc.connect();
+  const b32 = (s) => { let bits = 0, v = 0; const out = []; for (const c of s.replace(/[^A-Z2-7]/gi, "").toUpperCase()) { v = (v << 5) | "ABCDEFGHIJKLMNOPQRSTUVWXYZ234567".indexOf(c); bits += 5; if (bits >= 8) { out.push((v >>> (bits - 8)) & 255); bits -= 8; } } return Buffer.from(out); };
+  const stepNow = () => Math.floor(Date.now() / 30000);
+  const code = (secret, step = stepNow()) => {
+    const msg = Buffer.alloc(8); msg.writeBigUInt64BE(BigInt(step));
+    const h = createHmac("sha1", b32(secret)).update(msg).digest(); const o = h[19] & 15;
+    return String((((h[o] & 127) << 24) | (h[o + 1] << 16) | (h[o + 2] << 8) | h[o + 3]) % 1e6).padStart(6, "0");
+  };
+  const adm = await session();
+  await login(adm.page, "thomas.garnier@demo.kolbase.local");
+  await adm.page.goto(`${BASE}/organisations/demo-org-orthonova/membres?onglet=organisation`);
+  check("Organisation : exigence impossible tant que l'administrateur n'est pas protégé", await adm.page.locator('button:has-text("Exiger la double authentification")').isDisabled());
+  await adm.page.goto(`${BASE}/compte`);
+  await adm.page.click('button:has-text("Activer la double authentification")');
+  await adm.page.waitForSelector(".totp-secret");
+  const secret = (await adm.page.locator(".totp-secret").innerText()).replace(/\s/g, "");
+  check("Activation : QR code et clé affichés", (await adm.page.locator(".two-factor-qr svg").count()) === 1 && secret.length === 32);
+  await adm.page.fill('.two-factor-setup input[name="code"]', code(secret, stepNow() + 5));
+  await adm.page.click('button:has-text("Confirmer et activer")');
+  await adm.page.waitForTimeout(800);
+  check("Activation : code faux refusé", (await text(adm.page)).includes("Code incorrect"));
+  await adm.page.fill('.two-factor-setup input[name="code"]', code(secret));
+  await adm.page.click('button:has-text("Confirmer et activer")');
+  await adm.page.waitForSelector(".recovery-codes li");
+  const enrolledStep = stepNow();
+  const recovery = await adm.page.locator(".recovery-codes li").allInnerTexts();
+  const row = (await pgc.query(`select "totpSecret", "totpEnabledAt", array_length("recoveryCodes", 1) n from "User" where email = 'thomas.garnier@demo.kolbase.local'`)).rows[0];
+  check("Activation : dix codes de secours, stockés hachés", recovery.length === 10 && row.n === 10 && !!row.totpEnabledAt && row.totpSecret === secret && !JSON.stringify(row).includes(recovery[0]));
+  check("Activation : avis de sécurité envoyé", !!(await waitMail("thomas.garnier@demo.kolbase.local", "Sécurité de votre compte KolBase")));
+  await adm.page.goto(`${BASE}/organisations/demo-org-orthonova/membres?onglet=organisation`);
+  await adm.page.click('button:has-text("Exiger la double authentification")');
+  await adm.page.waitForTimeout(1000);
+  const req = (await pgc.query(`select "require2fa" from "Organization" where id = 'demo-org-orthonova'`)).rows[0].require2fa;
+  check("Organisation : double authentification exigée", req === true && (await text(adm.page)).includes("Double authentification exigée"));
+  await adm.page.goto(`${BASE}/compte`);
+  check("Exigée : désactivation non proposée", (await adm.page.locator('summary:has-text("Désactiver la double authentification")').count()) === 0);
+  await adm.ctx.close();
+  // Un membre sans double authentification est invité à l'activer avant d'accéder à l'espace.
+  const lea = await session();
+  await login(lea.page, "lea.rousseau@demo.kolbase.local");
+  await lea.page.goto(`${BASE}/organisations/demo-org-orthonova`);
+  check("Membre sans double authentification : renvoyé vers « Mon compte »", lea.page.url().includes("/compte?securite=demo-org-orthonova") && (await text(lea.page)).includes("OrthoNova exige la double authentification de ses membres"), lea.page.url());
+  await lea.ctx.close();
+  // Connexion : mot de passe, puis code ; codes de secours à usage unique ; un code ne sert qu'une fois.
+  const s1 = await session();
+  await login(s1.page, "thomas.garnier@demo.kolbase.local");
+  check("Connexion : code demandé après le mot de passe", s1.page.url().includes("/connexion/verification"), s1.page.url());
+  await s1.page.goto(`${BASE}/organisations/demo-org-orthonova`);
+  check("Connexion : pas de session avant le code", s1.page.url().includes("/connexion"), s1.page.url());
+  await login(s1.page, "thomas.garnier@demo.kolbase.local");
+  await s1.page.fill('input[name="code"]', code(secret, stepNow() + 5));
+  await s1.page.click('button:has-text("Valider")');
+  await s1.page.waitForTimeout(800);
+  check("Connexion : code faux refusé", (await text(s1.page)).includes("Code incorrect ou déjà utilisé"));
+  await s1.page.click('button:has-text("utiliser un code de secours")');
+  await s1.page.fill('input[name="code"]', recovery[0].toUpperCase());
+  await Promise.all([s1.page.waitForURL(/organisations\/demo-org-orthonova/), s1.page.click('button:has-text("Valider")')]);
+  const left = (await pgc.query(`select array_length("recoveryCodes", 1) n from "User" where email = 'thomas.garnier@demo.kolbase.local'`)).rows[0].n;
+  check("Connexion par code de secours, consommé", left === 9 && !!(await waitMail("thomas.garnier@demo.kolbase.local", "Sécurité de votre compte KolBase")));
+  await s1.ctx.close();
+  const s2 = await session();
+  await login(s2.page, "thomas.garnier@demo.kolbase.local");
+  await s2.page.click('button:has-text("utiliser un code de secours")');
+  await s2.page.fill('input[name="code"]', recovery[0]);
+  await s2.page.click('button:has-text("Valider")');
+  await s2.page.waitForTimeout(800);
+  check("Code de secours déjà utilisé : refusé", (await text(s2.page)).includes("Code incorrect ou déjà utilisé"));
+  while (stepNow() <= enrolledStep) await new Promise((r) => setTimeout(r, 1000));
+  const c = code(secret);
+  await s2.page.click('button:has-text("Utiliser le code de l\'application")');
+  await s2.page.fill('input[name="code"]', c);
+  await Promise.all([s2.page.waitForURL(/organisations\/demo-org-orthonova/), s2.page.click('button:has-text("Valider")')]);
+  check("Connexion avec le code de l'application", s2.page.url().includes("/organisations/demo-org-orthonova"));
+  await s2.ctx.close();
+  const s3 = await session();
+  await login(s3.page, "thomas.garnier@demo.kolbase.local");
+  await s3.page.fill('input[name="code"]', c);
+  await s3.page.click('button:has-text("Valider")');
+  await s3.page.waitForTimeout(800);
+  check("Même code rejoué : refusé", (await text(s3.page)).includes("Code incorrect ou déjà utilisé") && s3.page.url().includes("/connexion/verification"));
+  await s3.ctx.close();
+  const s4 = await session();
+  await s4.page.goto(`${BASE}/connexion/verification`);
+  check("Vérification sans mot de passe : retour à la connexion", s4.page.url().endsWith("/connexion"), s4.page.url());
+  await s4.ctx.close();
+  // Remise à l'état initial pour les vérifications suivantes.
+  await pgc.query(`update "Organization" set "require2fa" = false where id = 'demo-org-orthonova'`);
+  await pgc.end();
+}
+
 // ── 4. Limitation des tentatives ───────────────────────────────────────────
 {
   const { ctx, page } = await session();

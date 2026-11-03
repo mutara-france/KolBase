@@ -8,6 +8,7 @@ const sha256 = (v: string) => createHash("sha256").update(v).digest("hex");
 export const TOKEN_TTL_MS: Record<AuthTokenPurpose, number> = {
   RESET_PASSWORD: 60 * 60 * 1000, // 1 heure
   VERIFY_EMAIL: 7 * 24 * 60 * 60 * 1000, // 7 jours
+  TWO_FACTOR: 10 * 60 * 1000, // 10 minutes : saisie du code après le mot de passe
 };
 
 /** Crée un jeton à usage unique (seul son hash est stocké) et renvoie la valeur à mettre dans le lien. */
