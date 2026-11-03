@@ -1523,6 +1523,36 @@ async function submitNewOrg(page, siren) {
   await comp.ctx.close();
 }
 
+// ── IA : suggestion d'experts et relecture assistée d'un dossier ───────────
+{
+  const { ctx, page } = await session();
+  await login(page, "julien.faure@demo.kolbase.local");
+  await page.goto(`${BASE}/organisations/demo-org-dentalys/dossiers/nouveau`);
+  await page.fill('input[name="title"]', "Board implants courts et mise en charge immédiate");
+  await page.fill('input[name="therapeuticArea"]', "Implantologie");
+  await page.click('button:has-text("Suggérer des experts")');
+  await page.waitForSelector(".suggest-box", { timeout: 15000 });
+  const box = await page.locator(".suggest-box").innerText();
+  check("Suggestion d'experts : profils pertinents et explications", box.includes("Vincent Moreau") && box.includes("Spécialité : Implantologie"), box.replace(/\s+/g, " ").slice(0, 200));
+  check("Suggestion d'experts : diversité signalée", /Vincent Moreau[\s\S]*?(Déjà \d+ % de vos honoraires|collaborations? avec vous)/.test(box));
+  check("Suggestion d'experts : synthèse de l'assistant", box.includes("PROPOSITION IA"));
+  await page.locator('.suggest-list li:has-text("Vincent Moreau") button:has-text("Ajouter")').click();
+  check("Suggestion d'experts : ajout au dossier", (await page.locator('.fee-row:has-text("Vincent Moreau")').count()) === 1);
+  await page.goto(`${BASE}/organisations/demo-org-dentalys/dossiers/demo-prj-symposium`);
+  check("Relecture assistée : réservée à la conformité", (await page.locator('button:has-text("Analyser le dossier avec l\'IA")').count()) === 0);
+  await ctx.close();
+  const comp = await session();
+  await login(comp.page, "sophie.bernard@demo.kolbase.local");
+  await comp.page.goto(`${BASE}/organisations/demo-org-dentalys/dossiers/demo-prj-symposium`);
+  const before = aiRequests.length;
+  await comp.page.click('button:has-text("Analyser le dossier avec l\'IA")');
+  await comp.page.waitForSelector(".ai-review", { timeout: 15000 });
+  check("Relecture assistée : analyse affichée", (await comp.page.locator(".ai-review").innerText()).includes("PROPOSITION IA"));
+  const prompt = String(aiRequests.slice(before).at(-1)?.messages?.[0]?.content ?? "");
+  check("Relecture assistée : contrôles KolBase transmis", prompt.includes("Points à vérifier") && prompt.includes("Antoine Martin") && prompt.includes("dans la fourchette") && prompt.includes("Régime calculé"));
+  await comp.ctx.close();
+}
+
 // ── 4. Limitation des tentatives ───────────────────────────────────────────
 {
   const { ctx, page } = await session();
