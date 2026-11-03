@@ -4,7 +4,7 @@ import { SiteHeader } from "@/components/SiteHeader";
 import { db } from "@/lib/db";
 import { platformAdminEmails, requirePlatformAdmin } from "@/lib/platform";
 import { ORG_KIND_LABEL, VERIFICATION_LABEL } from "@/lib/org-roles";
-import { formatDate } from "@/lib/events";
+import { formatDate, formatEUR } from "@/lib/events";
 import { normalize } from "@/lib/search";
 import { recheckSiren, reviewOrganization, reviewRpps } from "@/lib/admin-actions";
 import { missingLegal } from "@/lib/legal";
@@ -15,6 +15,9 @@ import { signatureApiUrl, signatureEnabled, signatureSandbox, webhookSecret } fr
 import { Avatar } from "@/components/Avatar";
 import { logoSrc } from "@/lib/logos";
 import { aiEnabled } from "@/lib/ai";
+import { displayStatus, exempt, PLANS, planFor, STATUS_LABEL } from "@/lib/billing-plans";
+import { stripeEnabled } from "@/lib/billing";
+import { setExemption } from "@/lib/billing-actions";
 import { country, licenseRule, practicesInFrance, registryLink } from "@/lib/countries";
 
 export const metadata = { title: "Administration — KolBase" };
@@ -28,7 +31,7 @@ const PERSONAL_MAIL = /@(gmail|googlemail|hotmail|outlook|live|msn|yahoo|ymail|i
 export default async function Page({ searchParams }: { searchParams: Promise<{ onglet?: string }> }) {
   await requirePlatformAdmin();
   const o = (await searchParams).onglet;
-  const onglet = o === "praticiens" || o === "lancement" || o === "actualites" ? o : "organisations";
+  const onglet = o === "praticiens" || o === "lancement" || o === "actualites" || o === "abonnements" ? o : "organisations";
 
   const [orgs, rppsQueue, rppsDone] = await Promise.all([
     db.organization.findMany({
@@ -65,6 +68,7 @@ export default async function Page({ searchParams }: { searchParams: Promise<{ o
         <nav className="tabs">
           <Link href="?onglet=organisations" className={onglet === "organisations" ? "active" : ""}>Organisations ({pending.length} à valider)</Link>
           <Link href="?onglet=praticiens" className={onglet === "praticiens" ? "active" : ""}>Identités ({rppsQueue.length} à vérifier)</Link>
+          <Link href="?onglet=abonnements" className={onglet === "abonnements" ? "active" : ""}>Abonnements</Link>
           <Link href="?onglet=actualites" className={onglet === "actualites" ? "active" : ""}>Actualités</Link>
           <Link href="?onglet=lancement" className={onglet === "lancement" ? "active" : ""}>Lancement</Link>
         </nav>
@@ -152,6 +156,7 @@ export default async function Page({ searchParams }: { searchParams: Promise<{ o
           ))}
 
         {onglet === "actualites" && <NewsAdmin />}
+        {onglet === "abonnements" && <BillingAdmin />}
 
         {onglet === "lancement" && (
           <LaunchChecklist
@@ -214,6 +219,48 @@ export default async function Page({ searchParams }: { searchParams: Promise<{ o
 }
 
 /** État de la configuration en production (lecture seule) : ce qui reste à faire avant l'ouverture. */
+async function BillingAdmin() {
+  const orgs = await db.organization.findMany({ where: { verification: "VERIFIED" }, select: { id: true, name: true, kind: true, subscription: true }, orderBy: { name: "asc" } });
+  const now = new Date();
+  const paying = orgs.filter((o) => ["essai", "active", "impayee"].includes(o.subscription?.status ?? "") && !exempt(o.subscription, now));
+  const mrr = paying.filter((o) => o.subscription!.status !== "essai").reduce((s, o) => s + PLANS[planFor(o.kind)].cents, 0);
+  return (
+    <section className="card stack-sm">
+      <h2>Abonnements</h2>
+      <p className="muted">
+        {stripeEnabled() ? "Facturation active (Stripe)." : "Facturation inactive : STRIPE_SECRET_KEY non défini, toutes les fonctions sont accessibles."}{" "}
+        {paying.length} abonnement{paying.length > 1 ? "s" : ""} en cours, revenu mensuel hors essais : {formatEUR(mrr)} HT.
+      </p>
+      <table className="table" tabIndex={0}>
+        <thead><tr><th>Organisation</th><th>Offre</th><th>Statut</th><th>Échéance</th><th>Gratuité</th></tr></thead>
+        <tbody>
+          {orgs.map((o) => {
+            const st = displayStatus(o.subscription, now);
+            return (
+              <tr key={o.id}>
+                <td>{o.name}</td>
+                <td>{PLANS[planFor(o.kind)].label.replace("Abonnement ", "")}</td>
+                <td><span className={`pill ${["active", "essai", "offerte"].includes(st) ? "ok" : st === "impayee" ? "wait" : ""}`}>{STATUS_LABEL[st]}</span>{o.subscription?.triggeredAt ? <div className="text-xs muted">{o.subscription.triggeredBy}</div> : null}</td>
+                <td>{o.subscription?.trialEndsAt && o.subscription.status === "essai" ? `essai → ${formatDate(o.subscription.trialEndsAt)}` : o.subscription?.currentPeriodEnd ? formatDate(o.subscription.currentPeriodEnd) : "—"}</td>
+                <td>
+                  <form action={setExemption} className="inline wrap">
+                    <input type="hidden" name="orgId" value={o.id} />
+                    {exempt(o.subscription, now) ? (
+                      <><span className="text-xs">jusqu&apos;au {formatDate(o.subscription!.exemptUntil!)}{o.subscription!.exemptNote ? ` · ${o.subscription!.exemptNote}` : ""}</span><input type="hidden" name="remove" value="1" /><button className="link">retirer</button></>
+                    ) : (
+                      <><input type="date" name="until" aria-label="Offert jusqu'au" required /><input name="note" placeholder="Motif" aria-label="Motif" /><button className="link">offrir</button></>
+                    )}
+                  </form>
+                </td>
+              </tr>
+            );
+          })}
+        </tbody>
+      </table>
+    </section>
+  );
+}
+
 async function NewsAdmin() {
   const articles = await db.article.findMany({ select: { id: true, slug: true, title: true, category: true, publishedAt: true, updatedAt: true }, orderBy: [{ publishedAt: { sort: "desc", nulls: "first" } }, { updatedAt: "desc" }] });
   return (
@@ -269,6 +316,7 @@ function LaunchChecklist({ demoOrgs, admins }: { demoOrgs: number; admins: { ema
     { ok: storageEnabled(), label: "Stockage des documents (S3_*)", detail: storageEnabled() ? `Compartiment : ${process.env.S3_BUCKET}` : "Non configuré : le dépôt de documents est désactivé." },
     { ok: esign && !!webhookSecret() && !signatureSandbox(), optional: !esign, label: "Signature électronique (YOUSIGN_*, facultatif)", detail: esignDetail },
     { ok: !!process.env.CRON_SECRET, label: "Tâches planifiées (CRON_SECRET, service cron kolbase-taches)", detail: process.env.CRON_SECRET ? "Configurées : rappels de la veille, attestations et questionnaires, purge des sessions expirées (toutes les heures)." : "Non configurées : synchroniser le Blueprint Render (service cron) ; ni rappels ni envois après les événements." },
+    { ok: stripeEnabled() && !!process.env.STRIPE_WEBHOOK_SECRET, label: "Facturation (STRIPE_SECRET_KEY, STRIPE_WEBHOOK_SECRET)", detail: stripeEnabled() ? (process.env.STRIPE_WEBHOOK_SECRET ? `Active${process.env.STRIPE_TAX_RATE ? ", TVA appliquée" : " (STRIPE_TAX_RATE à définir pour la TVA)"}. Notifications : <APP_URL>/api/stripe/webhook.` : "Clé définie mais secret des notifications manquant : déclarer <APP_URL>/api/stripe/webhook chez Stripe.") : "Inactive : abonnements non facturés, toutes les fonctions accessibles." },
     { ok: aiEnabled(), optional: true, label: "Assistant d'IA (ANTHROPIC_API_KEY, facultatif)", detail: aiEnabled() ? `Actif (modèle ${process.env.ANTHROPIC_MODEL ?? "par défaut"}).` : "Non configuré : brouillons, suggestion d'experts (sans résumé) et relecture assistée indisponibles." },
     { ok: !!orcidOAuth(), optional: true, label: "Connexion ORCID (facultatif)", detail: orcidOAuth() ? "Active." : "Non configurée : l'iD ORCID se saisit à la main." },
     { ok: legalGaps.length === 0, label: "Textes légaux (src/lib/legal.ts)", detail: legalGaps.length ? `À compléter : ${legalGaps.join(", ")}.` : "Complets." },

@@ -16,6 +16,7 @@ import { endMandate } from "@/lib/event-actions";
 import { lineTotal, perParticipant, readLines, vatLabel, withVat } from "@/lib/quotes";
 import { complianceSettings } from "@/lib/compliance";
 import { logoSrc } from "@/lib/logos";
+import { BillingNotice } from "@/components/BillingNotice";
 import { Thread } from "@/components/ProjectBits";
 
 export const metadata = { title: "Prestataires — KolBase" };
@@ -71,6 +72,7 @@ export default async function Page({ params, searchParams }: { params: Promise<{
     <>
       <SiteHeader />
       <main className="stack">
+        <BillingNotice orgId={id} motive="devis" />
         <SectionNav tabs={sectionTabs} active="prestataires" label="Rubrique Événements" />
         <h1>Prestataires et devis</h1>
         <div className="stats">

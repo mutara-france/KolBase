@@ -5,7 +5,7 @@
 // S3_ENDPOINT=http://localhost:3996, S3_BUCKET, S3_ACCESS_KEY_ID, S3_SECRET_ACCESS_KEY et S3_FORCE_PATH_STYLE=1,
 // YOUSIGN_API_KEY=test, YOUSIGN_API_URL=http://localhost:3995 et YOUSIGN_WEBHOOK_SECRET=test.
 import http from "node:http";
-import { randomUUID } from "node:crypto";
+import { createHmac, randomUUID } from "node:crypto";
 import { SMTPServer } from "smtp-server";
 import { simpleParser } from "mailparser";
 
@@ -81,7 +81,8 @@ export function startFakes() {
   smtp.listen(2525);
   const stopYousign = startFakeYousign();
   const stopAi = startFakeAnthropic();
-  return () => { siren.close(); orcid.close(); smtp.close(); s3.close(); stopYousign(); stopAi(); };
+  const stopStripe = startFakeStripe();
+  return () => { siren.close(); orcid.close(); smtp.close(); s3.close(); stopYousign(); stopAi(); stopStripe(); };
 }
 
 /** Requêtes reçues par le faux service d'IA (corps JSON), pour vérifier ce qui est transmis. */
@@ -167,6 +168,87 @@ export function startFakeYousign(port = 3995) {
     if (!sub && req.method === "GET")
       return json(res, { id: sr.id, status: sr.status, completed_at: sr.completed_at, decline_information: sr.decline_information, documents: sr.documents, signers: sr.signers.map((s) => ({ id: s.id, status: s.status })) });
     json(res, { detail: "Method not allowed" }, 405);
+  });
+  server.listen(port);
+  return () => server.close();
+}
+
+/**
+ * Faux Stripe (port 3993) : clients, sessions de paiement (page « Payer » qui crée l'abonnement en essai et
+ * prévient l'application par une notification signée), abonnements, portail, lignes de facture.
+ */
+export const stripeState = { customers: new Map(), sessions: new Map(), subscriptions: new Map(), invoiceItems: [], webhooks: [] };
+export const STRIPE_WEBHOOK_SECRET = "whsec_test";
+const APP = process.env.BASE ?? "http://localhost:3000";
+
+/** Envoie une notification Stripe signée à l'application. */
+export async function stripeWebhook(type, object) {
+  const payload = JSON.stringify({ id: `evt_${randomUUID().slice(0, 8)}`, type, data: { object } });
+  const t = Math.floor(Date.now() / 1000);
+  const sig = createHmac("sha256", STRIPE_WEBHOOK_SECRET).update(`${t}.${payload}`).digest("hex");
+  const r = await fetch(`${APP}/api/stripe/webhook`, { method: "POST", headers: { "Content-Type": "application/json", "Stripe-Signature": `t=${t},v1=${sig}` }, body: payload });
+  stripeState.webhooks.push({ type, status: r.status });
+  return r.status;
+}
+
+export function startFakeStripe(port = 3993) {
+  const read = (req) => new Promise((resolve) => { const c = []; req.on("data", (x) => c.push(x)); req.on("end", () => resolve(Buffer.concat(c).toString())); });
+  const server = http.createServer(async (req, res) => {
+    const url = new URL(req.url, `http://localhost:${port}`);
+    const form = new URLSearchParams(await read(req));
+    const get = (k) => form.get(k);
+    // Pages « navigateur » : paiement et portail.
+    let m = url.pathname.match(/^\/pay\/(cs_[a-z0-9]+)$/);
+    if (m) {
+      const s = stripeState.sessions.get(m[1]);
+      if (!s) return json(res, { error: "session" }, 404);
+      const now = Math.floor(Date.now() / 1000);
+      const trial = Number(s.trialDays || 0);
+      const sub = { id: `sub_${randomUUID().slice(0, 10).replace(/-/g, "")}`, object: "subscription", customer: s.customer, status: trial ? "trialing" : "active", trial_end: trial ? now + trial * 86400 : null, current_period_end: now + (trial || 30) * 86400, cancel_at_period_end: false, metadata: { orgId: s.metadata.orgId }, amount: s.amount };
+      stripeState.subscriptions.set(sub.id, sub);
+      s.subscription = sub.id;
+      s.status = "complete";
+      await stripeWebhook("checkout.session.completed", { id: s.id, object: "checkout.session", customer: s.customer, subscription: sub.id, metadata: s.metadata });
+      res.writeHead(302, { Location: s.success_url.replace("{CHECKOUT_SESSION_ID}", s.id) });
+      return res.end();
+    }
+    if (url.pathname === "/portal") { res.writeHead(200, { "Content-Type": "text/html; charset=utf-8" }); return res.end(`<h1>Portail Stripe (test)</h1><a href="${url.searchParams.get("back")}">Retour</a>`); }
+    if (req.headers.authorization !== "Bearer test") return json(res, { error: { message: "clé invalide" } }, 401);
+    if (req.method === "POST" && url.pathname === "/v1/customers") {
+      const c = { id: `cus_${randomUUID().slice(0, 10).replace(/-/g, "")}`, email: get("email"), name: get("name"), metadata: { orgId: get("metadata[orgId]") } };
+      stripeState.customers.set(c.id, c);
+      return json(res, c);
+    }
+    if (req.method === "POST" && url.pathname === "/v1/checkout/sessions") {
+      const id = `cs_${randomUUID().slice(0, 12).replace(/-/g, "")}`;
+      const s = {
+        id, customer: get("customer"), mode: get("mode"), success_url: get("success_url"), cancel_url: get("cancel_url"),
+        metadata: { orgId: get("metadata[orgId]") }, trialDays: get("subscription_data[trial_period_days]"),
+        amount: Number(get("line_items[0][price_data][unit_amount]")), methods: form.getAll("payment_method_types[0]").concat(form.getAll("payment_method_types[1]")),
+        url: `http://localhost:${port}/pay/${id}`,
+      };
+      stripeState.sessions.set(id, s);
+      return json(res, { id, url: s.url, object: "checkout.session" });
+    }
+    m = url.pathname.match(/^\/v1\/checkout\/sessions\/(cs_[a-z0-9]+)$/);
+    if (req.method === "GET" && m) {
+      const s = stripeState.sessions.get(m[1]);
+      if (!s) return json(res, { error: { message: "introuvable" } }, 404);
+      const sub = s.subscription ? stripeState.subscriptions.get(s.subscription) : null;
+      return json(res, { id: s.id, metadata: s.metadata, status: s.status ?? "open", subscription: url.searchParams.get("expand[0]") === "subscription" ? sub : s.subscription ?? null });
+    }
+    m = url.pathname.match(/^\/v1\/subscriptions\/(sub_[a-z0-9]+)$/);
+    if (req.method === "GET" && m) {
+      const sub = stripeState.subscriptions.get(m[1]);
+      return sub ? json(res, sub) : json(res, { error: { message: "introuvable" } }, 404);
+    }
+    if (req.method === "POST" && url.pathname === "/v1/billing_portal/sessions") return json(res, { url: `http://localhost:${port}/portal?back=${encodeURIComponent(get("return_url"))}` });
+    if (req.method === "POST" && url.pathname === "/v1/invoiceitems") {
+      const it = { id: `ii_${randomUUID().slice(0, 8)}`, customer: get("customer"), amount: Number(get("amount")), currency: get("currency"), description: get("description"), metadata: Object.fromEntries([...form.entries()].filter(([k]) => k.startsWith("metadata[")).map(([k, v]) => [k.slice(9, -1), v])) };
+      stripeState.invoiceItems.push(it);
+      return json(res, it);
+    }
+    json(res, { error: { message: `non simulé : ${req.method} ${url.pathname}` } }, 404);
   });
   server.listen(port);
   return () => server.close();

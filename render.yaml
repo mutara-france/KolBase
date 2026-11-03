@@ -84,6 +84,15 @@ services:
       # partagé avec le service cron ci-dessous.
       - key: CRON_SECRET
         generateValue: true
+      # Facturation (abonnements) : clé secrète Stripe, secret de la notification déclarée chez Stripe vers
+      # <APP_URL>/api/stripe/webhook (checkout.session.completed, customer.subscription.*, invoice.payment_failed),
+      # et identifiant du taux de TVA à appliquer (txr_…, facultatif). Sans clé : aucune facturation.
+      - key: STRIPE_SECRET_KEY
+        sync: false
+      - key: STRIPE_WEBHOOK_SECRET
+        sync: false
+      - key: STRIPE_TAX_RATE
+        sync: false
 
   # Tâches planifiées : toutes les heures, rappels de la veille puis attestations et questionnaires après
   # les événements (POST /api/taches, idempotent).

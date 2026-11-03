@@ -1013,3 +1013,6 @@ body:has(.sidebar) .site-footer { padding: 24px 32px; }
 .article-body ul { margin: 0 0 14px; padding-left: 22px; }
 .article-body li { margin-bottom: 6px; }
 .article-form-cover { max-width: 320px; border-radius: 12px; border: 1px solid var(--line); }
+.check-list { display: flex; flex-direction: column; gap: 8px; padding: 0; list-style: none; }
+.check-list li { display: flex; gap: 8px; align-items: flex-start; font-size: 13.5px; color: var(--ink); }
+.check-list li > svg { flex: none; color: var(--ok); margin-top: 3px; }

@@ -235,6 +235,7 @@ model Organization {
 
   logo          OrganizationLogo?
   feeNotes      FeeNote[]
+  subscription  Subscription?
   photos        OrganizationPhoto[]
   offers        SupplierOffer[]
   reviewsReceived SupplierReview[] @relation("reviewSupplier")
@@ -852,4 +853,25 @@ model Article {
   updatedAt   DateTime  @updatedAt
 
   @@index([publishedAt])
+}
+
+// Abonnement KolBase d'une organisation (Stripe) : organisation 599 € HT/mois dès la première action engageante,
+// prestataire 249 € HT/mois dès le premier devis retenu ; premier mois offert ; gratuités accordées par KolBase.
+model Subscription {
+  organizationId       String       @id
+  organization         Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  plan                 String       // organisation | prestataire
+  status               String       @default("a_activer") // a_activer | essai | active | impayee | resiliee
+  triggeredAt          DateTime?    // déclenchement (premier devis retenu pour un prestataire)
+  triggeredBy          String?
+  stripeCustomerId     String?
+  stripeSubscriptionId String?      @unique
+  trialUsed            Boolean      @default(false)
+  trialEndsAt          DateTime?
+  currentPeriodEnd     DateTime?
+  cancelAtPeriodEnd    Boolean      @default(false)
+  exemptUntil          DateTime?    // gratuité accordée par KolBase (pilote, partenaire, démonstration)
+  exemptNote           String?
+  createdAt            DateTime     @default(now())
+  updatedAt            DateTime     @updatedAt
 }

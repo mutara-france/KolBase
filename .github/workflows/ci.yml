@@ -51,6 +51,10 @@ jobs:
       ANTHROPIC_API_KEY: test
       ANTHROPIC_BASE_URL: http://localhost:3994
       CRON_SECRET: secret-des-taches-de-test
+      # Facturation : faux Stripe (tests/e2e/faux-services.mjs).
+      STRIPE_SECRET_KEY: test
+      STRIPE_WEBHOOK_SECRET: whsec_test
+      STRIPE_API_URL: http://localhost:3993
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4

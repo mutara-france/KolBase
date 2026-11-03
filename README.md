@@ -131,6 +131,20 @@ l'en-tête `Authorization: Bearer $CRON_SECRET` (secret généré sur le service
 
 Après la première synchronisation du Blueprint, renseigner `APP_URL` sur le service cron.
 
+## Facturation
+
+Abonnements mensuels sans engagement, payés par carte ou prélèvement SEPA via Stripe (`src/lib/billing.ts`) :
+
+- **organisation** : 599 € HT par mois, à activer par un administrateur à la première action qui engage un tiers
+  (sollicitation envoyée, appel à candidatures ou événement publié, demande de devis envoyée) ;
+- **prestataire** : référencement gratuit ; 249 € HT par mois pour répondre à de nouvelles demandes après le premier
+  devis retenu (le prestataire est prévenu à ce moment-là).
+
+Premier mois offert (une fois), dossiers et déclarations toujours accessibles, gratuités accordées depuis
+`/admin › Abonnements`. Variables : `STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET` (notification déclarée chez Stripe
+vers `<APP_URL>/api/stripe/webhook`), `STRIPE_TAX_RATE` (taux de TVA `txr_…`). Sans clé, rien n'est facturé.
+Activer le portail client dans le tableau de bord Stripe (moyen de paiement, factures, résiliation).
+
 ## Surveillance
 
 Toute erreur serveur (page, action, route) est journalisée en JSON (Render › kolbase-web › Logs) et signalée par
