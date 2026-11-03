@@ -25,6 +25,7 @@ import { country, foreignObligations, practicesInFrance } from "@/lib/countries"
 import { drPrefix } from "@/lib/professions";
 import { AiReview } from "@/components/AiReview";
 import { signatureEnabled } from "@/lib/yousign";
+import { billingBlocked } from "@/lib/billing";
 
 export const metadata = { title: "Dossier — KolBase" };
 
@@ -341,6 +342,7 @@ export default async function Page({ params, searchParams }: { params: Promise<{
                     <h3>Solliciter un autre expert</h3>
                     <AddExpertForm
                       orgId={id} projectId={projectId} unit={type?.unit ?? "unité"}
+                      blocked={await billingBlocked(id, "sollicitation")}
                       experts={candidates.map((c) => {
                         const v = kolVisibility(c.visibility);
                         return {

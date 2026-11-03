@@ -1,11 +1,12 @@
 "use client";
 
 import Link from "next/link";
-import { useActionState } from "react";
+import { useActionState, useState } from "react";
 import { requestPasswordReset, resetPassword, signIn, signUp, type FormState } from "@/lib/auth-actions";
 import { PROFESSIONS } from "@/lib/professions";
 import { COUNTRIES } from "@/lib/countries";
 import { useT } from "@/components/I18nProvider";
+import { ActionForm } from "@/components/ActionForm";
 
 /** Lien entre connexion et création de compte : la page d'origine (`next`) suit. */
 const withNext = (path: string, next?: string) => (next ? `${path}?next=${encodeURIComponent(next)}` : path);
@@ -34,13 +35,19 @@ export function SignInForm({ next }: { next?: string }) {
 }
 
 
-export function SignUpForm({ next }: { next?: string }) {
+/** Création de compte ; `organisation` : profil « Je représente une organisation » présélectionné (sans pays d'exercice). */
+export function SignUpForm({ next, organisation = false }: { next?: string; organisation?: boolean }) {
   const [state, action, pending] = useActionState(signUp, undefined);
+  const [profession, setProfession] = useState(organisation ? "" : "Chirurgien-dentiste");
   const t = useT();
   return (
-    <form action={action} className="card form">
-      <h1>{t("Créer un compte")}</h1>
-      <p className="muted">{t("Un seul compte pour vous inscrire aux événements et, si vous le souhaitez, vous référencer comme expert.")}</p>
+    <ActionForm action={action} className="card form">
+      <h1>{organisation ? t("Créer le compte de votre organisation") : t("Créer un compte")}</h1>
+      <p className="muted">
+        {organisation
+          ? t("Commencez par votre compte personnel : vous créerez ensuite l'espace de votre organisation, ou rejoindrez celle qui vous invite. Gratuit jusqu'à votre première action qui engage un tiers.")
+          : t("Un seul compte pour vous inscrire aux événements et, si vous le souhaitez, vous référencer comme expert.")}
+      </p>
       <Notice state={state} />
       <input type="hidden" name="next" value={next ?? ""} />
       <div className="row">
@@ -49,17 +56,19 @@ export function SignUpForm({ next }: { next?: string }) {
       </div>
       <label>{t("E-mail professionnel")}<input name="email" type="email" autoComplete="email" required /></label>
       <label>{t("Profession")}
-        <select name="profession" defaultValue="Chirurgien-dentiste">
+        <select name="profession" value={profession} onChange={(e) => setProfession(e.target.value)}>
           {PROFESSIONS.map((p) => <option key={p} value={p}>{t(p)}</option>)}
           <option value="">{t("Je représente une organisation")}</option>
         </select>
       </label>
-      <label>{t("Pays d'exercice")}
-        <select name="country" defaultValue="FR">
-          {COUNTRIES.map((c) => <option key={c.code} value={c.code}>{t(c.name)}</option>)}
-        </select>
-        <span className="hint">{t("Hors de France, vous vous référencerez avec l'identifiant professionnel de votre pays.")}</span>
-      </label>
+      {profession !== "" && (
+        <label>{t("Pays d'exercice")}
+          <select name="country" defaultValue="FR">
+            {COUNTRIES.map((c) => <option key={c.code} value={c.code}>{t(c.name)}</option>)}
+          </select>
+          <span className="hint">{t("Hors de France, vous vous référencerez avec l'identifiant professionnel de votre pays.")}</span>
+        </label>
+      )}
       <label>{t("Mot de passe")}<input name="password" type="password" autoComplete="new-password" minLength={10} required />
         <span className="hint">{t("10 caractères minimum, avec au moins une lettre et un chiffre.")}</span>
       </label>
@@ -67,7 +76,7 @@ export function SignUpForm({ next }: { next?: string }) {
       <label className="check"><input type="checkbox" name="cgu" required /> {t("J'accepte les")} <Link href="/cgu" target="_blank">{t("conditions d'utilisation")}</Link> {t("et la")} <Link href="/confidentialite" target="_blank">{t("politique de confidentialité")}</Link>.</label>
       <button className="btn" disabled={pending}>{pending ? t("Création…") : t("Créer mon compte")}</button>
       <p className="muted">{t("Déjà inscrit ?")} <Link href={withNext("/connexion", next)}>{t("Se connecter")}</Link></p>
-    </form>
+    </ActionForm>
   );
 }
 

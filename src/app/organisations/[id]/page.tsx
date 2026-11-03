@@ -6,7 +6,7 @@ import { requireMembership } from "@/lib/orgs";
 import { orgOverview } from "@/lib/org-overview";
 import { formatEUR } from "@/lib/events";
 import { supplierCategoryLabel } from "@/lib/suppliers";
-import { orgOnboarding } from "@/lib/onboarding";
+import { orgBillingLine, orgOnboarding } from "@/lib/onboarding";
 import { CheckCircle2, Circle } from "lucide-react";
 import { STATS_ROLES } from "@/lib/org-roles";
 
@@ -22,6 +22,7 @@ export default async function Page({ params }: { params: Promise<{ id: string }>
   if (!o) notFound();
   const { org, can, todos, projects, events, calls, hosp, rfqs } = o;
   const onboarding = isAdmin ? await orgOnboarding(id) : [];
+  const billingLine = onboarding.length > 0 ? await orgBillingLine(id, org.kind) : null;
   const now = new Date();
   const base = `/organisations/${id}`;
 
@@ -110,6 +111,7 @@ export default async function Page({ params }: { params: Promise<{ id: string }>
                 </li>
               ))}
             </ol>
+            {billingLine && <p className="hint onboarding-billing">{billingLine} <Link href={`${base}/abonnement`}>Voir l&apos;abonnement</Link></p>}
           </section>
         )}
         <DashStats stats={stats} />

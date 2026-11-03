@@ -47,7 +47,8 @@ export default function Page() {
         ["Sous-traitants et transferts hors de l'Union européenne", <>
           <L items={[
             `Hébergement de l'application et de la base de données : ${legal("host")} ; serveurs situés à ${legal("hostRegion")}.`,
-            `Documents déposés dans les dossiers : ${legal("storageProvider")}.`,
+            // Hébergeur des documents pas encore choisi : ligne omise (alerte dans l'onglet Lancement de /admin).
+            ...(LEGAL.storageProvider ? [`Documents déposés dans les dossiers : ${LEGAL.storageProvider}.`] : []),
             `Envoi des e-mails : ${legal("emailProvider")}.`,
             `Paiement des abonnements et des services : ${legal("paymentProvider")} (données de facturation des organisations et des prestataires).`,
             `Signature électronique des conventions, lorsqu'une organisation l'utilise : ${legal("signatureProvider")}, qui reçoit la convention, les nom, prénom et adresse e-mail des signataires et conserve le dossier de preuve.`,

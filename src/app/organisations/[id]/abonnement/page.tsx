@@ -4,13 +4,14 @@ import { SiteHeader } from "@/components/SiteHeader";
 import { db } from "@/lib/db";
 import { requireMembership } from "@/lib/orgs";
 import { stripeEnabled, syncCheckout } from "@/lib/billing";
-import { asInterval, canEngage, displayStatus, ENGAGING, formatPrice, freeMonths, monthlyCents, planFor, planPrice, PLANS, STATUS_LABEL, TRIAL_DAYS, type Motive } from "@/lib/billing-plans";
+import { asInterval, asMotive, asObjectId, canEngage, displayStatus, ENGAGING, formatPrice, freeMonths, monthlyCents, planFor, planPrice, PLANS, resumeAction, STATUS_LABEL, TRIAL_DAYS } from "@/lib/billing-plans";
 import { openBillingPortal, startSubscription } from "@/lib/billing-actions";
+import { setEventFlag } from "@/lib/event-actions";
 import { formatDate } from "@/lib/events";
 
 export const metadata = { title: "Abonnement — KolBase" };
 
-export default async function Page({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: Promise<{ session?: string; motif?: string; annule?: string }> }) {
+export default async function Page({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: Promise<{ session?: string; motif?: string; objet?: string; annule?: string }> }) {
   const { id } = await params;
   const sp = await searchParams;
   const { org, isAdmin } = await requireMembership(id);
@@ -22,7 +23,12 @@ export default async function Page({ params, searchParams }: { params: Promise<{
   const ok = canEngage(sub);
   const supplier = plan === "prestataire";
   const won = supplier ? await db.quote.count({ where: { supplierId: id, status: "retained" } }) : 0;
-  const motive = sp.motif && sp.motif in ENGAGING ? (sp.motif as Motive) : null;
+  const motive = asMotive(sp.motif);
+  const objet = asObjectId(sp.objet);
+  // Prestataire : rien à payer avant un premier devis retenu (pas de bouton de paiement d'ici là).
+  const freeSupplier = supplier && !ok && !sub?.triggeredAt && won === 0;
+  // Retour du paiement : abonnement activé, et l'action qui l'attendait peut reprendre.
+  const resume = sp.session && ok ? resumeAction(id, motive, objet) : null;
   const tone = status === "active" || status === "essai" || status === "offerte" ? "ok" : status === "impayee" ? "wait" : "";
 
   return (
@@ -32,7 +38,23 @@ export default async function Page({ params, searchParams }: { params: Promise<{
         <p className="muted"><Link href={`/organisations/${id}`}>{org.name}</Link> / Abonnement</p>
         <h1>Abonnement</h1>
         {!stripeEnabled() && <p className="notice">La facturation n&apos;est pas encore activée sur KolBase : toutes les fonctions restent accessibles.</p>}
+        {sp.session && ok && (
+          <div className="notice ok stack-sm" role="status">
+            <span><CheckCircle2 size={15} /> Abonnement activé{status === "essai" ? " : premier mois offert" : ""}. Merci !</span>
+            {resume && (
+              resume.publish ? (
+                <form action={setEventFlag}>
+                  <input type="hidden" name="orgId" value={id} />
+                  <input type="hidden" name="eventId" value={resume.publish} />
+                  <input type="hidden" name="flag" value="publish" />
+                  <button className="btn small">{resume.label}</button>
+                </form>
+              ) : <Link className="btn small" href={resume.href}>{resume.label}</Link>
+            )}
+          </div>
+        )}
         {motive && !ok && stripeEnabled() && <p className="notice warn">Pour {ENGAGING[motive]}, l&apos;abonnement de l&apos;organisation doit être activé{isAdmin ? "" : " par un administrateur"}.</p>}
+        {freeSupplier && stripeEnabled() && <p className="notice ok">Référencement gratuit : rien à payer avant votre premier devis retenu. L&apos;abonnement prestataire ne sera demandé qu&apos;ensuite, pour répondre à de nouvelles demandes.</p>}
         {sp.annule && <p className="notice">Paiement interrompu : rien n&apos;a été souscrit.</p>}
 
         <section className="card stack-sm">
@@ -52,9 +74,11 @@ export default async function Page({ params, searchParams }: { params: Promise<{
           </dl>
           {isAdmin && stripeEnabled() && (
             <div className="actions">
-              {!ok && (
+              {!ok && !freeSupplier && (
                 <form action={startSubscription} className="plan-choice">
                   <input type="hidden" name="orgId" value={id} />
+                  {motive && <input type="hidden" name="motif" value={motive} />}
+                  {motive && objet && <input type="hidden" name="objet" value={objet} />}
                   <div className="plan-option">
                     <strong>Mensuel</strong>
                     <span className="plan-price">{formatPrice(PLANS[plan].cents)}</span>
@@ -77,7 +101,7 @@ export default async function Page({ params, searchParams }: { params: Promise<{
               )}
             </div>
           )}
-          {!isAdmin && !ok && stripeEnabled() && <p className="hint">Seul un administrateur peut activer l&apos;abonnement : {admins.map((a) => `${a.user.firstName} ${a.user.lastName}`).join(", ")}.</p>}
+          {!isAdmin && !ok && !freeSupplier && stripeEnabled() && <p className="hint">Seul un administrateur peut activer l&apos;abonnement : {admins.map((a) => `${a.user.firstName} ${a.user.lastName}`).join(", ")}.</p>}
           <p className="hint">Paiement par carte ou prélèvement SEPA, facture envoyée par e-mail à chaque échéance (TVA en sus). Résiliable à tout moment, effet à la fin de la période en cours (mois ou année). En activant l&apos;abonnement, vous acceptez les <Link href="/conditions-de-vente" target="_blank">conditions générales de vente</Link>.</p>
         </section>
 

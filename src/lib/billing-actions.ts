@@ -8,8 +8,9 @@ import { requireMembership } from "@/lib/orgs";
 import { requirePlatformAdmin } from "@/lib/platform";
 import { str } from "@/lib/form";
 import { checkoutUrl, portalUrl, stripeEnabled } from "@/lib/billing";
-import { asInterval, exempt, planFor } from "@/lib/billing-plans";
+import { asInterval, asMotive, asObjectId, exempt, planFor } from "@/lib/billing-plans";
 import { notifyExemption } from "@/lib/notifications";
+import { parseParisDateTime } from "@/lib/events";
 
 /** Activation de l'abonnement par un administrateur : page de paiement Stripe. */
 export async function startSubscription(form: FormData) {
@@ -17,7 +18,7 @@ export async function startSubscription(form: FormData) {
   const { user, isAdmin } = await requireMembership(orgId, undefined, { allowSupplier: true });
   if (!isAdmin || !stripeEnabled()) redirect(`/organisations/${orgId}/abonnement`);
   const interval = asInterval(form.get("interval"));
-  const url = await checkoutUrl(orgId, user.email, interval);
+  const url = await checkoutUrl(orgId, user.email, interval, { motive: asMotive(form.get("motif")), objet: asObjectId(form.get("objet")) });
   await audit(user.id, "billing.checkout", "Organization", orgId, { interval });
   redirect(url);
 }
@@ -39,7 +40,8 @@ export async function setExemption(form: FormData) {
   if (!org) return;
   const remove = form.get("remove") === "1";
   const until = str(form, "until");
-  const date = /^\d{4}-\d{2}-\d{2}$/.test(until) ? new Date(`${until}T23:59:59Z`) : null;
+  // Fin de la journée choisie, heure de Paris (la date affichée est bien celle saisie).
+  const date = /^\d{4}-\d{2}-\d{2}$/.test(until) ? parseParisDateTime(`${until}T23:59`) : null;
   if (!remove && (!date || date < new Date())) return;
   const data = remove ? { exemptUntil: null, exemptNote: null } : { exemptUntil: date, exemptNote: str(form, "note").slice(0, 200) || null };
   const before = await db.subscription.findUnique({ where: { organizationId: orgId }, select: { status: true, exemptUntil: true } });

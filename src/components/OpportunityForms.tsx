@@ -12,7 +12,7 @@ type CType = { id: string; label: string; category: string; unit: string; fmv: r
 type EventOpt = { id: string; label: string; title: string; typeId: string; area: string | null };
 
 /** Appel à candidatures : pour une collaboration, ou pour intervenir à l'un des événements de l'organisation. */
-export function NewCallForm({ orgId, types, ai = false, events = [], defaultEventId }: { orgId: string; types: readonly CType[]; ai?: boolean; events?: EventOpt[]; defaultEventId?: string }) {
+export function NewCallForm({ orgId, types, ai = false, events = [], defaultEventId, blocked = false }: { orgId: string; types: readonly CType[]; ai?: boolean; events?: EventOpt[]; defaultEventId?: string; blocked?: boolean }) {
   const [state, action, pending] = useActionState(createOpenCall, undefined);
   const [eventId, setEventId] = useState(defaultEventId ?? "");
   const ev = events.find((e) => e.id === eventId);
@@ -56,7 +56,8 @@ export function NewCallForm({ orgId, types, ai = false, events = [], defaultEven
         <label>Date limite<input name="deadline" type="date" /></label>
       </div>
       <p className="hint">Repère : {type.fmv[0].toLocaleString("fr-FR")} à {type.fmv[1].toLocaleString("fr-FR")} € HT par {type.unit}.</p>
-      <button className="btn" disabled={pending}>{pending ? "Publication…" : "Publier l'appel"}</button>
+      <button className="btn" disabled={pending || blocked}>{pending ? "Publication…" : "Publier l'appel"}</button>
+      {blocked && <p className="hint">Publication possible une fois l&apos;abonnement activé (voir le bandeau en haut de la page).</p>}
     </ActionForm>
   );
 }

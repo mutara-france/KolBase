@@ -17,6 +17,7 @@ import { lineTotal, perParticipant, readLines, vatLabel, withVat } from "@/lib/q
 import { complianceSettings } from "@/lib/compliance";
 import { logoSrc } from "@/lib/logos";
 import { BillingNotice } from "@/components/BillingNotice";
+import { billingBlocked } from "@/lib/billing";
 import { Thread } from "@/components/ProjectBits";
 
 export const metadata = { title: "Prestataires — KolBase" };
@@ -30,6 +31,7 @@ export default async function Page({ params, searchParams }: { params: Promise<{
   const scope = eventScope(user, roles);
   const scoped = Object.keys(scope).length > 0;
   const isOrganizer = roles.some((r) => EVENT_ORGANIZER_ROLES.includes(r));
+  const blocked = await billingBlocked(id, "devis");
 
   const [rfqs, suppliersRaw, events] = await Promise.all([
     db.rfq.findMany({
@@ -201,7 +203,7 @@ export default async function Page({ params, searchParams }: { params: Promise<{
                       <form action={sendRfq}>
                         <input type="hidden" name="orgId" value={id} />
                         <input type="hidden" name="rfqId" value={r.id} />
-                        <button className="btn"><Send size={14} /> {r.suppliers.length > 1 ? `Envoyer aux ${r.suppliers.length} prestataires` : "Envoyer au prestataire"}</button>
+                        <button className="btn" disabled={blocked}><Send size={14} /> {r.suppliers.length > 1 ? `Envoyer aux ${r.suppliers.length} prestataires` : "Envoyer au prestataire"}</button>
                       </form>
                     )}
                     {(r.status === "draft" || r.status === "sent") && (
@@ -227,6 +229,7 @@ export default async function Page({ params, searchParams }: { params: Promise<{
         {onglet === "nouvelle" && (
           <NewRfqForm
             orgId={id}
+            blocked={blocked}
             ai={aiEnabled()}
             categories={SUPPLIER_CATEGORIES.map((c) => ({ id: c.id, label: c.label }))}
             suppliers={suppliers}
@@ -274,8 +277,8 @@ export default async function Page({ params, searchParams }: { params: Promise<{
             <div className="info-note">
               <Info size={15} />
               <span>
-                Les prestataires de cet annuaire peuvent rémunérer KolBase pour leur référencement. Ils ne peuvent ni acheter un meilleur classement, ni être
-                présélectionnés à votre place : le choix des prestataires consultés vous appartient entièrement.
+                Le référencement des prestataires est gratuit ; leur abonnement ne paie que les réponses à de nouvelles demandes, après un premier devis retenu.
+                Il ne leur achète ni un meilleur classement, ni une présélection : le choix des prestataires consultés vous appartient entièrement.
               </span>
             </div>
           </section>

@@ -54,7 +54,7 @@ export default async function Page({ params }: { params: Promise<{ token: string
               ) : (
                 <div className="actions">
                   <Link className="btn" href={`/connexion?next=${back}`}>{t("Se connecter pour accepter")}</Link>
-                  <Link className="btn ghost" href={`/inscription?next=${back}`}>{t("Créer un compte")}</Link>
+                  <Link className="btn ghost" href={`/inscription?profil=organisation&next=${back}`}>{t("Créer un compte")}</Link>
                 </div>
               )}
             </>

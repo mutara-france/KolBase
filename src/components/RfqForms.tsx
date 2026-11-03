@@ -34,7 +34,7 @@ export function SupplierLine({ s, catLabel, selected, onToggle }: { s: Supplier;
   );
 }
 
-export function NewRfqForm({ orgId, categories, suppliers, events, defaultEventId, defaultCategory, ai = false }: { orgId: string; categories: Cat[]; suppliers: Supplier[]; events: EventOpt[]; defaultEventId?: string; defaultCategory?: string; ai?: boolean }) {
+export function NewRfqForm({ orgId, categories, suppliers, events, defaultEventId, defaultCategory, ai = false, blocked = false }: { orgId: string; categories: Cat[]; suppliers: Supplier[]; events: EventOpt[]; defaultEventId?: string; defaultCategory?: string; ai?: boolean; blocked?: boolean }) {
   const [state, action, pending] = useActionState(createRfq, undefined);
   const [category, setCategory] = useState(categories.some((c) => c.id === defaultCategory) ? defaultCategory! : categories[0].id);
   const [picked, setPicked] = useState<string[]>([]);
@@ -77,9 +77,10 @@ export function NewRfqForm({ orgId, categories, suppliers, events, defaultEventI
         <label>Réponse attendue avant<input name="deadline" type="date" /></label>
       </div>
       <div className="actions">
-        <button className="btn" name="intent" value="send" disabled={pending || picked.length === 0}><Send size={14} /> {picked.length > 1 ? `Envoyer aux ${picked.length} prestataires` : "Envoyer au prestataire"}</button>
+        <button className="btn" name="intent" value="send" disabled={pending || picked.length === 0 || blocked}><Send size={14} /> {picked.length > 1 ? `Envoyer aux ${picked.length} prestataires` : "Envoyer au prestataire"}</button>
         <button className="btn ghost" name="intent" value="draft" disabled={pending || picked.length === 0}>Enregistrer en brouillon</button>
       </div>
+      {blocked && <p className="hint">Envoi possible une fois l&apos;abonnement activé ; le brouillon reste possible dès maintenant.</p>}
     </ActionForm>
   );
 }
@@ -103,7 +104,7 @@ const LINE_EXAMPLE: Record<string, string> = {
 };
 
 /** Devis du prestataire : détail ligne par ligne (total calculé), TVA, validité, conditions et PDF signé. */
-export function QuoteForm({ orgId, rfqId, category, current, headcount, uploads, ai = false, offers = [] }: { orgId: string; rfqId: string; category: string; current?: QuoteCurrent; headcount: number | null; uploads: boolean; ai?: boolean; offers?: { label: string; unit: string; unitCents: number }[] }) {
+export function QuoteForm({ orgId, rfqId, category, current, headcount, uploads, ai = false, offers = [], blocked = false }: { orgId: string; rfqId: string; category: string; current?: QuoteCurrent; headcount: number | null; uploads: boolean; ai?: boolean; offers?: { label: string; unit: string; unitCents: number }[]; blocked?: boolean }) {
   const [state, action, pending] = useActionState(submitQuote, undefined);
   const [open, setOpen] = useState(!current);
   // Un ancien devis au montant global devient une ligne « Forfait », modifiable comme les autres.
@@ -195,7 +196,9 @@ export function QuoteForm({ orgId, rfqId, category, current, headcount, uploads,
           <input name="file" type="file" accept="application/pdf" />
         </label>
       )}
-      <button className="btn" disabled={pending}><Send size={14} /> {pending ? "Envoi…" : current ? `Envoyer la version ${current.revision + 1}` : "Envoyer le devis"}</button>
+      {/* Nouvelle réponse après un premier devis retenu : abonnement requis (les révisions restent libres). */}
+      <button className="btn" disabled={pending || (blocked && !current)}><Send size={14} /> {pending ? "Envoi…" : current ? `Envoyer la version ${current.revision + 1}` : "Envoyer le devis"}</button>
+      {blocked && !current && <p className="hint">Réponse possible une fois l&apos;abonnement prestataire activé (voir le bandeau en haut de la page).</p>}
     </ActionForm>
   );
 }

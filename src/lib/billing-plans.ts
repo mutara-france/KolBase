@@ -52,4 +52,39 @@ export const ENGAGING = {
   reponse: "répondre à de nouvelles demandes de devis",
 } as const;
 export type Motive = keyof typeof ENGAGING;
+export const asMotive = (v: unknown): Motive | null => (typeof v === "string" && Object.hasOwn(ENGAGING, v) ? (v as Motive) : null);
+/** Identifiant d'objet (événement, dossier, demande de devis) passé dans une adresse : sinon ignoré. */
+export const asObjectId = (v: unknown): string | null => (typeof v === "string" && /^[A-Za-z0-9_-]{1,64}$/.test(v) ? v : null);
+
+/** Page d'abonnement avec le motif (et l'objet) de l'action en attente : le retour de paiement y ramène. */
+export const subscribeHref = (orgId: string, motive: Motive, objet?: string | null) =>
+  `/organisations/${orgId}/abonnement?motif=${motive}${asObjectId(objet) ? `&objet=${objet}` : ""}`;
+
+/**
+ * Après l'activation de l'abonnement : lien pour reprendre l'action qui l'a demandée.
+ * `publish` : pour un événement connu, le bouton « Publier maintenant » publie directement.
+ */
+export function resumeAction(orgId: string, motive: Motive | null, objet?: string | null): { href: string; label: string; publish?: string } | null {
+  const base = `/organisations/${orgId}`;
+  const id = asObjectId(objet);
+  switch (motive) {
+    case "evenement": return id ? { href: `${base}/evenements/${id}`, label: "Publier maintenant", publish: id } : { href: `${base}/evenements`, label: "Revenir aux événements" };
+    case "sollicitation": return id ? { href: `${base}/dossiers/${id}#modifier`, label: "Revenir au dossier" } : { href: `${base}/dossiers/nouveau`, label: "Envoyer les sollicitations" };
+    case "appel": return { href: `${base}/opportunites#nouvel-appel`, label: "Publier l'appel" };
+    case "devis": return { href: id ? `${base}/prestataires#rfq-${id}` : `${base}/prestataires?onglet=nouvelle`, label: "Envoyer la demande de devis" };
+    case "reponse": return { href: `${base}/devis`, label: "Répondre aux demandes de devis" };
+    default: return null;
+  }
+}
 export const formatPrice = (cents: number, interval: Interval = "month") => `${(cents / 100).toLocaleString("fr-FR")} € HT par ${interval === "year" ? "an" : "mois"}`;
+
+/** Ce que l'abonnement représente pour l'organisation, en une phrase (prise en main). */
+export function billingInfo(kind: string, s: SubLike, now = new Date()) {
+  const status = displayStatus(s, now);
+  if (status === "offerte") return `Abonnement : offert par KolBase jusqu'au ${s!.exemptUntil!.toLocaleDateString("fr-FR", { timeZone: "Europe/Paris", day: "numeric", month: "long", year: "numeric" })}.`;
+  if (status === "essai" || status === "active") return `Abonnement : ${STATUS_LABEL[status].toLowerCase()}.`;
+  if (status === "impayee") return "Abonnement : paiement en attente, vérifiez votre moyen de paiement.";
+  return kind === "PRESTATAIRE"
+    ? `Abonnement : référencement gratuit ; ${formatPrice(PLANS.prestataire.cents)} seulement après un premier devis retenu, pour répondre à de nouvelles demandes (premier mois offert).`
+    : `Abonnement : création, équipe, annuaire et brouillons gratuits ; ${formatPrice(PLANS.organisation.cents)} (ou ${formatPrice(PLANS.organisation.yearCents, "year")}) dès la première action qui engage un tiers, premier mois offert.`;
+}

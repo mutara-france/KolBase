@@ -13,13 +13,15 @@ import { NewsCard } from "@/components/News";
 import { publishedArticles } from "@/lib/news";
 import { appUrl } from "@/lib/ics";
 import { jsonLd } from "@/lib/jsonld";
+import { getCurrentUser } from "@/lib/auth";
+import { orgJoinHref } from "@/lib/nav";
 
 export const dynamic = "force-dynamic";
 
 /** Accueil — portail : recherche d'abord, puis le réseau (spécialités, agenda, praticiens, organisations, appels). */
 export default async function Home({ searchParams }: { searchParams: Promise<{ compte?: string }> }) {
   const deleted = (await searchParams).compte === "supprime";
-  const { t, locale } = await getT();
+  const [{ t, locale }, user] = await Promise.all([getT(), getCurrentUser()]);
   const [events, experts, orgs, calls, n, specialties, news] = await Promise.all([
     publicEvents(3), publicExperts(4), publicOrgs(), publicCalls(2), publicCounts(), publicSpecialties(), publishedArticles(3),
   ]);
@@ -127,7 +129,7 @@ export default async function Home({ searchParams }: { searchParams: Promise<{ c
                   <h3>{t("Vous organisez un congrès, une formation, un TP ?")}</h3>
                   <p>{t("Publiez-le sur KolBase et ouvrez les inscriptions aux praticiens, référencés ou non.")}</p>
                 </div>
-                <Link href="/inscription" className="btn" style={{ background: "var(--ink)" }}>{t("Publier un événement")}</Link>
+                <Link href={orgJoinHref(user, "evenement")} className="btn" style={{ background: "var(--ink)" }}>{t("Publier un événement")}</Link>
               </article>
             </div>
           </div>
@@ -188,7 +190,7 @@ export default async function Home({ searchParams }: { searchParams: Promise<{ c
                       <span className="go" aria-hidden><ArrowRight size={18} /></span>
                     </Link>
                   ))}
-                  <Link href="/inscription" className="org-join">{t("Référencer mon organisation, c'est gratuit")} <ArrowRight size={18} /></Link>
+                  <Link href={orgJoinHref(user, "organisation")} className="org-join">{t("Créer l'espace de votre organisation : gratuit jusqu'à votre première action")} <ArrowRight size={18} /></Link>
                 </div>
               </div>
             </div>
@@ -242,8 +244,8 @@ export default async function Home({ searchParams }: { searchParams: Promise<{ c
             <div className="join-card aurore">
               <span className="eyebrow">{t("Organisations")}</span>
               <h2>{t("Trouvez vos intervenants.")}</h2>
-              <p>{t("Publiez des appels, sollicitez des praticiens, ouvrez vos événements. Le référencement est gratuit.")}</p>
-              <Link href="/inscription" className="btn lg white">{t("Référencer mon organisation")}</Link>
+              <p>{t("Publiez des appels, sollicitez des praticiens, ouvrez vos événements. L'espace de l'organisation est gratuit jusqu'à votre première action qui engage un tiers, puis sur abonnement (premier mois offert).")}</p>
+              <Link href={orgJoinHref(user, "organisation")} className="btn lg white">{t("Référencer mon organisation")}</Link>
             </div>
           </div>
         </section>

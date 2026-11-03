@@ -122,3 +122,20 @@ export function practitionerSectionTabs(section: PractitionerSectionKey): Sectio
 export function countFor(item: Pick<ShellItem, "href" | "match" | "exact">, hrefs: string[]) {
   return hrefs.filter((h) => itemMatches(item, pathOf(h))).length;
 }
+
+/**
+ * Boutons « Référencer mon organisation » et « Publier un événement » (accueil, aide) : sans compte, création
+ * du compte d'une organisation ; connecté, directement la bonne page (événement de son organisation, ou
+ * création de l'organisation).
+ */
+export function orgJoinHref(
+  user: { memberships: { organizationId: string; role: OrgRole; organization: { kind: string } }[] } | null,
+  target: "organisation" | "evenement",
+) {
+  if (!user) return "/inscription?profil=organisation";
+  if (target === "evenement") {
+    const m = user.memberships.find((x) => x.organization.kind !== "PRESTATAIRE" && EVENT_ORGANIZER_ROLES.includes(x.role));
+    if (m) return `/organisations/${m.organizationId}/evenements/nouveau`;
+  }
+  return "/organisations/nouvelle";
+}

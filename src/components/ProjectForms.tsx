@@ -11,7 +11,7 @@ import { useT } from "@/components/I18nProvider";
 type CType = { id: string; label: string; category: string; unit: string; fmv: readonly number[] };
 type Expert = { id: string; name: string; detail: string; dayRateCents: number | null };
 
-export function NewProjectForm({ orgId, types, experts, preselected, ai = false }: { orgId: string; types: readonly CType[]; experts: Expert[]; preselected: string[]; ai?: boolean }) {
+export function NewProjectForm({ orgId, types, experts, preselected, ai = false, blocked = false }: { orgId: string; types: readonly CType[]; experts: Expert[]; preselected: string[]; ai?: boolean; blocked?: boolean }) {
   const [state, action, pending] = useActionState(createProject, undefined);
   const [typeId, setTypeId] = useState(types[0].id);
   const [selected, setSelected] = useState<string[]>(preselected);
@@ -90,7 +90,8 @@ export function NewProjectForm({ orgId, types, experts, preselected, ai = false 
         </fieldset>
       )}
       <label>Message d&apos;accompagnement<textarea name="message" rows={3} placeholder="Message envoyé à chaque expert sollicité" /></label>
-      <button className="btn" disabled={pending}>{pending ? "Envoi…" : "Envoyer les sollicitations"}</button>
+      <button className="btn" disabled={pending || blocked}>{pending ? "Envoi…" : "Envoyer les sollicitations"}</button>
+      {blocked && <p className="hint">Envoi possible une fois l&apos;abonnement activé (voir le bandeau en haut de la page).</p>}
     </ActionForm>
   );
 }

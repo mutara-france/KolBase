@@ -83,7 +83,7 @@ function EventFields({ types, formats, catalog, initial, frozen, project }: { ty
   );
 }
 
-export function NewEventForm({ orgId, types, formats, catalog, project }: { orgId: string; types: Opt[]; formats: Opt[]; catalog: readonly CatalogItem[]; project?: { id: string; title: string; area: string | null } }) {
+export function NewEventForm({ orgId, types, formats, catalog, project, blocked = false }: { orgId: string; types: Opt[]; formats: Opt[]; catalog: readonly CatalogItem[]; project?: { id: string; title: string; area: string | null }; blocked?: boolean }) {
   const [state, action, pending] = useActionState(createEvent, undefined);
   // Créé depuis un dossier (board, comité) : réunion interne par défaut.
   const [internal, setInternal] = useState(!!project);
@@ -98,7 +98,9 @@ export function NewEventForm({ orgId, types, formats, catalog, project }: { orgI
       <label className="check">
         <input type="checkbox" name="internal" value="1" checked={internal} onChange={(e) => setInternal(e.target.checked)} /> Réunion interne (board, comité, réunion d&apos;experts) : ni publication dans l&apos;agenda, ni inscriptions en ligne
       </label>
-      {!internal && <label className="check"><input type="checkbox" name="publish" value="1" /> Publier immédiatement dans l&apos;agenda</label>}
+      {!internal && (
+        <label className="check"><input type="checkbox" name="publish" value="1" disabled={blocked} /> Publier immédiatement dans l&apos;agenda{blocked ? " (une fois l'abonnement activé ; enregistrez-le en brouillon d'ici là)" : ""}</label>
+      )}
       <button className="btn" disabled={pending}>{pending ? "Création…" : "Créer l'événement"}</button>
     </ActionForm>
   );

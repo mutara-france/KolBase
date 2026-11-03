@@ -2,6 +2,8 @@ import { describe, expect, it } from "vitest";
 import { defaultVatBp } from "@/lib/quotes";
 import { loginPath } from "@/lib/safe-redirect";
 import { orgIsPublic } from "@/lib/org-roles";
+import { orgJoinHref } from "@/lib/nav";
+import { asMotive, asObjectId, billingInfo, resumeAction, subscribeHref } from "@/lib/billing-plans";
 import { projectEditable, termsChanged, TRANSITIONS } from "@/lib/projects";
 import { eventChanges, needsOnlineLink, parseOnlineUrl, parseParisDateTime, toParisInput } from "@/lib/events";
 
@@ -99,5 +101,46 @@ describe("page publique d'une organisation", () => {
     expect(orgIsPublic({ verification: "VERIFIED", listed: false })).toBe(false);
     expect(orgIsPublic({ verification: "PENDING", listed: true })).toBe(false);
     expect(orgIsPublic({ verification: "REJECTED", listed: true })).toBe(false);
+  });
+});
+
+describe("prix annoncé avant l'action", () => {
+  it("page d'abonnement avec le motif et l'objet de l'action en attente", () => {
+    expect(subscribeHref("o1", "evenement", "ev_1")).toBe("/organisations/o1/abonnement?motif=evenement&objet=ev_1");
+    expect(subscribeHref("o1", "appel")).toBe("/organisations/o1/abonnement?motif=appel");
+    expect(subscribeHref("o1", "devis", "x\"><script>")).toBe("/organisations/o1/abonnement?motif=devis");
+    expect(asMotive("sollicitation")).toBe("sollicitation");
+    expect(asMotive("toString")).toBeNull();
+    expect(asObjectId("../admin")).toBeNull();
+  });
+  it("après l'activation : reprendre l'action", () => {
+    expect(resumeAction("o1", "evenement", "ev1")).toMatchObject({ label: "Publier maintenant", publish: "ev1" });
+    expect(resumeAction("o1", "sollicitation", null)?.href).toBe("/organisations/o1/dossiers/nouveau");
+    expect(resumeAction("o1", "devis", "r1")?.href).toBe("/organisations/o1/prestataires#rfq-r1");
+    expect(resumeAction("o1", "reponse")?.href).toBe("/organisations/o1/devis");
+    expect(resumeAction("o1", null)).toBeNull();
+  });
+  it("ligne « Abonnement » de la prise en main", () => {
+    const now = new Date("2026-11-03T12:00:00Z");
+    expect(billingInfo("INDUSTRIEL", null, now)).toContain("599 € HT par mois");
+    expect(billingInfo("INDUSTRIEL", null, now)).toContain("premier mois offert");
+    expect(billingInfo("PRESTATAIRE", null, now)).toContain("référencement gratuit");
+    expect(billingInfo("INDUSTRIEL", { status: "a_activer", exemptUntil: parseParisDateTime("2027-06-30T23:59") }, now)).toContain("offert par KolBase jusqu'au 30 juin 2027");
+    expect(billingInfo("INDUSTRIEL", { status: "active", exemptUntil: null }, now)).toBe("Abonnement : actif.");
+  });
+});
+
+describe("boutons « Référencer mon organisation » et « Publier un événement »", () => {
+  const m = (kind: string, role: "ADMIN" | "PROJETS" | "CONFORMITE" | "PRESTATAIRE") => ({ organizationId: "o1", role, organization: { kind } });
+  it("sans compte : création du compte d'une organisation", () => {
+    expect(orgJoinHref(null, "organisation")).toBe("/inscription?profil=organisation");
+    expect(orgJoinHref(null, "evenement")).toBe("/inscription?profil=organisation");
+  });
+  it("connecté : la bonne page directement", () => {
+    expect(orgJoinHref({ memberships: [] }, "organisation")).toBe("/organisations/nouvelle");
+    expect(orgJoinHref({ memberships: [] }, "evenement")).toBe("/organisations/nouvelle");
+    expect(orgJoinHref({ memberships: [m("INDUSTRIEL", "PROJETS")] }, "evenement")).toBe("/organisations/o1/evenements/nouveau");
+    expect(orgJoinHref({ memberships: [m("INDUSTRIEL", "CONFORMITE")] }, "evenement")).toBe("/organisations/nouvelle");
+    expect(orgJoinHref({ memberships: [m("PRESTATAIRE", "ADMIN")] }, "evenement")).toBe("/organisations/nouvelle");
   });
 });

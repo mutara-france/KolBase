@@ -1,8 +1,17 @@
 import "server-only";
 import { db } from "@/lib/db";
 import { DPA_VERSION } from "@/lib/dpa";
+import { stripeEnabled } from "@/lib/billing";
+import { billingInfo } from "@/lib/billing-plans";
 
 export type OnboardingStep = { key: string; label: string; hint: string; href: string; done: boolean };
+
+/** Ligne d'information « Abonnement : … » de la prise en main (pas une étape à cocher). Null sans facturation. */
+export async function orgBillingLine(orgId: string, kind: string) {
+  if (!stripeEnabled()) return null;
+  const sub = await db.subscription.findUnique({ where: { organizationId: orgId }, select: { status: true, exemptUntil: true } });
+  return billingInfo(kind, sub);
+}
 
 /** « Prise en main » d'une organisation : ce qu'un administrateur règle une fois, dans l'ordre. */
 export async function orgOnboarding(orgId: string): Promise<OnboardingStep[]> {

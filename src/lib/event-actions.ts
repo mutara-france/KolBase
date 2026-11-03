@@ -11,6 +11,7 @@ import { EventFormat } from "@/generated/prisma/enums";
 import { eurToCents, intOrNull, str } from "@/lib/form";
 import { getT } from "@/lib/i18n/server";
 import { engagementAllowed, gateMessage } from "@/lib/billing";
+import { subscribeHref } from "@/lib/billing-plans";
 import { notifyEventChanged, notifyEventConfided } from "@/lib/notifications";
 import { SOURCE_COOKIE } from "@/lib/services";
 import { deletableDraft, DRAFT_COUNTS } from "@/lib/event-drafts";
@@ -154,7 +155,7 @@ export async function setEventFlag(form: FormData) {
   const { user, roles, org } = await requireMembership(orgId, EVENT_MANAGER_ROLES);
   const flag = str(form, "flag");
   if (flag === "publish" && !isVerifiedOrg(org)) return;
-  if (flag === "publish" && !(await engagementAllowed(orgId))) redirect(`/organisations/${orgId}/abonnement?motif=evenement`);
+  if (flag === "publish" && !(await engagementAllowed(orgId))) redirect(subscribeHref(orgId, "evenement", eventId));
   // Passer en réunion interne (ou l'ouvrir au public) relève de l'équipe organisatrice, pas d'une agence.
   if ((flag === "internal" || flag === "public") && !roles.some((r) => EVENT_ORGANIZER_ROLES.includes(r))) return;
   const data =

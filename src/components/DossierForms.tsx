@@ -211,7 +211,7 @@ export function ExpertTermsForm({ orgId, projectId, linkId, name, unit, units, f
 }
 
 /** Ajouter un expert référencé au dossier : il reçoit la sollicitation. */
-export function AddExpertForm({ orgId, projectId, unit, experts }: Hidden & { unit: string; experts: { id: string; name: string; detail: string; dayRateCents: number | null }[] }) {
+export function AddExpertForm({ orgId, projectId, unit, experts, blocked = false }: Hidden & { unit: string; experts: { id: string; name: string; detail: string; dayRateCents: number | null }[]; blocked?: boolean }) {
   const [state, action, pending] = useActionState(addProjectExpert, undefined);
   const [expertId, setExpertId] = useState("");
   const chosen = experts.find((e) => e.id === expertId);
@@ -231,7 +231,8 @@ export function AddExpertForm({ orgId, projectId, unit, experts }: Hidden & { un
         <label>Honoraires totaux (€ HT)<input key={expertId} name="fee" inputMode="decimal" defaultValue={chosen?.dayRateCents != null ? String(chosen.dayRateCents / 100) : ""} required /></label>
       </div>
       <label>Message d&apos;accompagnement<textarea name="message" rows={2} placeholder="Message envoyé avec la sollicitation" /></label>
-      <button className="btn ghost small" disabled={pending}>{pending ? "Envoi…" : "Ajouter et solliciter l'expert"}</button>
+      <button className="btn ghost small" disabled={pending || blocked}>{pending ? "Envoi…" : "Ajouter et solliciter l'expert"}</button>
+      {blocked && <p className="hint">Sollicitation possible une fois l&apos;abonnement activé : <a href={`/organisations/${orgId}/abonnement?motif=sollicitation&objet=${projectId}`}>activer l&apos;abonnement</a>.</p>}
     </ActionForm>
   );
 }

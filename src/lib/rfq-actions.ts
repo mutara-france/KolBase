@@ -11,6 +11,7 @@ import { eurToCents, intOrNull, str } from "@/lib/form";
 import { isVatBp, linesTotal, MAX_LINES, withVat, type QuoteLine } from "@/lib/quotes";
 import { MAX_UPLOAD_BYTES, putObject, safeFileName, storageEnabled } from "@/lib/storage";
 import { engagementAllowed, gateMessage, markSupplierTriggered, stripeEnabled, supplierCanQuote } from "@/lib/billing";
+import { subscribeHref } from "@/lib/billing-plans";
 import { notifyAward, notifyQuote, notifyRfqCancelled, notifyRfqMessage, notifyRfqSent, notifySupplierBilling } from "@/lib/notifications";
 
 export type ActionState = { error?: string; ok?: string } | undefined;
@@ -63,8 +64,8 @@ export async function sendRfq(form: FormData) {
   const orgId = str(form, "orgId");
   const { user, roles, org } = await requireMembership(orgId, EVENT_MANAGER_ROLES);
   if (!isVerifiedOrg(org)) return;
-  if (!(await engagementAllowed(orgId))) redirect(`/organisations/${orgId}/abonnement?motif=devis`);
   const rfqId = str(form, "rfqId");
+  if (!(await engagementAllowed(orgId))) redirect(subscribeHref(orgId, "devis", rfqId));
   const { count } = await db.rfq.updateMany({ where: { id: rfqId, organizationId: orgId, ...rfqScope(user, roles), status: "draft" }, data: { status: "sent", sentAt: new Date() } });
   if (!count) return;
   await audit(user.id, "rfq.send", "Rfq", rfqId);
