@@ -1,3 +1,4 @@
+import type { ElementType } from "react";
 import Link from "next/link";
 import { BadgeCheck, Calendar, ChevronRight, MapPin, Ticket, Video } from "lucide-react";
 import { Avatar } from "@/components/Avatar";
@@ -36,7 +37,7 @@ export function StatCard({ label, value, hint, electric }: { label: string; valu
 export type EventCardData = {
   id: string; title: string; typeId: string; therapeuticArea: string | null; startsAt: Date; durationMinutes: number | null;
   format: "PRESENTIEL" | "DISTANCIEL" | "HYBRIDE"; city: string | null; capacity: number | null; registrationOpen: boolean;
-  organization: { name: string }; registrations: number; featured?: boolean;
+  organization: { name: string }; registrations: number; featured?: boolean; trackedHref?: string;
 };
 const FORMAT = { PRESENTIEL: "présentiel", DISTANCIEL: "visioconférence", HYBRIDE: "hybride" } as const;
 export async function EventCard({ ev, compact = false }: { ev: EventCardData; compact?: boolean }) {
@@ -47,11 +48,13 @@ export async function EventCard({ ev, compact = false }: { ev: EventCardData; co
   const parts = new Intl.DateTimeFormat("fr-FR", { timeZone: TZ, day: "2-digit", month: "numeric", year: "numeric", hour: "2-digit", minute: "2-digit" }).formatToParts(ev.startsAt);
   const get = (t: string) => parts.find((p) => p.type === t)?.value ?? "";
   const FormatIcon = ev.format === "DISTANCIEL" ? Video : MapPin;
-  const href = `/evenements/${ev.id}`;
+  // Lien suivi (mise à la une) : simple lien, sans préchargement qui compterait une visite.
+  const href = ev.trackedHref ?? `/evenements/${ev.id}`;
+  const Go: ElementType = ev.trackedHref ? "a" : Link;
   const left = ev.capacity != null ? Math.max(ev.capacity - ev.registrations, 0) : null;
   return (
     <article className="event-card">
-      <Link href={href} className="event-cover" aria-hidden="true" tabIndex={-1}>
+      <Go href={href} className="event-cover" aria-hidden="true" tabIndex={-1}>
         <AreaArt seed={ev.id + (ev.therapeuticArea ?? "")} height={compact ? 112 : 128} />
         <time className="event-date-chip" dateTime={ev.startsAt.toISOString()}>
           <span className="event-month">{fmtDate(locale, ev.startsAt, { month: "short" })}</span>
@@ -60,9 +63,9 @@ export async function EventCard({ ev, compact = false }: { ev: EventCardData; co
         </time>
         <span className="event-type">{t(eventTypeLabel(ev.typeId))}</span>
         {ev.featured && <span className="event-featured">{t("À la une")}</span>}
-      </Link>
+      </Go>
       <div className="event-body">
-        <h3 className="card-title" style={{ marginBottom: 2 }}><Link href={href} className="ink">{ev.title}</Link></h3>
+        <h3 className="card-title" style={{ marginBottom: 2 }}><Go href={href} className="ink">{ev.title}</Go></h3>
         <div className="meta-line"><FormatIcon size={14} /> {[ev.city, t(FORMAT[ev.format])].filter(Boolean).join(" · ")} · {get("hour")}:{get("minute")}{dur(ev.durationMinutes)}</div>
         {ev.therapeuticArea && <div className="meta-line">{t(ev.therapeuticArea)}</div>}
         <div className="event-org">{ev.organization.name}</div>
@@ -70,7 +73,7 @@ export async function EventCard({ ev, compact = false }: { ev: EventCardData; co
           <span>
             {!ev.registrationOpen ? t("Inscriptions closes") : full ? t("Complet") : left != null ? <><span className="mono ink">{left}</span> {t(left > 1 ? "places restantes" : "place restante")}</> : t("Inscriptions ouvertes")}
           </span>
-          {ev.registrationOpen && !full && <Link href={href} className="btn small"><Ticket size={14} /> {t("S'inscrire")}</Link>}
+          {ev.registrationOpen && !full && <Go href={href} className="btn small"><Ticket size={14} /> {t("S'inscrire")}</Go>}
         </div>
       </div>
     </article>

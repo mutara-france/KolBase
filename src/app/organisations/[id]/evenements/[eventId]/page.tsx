@@ -18,7 +18,8 @@ import { checkinOpen } from "@/lib/checkin";
 import { eventEnded, fmtRating, surveySummary } from "@/lib/event-followup";
 import { ServiceOffers } from "@/components/ServiceForms";
 import { cancelServiceOrder } from "@/lib/service-actions";
-import { ORDER_STATUS } from "@/lib/services";
+import { ORDER_STATUS, orderStats } from "@/lib/services";
+import { conversion, reportParts } from "@/lib/service-report";
 import { SendNowButton } from "@/components/FollowupForms";
 
 export const metadata = { title: "Événement — KolBase" };
@@ -43,7 +44,7 @@ export default async function Page({ params }: { params: Promise<{ id: string; e
       benefits: true,
       registrations: { include: { user: true, benefits: { include: { benefit: true } } }, orderBy: { createdAt: "asc" } },
       surveys: { orderBy: { createdAt: "desc" } },
-      serviceOrders: { orderBy: { createdAt: "desc" } },
+      serviceOrders: { include: { offer: { select: { kind: true } } }, orderBy: { createdAt: "desc" } },
     },
   });
   if (!event) notFound();
@@ -106,6 +107,7 @@ export default async function Page({ params }: { params: Promise<{ id: string; e
   const lastSent = (rs: typeof event.registrations, k: "reminderSentAt" | "followUpSentAt") => rs.reduce<Date | null>((m, r) => (r[k] && (!m || r[k]! > m) ? r[k] : m), null);
   const survey = surveySummary(event.surveys);
   const offers = isOrganizer && !event.internal ? await db.serviceOffer.findMany({ where: { active: true }, orderBy: { position: "asc" } }) : [];
+  const serviceStats = isOrganizer ? await orderStats(event.serviceOrders.filter((o) => o.status === "realisee")) : new Map();
   const newRfq = (cat?: string) => `/organisations/${id}/prestataires?onglet=nouvelle&evenement=${eventId}${cat ? `&cat=${cat}` : ""}`;
   const status = event.internal
     ? { label: "Réunion interne", tone: "electric" }
@@ -346,7 +348,7 @@ export default async function Page({ params }: { params: Promise<{ id: string; e
               <section className="card stack-sm" aria-labelledby="services">
                 <div>
                   <h2 id="services"><Megaphone size={18} /> Faire connaître l&apos;événement</h2>
-                  <p className="muted">Services réalisés par l&apos;équipe KolBase, facturés une fois réalisés (prix HT).</p>
+                  <p className="muted">Services réalisés par l&apos;équipe KolBase, facturés une fois réalisés (prix HT). Chaque service est mesuré : visiteurs et inscriptions obtenus, bilan envoyé par e-mail une semaine après.</p>
                 </div>
                 {event.serviceOrders.length > 0 && (
                   <ul className="plain stack-sm">
@@ -358,6 +360,16 @@ export default async function Page({ params }: { params: Promise<{ id: string; e
                           {o.adminNote && <span className="text-xs muted"> · {o.adminNote}</span>}
                           {o.resultUrl && <> · <a href={o.resultUrl} target="_blank" rel="noopener noreferrer" className="text-xs">voir le résultat</a></>}
                         </span>
+                        {serviceStats.get(o.id) && (
+                          <span className="service-stats" aria-label="Bilan du service">
+                            {reportParts(serviceStats.get(o.id)!, o.offer.kind).map((p) => {
+                              const [n, ...rest] = p.key.replace("{n}", p.n.toLocaleString("fr-FR")).split(" ");
+                              return <span key={p.key} className="service-stat"><strong>{n}</strong> {rest.join(" ")}</span>;
+                            })}
+                            {conversion(serviceStats.get(o.id)!) != null && <span className="service-stat"><strong>{conversion(serviceStats.get(o.id)!)} %</strong> des visiteurs inscrits</span>}
+                            {serviceStats.get(o.id)!.since != null && <span className="service-stat"><strong>{serviceStats.get(o.id)!.since}</strong> inscription{serviceStats.get(o.id)!.since! > 1 ? "s" : ""} au total depuis le {formatDate(o.doneAt!)}</span>}
+                          </span>
+                        )}
                         <span className="actions" style={{ marginTop: 0 }}>
                           <span className={`pill ${ORDER_STATUS[o.status]?.tone ?? ""}`}>{ORDER_STATUS[o.status]?.label ?? o.status}</span>
                           {o.status === "demandee" && (

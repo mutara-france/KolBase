@@ -1039,3 +1039,9 @@ body:has(.sidebar) .site-footer { padding: 24px 32px; }
 .newsletter-cta > svg { color: var(--indigo); }
 .newsletter-done { display: flex; gap: .4rem; align-items: center; margin-top: 2rem; }
 @media (max-width: 640px) { .newsletter-cta { grid-template-columns: 1fr; } .newsletter-cta > svg { display: none; } }
+
+/* Bilan d'un service KolBase */
+.service-order .service-stats { flex: 1 1 100%; order: 3; display: flex; flex-wrap: wrap; gap: 8px; }
+.service-stat { background: var(--bg-subtle); border: 1px solid var(--line); border-radius: 10px; padding: 6px 10px; font-size: .85rem; color: var(--ink-soft); }
+.service-stat strong { color: var(--ink); font-size: 1rem; margin-right: 2px; }
+p.service-stats { color: var(--ink-soft); }

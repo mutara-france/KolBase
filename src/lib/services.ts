@@ -14,15 +14,58 @@ export const ORDER_STATUS: Record<string, { label: string; tone: string }> = {
 export const OPEN_ORDER = ["demandee", "planifiee"];
 export const FEATURE_DAYS = 7;
 
-/** Événements « à la une » : service réalisé depuis moins de sept jours, événement publié et à venir. */
-export async function featuredEventIds(now = new Date()) {
+/** Délai avant l'envoi du bilan d'un service réalisé (ou dès que l'événement a eu lieu). */
+export const REPORT_DELAY_DAYS = 7;
+/** Durée du cookie d'attribution posé par un lien suivi. */
+export const SOURCE_COOKIE = "kb_src";
+export const SOURCE_COOKIE_DAYS = 30;
+
+/** Code du lien suivi d'une commande (/r/<code>). */
+export const newTrackCode = () => randomBytes(6).toString("base64url");
+export const trackedPath = (code: string) => `/r/${code}`;
+
+/** Événements « à la une » : service réalisé depuis moins de sept jours, événement publié et à venir (lien suivi). */
+export async function featuredEvents(now = new Date()) {
   const orders = await db.serviceOrder.findMany({
     where: { status: "realisee", offer: { kind: "une" }, doneAt: { gte: new Date(now.getTime() - FEATURE_DAYS * 86400e3) }, event: { publishedAt: { not: null }, startsAt: { gte: now } } },
-    select: { eventId: true },
+    select: { eventId: true, trackCode: true },
     orderBy: { doneAt: "desc" },
   });
-  return [...new Set(orders.map((o) => o.eventId))];
+  const byEvent = new Map<string, string | null>();
+  for (const o of orders) if (!byEvent.has(o.eventId)) byEvent.set(o.eventId, o.trackCode);
+  return byEvent;
 }
+export const featuredEventIds = async (now = new Date()) => [...(await featuredEvents(now)).keys()];
+
+export type OrderStats = { clicks: number; registrations: number; recipients: number | null; since: number | null };
+
+/**
+ * Bilan d'une ou plusieurs commandes : visiteurs uniques du lien suivi, inscriptions arrivées par ce lien,
+ * destinataires (e-mailing) et inscriptions à l'événement depuis la réalisation (contexte).
+ */
+export async function orderStats(orders: { id: string; eventId: string; doneAt: Date | null }[]) {
+  const ids = orders.map((o) => o.id);
+  const stats = new Map<string, OrderStats>();
+  if (ids.length === 0) return stats;
+  const [visitors, regs, campaigns] = await Promise.all([
+    db.serviceClick.groupBy({ by: ["orderId", "visitor"], where: { orderId: { in: ids } } }),
+    db.registration.groupBy({ by: ["sourceOrderId"], where: { sourceOrderId: { in: ids } }, _count: true }),
+    db.newsletterCampaign.findMany({ where: { orderId: { in: ids } }, select: { orderId: true, recipients: true } }),
+  ]);
+  for (const o of orders) {
+    const since = o.doneAt ? await db.registration.count({ where: { eventId: o.eventId, createdAt: { gte: o.doneAt } } }) : null;
+    stats.set(o.id, {
+      clicks: visitors.filter((v) => v.orderId === o.id).length,
+      registrations: regs.find((r) => r.sourceOrderId === o.id)?._count ?? 0,
+      recipients: campaigns.find((c) => c.orderId === o.id)?.recipients ?? null,
+      since,
+    });
+  }
+  return stats;
+}
+
+/** Lecture des liens suivis par des robots (aperçus de liens, antivirus des messageries) : non comptée. */
+export const isBot = (ua: string) => !ua || /bot|crawl|spider|slurp|preview|facebookexternalhit|embedly|proofpoint|mimecast|barracuda|safelinks|scanner|curl|wget|python|headless/i.test(ua);
 
 /** Membres qui ont accepté de recevoir la lettre d'information (adresse confirmée). */
 export function newsletterAudience() {

@@ -631,6 +631,9 @@ model Registration {
   reminderSentAt  DateTime?
   followUpSentAt  DateTime?
   certificateCode String?   @unique
+  // Inscription arrivée par un lien suivi d'un service KolBase (e-mailing, post, à la une).
+  sourceOrderId   String?
+  sourceOrder     ServiceOrder? @relation(fields: [sourceOrderId], references: [id], onDelete: SetNull)
 
   benefits RegistrationBenefit[]
   survey   SurveyResponse?
@@ -915,12 +918,27 @@ model ServiceOrder {
   doneAt         DateTime?
   invoicedAt     DateTime?
   invoiceRef     String?      // ligne de facture Stripe, ou « hors Stripe »
+  trackCode      String?      @unique // lien suivi /r/<code> : clics et inscriptions attribuées
+  reportSentAt   DateTime?    // bilan envoyé à l'organisateur
   createdAt      DateTime     @default(now())
   updatedAt      DateTime     @updatedAt
   campaign       NewsletterCampaign?
+  clicks         ServiceClick[]
+  registrations  Registration[]
 
   @@index([organizationId])
   @@index([status])
+}
+
+// Clic sur un lien suivi : visiteur pseudonyme (empreinte non réversible, aucune adresse IP conservée).
+model ServiceClick {
+  id        String       @id @default(cuid())
+  orderId   String
+  order     ServiceOrder @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  visitor   String
+  createdAt DateTime     @default(now())
+
+  @@index([orderId])
 }
 
 // Lettre d'information envoyée aux membres qui ont accepté de la recevoir.

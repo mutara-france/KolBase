@@ -7,6 +7,7 @@ import { requirePlatformAdmin } from "@/lib/platform";
 import { aiEnabled } from "@/lib/ai";
 import { formatDate, formatEUR, formatTime } from "@/lib/events";
 import { updateServiceOrder } from "@/lib/service-actions";
+import { trackedPath } from "@/lib/services";
 
 export const metadata = { title: "Service — KolBase" };
 
@@ -34,6 +35,7 @@ export default async function Page({ params }: { params: Promise<{ orderId: stri
           <section className="card stack-sm">
             <h2>Post à publier</h2>
             <p className="muted">Rédigez le post (l&apos;assistant peut proposer un texte), publiez-le sur les comptes de KolBase en le signalant comme partenariat, puis indiquez son lien.</p>
+            {o.trackCode && <p className="notice">Lien d&apos;inscription à mettre dans le post (visites et inscriptions comptées dans le bilan de l&apos;organisateur) : <code>{process.env.APP_URL ?? "http://localhost:3000"}{trackedPath(o.trackCode)}</code></p>}
             {aiEnabled() && <SocialDraft orderId={o.id} />}
             {["demandee", "planifiee"].includes(o.status) && (
               <form action={updateServiceOrder} className="form">
