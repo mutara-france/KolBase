@@ -12,12 +12,19 @@ import "./globals.css";
 import { SiteFooter } from "@/components/SiteFooter";
 import { I18nProvider } from "@/components/I18nProvider";
 import { getLocale, getT } from "@/lib/i18n/server";
+import { appUrl } from "@/lib/ics";
 
 export async function generateMetadata(): Promise<Metadata> {
-  const { t } = await getT();
+  const { t, locale } = await getT();
+  const title = t("KolBase — praticiens × organisations");
+  const description = t("KolBase met en relation les chirurgiens-dentistes et les organisations du secteur : industriels, sociétés savantes, associations, organismes de formation.");
   return {
-    title: t("KolBase — praticiens × organisations"),
-    description: t("KolBase met en relation les chirurgiens-dentistes et les organisations du secteur : industriels, sociétés savantes, associations, organismes de formation."),
+    // Adresses absolues des aperçus de partage (images, liens canoniques).
+    metadataBase: new URL(appUrl() || "http://localhost:3000"),
+    title,
+    description,
+    openGraph: { type: "website", siteName: "KolBase", locale: locale === "en" ? "en_GB" : "fr_FR", title, description },
+    twitter: { card: "summary_large_image" },
   };
 }
 

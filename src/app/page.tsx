@@ -11,6 +11,8 @@ import { fmtDate } from "@/lib/i18n";
 import { getT } from "@/lib/i18n/server";
 import { NewsCard } from "@/components/News";
 import { publishedArticles } from "@/lib/news";
+import { appUrl } from "@/lib/ics";
+import { jsonLd } from "@/lib/jsonld";
 
 export const dynamic = "force-dynamic";
 
@@ -34,9 +36,15 @@ export default async function Home({ searchParams }: { searchParams: Promise<{ c
     ? t("Prochain rendez-vous : {event}, le {date}", { event: `${agenda.next.title}${agenda.next.city ? `, ${agenda.next.city}` : ""}` }).split("{date}")
     : [];
 
+  const base = appUrl();
+  const structured = [
+    { "@context": "https://schema.org", "@type": "Organization", name: "KolBase", url: base, logo: `${base}/brand/kolbase-logo-outremer.svg` },
+    { "@context": "https://schema.org", "@type": "WebSite", name: "KolBase", url: base, inLanguage: "fr-FR" },
+  ];
   return (
     <>
       <SiteHeader variant="public" />
+      <script type="application/ld+json" dangerouslySetInnerHTML={jsonLd(structured)} />
       <main className="landing home">
         {deleted && <p className="notice ok" role="status" style={{ margin: "16px auto", maxWidth: 1180 }}>{t("Votre compte a été supprimé. Merci d'avoir utilisé KolBase.")}</p>}
         <section className="home-hero" aria-labelledby="home-titre">

@@ -4,6 +4,8 @@ import type { Metadata } from "next";
 import { SiteHeader } from "@/components/SiteHeader";
 import { ArticleBody, NewsCard } from "@/components/News";
 import { NewsletterCta } from "@/components/NewsletterCta";
+import { appUrl } from "@/lib/ics";
+import { jsonLd } from "@/lib/jsonld";
 import { db } from "@/lib/db";
 import { getCurrentUser } from "@/lib/auth";
 import { isPlatformAdmin } from "@/lib/platform";
@@ -16,8 +18,15 @@ export const dynamic = "force-dynamic";
 
 export async function generateMetadata({ params }: { params: Promise<{ slug: string }> }): Promise<Metadata> {
   const { slug } = await params;
-  const a = await db.article.findFirst({ where: { slug, publishedAt: { not: null, lte: new Date() } }, select: { title: true, excerpt: true } });
-  return a ? { title: `${a.title} — KolBase`, description: a.excerpt.slice(0, 160) } : { title: "Actualité — KolBase", robots: { index: false } };
+  const a = await db.article.findFirst({ where: { slug, publishedAt: { not: null, lte: new Date() } }, select: { title: true, excerpt: true, publishedAt: true, updatedAt: true, category: true } });
+  if (!a) return { title: "Actualité — KolBase", robots: { index: false } };
+  const description = a.excerpt.slice(0, 160);
+  return {
+    title: `${a.title} — KolBase`,
+    description,
+    alternates: { canonical: `/actualites/${slug}` },
+    openGraph: { type: "article", siteName: "KolBase", url: `/actualites/${slug}`, title: a.title, description, publishedTime: a.publishedAt!.toISOString(), modifiedTime: a.updatedAt.toISOString(), section: a.category },
+  };
 }
 
 export default async function Page({ params }: { params: Promise<{ slug: string }> }) {
@@ -30,9 +39,24 @@ export default async function Page({ params }: { params: Promise<{ slug: string 
   const { t, locale } = await getT();
   const others = (await publishedArticles(4)).filter((x) => x.id !== a.id).slice(0, 3);
   const src = coverSrc(a);
+  const base = appUrl();
+  const structured = a.publishedAt && {
+    "@context": "https://schema.org",
+    "@type": "NewsArticle",
+    headline: a.title.slice(0, 110),
+    description: a.excerpt,
+    datePublished: a.publishedAt.toISOString(),
+    dateModified: a.updatedAt.toISOString(),
+    articleSection: a.category,
+    image: [`${base}/actualites/${a.slug}/opengraph-image`, ...(src ? [`${base}${src}`] : [])],
+    author: { "@type": "Organization", name: "KolBase", url: base },
+    publisher: { "@type": "Organization", name: "KolBase", url: base, logo: { "@type": "ImageObject", url: `${base}/brand/kolbase-logo-outremer.svg` } },
+    mainEntityOfPage: `${base}/actualites/${a.slug}`,
+  };
   return (
     <>
       <SiteHeader variant="public" />
+      {structured && <script type="application/ld+json" dangerouslySetInnerHTML={jsonLd(structured)} />}
       <main className="landing">
         <article className="article">
           <p className="muted"><Link href="/actualites">← {t("Toutes les actualités")}</Link></p>

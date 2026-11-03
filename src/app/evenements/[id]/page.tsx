@@ -12,6 +12,8 @@ import { cancelRegistration } from "@/lib/event-actions";
 import type { Metadata } from "next";
 import { fmtDate, fmtEur, intlLocale, type Locale } from "@/lib/i18n";
 import { getT } from "@/lib/i18n/server";
+import { appUrl } from "@/lib/ics";
+import { jsonLd } from "@/lib/jsonld";
 
 /** « lundi 3 novembre 2026 à 14:00 » / « Monday, 3 November 2026 at 14:00 » (heure de Paris). */
 const dateTime = (locale: Locale, d: Date) => fmtDate(locale, d, { weekday: "long", day: "numeric", month: "long", year: "numeric", hour: "2-digit", minute: "2-digit" });
@@ -21,9 +23,13 @@ export async function generateMetadata({ params }: { params: Promise<{ id: strin
   const { t, locale } = await getT();
   const e = await db.event.findFirst({ where: { id, publishedAt: { not: null }, organization: { verification: "VERIFIED" } }, include: { organization: { select: { name: true } } } });
   if (!e) return { title: t("Événement — KolBase"), robots: { index: false } };
+  const description = `${t(eventTypeLabel(e.typeId))} · ${dateTime(locale, e.startsAt)}${e.city ? ` · ${e.city}` : ""}. ${e.description ?? ""}`.trim().slice(0, 160);
   return {
     title: `${e.title} — ${e.organization.name} — KolBase`,
-    description: `${t(eventTypeLabel(e.typeId))} · ${dateTime(locale, e.startsAt)}${e.city ? ` · ${e.city}` : ""}. ${e.description ?? ""}`.trim().slice(0, 160),
+    description,
+    alternates: { canonical: `/evenements/${e.id}` },
+    // Aperçu de partage (LinkedIn, WhatsApp…) : l'image est générée par opengraph-image.tsx.
+    openGraph: { type: "website", siteName: "KolBase", url: `/evenements/${e.id}`, title: `${e.title} — ${e.organization.name}`, description },
   };
 }
 
@@ -60,9 +66,31 @@ export default async function Page({ params }: { params: Promise<{ id: string }>
   // Appels à candidatures rattachés à l'événement, encore ouverts (date limite, places).
   const openCalls = past ? [] : event.calls.filter((c) => (!c.deadline || c.deadline >= new Date()) && (!c.slots || c._count.applications < c.slots));
 
+  // Données structurées schema.org (résultats enrichis des moteurs de recherche).
+  const base = appUrl();
+  const end = event.durationMinutes ? new Date(event.startsAt.getTime() + event.durationMinutes * 60_000) : null;
+  const structured = {
+    "@context": "https://schema.org",
+    "@type": "Event",
+    name: event.title,
+    description: event.description ?? undefined,
+    startDate: event.startsAt.toISOString(),
+    endDate: end?.toISOString(),
+    eventStatus: "https://schema.org/EventScheduled",
+    eventAttendanceMode: `https://schema.org/${event.format === "DISTANCIEL" ? "Online" : event.format === "HYBRIDE" ? "Mixed" : "Offline"}EventAttendanceMode`,
+    location: event.format === "DISTANCIEL"
+      ? { "@type": "VirtualLocation", url: `${base}/evenements/${id}` }
+      : { "@type": "Place", name: event.venue ?? event.city ?? undefined, address: { "@type": "PostalAddress", addressLocality: event.city ?? undefined, addressCountry: "FR" } },
+    image: [`${base}/evenements/${id}/opengraph-image`],
+    organizer: { "@type": "Organization", name: event.organization.name, url: `${base}/structures/${event.organization.id}` },
+    offers: { "@type": "Offer", price: 0, priceCurrency: "EUR", url: `${base}/evenements/${id}`, availability: `https://schema.org/${full || !event.registrationOpen ? "SoldOut" : "InStock"}`, validFrom: event.publishedAt?.toISOString() },
+    maximumAttendeeCapacity: event.capacity ?? undefined,
+  };
+
   return (
     <>
       <SiteHeader variant="public" />
+      <script type="application/ld+json" dangerouslySetInnerHTML={jsonLd(structured)} />
       <main className="stack">
         <PageHero
           eyebrow={`${t(eventTypeLabel(event.typeId))}${event.therapeuticArea ? ` · ${t(event.therapeuticArea)}` : ""} · ${t(FORMAT_LABEL[event.format])}`}

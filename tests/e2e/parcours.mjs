@@ -1941,6 +1941,24 @@ async function submitNewOrg(page, siren) {
   await pgc.end();
 }
 
+// ── Aperçus de partage et données structurées ──────────────────────────────
+{
+  const html = await (await fetch(`${BASE}/evenements/demo-ev-soiree-implanto`)).text();
+  const meta = (p) => html.match(new RegExp(`<meta property="${p}" content="([^"]*)"`))?.[1];
+  const ld = JSON.parse(html.match(/<script type="application\/ld\+json">([^<]*)<\/script>/)?.[1] ?? "null");
+  check("Événement : aperçu de partage (titre, image, lien)", (meta("og:title") ?? "").startsWith("Soirée implantologie") && /\/evenements\/demo-ev-soiree-implanto\/opengraph-image/.test(meta("og:image") ?? "") && /<link rel="canonical" href="[^"]*\/evenements\/demo-ev-soiree-implanto"/.test(html));
+  check("Événement : données structurées schema.org", ld?.["@type"] === "Event" && ld.location?.address?.addressLocality === "Lyon" && ld.organizer?.name === "Dentalys Implants" && ld.offers?.price === 0 && !!ld.startDate);
+  const img = await fetch(`${BASE}/evenements/demo-ev-soiree-implanto/opengraph-image`);
+  const buf = Buffer.from(await img.arrayBuffer());
+  check("Événement : image d'aperçu générée (1200 × 630)", img.status === 200 && img.headers.get("content-type") === "image/png" && buf.readUInt32BE(16) === 1200 && buf.readUInt32BE(20) === 630);
+  const art = await (await fetch(`${BASE}/actualites/transparence-sante-preparer-sa-declaration`)).text();
+  check("Actualité : aperçu et données structurées", art.includes('<meta property="og:type" content="article"/>') && art.includes('"@type":"NewsArticle"') && (await fetch(`${BASE}/actualites/transparence-sante-preparer-sa-declaration/opengraph-image`)).status === 200);
+  const home = await (await fetch(`${BASE}/`)).text();
+  check("Accueil : image d'aperçu par défaut et organisation", /<meta property="og:image" content="[^"]*\/opengraph-image/.test(home) && home.includes('"@type":"Organization"'));
+  const robots = await (await fetch(`${BASE}/robots.txt`)).text();
+  check("Robots : liens suivis et désinscription exclus", robots.includes("Disallow: /r/") && robots.includes("Disallow: /desinscription"));
+}
+
 // ── 4. Limitation des tentatives ───────────────────────────────────────────
 {
   const { ctx, page } = await session();
