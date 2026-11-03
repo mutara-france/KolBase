@@ -255,7 +255,7 @@ export default async function Page({ params }: { params: Promise<{ id: string; p
                             <input type="hidden" name="orgId" value={id} /><input type="hidden" name="linkId" value={e.id} />
                             <span className="text-sm">Paiement des honoraires</span>
                             <input name="amount" inputMode="decimal" defaultValue={e.feeCents != null ? String(e.feeCents / 100) : ""} aria-label="Montant payé (€ HT)" />
-                            <input name="date" type="date" defaultValue={new Date().toISOString().slice(0, 10)} aria-label="Date du paiement" />
+                            <input name="date" type="date" defaultValue={parisToday()} max={parisToday()} aria-label="Date du paiement" />
                             <button className="btn ghost small">Marquer payé</button>
                           </form>
                         ) : (
