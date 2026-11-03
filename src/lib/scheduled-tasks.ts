@@ -30,5 +30,7 @@ export async function runDueTasks(now = new Date()) {
   const old = new Date(now.getTime() - 30 * 24 * 3600 * 1000);
   const sessions = (await db.session.deleteMany({ where: { expiresAt: { lt: old } } })).count;
   const tokens = (await db.authToken.deleteMany({ where: { OR: [{ expiresAt: { lt: old } }, { usedAt: { lt: old } }] } })).count;
-  return { reminders, followUps, reports, purged: { sessions, tokens } };
+  // Mesure des services : visites des liens suivis conservées 13 mois (politique de confidentialité).
+  const clicks = (await db.serviceClick.deleteMany({ where: { createdAt: { lt: new Date(now.getTime() - 395 * 24 * 3600 * 1000) } } })).count;
+  return { reminders, followUps, reports, purged: { sessions, tokens, clicks } };
 }
