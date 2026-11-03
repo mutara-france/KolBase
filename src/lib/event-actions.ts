@@ -68,7 +68,8 @@ export async function createEvent(_: ActionState, form: FormData): Promise<Actio
     },
   });
   await audit(user.id, "event.create", "Event", event.id, { publish, benefits: benefits.length, ...(project ? { projectId: project.id } : {}) });
-  redirect(`/organisations/${orgId}/evenements/${event.id}`);
+  // Publié d'emblée : la fiche propose aussitôt de faire connaître l'événement (services KolBase).
+  redirect(`/organisations/${orgId}/evenements/${event.id}${publish ? "?publie=1" : ""}`);
 }
 
 /** Publier / dépublier, ouvrir / fermer les inscriptions. */
@@ -97,6 +98,7 @@ export async function setEventFlag(form: FormData) {
   await audit(user.id, `event.${flag}`, "Event", eventId);
   revalidatePath(`/organisations/${orgId}/evenements/${eventId}`);
   revalidatePath("/evenements");
+  if (flag === "publish" && roles.some((r) => EVENT_ORGANIZER_ROLES.includes(r))) redirect(`/organisations/${orgId}/evenements/${eventId}?publie=1`);
 }
 
 /** Confier l'événement à une agence mandatée (ses membres « Prestataire » n'accèdent qu'aux événements confiés). */

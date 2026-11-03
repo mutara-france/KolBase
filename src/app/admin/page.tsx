@@ -292,6 +292,7 @@ async function ServicesAdmin() {
               <label>Ordre<input name="position" type="number" defaultValue={f.position} /></label>
             </div>
             <label>Description<textarea name="description" rows={2} defaultValue={f.description} /></label>
+            {f.kind === "pack" && <p className="hint">Pack : {f.includes.map((c) => offers.find((x) => x.code === c)?.label ?? c).join(", ")} (séparément : {formatEUR(offers.filter((x) => f.includes.includes(x.code)).reduce((n, x) => n + x.priceCents, 0))} HT). Le prix du pack est réparti entre ces services au prorata et facturé au fil des réalisations.</p>}
             <div className="actions" style={{ marginTop: 0 }}>
               <label className="check"><input type="checkbox" name="active" defaultChecked={f.active} /> Proposé</label>
               <button className="btn small secondary">Enregistrer</button>

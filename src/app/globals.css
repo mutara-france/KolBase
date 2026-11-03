@@ -1045,3 +1045,12 @@ body:has(.sidebar) .site-footer { padding: 24px 32px; }
 .service-stat { background: var(--bg-subtle); border: 1px solid var(--line); border-radius: 10px; padding: 6px 10px; font-size: .85rem; color: var(--ink-soft); }
 .service-stat strong { color: var(--ink); font-size: 1rem; margin-right: 2px; }
 p.service-stats { color: var(--ink-soft); }
+
+/* Pack de services et proposition à la publication */
+.service-list li.service-pack { border-color: #cfc8f5; background: linear-gradient(180deg, var(--tint), #fff 75%); }
+.service-pack s { margin-left: 4px; }
+.published-offer { display: grid; grid-template-columns: auto 1fr auto; gap: 1rem 1.25rem; align-items: center; border-color: #cfc8f5; background: linear-gradient(180deg, var(--tint), #fff 70%); }
+.published-offer h2 { margin: 0 0 .25rem; font-size: 1.15rem; }
+.published-offer p { margin: 0; }
+.published-offer > svg { color: var(--indigo); }
+@media (max-width: 640px) { .published-offer { grid-template-columns: 1fr; } .published-offer > svg { display: none; } }

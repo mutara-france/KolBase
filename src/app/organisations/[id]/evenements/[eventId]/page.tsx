@@ -20,6 +20,7 @@ import { ServiceOffers } from "@/components/ServiceForms";
 import { cancelServiceOrder } from "@/lib/service-actions";
 import { ORDER_STATUS, orderStats } from "@/lib/services";
 import { conversion, reportParts } from "@/lib/service-report";
+import { packSaving } from "@/lib/service-pack";
 import { SendNowButton } from "@/components/FollowupForms";
 
 export const metadata = { title: "Événement — KolBase" };
@@ -27,8 +28,9 @@ export const metadata = { title: "Événement — KolBase" };
 /** Prestations dont le coût par participant se rapproche d'une hospitalité déclarée (repas, nuitée). */
 const HOSPITALITY_CATS = ["restauration", "hebergement"];
 
-export default async function Page({ params }: { params: Promise<{ id: string; eventId: string }> }) {
+export default async function Page({ params, searchParams }: { params: Promise<{ id: string; eventId: string }>; searchParams: Promise<{ publie?: string }> }) {
   const { id, eventId } = await params;
+  const { publie } = await searchParams;
   const { org, roles, user } = await requireMembership(id, EVENT_MANAGER_ROLES);
   const isOrganizer = roles.some((r) => EVENT_ORGANIZER_ROLES.includes(r));
   const event = await db.event.findFirst({
@@ -107,6 +109,21 @@ export default async function Page({ params }: { params: Promise<{ id: string; e
   const lastSent = (rs: typeof event.registrations, k: "reminderSentAt" | "followUpSentAt") => rs.reduce<Date | null>((m, r) => (r[k] && (!m || r[k]! > m) ? r[k] : m), null);
   const survey = surveySummary(event.surveys);
   const offers = isOrganizer && !event.internal ? await db.serviceOffer.findMany({ where: { active: true }, orderBy: { position: "asc" } }) : [];
+  // Services proposés ; un pack affiche le prix des services séparés et n'est commandable que si aucun n'est en cours.
+  const openFor = (offerId: string) => event.serviceOrders.some((x) => x.offerId === offerId && ["demandee", "planifiee"].includes(x.status));
+  const offerCards = offers.map((o) => {
+    const items = o.kind === "pack" ? offers.filter((x) => o.includes.includes(x.code)) : [];
+    const separate = items.length === o.includes.length ? items.reduce((n, x) => n + x.priceCents, 0) : 0;
+    return {
+      id: o.id, label: o.label, description: o.description, price: `${formatEUR(o.priceCents)} HT`, pack: o.kind === "pack",
+      compareAt: o.kind === "pack" && separate > o.priceCents ? `${formatEUR(separate)} HT` : undefined,
+      saving: o.kind === "pack" && separate > o.priceCents ? formatEUR(packSaving(items.map((x) => x.priceCents), o.priceCents)) : undefined,
+      ordered: o.kind === "pack" ? items.length > 0 && items.every((x) => openFor(x.id)) : openFor(o.id),
+      blocked: o.kind === "pack" && items.some((x) => openFor(x.id)),
+    };
+  }).filter((o) => !o.pack || o.compareAt != null || o.ordered);
+  const pack = offerCards.find((o) => o.pack && !o.blocked);
+  const justPublished = publie === "1" && isOrganizer && !event.internal && !!event.publishedAt && !event.serviceOrders.some((x) => ["demandee", "planifiee"].includes(x.status));
   const serviceStats = isOrganizer ? await orderStats(event.serviceOrders.filter((o) => o.status === "realisee")) : new Map();
   const newRfq = (cat?: string) => `/organisations/${id}/prestataires?onglet=nouvelle&evenement=${eventId}${cat ? `&cat=${cat}` : ""}`;
   const status = event.internal
@@ -163,6 +180,20 @@ export default async function Page({ params }: { params: Promise<{ id: string; e
             </div>
           </dl>
         </header>
+
+        {justPublished && offerCards.length > 0 && (
+          <section className="card published-offer" aria-labelledby="publie">
+            <Megaphone size={26} strokeWidth={1.6} aria-hidden />
+            <div>
+              <h2 id="publie">Votre événement est en ligne dans l&apos;agenda de KolBase</h2>
+              <p className="muted">
+                Faites-le connaître auprès des praticiens membres : e-mailing dédié, post sur les réseaux sociaux de KolBase, mise à la une de la page d&apos;accueil.
+                {pack ? <> {pack.label} : <strong>{pack.price}</strong> au lieu de {pack.compareAt}.</> : null}
+              </p>
+            </div>
+            <a className="btn" href="#services">Voir les services</a>
+          </section>
+        )}
 
         {!isOrganizer && <p className="notice ok">Événement confié à {event.agency?.name ?? "votre agence"} par {org.name}.</p>}
 
@@ -355,7 +386,7 @@ export default async function Page({ params }: { params: Promise<{ id: string; e
                     {event.serviceOrders.map((o) => (
                       <li key={o.id} className="flex-between service-order">
                         <span>
-                          <strong>{o.label}</strong> · {formatEUR(o.priceCents)} HT
+                          <strong>{o.label}</strong>{o.packLabel ? <span className="text-xs muted"> ({o.packLabel})</span> : null} · {formatEUR(o.priceCents)} HT
                           <span className="text-xs muted"> · commandé le {formatDate(o.createdAt)}{o.plannedAt && o.status === "planifiee" ? ` · prévu le ${formatDate(o.plannedAt)}` : ""}{o.doneAt ? ` · réalisé le ${formatDate(o.doneAt)}` : ""}</span>
                           {o.adminNote && <span className="text-xs muted"> · {o.adminNote}</span>}
                           {o.resultUrl && <> · <a href={o.resultUrl} target="_blank" rel="noopener noreferrer" className="text-xs">voir le résultat</a></>}
@@ -387,7 +418,7 @@ export default async function Page({ params }: { params: Promise<{ id: string; e
                     orgId={id}
                     eventId={eventId}
                     maxDate={event.startsAt.toISOString().slice(0, 10)}
-                    offers={offers.map((o) => ({ id: o.id, label: o.label, description: o.description, price: `${formatEUR(o.priceCents)} HT`, ordered: event.serviceOrders.some((x) => x.offerId === o.id && ["demandee", "planifiee"].includes(x.status)) }))}
+                    offers={offerCards}
                   />
                 )}
               </section>

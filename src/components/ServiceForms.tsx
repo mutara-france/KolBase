@@ -5,7 +5,7 @@ import { Megaphone, Sparkles } from "lucide-react";
 import { draftServiceText, orderService, sendNewsletter } from "@/lib/service-actions";
 import { Notice } from "@/components/AuthForms";
 
-type Offer = { id: string; label: string; description: string; price: string; ordered: boolean };
+type Offer = { id: string; label: string; description: string; price: string; ordered: boolean; pack?: boolean; compareAt?: string; saving?: string; blocked?: boolean };
 
 /** Catalogue des services KolBase sur un événement : commande avec consignes et date souhaitée. */
 export function ServiceOffers({ orgId, eventId, offers, maxDate }: { orgId: string; eventId: string; offers: Offer[]; maxDate: string }) {
@@ -16,12 +16,15 @@ export function ServiceOffers({ orgId, eventId, offers, maxDate }: { orgId: stri
       <Notice state={state} />
       <ul className="service-list">
         {offers.map((o) => (
-          <li key={o.id}>
+          <li key={o.id} className={o.pack ? "service-pack" : undefined}>
             <div>
               <strong>{o.label}</strong> <span className="service-price">{o.price}</span>
+              {o.compareAt && <> <s className="text-sm muted">{o.compareAt}</s> <span className="pill ok">Économisez {o.saving}</span></>}
               <p className="text-sm muted">{o.description}</p>
             </div>
-            {o.ordered ? <span className="pill electric">Commandé</span> : open === o.id ? null : <button type="button" className="btn small secondary" onClick={() => setOpen(o.id)}><Megaphone size={13} /> Commander</button>}
+            {o.ordered ? <span className="pill electric">Commandé</span>
+              : o.blocked ? <span className="text-xs muted">Un des services du pack est déjà commandé.</span>
+              : open === o.id ? null : <button type="button" className={`btn small${o.pack ? "" : " secondary"}`} onClick={() => setOpen(o.id)}><Megaphone size={13} /> Commander</button>}
             {open === o.id && !o.ordered && (
               <form action={action} className="form service-order-form" onSubmit={() => setOpen(null)}>
                 <input type="hidden" name="orgId" value={orgId} />
