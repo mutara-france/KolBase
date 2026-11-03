@@ -62,6 +62,9 @@ export const formatTime = (d: Date) => d.toLocaleTimeString("fr-FR", { timeZone:
 
 export const formatDate = (d: Date) => d.toLocaleDateString("fr-FR", { timeZone: TZ, day: "numeric", month: "short", year: "numeric" });
 
+/** Date du jour à Paris, au format « AAAA-MM-JJ » (valeur d'un champ date). */
+export const parisToday = (now = new Date()) => now.toLocaleDateString("sv-SE", { timeZone: TZ });
+
 /** Convertit une saisie « AAAA-MM-JJTHH:MM » (heure de Paris) en Date UTC. */
 export function parseParisDateTime(value: string): Date | null {
   const m = /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})$/.exec(value);

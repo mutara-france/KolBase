@@ -129,6 +129,15 @@ describe("événements", () => {
   });
 });
 
+describe("dates à Paris", () => {
+  it("la date du jour suit le fuseau de Paris, pas l'UTC", async () => {
+    const { parisToday } = await import("@/lib/events");
+    expect(parisToday(new Date("2026-11-03T23:30:00Z"))).toBe("2026-11-04");
+    expect(parisToday(new Date("2026-07-14T21:59:00Z"))).toBe("2026-07-14");
+    expect(parisToday(new Date("2026-07-14T22:01:00Z"))).toBe("2026-07-15");
+  });
+});
+
 describe("navigation et rôles", () => {
   it("un prestataire n'a que l'accueil et les devis", () => {
     expect(orgNavItems("o", ["ADMIN"], "PRESTATAIRE").map((i) => i.key)).toEqual(["accueil", "devis"]);

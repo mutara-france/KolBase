@@ -6,7 +6,7 @@ import { audit, requireUser } from "@/lib/auth";
 import { requireMembership } from "@/lib/orgs";
 import { PROJECT_ROLES } from "@/lib/projects";
 import { eurToCents, str } from "@/lib/form";
-import { parseParisDateTime } from "@/lib/events";
+import { parisToday, parseParisDateTime } from "@/lib/events";
 import { notifyFeePaid, notifyTransparencyIssue } from "@/lib/notifications";
 import { blockedFor, hit } from "@/lib/rate-limit";
 import { getT } from "@/lib/i18n/server";
@@ -85,9 +85,12 @@ export async function markExpertPaid(form: FormData) {
     await audit(user.id, "expert.unpaid", "ProjectExpert", link.id);
   } else {
     const cents = eurToCents(str(form, "amount"), { allowZero: false }) ?? link.feeCents;
+    // Paiement daté du jour : l'heure courante (midi à Paris serait « dans le futur » le matin).
+    const now = new Date();
     const dateRaw = str(form, "date");
-    const date = dateRaw ? parseParisDateTime(`${dateRaw}T12:00`) : new Date();
-    if (!cents || !date || date > new Date()) return;
+    if (dateRaw > parisToday(now)) return;
+    const date = !dateRaw || dateRaw === parisToday(now) ? now : parseParisDateTime(`${dateRaw}T12:00`);
+    if (!cents || !date) return;
     await db.projectExpert.update({ where: { id: link.id }, data: { paidAt: date, paidCents: cents } });
     await audit(user.id, "expert.paid", "ProjectExpert", link.id, { cents });
     notifyFeePaid(link.id);
