@@ -1076,9 +1076,9 @@ p.service-stats { color: var(--ink-soft); }
 /* Textes légaux : sommaire, listes, tableaux */
 .legal-toc ol { margin: 0; padding-left: 1.4rem; columns: 2 16rem; column-gap: 2rem; font-size: 14px; }
 .legal-toc li { margin: 2px 0; break-inside: avoid; }
-.legal-list { display: grid; gap: 6px; margin: 8px 0; }
-.legal-list li { padding-left: 1rem; position: relative; }
-.legal-list li::before { content: "–"; position: absolute; left: 0; color: var(--ink-subtle); }
+.legal-list { display: grid; gap: 6px; margin: 8px 0 14px; padding-left: 1.2rem; list-style: disc; }
+.legal-list li { padding-left: 2px; }
+.legal-list li::marker { color: var(--ink-subtle); }
 .legal-table { font-size: 13px; margin: 8px 0; }
 .legal-table { display: table; }
 .legal-table td, .legal-table th { vertical-align: top; white-space: normal; padding: 8px 10px; }
