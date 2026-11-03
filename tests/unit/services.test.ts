@@ -15,3 +15,18 @@ describe("bilan des services", () => {
     expect(conversion({ ...s, clicks: 0 })).toBeNull();
   });
 });
+
+import { allocate, packSaving } from "@/lib/service-pack";
+
+describe("pack de services", () => {
+  it("répartit le prix au prorata, sans perte d'arrondi", () => {
+    const parts = allocate([69000, 29000, 19000], 99000);
+    expect(parts.reduce((a, b) => a + b, 0)).toBe(99000);
+    expect(parts).toEqual([58385, 24538, 16077]);
+    expect(allocate([1, 1, 1], 100)).toEqual([33, 33, 34]);
+  });
+  it("calcule l'économie", () => {
+    expect(packSaving([69000, 29000, 19000], 99000)).toBe(18000);
+    expect(packSaving([100], 200)).toBe(0);
+  });
+});

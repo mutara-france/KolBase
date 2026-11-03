@@ -8,6 +8,7 @@ import { requirePlatformAdmin } from "@/lib/platform";
 import { EVENT_ORGANIZER_ROLES, formatDate, formatTime } from "@/lib/events";
 import { eurToCents, str } from "@/lib/form";
 import { sendMail } from "@/lib/mail";
+import { allocate } from "@/lib/service-pack";
 import { invoiceOrder, newsletterAudience, newTrackCode, OPEN_ORDER, trackedPath, unsubscribeToken } from "@/lib/services";
 import { notifyPlatformAdmins, notifyServiceOrder } from "@/lib/notifications";
 import { aiComplete, aiEnabled } from "@/lib/ai";
@@ -33,15 +34,24 @@ export async function orderService(_: FormState, form: FormData): Promise<FormSt
   if (event.startsAt < new Date()) return { error: "L'événement est passé." };
   const offer = await db.serviceOffer.findFirst({ where: { id: str(form, "offerId"), active: true } });
   if (!offer) return { error: "Service indisponible." };
-  if (await db.serviceOrder.findFirst({ where: { eventId: event.id, offerId: offer.id, status: { in: OPEN_ORDER } } })) return { error: "Ce service est déjà commandé pour cet événement." };
+  // Pack : un service par élément compris, prix du pack réparti au prorata (facturé au fil des réalisations).
+  const items = offer.kind === "pack" ? await db.serviceOffer.findMany({ where: { code: { in: offer.includes }, active: true, kind: { not: "pack" } }, orderBy: { position: "asc" } }) : [offer];
+  if (items.length === 0 || (offer.kind === "pack" && items.length !== offer.includes.length)) return { error: "Service indisponible." };
+  if (await db.serviceOrder.findFirst({ where: { eventId: event.id, offerId: { in: items.map((i) => i.id) }, status: { in: OPEN_ORDER } } }))
+    return { error: offer.kind === "pack" ? "Un des services du pack est déjà commandé pour cet événement." : "Ce service est déjà commandé pour cet événement." };
   const wishedRaw = str(form, "wishedAt");
   const wishedAt = /^\d{4}-\d{2}-\d{2}$/.test(wishedRaw) ? new Date(`${wishedRaw}T09:00:00Z`) : null;
   if (wishedAt && (wishedAt < new Date(Date.now() - 86400e3) || wishedAt > event.startsAt)) return { error: "Date souhaitée : entre aujourd'hui et l'événement." };
-  const order = await db.serviceOrder.create({
-    data: { organizationId: orgId, eventId: event.id, offerId: offer.id, label: offer.label, priceCents: offer.priceCents, brief: str(form, "brief").slice(0, 2000) || null, wishedAt, orderedById: user.id, trackCode: newTrackCode() },
-  });
-  await audit(user.id, "service.order", "ServiceOrder", order.id, { offer: offer.code, priceCents: offer.priceCents });
-  notifyPlatformAdmins(`Service commandé : ${offer.label}`, `${user.firstName} ${user.lastName} commande « ${offer.label} » (${(offer.priceCents / 100).toLocaleString("fr-FR")} € HT) pour l'événement « ${event.title} » du ${formatDate(event.startsAt)}.`, "/admin?onglet=services");
+  const prices = offer.kind === "pack" ? allocate(items.map((i) => i.priceCents), offer.priceCents) : [offer.priceCents];
+  const brief = str(form, "brief").slice(0, 2000) || null;
+  const orders = await db.$transaction(items.map((item, i) => db.serviceOrder.create({
+    data: {
+      organizationId: orgId, eventId: event.id, offerId: item.id, label: item.label, priceCents: prices[i], brief, wishedAt, orderedById: user.id,
+      trackCode: newTrackCode(), packLabel: offer.kind === "pack" ? offer.label : null,
+    },
+  })));
+  for (const o of orders) await audit(user.id, "service.order", "ServiceOrder", o.id, { offer: offer.code, priceCents: o.priceCents });
+  notifyPlatformAdmins(`Service commandé : ${offer.label}`, `${user.firstName} ${user.lastName} commande « ${offer.label} » (${(offer.priceCents / 100).toLocaleString("fr-FR")} € HT) pour l'événement « ${event.title} » du ${formatDate(event.startsAt)}.${offer.kind === "pack" ? `\n\nServices compris : ${items.map((i) => i.label).join(", ")}.` : ""}`, "/admin?onglet=services");
   refresh(orgId, event.id);
   return { ok: "Commande transmise à l'équipe KolBase : vous serez prévenu de sa planification." };
 }
@@ -52,8 +62,13 @@ export async function cancelServiceOrder(form: FormData) {
   const { user } = await requireMembership(orgId, EVENT_ORGANIZER_ROLES);
   const o = await db.serviceOrder.findFirst({ where: { id: str(form, "orderId"), organizationId: orgId, status: "demandee" } });
   if (!o) return;
-  await db.serviceOrder.update({ where: { id: o.id }, data: { status: "annulee" } });
-  await audit(user.id, "service.cancel", "ServiceOrder", o.id);
+  // Service d'un pack : le pack entier est annulé (le prix réduit n'a de sens qu'ensemble), s'il n'est pas commencé.
+  const siblings = o.packLabel
+    ? await db.serviceOrder.findMany({ where: { eventId: o.eventId, packLabel: o.packLabel, orderedById: o.orderedById, createdAt: { gte: new Date(o.createdAt.getTime() - 5000), lte: new Date(o.createdAt.getTime() + 5000) } }, select: { id: true, status: true } })
+    : [{ id: o.id, status: o.status }];
+  if (siblings.some((x) => x.status !== "demandee" && x.status !== "annulee")) return;
+  await db.serviceOrder.updateMany({ where: { id: { in: siblings.map((x) => x.id) }, status: "demandee" }, data: { status: "annulee" } });
+  await audit(user.id, "service.cancel", "ServiceOrder", o.id, { pack: o.packLabel ?? undefined });
   refresh(orgId, o.eventId);
 }
 

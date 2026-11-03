@@ -886,7 +886,8 @@ model Subscription {
 model ServiceOffer {
   id          String         @id @default(cuid())
   code        String         @unique // newsletter | reseaux | une | …
-  kind        String         // newsletter (lettre aux membres) | social (réseaux sociaux) | une (accueil) | autre
+  kind        String         // newsletter (lettre aux membres) | social (réseaux sociaux) | une (accueil) | pack | autre
+  includes    String[]       @default([]) // pack : codes des services compris
   label       String
   description String
   priceCents  Int            // HT
@@ -919,6 +920,7 @@ model ServiceOrder {
   invoicedAt     DateTime?
   invoiceRef     String?      // ligne de facture Stripe, ou « hors Stripe »
   trackCode      String?      @unique // lien suivi /r/<code> : clics et inscriptions attribuées
+  packLabel      String?      // commandé dans un pack (prix réparti entre les services du pack)
   reportSentAt   DateTime?    // bilan envoyé à l'organisateur
   createdAt      DateTime     @default(now())
   updatedAt      DateTime     @updatedAt

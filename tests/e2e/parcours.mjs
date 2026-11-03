@@ -1780,7 +1780,7 @@ async function submitNewOrg(page, siren) {
   await page.goto(`${BASE}/organisations/demo-org-dentalys/evenements/demo-ev-soiree-implanto`);
   check("Événement : services KolBase proposés", (await text(page)).includes("Faire connaître l'événement") && (await text(page)).includes("E-mailing dédié aux membres KolBase"));
   const orderIt = async (label) => {
-    const li = page.locator(`.service-list li:has-text("${label}")`);
+    const li = page.locator(`.service-list li:not(.service-pack):has-text("${label}")`);
     await li.locator('button:has-text("Commander")').click();
     await li.locator('textarea[name="brief"]').fill("Mettre en avant les cas cliniques complexes.");
     await li.locator('button:has-text("Commander —")').click();
@@ -1836,7 +1836,7 @@ async function submitNewOrg(page, siren) {
   const cdra = await session();
   await login(cdra.page, "pierre.vidal@demo.kolbase.local");
   await cdra.page.goto(`${BASE}/organisations/demo-org-cdra/evenements/demo-ev-journee-cdra`);
-  const li = cdra.page.locator('.service-list li:has-text("réseaux sociaux")');
+  const li = cdra.page.locator('.service-list li:not(.service-pack):has-text("réseaux sociaux")');
   await li.locator('button:has-text("Commander")').click();
   await li.locator('button:has-text("Commander —")').click();
   await cdra.page.waitForTimeout(1000);
@@ -1903,6 +1903,41 @@ async function submitNewOrg(page, siren) {
   await adm.page.goto(`${BASE}/admin?onglet=services`);
   check("Admin : bilan des services réalisés", ((await adm.page.locator("main").textContent()) ?? "").includes("1 inscription par ce lien · bilan envoyé le"));
   await adm.ctx.close();
+  await pgc.end();
+}
+
+// ── Services proposés à la publication et pack visibilité ──────────────────
+{
+  const pgc = new pg.Client({ connectionString: process.env.DATABASE_URL });
+  await pgc.connect();
+  const { ctx, page } = await session();
+  await login(page, "anne.chevalier@demo.kolbase.local");
+  const evUrl = `${BASE}/organisations/demo-org-academie/evenements/demo-ev-tp-endo`;
+  await page.goto(evUrl);
+  check("Fiche publiée : pas de proposition sans publication récente", !(await text(page)).includes("Votre événement est en ligne"));
+  await page.click('button:has-text("Retirer de l\'agenda")');
+  await page.waitForTimeout(800);
+  await Promise.all([page.waitForURL(/\?publie=1/), page.click('button:has-text("Publier dans l\'agenda")')]);
+  const t = (await text(page)).replace(/\s/g, " ");
+  check("Publication : services proposés aussitôt", t.includes("Votre événement est en ligne dans l'agenda de KolBase") && t.includes("Pack visibilité : 990 € HT au lieu de 1 170 € HT"), t.slice(0, 120));
+  const pack = page.locator('.service-list li.service-pack');
+  check("Pack : économie affichée", (await pack.innerText()).replace(/\s/g, " ").includes("Économisez 180 €"), (await pack.innerText()).replace(/\s+/g, " "));
+  await pack.locator('button:has-text("Commander")').click();
+  await pack.locator('textarea[name="brief"]').fill("Cibler les endodontistes.");
+  await pack.locator('button:has-text("Commander —")').click();
+  await page.waitForTimeout(1200);
+  const rows = (await pgc.query(`select label, "priceCents", "packLabel", status from "ServiceOrder" where "eventId" = 'demo-ev-tp-endo' order by "priceCents" desc`)).rows;
+  check("Pack : trois services commandés, prix réparti", rows.length === 3 && rows.reduce((n, r) => n + r.priceCents, 0) === 99000 && rows.every((r) => r.packLabel === "Pack visibilité" && r.status === "demandee"), JSON.stringify(rows.map((r) => r.priceCents)));
+  check("Pack : équipe KolBase prévenue", !!(await waitMail("anne.chevalier@demo.kolbase.local", "Service commandé : Pack visibilité")));
+  await page.goto(evUrl);
+  const after = await text(page);
+  check("Pack : plus commandable, services listés", after.includes("(Pack visibilité)") && (await page.locator('.service-list li.service-pack button:has-text("Commander")').count()) === 0 && !after.includes("Votre événement est en ligne"));
+  // Annuler un service du pack annule le pack entier.
+  await page.locator('li.service-order:has-text("Publication sur les réseaux sociaux") button:has-text("Annuler")').click();
+  await page.waitForTimeout(1000);
+  const st = (await pgc.query(`select distinct status from "ServiceOrder" where "eventId" = 'demo-ev-tp-endo'`)).rows.map((r) => r.status);
+  check("Pack : annulation de l'ensemble", st.length === 1 && st[0] === "annulee", st.join(","));
+  await ctx.close();
   await pgc.end();
 }
 
