@@ -127,4 +127,7 @@ export const COMMON: Record<string, string> = {
   "En préparation": "In preparation",
   "HT, conventions pas encore signées": "excl. VAT, agreements not yet signed",
   "Honoraires proposés, à accepter · {org}": "Proposed fees, awaiting your acceptance · {org}",
+  "Convention signée déposée : l'organisation confirme la signature du dossier.": "Signed agreement uploaded: the organisation will confirm the file as signed.",
+  "Convention signée (PDF)": "Signed agreement (PDF)",
+  "Convention signée.": "Agreement signed.",
 };

@@ -3,7 +3,7 @@ import { db } from "@/lib/db";
 import { audit } from "@/lib/auth";
 import { conventionRef } from "@/lib/convention-data";
 import { putObject, storageEnabled } from "@/lib/storage";
-import { canApplyStatus, downloadSignedDocument, getSignatureRequest } from "@/lib/yousign";
+import { canApplyStatus, cancelSignatureRequest, downloadSignedDocument, getSignatureRequest, signatureEnabled, signatureOpen } from "@/lib/yousign";
 import type { ConventionSignature, SignatureStatus } from "@/generated/prisma/client";
 
 type Sig = ConventionSignature & { projectExpert: { projectId: string } };
@@ -61,4 +61,38 @@ export async function syncSignature(sig: Sig) {
   const r = await getSignatureRequest(sig.requestId);
   if (r.status) await applySignatureStatus(sig, r.status, { completedAt: r.completedAt, note: r.declineReason });
   return r.status ?? sig.status;
+}
+
+/**
+ * Convention signée par un autre moyen (convention signée déposée, dossier passé « Signé ») ou dossier abandonné :
+ * la demande de signature électronique encore ouverte est annulée chez Yousign (les signataires n'ont plus à signer)
+ * ou, si l'annulation échoue, marquée caduque dans KolBase. Une demande en réalité déjà signée reprend son statut.
+ */
+export async function closeOpenSignatures(where: { projectExpertId: string } | { projectId: string }, why: string) {
+  const open = await db.conventionSignature.findMany({
+    where: { status: { in: ["ongoing", "draft"] }, ...("projectExpertId" in where ? { projectExpertId: where.projectExpertId } : { projectExpert: { projectId: where.projectId } }) },
+    include: { projectExpert: { select: { projectId: true } } },
+  });
+  let closed = 0;
+  for (const sig of open) {
+    if (!signatureOpen(sig.status)) continue;
+    let note = `Demande caduque : ${why}.`;
+    if (sig.status === "ongoing" && signatureEnabled() && !isPendingRequest(sig.requestId)) {
+      try {
+        await cancelSignatureRequest(sig.requestId, `KolBase : ${why}.`);
+        note = `Demande annulée : ${why}.`;
+      } catch (e) {
+        // Déjà close chez Yousign (signée, refusée…) : on reprend son statut réel ; sinon, caduque dans KolBase.
+        const real = await syncSignature(sig).catch(() => null);
+        if (real && !signatureOpen(real)) continue;
+        console.error("[signature] annulation impossible, demande marquée caduque", sig.requestId, e);
+      }
+    }
+    const { count } = await db.conventionSignature.updateMany({ where: { id: sig.id, status: { in: ["ongoing", "draft"] } }, data: { status: "canceled", note } });
+    if (count) {
+      closed++;
+      await audit(null, "signature.closed", "ProjectExpert", sig.projectExpertId, { projectId: sig.projectExpert.projectId, requestId: sig.requestId, note });
+    }
+  }
+  return closed;
 }

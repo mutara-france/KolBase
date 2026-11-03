@@ -17,6 +17,7 @@ import { notifyCompliance, notifyExpertAnswer, notifyMessage, notifyNewProposal,
 import { engagementGate } from "@/lib/billing";
 import type { GateLink } from "@/lib/billing-plans";
 import { getT } from "@/lib/i18n/server";
+import { closeOpenSignatures } from "@/lib/signature";
 
 export type ActionState = { error?: string; ok?: string; fix?: GateLink } | undefined;
 
@@ -187,6 +188,8 @@ export async function advanceProject(form: FormData) {
   // Les experts ayant donné leur accord suivent le statut du dossier.
   await db.projectExpert.updateMany({ where: { projectId, status: { notIn: ["DECLINE", "ATT_EXPERTS"] } }, data: { status: t.to } });
   if (key === "abandon") await db.projectExpert.updateMany({ where: { projectId, status: "ATT_EXPERTS" }, data: { status: "DECLINE" } });
+  // Dossier signé (conventions déposées ou attestées) ou abandonné : plus aucune signature électronique en attente.
+  if (key === "signed" || key === "abandon") await closeOpenSignatures({ projectId }, key === "signed" ? "dossier passé « Signé »" : "dossier abandonné");
   await audit(user.id, `project.${key}`, "Project", projectId, { from: project.status, to: t.to, note: note || undefined, ...(attest ? { attestation: "convention signée conservée hors KolBase" } : {}), ...(selfValidated ? { selfValidated: true } : {}) });
   if (key === "submit" || key === "validate" || key === "block") notifyCompliance(projectId, key, user.id);
   revalidatePath(`/organisations/${orgId}/dossiers/${projectId}`);

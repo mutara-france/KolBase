@@ -1,10 +1,11 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { dpaCurrent, dpaHref, dpaMessage, DPA_VERSION } from "@/lib/dpa";
 import { BLOCKED_UNTIL } from "@/lib/billing-plans";
 import { interestWarning, isEngaged, isSigned } from "@/lib/projects";
 import { benefitLimit, complianceSettings, hospitalityRegime } from "@/lib/compliance";
 import { hospitalityRegimeClause } from "@/lib/convention-pdf";
 import { makeT } from "@/lib/i18n";
+import { cancelSignatureRequest, signatureOpen } from "@/lib/yousign";
 import { costHeadcount, expertSplit, feeTotals, isAbsent, speakerConfirmed, toDeclare } from "@/lib/indicators";
 
 describe("contrat de sous-traitance exigé avant d'engager un tiers", () => {
@@ -110,5 +111,31 @@ describe("une définition par indicateur", () => {
     expect(speakerConfirmed({ status: "retained" }, { status: "DECLINE" })).toBe(false);
     expect(speakerConfirmed({ status: "retained" }, undefined)).toBe(false);
     expect(speakerConfirmed({ status: "pending" }, { status: "ACCORD" })).toBe(false);
+  });
+});
+
+describe("signature électronique close quand la convention est signée autrement", () => {
+  it("demande ouverte : en cours ou envoi inachevé", () => {
+    expect(signatureOpen("ongoing") && signatureOpen("draft")).toBe(true);
+    expect(["done", "declined", "expired", "canceled", null, undefined].some((s) => signatureOpen(s as never))).toBe(false);
+  });
+
+  it("annulation chez Yousign : POST …/cancel avec une raison et une note", async () => {
+    const calls: { url: string; init: RequestInit }[] = [];
+    vi.stubEnv("YOUSIGN_API_KEY", "cle");
+    vi.stubEnv("YOUSIGN_API_URL", "https://api-sandbox.yousign.app/v3/");
+    vi.stubGlobal("fetch", async (url: string, init: RequestInit) => {
+      calls.push({ url, init });
+      return new Response(JSON.stringify({ id: "sr 1", status: "canceled" }), { status: 201, headers: { "Content-Type": "application/json" } });
+    });
+    try {
+      expect(await cancelSignatureRequest("sr 1", "KolBase : convention signée déposée dans KolBase.")).toBe("canceled");
+      expect(calls[0].url).toBe("https://api-sandbox.yousign.app/v3/signature_requests/sr%201/cancel");
+      expect(calls[0].init.method).toBe("POST");
+      expect(JSON.parse(String(calls[0].init.body))).toEqual({ reason: "other", custom_note: "KolBase : convention signée déposée dans KolBase." });
+    } finally {
+      vi.unstubAllGlobals();
+      vi.unstubAllEnvs();
+    }
   });
 });

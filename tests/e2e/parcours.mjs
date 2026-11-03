@@ -2673,6 +2673,59 @@ async function submitNewOrg(page, siren) {
     await m.ctx.close();
   }
 
+  // 5. Signature électronique close quand la convention signée est déposée à la main ou que le dossier passe « Signé ».
+  {
+    const pdf = Buffer.from("%PDF-1.4\n1 0 obj << /Type /Catalog >> endobj\ntrailer << /Root 1 0 R >>\n%%EOF\n");
+    await pgc.query(`insert into "Project" (id, "organizationId", title, "typeId", status, "updatedAt") values ('e2e-lot2-prj-sig', 'demo-org-academie', 'Formation lot 2 en signature', 'dpc', 'SIGNATURE', now())`);
+    await pgc.query(`insert into "ProjectExpert" (id, "projectId", "practitionerId", status, "feeCents", days) values ('e2e-lot2-sig-roux', 'e2e-lot2-prj-sig', 'demo-p-roux', 'SIGNATURE', 150000, 1), ('e2e-lot2-sig-nguyen', 'e2e-lot2-prj-sig', 'demo-p-nguyen', 'SIGNATURE', 120000, 1)`);
+    const { ctx, page } = await session();
+    await login(page, "anne.chevalier@demo.kolbase.local");
+    const url = `${BASE}/organisations/demo-org-academie/dossiers/e2e-lot2-prj-sig`;
+    const card = (name) => page.locator(`section.expert-card:has-text("${name}")`);
+    for (const name of ["Mathieu Roux", "Linh Nguyen"]) {
+      await page.goto(url);
+      await card(name).locator('button:has-text("Envoyer en signature électronique")').click();
+      await card(name).locator('.pill:has-text("En cours de signature")').waitFor({ timeout: 20000 }).catch(() => {});
+    }
+    const reqOf = (link) => [...signatureRequests.values()].filter((r) => r.body.external_id === link).at(-1);
+    check("Signature électronique : deux demandes en cours", reqOf("e2e-lot2-sig-roux")?.status === "ongoing" && reqOf("e2e-lot2-sig-nguyen")?.status === "ongoing");
+    // Dépôt à la main de la convention signée de Dr Roux : sa demande est annulée chez Yousign.
+    await page.goto(url);
+    const upload = 'form:has(input[name="file"])';
+    await page.selectOption(`${upload} select[name="kind"]`, "CONVENTION_SIGNEE");
+    await page.selectOption(`${upload} select[name="linkId"]`, "e2e-lot2-sig-roux");
+    await page.setInputFiles(`${upload} input[name="file"]`, { name: "convention-roux-lot2-signee.pdf", mimeType: "application/pdf", buffer: pdf });
+    await page.click(`${upload} button:has-text("Déposer")`);
+    await page.waitForTimeout(1500);
+    await page.goto(url);
+    const roux = reqOf("e2e-lot2-sig-roux");
+    const rouxDb = await q1(`select status, note from "ConventionSignature" where "projectExpertId" = 'e2e-lot2-sig-roux'`);
+    check("Convention déposée signée : demande annulée chez Yousign (raison et note)", roux?.status === "canceled" && roux?.cancelation?.reason === "other" && /convention signée déposée/.test(roux?.cancelation?.custom_note ?? "") && rouxDb.status === "canceled", JSON.stringify({ yousign: roux?.status, db: rouxDb }));
+    const rc = await card("Mathieu Roux").innerText();
+    check("Organisation : demande close affichée, plus de nouvel envoi proposé", rc.includes("Demande annulée : convention signée déposée dans KolBase") && !rc.includes("Envoyer de nouveau en signature électronique"), rc.replace(/\s+/g, " ").slice(0, 300));
+    const ex = await session();
+    await login(ex.page, "mathieu.roux@demo.kolbase.local");
+    await ex.page.goto(`${BASE}/sollicitations/e2e-lot2-sig-roux`);
+    let et = await text(ex.page);
+    check("Expert : plus « en attente de votre signature », « Convention signée (PDF) »", !et.includes("Convention en attente de votre signature") && (await ex.page.locator('a:has-text("Convention signée (PDF)")').count()) >= 1 && et.includes("Convention signée déposée : l'organisation confirme la signature du dossier"));
+    await ex.ctx.close();
+    // Convention de Dr Nguyen déposée sans clore la demande (cas antérieur), puis dossier passé « Signé » : demande close.
+    await pgc.query(`insert into "Document" (id, "projectId", "projectExpertId", kind, name, "contentType", size, "storageKey") values ('e2e-lot2-doc-nguyen', 'e2e-lot2-prj-sig', 'e2e-lot2-sig-nguyen', 'CONVENTION_SIGNEE', 'convention-nguyen-signee.pdf', 'application/pdf', ${pdf.length}, 'dossiers/e2e-lot2-prj-sig/nguyen.pdf')`);
+    await page.goto(url);
+    await page.click('button:has-text("Convention signée")');
+    await page.waitForTimeout(1500);
+    const ng = reqOf("e2e-lot2-sig-nguyen");
+    const ngDb = await q1(`select s.status sig, p.status prj from "ConventionSignature" s join "ProjectExpert" e on e.id = s."projectExpertId" join "Project" p on p.id = e."projectId" where s."projectExpertId" = 'e2e-lot2-sig-nguyen'`);
+    check("Dossier passé « Signé » : la demande encore en cours est annulée", ng?.status === "canceled" && ngDb.sig === "canceled" && ngDb.prj === "SIGNE", JSON.stringify({ yousign: ng?.status, db: ngDb }));
+    const ln = await session();
+    await login(ln.page, "linh.nguyen@demo.kolbase.local");
+    await ln.page.goto(`${BASE}/sollicitations/e2e-lot2-sig-nguyen`);
+    et = await text(ln.page);
+    check("Expert (dossier signé) : pas de demande en attente, convention signée (PDF)", !et.includes("Convention en attente de votre signature") && (await ln.page.locator('a[href="/documents/e2e-lot2-doc-nguyen"]').count()) >= 1);
+    await ln.ctx.close();
+    await ctx.close();
+  }
+
   await pgc.end();
 }
 

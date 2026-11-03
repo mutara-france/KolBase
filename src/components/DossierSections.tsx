@@ -244,13 +244,14 @@ const SIGNATURE_TONE = { draft: "wait", ongoing: "wait", done: "ok", declined: "
 /**
  * Signature électronique de la convention d'un expert, côté organisation : envoi (dossier « En signature »),
  * suivi, mise à jour du statut et téléchargement de la convention signée. Rien sans Yousign configuré ni demande passée.
+ * Une convention signée déposée à la main clôt la demande (plus d'envoi proposé).
  */
-export function ConventionSignatureBlock({ orgId, linkId, signature, projectStatus, canSend }: {
-  orgId: string; linkId: string; signature: ConventionSignature | null; projectStatus: ProjectStatus; canSend: boolean;
+export function ConventionSignatureBlock({ orgId, linkId, signature, projectStatus, canSend, deposited = false }: {
+  orgId: string; linkId: string; signature: ConventionSignature | null; projectStatus: ProjectStatus; canSend: boolean; deposited?: boolean;
 }) {
   const enabled = signatureEnabled();
   const s = signature;
-  const sendable = enabled && canSend && projectStatus === "SIGNATURE" && canSendAgain(s?.status);
+  const sendable = enabled && canSend && projectStatus === "SIGNATURE" && !deposited && canSendAgain(s?.status);
   if (!s && !sendable) return null;
   return (
     <div className="stack-sm mt-3">
@@ -268,7 +269,7 @@ export function ConventionSignatureBlock({ orgId, linkId, signature, projectStat
       )}
       {s?.status === "declined" && <p className="text-xs">Un signataire a refusé de signer{s.note ? ` : « ${s.note} »` : ""}.</p>}
       {s?.status === "expired" && <p className="text-xs">La demande a expiré sans être signée.</p>}
-      {s?.status === "canceled" && <p className="text-xs">La demande a été annulée chez Yousign.</p>}
+      {s?.status === "canceled" && <p className="text-xs">{s.note ?? "La demande a été annulée chez Yousign."}</p>}
       {s?.status === "draft" && <p className="text-xs">{s.note ? "L'envoi précédent a échoué." : "Envoi en cours ou interrompu."}</p>}
       {enabled && s?.status === "ongoing" && <RefreshSignatureForm linkId={linkId} />}
       {sendable && <SendSignatureForm orgId={orgId} linkId={linkId} again={!!s && s.status !== "draft"} />}
@@ -276,11 +277,21 @@ export function ConventionSignatureBlock({ orgId, linkId, signature, projectStat
   );
 }
 
-/** Côté expert : où en est la signature électronique de sa convention. */
-export async function ExpertSignatureBlock({ linkId, signature, email }: { linkId: string; signature: ConventionSignature | null; email: string }) {
+/**
+ * Côté expert : où en est la signature électronique de sa convention. Une fois la convention signée (dépôt de la
+ * convention signée, dossier « Signé »), plus de demande « en attente » : le lien vers la convention signée.
+ */
+export async function ExpertSignatureBlock({ linkId, signature, email, projectStatus, signedDocId = null }: { linkId: string; signature: ConventionSignature | null; email: string; projectStatus: ProjectStatus; signedDocId?: string | null }) {
   const s = signature;
-  if (!s || s.status === "draft") return null;
   const { t, locale } = await getT();
+  if (s?.status !== "done" && (signedDocId || ["SIGNE", "TERMINE"].includes(projectStatus)))
+    return (
+      <p className="notice ok">
+        {t("Convention signée.")}{" "}
+        {signedDocId && <a href={`/documents/${signedDocId}`}>{t("Convention signée (PDF)")}</a>}
+      </p>
+    );
+  if (!s || s.status === "draft") return null;
   if (s.status === "done")
     return (
       <p className="notice ok">

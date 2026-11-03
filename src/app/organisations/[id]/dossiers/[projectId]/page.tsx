@@ -86,6 +86,7 @@ export default async function Page({ params, searchParams }: { params: Promise<{
         include: {
           practitioner: { include: { user: { select: { firstName: true, lastName: true } } } },
           signature: true,
+          documents: { where: { kind: "CONVENTION_SIGNEE" }, select: { id: true }, take: 1 },
           feeNote: { select: { id: true, number: true, totalCents: true, vatBp: true, issuedAt: true } },
           messages: { include: { author: { select: { firstName: true, lastName: true } } }, orderBy: { createdAt: "asc" } },
         },
@@ -262,7 +263,7 @@ export default async function Page({ params, searchParams }: { params: Promise<{
                             version anglaise
                           </a>
                         </span>
-                        <ConventionSignatureBlock orgId={id} linkId={e.id} signature={e.signature} projectStatus={project.status} canSend={isProject} />
+                        <ConventionSignatureBlock orgId={id} linkId={e.id} signature={e.signature} projectStatus={project.status} canSend={isProject} deposited={e.documents.length > 0} />
                       </div>
                     )}
                     {active && ["SIGNE", "TERMINE"].includes(e.status) && (
