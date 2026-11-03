@@ -7,6 +7,9 @@ import { PROFESSIONS } from "@/lib/professions";
 import { COUNTRIES } from "@/lib/countries";
 import { useT } from "@/components/I18nProvider";
 
+/** Lien entre connexion et création de compte : la page d'origine (`next`) suit. */
+const withNext = (path: string, next?: string) => (next ? `${path}?next=${encodeURIComponent(next)}` : path);
+
 export function Notice({ state }: { state: FormState }) {
   if (state?.error) return <p className="notice error" role="alert">{state.error}</p>;
   if (state?.ok) return <p className="notice ok" role="status">{state.ok}</p>;
@@ -25,7 +28,7 @@ export function SignInForm({ next }: { next?: string }) {
       <label>{t("Mot de passe")}<input name="password" type="password" autoComplete="current-password" required /></label>
       <button className="btn" disabled={pending}>{pending ? t("Connexion…") : t("Se connecter")}</button>
       <p className="muted"><Link href="/mot-de-passe-oublie">{t("Mot de passe oublié ?")}</Link></p>
-      <p className="muted">{t("Pas encore de compte ?")} <Link href="/inscription">{t("Créer un compte")}</Link></p>
+      <p className="muted">{t("Pas encore de compte ?")} <Link href={withNext("/inscription", next)}>{t("Créer un compte")}</Link></p>
     </form>
   );
 }
@@ -63,7 +66,7 @@ export function SignUpForm({ next }: { next?: string }) {
       <label className="check"><input type="checkbox" name="newsletter" value="1" /> {t("Recevoir la lettre d'information de KolBase : événements scientifiques et nouveautés (deux envois par mois au plus, désinscription en un clic)")}</label>
       <label className="check"><input type="checkbox" name="cgu" required /> {t("J'accepte les")} <Link href="/cgu" target="_blank">{t("conditions d'utilisation")}</Link> {t("et la")} <Link href="/confidentialite" target="_blank">{t("politique de confidentialité")}</Link>.</label>
       <button className="btn" disabled={pending}>{pending ? t("Création…") : t("Créer mon compte")}</button>
-      <p className="muted">{t("Déjà inscrit ?")} <Link href="/connexion">{t("Se connecter")}</Link></p>
+      <p className="muted">{t("Déjà inscrit ?")} <Link href={withNext("/connexion", next)}>{t("Se connecter")}</Link></p>
     </form>
   );
 }

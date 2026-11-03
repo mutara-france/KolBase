@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { defaultVatBp } from "@/lib/quotes";
+import { loginPath } from "@/lib/safe-redirect";
 import { projectEditable, termsChanged, TRANSITIONS } from "@/lib/projects";
 import { eventChanges, needsOnlineLink, parseOnlineUrl, parseParisDateTime, toParisInput } from "@/lib/events";
 
@@ -75,5 +76,18 @@ describe("dossier modifiable avant la signature", () => {
     expect(termsChanged({ feeCents: 150000, days: 1 }, { feeCents: 150000, days: 2 })).toBe(true);
     expect(termsChanged({ feeCents: 150000, days: null }, { feeCents: 150000, days: null })).toBe(false);
     expect(termsChanged({ feeCents: null, days: 1 }, { feeCents: 0, days: 1 })).toBe(true);
+  });
+});
+
+describe("page d'origine conservée à la connexion", () => {
+  it("renvoie vers la connexion avec le chemin demandé, s'il est sûr", () => {
+    expect(loginPath("/sollicitations/abc")).toBe("/connexion?next=%2Fsollicitations%2Fabc");
+    expect(loginPath("/admin?onglet=lancement")).toBe("/connexion?next=%2Fadmin%3Fonglet%3Dlancement");
+    expect(loginPath("/")).toBe("/connexion");
+    expect(loginPath(null)).toBe("/connexion");
+    expect(loginPath("//evil.example")).toBe("/connexion");
+    expect(loginPath("/\\evil.example")).toBe("/connexion");
+    expect(loginPath("https://evil.example/x")).toBe("/connexion");
+    expect(loginPath("/connexion?next=/x")).toBe("/connexion");
   });
 });

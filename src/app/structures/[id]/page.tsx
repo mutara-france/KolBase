@@ -57,7 +57,7 @@ export default async function Page({ params }: { params: Promise<{ id: string }>
     : [null, [], []];
   const caps = readCapacities(o.capacities);
   const lock = (label: string) => (
-    <p className="hidden-note"><Lock size={13} /> {t("{label} : réservé aux membres connectés.", { label })} {viewer === "public" && <Link href="/connexion">{t("Se connecter")}</Link>}</p>
+    <p className="hidden-note"><Lock size={13} /> {t("{label} : réservé aux membres connectés.", { label })} {viewer === "public" && <Link href={`/connexion?next=${encodeURIComponent(`/structures/${o.id}`)}`}>{t("Se connecter")}</Link>}</p>
   );
 
   return (
