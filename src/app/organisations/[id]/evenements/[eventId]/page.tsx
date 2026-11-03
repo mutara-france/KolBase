@@ -2,7 +2,7 @@ import { aiEnabled } from "@/lib/ai";
 import { ProgramForm } from "@/components/EventForms";
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { Bell, CalendarDays, ClipboardCheck, Euro, FileDown, Gift, MapPin, QrCode, Star, Truck, Users } from "lucide-react";
+import { Bell, CalendarDays, ClipboardCheck, Euro, FileDown, Gift, MapPin, Megaphone, QrCode, Star, Truck, Users } from "lucide-react";
 import { SiteHeader } from "@/components/SiteHeader";
 import { StatusPill } from "@/components/ProjectBits";
 import { db } from "@/lib/db";
@@ -16,6 +16,9 @@ import { complianceSettings } from "@/lib/compliance";
 import { drPrefix } from "@/lib/professions";
 import { checkinOpen } from "@/lib/checkin";
 import { eventEnded, fmtRating, surveySummary } from "@/lib/event-followup";
+import { ServiceOffers } from "@/components/ServiceForms";
+import { cancelServiceOrder } from "@/lib/service-actions";
+import { ORDER_STATUS } from "@/lib/services";
 import { SendNowButton } from "@/components/FollowupForms";
 
 export const metadata = { title: "Événement — KolBase" };
@@ -40,6 +43,7 @@ export default async function Page({ params }: { params: Promise<{ id: string; e
       benefits: true,
       registrations: { include: { user: true, benefits: { include: { benefit: true } } }, orderBy: { createdAt: "asc" } },
       surveys: { orderBy: { createdAt: "desc" } },
+      serviceOrders: { orderBy: { createdAt: "desc" } },
     },
   });
   if (!event) notFound();
@@ -101,6 +105,7 @@ export default async function Page({ params }: { params: Promise<{ id: string; e
   const followed = event.registrations.filter((r) => r.followUpSentAt);
   const lastSent = (rs: typeof event.registrations, k: "reminderSentAt" | "followUpSentAt") => rs.reduce<Date | null>((m, r) => (r[k] && (!m || r[k]! > m) ? r[k] : m), null);
   const survey = surveySummary(event.surveys);
+  const offers = isOrganizer && !event.internal ? await db.serviceOffer.findMany({ where: { active: true }, orderBy: { position: "asc" } }) : [];
   const newRfq = (cat?: string) => `/organisations/${id}/prestataires?onglet=nouvelle&evenement=${eventId}${cat ? `&cat=${cat}` : ""}`;
   const status = event.internal
     ? { label: "Réunion interne", tone: "electric" }
@@ -334,6 +339,45 @@ export default async function Page({ params }: { params: Promise<{ id: string; e
                   </ul>
                 )}
                 <p className="hint">Les hospitalités offertes aux experts (repas, nuitée) relèvent de leur convention : précisez-les dans le dossier.</p>
+              </section>
+            )}
+
+            {isOrganizer && !event.internal && (offers.length > 0 || event.serviceOrders.length > 0) && (
+              <section className="card stack-sm" aria-labelledby="services">
+                <div>
+                  <h2 id="services"><Megaphone size={18} /> Faire connaître l&apos;événement</h2>
+                  <p className="muted">Services réalisés par l&apos;équipe KolBase, facturés une fois réalisés (prix HT).</p>
+                </div>
+                {event.serviceOrders.length > 0 && (
+                  <ul className="plain stack-sm">
+                    {event.serviceOrders.map((o) => (
+                      <li key={o.id} className="flex-between service-order">
+                        <span>
+                          <strong>{o.label}</strong> · {formatEUR(o.priceCents)} HT
+                          <span className="text-xs muted"> · commandé le {formatDate(o.createdAt)}{o.plannedAt && o.status === "planifiee" ? ` · prévu le ${formatDate(o.plannedAt)}` : ""}{o.doneAt ? ` · réalisé le ${formatDate(o.doneAt)}` : ""}</span>
+                          {o.adminNote && <span className="text-xs muted"> · {o.adminNote}</span>}
+                          {o.resultUrl && <> · <a href={o.resultUrl} target="_blank" rel="noopener noreferrer" className="text-xs">voir le résultat</a></>}
+                        </span>
+                        <span className="actions" style={{ marginTop: 0 }}>
+                          <span className={`pill ${ORDER_STATUS[o.status]?.tone ?? ""}`}>{ORDER_STATUS[o.status]?.label ?? o.status}</span>
+                          {o.status === "demandee" && (
+                            <form action={cancelServiceOrder}><input type="hidden" name="orgId" value={id} /><input type="hidden" name="orderId" value={o.id} /><button className="link danger">Annuler</button></form>
+                          )}
+                        </span>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+                {!event.publishedAt ? (
+                  <p className="hint">Publiez l&apos;événement dans l&apos;agenda pour commander ces services.</p>
+                ) : isPast ? null : (
+                  <ServiceOffers
+                    orgId={id}
+                    eventId={eventId}
+                    maxDate={event.startsAt.toISOString().slice(0, 10)}
+                    offers={offers.map((o) => ({ id: o.id, label: o.label, description: o.description, price: `${formatEUR(o.priceCents)} HT`, ordered: event.serviceOrders.some((x) => x.offerId === o.id && ["demandee", "planifiee"].includes(x.status)) }))}
+                  />
+                )}
               </section>
             )}
 

@@ -459,3 +459,23 @@ export function notifyPaymentFailed(orgId: string) {
     });
   });
 }
+
+// ─── Services KolBase ────────────────────────────────────────────────────────
+
+/** Suivi d'une commande de service : la personne qui l'a passée est prévenue (planifiée, refusée, réalisée). */
+export function notifyServiceOrder(orderId: string) {
+  later(async () => {
+    const o = await db.serviceOrder.findUnique({ where: { id: orderId }, include: { event: { select: { id: true, title: true, organizationId: true } } } });
+    if (!o) return;
+    const user = await db.user.findUnique({ where: { id: o.orderedById }, select: userSelect });
+    if (!user) return;
+    const what = `« ${o.label} » pour « ${o.event.title} »`;
+    const text =
+      o.status === "planifiee" ? `L'équipe KolBase a planifié ${what}${o.plannedAt ? ` : réalisation prévue le ${o.plannedAt.toLocaleDateString("fr-FR", { timeZone: "Europe/Paris", day: "numeric", month: "long" })}` : ""}.${o.adminNote ? `\n\n${o.adminNote}` : ""}`
+      : o.status === "refusee" ? `L'équipe KolBase ne peut pas réaliser ${what}.\n\n${o.adminNote ?? ""}`
+      : o.status === "realisee" ? `L'équipe KolBase a réalisé ${what}.${o.resultUrl ? `\n\nRésultat : ${o.resultUrl}` : ""}${o.adminNote ? `\n\n${o.adminNote}` : ""}${o.priceCents > 0 ? `\n\nMontant : ${(o.priceCents / 100).toLocaleString("fr-FR")} € HT, sur votre prochaine facture.` : ""}`
+      : null;
+    if (!text) return;
+    await send([user], { subject: `Service KolBase : ${o.label}`, text: `Bonjour,\n\n${text}`, cta: { label: "Voir l'événement", href: `/organisations/${o.event.organizationId}/evenements/${o.event.id}` } });
+  });
+}

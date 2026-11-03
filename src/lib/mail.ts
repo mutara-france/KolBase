@@ -15,7 +15,7 @@ const transport = () => (g.kbMailer ??= process.env.SMTP_URL ? nodemailer.create
 export const mailEnabled = () => !!process.env.SMTP_URL;
 const FROM = () => process.env.MAIL_FROM ?? "KolBase <no-reply@kolbase.fr>";
 
-export type Mail = { to: string; subject: string; text: string; cta?: { label: string; href: string }; locale?: Locale };
+export type Mail = { to: string; subject: string; text: string; cta?: { label: string; href: string }; locale?: Locale; /** Lettre d'information : lien de désinscription (pied de page et en-têtes List-Unsubscribe). */ unsubscribe?: { page: string; oneClick: string } };
 
 const esc = (s: string) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
 
@@ -23,7 +23,9 @@ const esc = (s: string) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replac
 export function renderMail(m: Mail) {
   const link = m.cta ? (m.cta.href.startsWith("http") ? m.cta.href : `${appUrl()}${m.cta.href}`) : null;
   const t = makeT(m.locale ?? "fr");
-  const footer = `${t("KolBase — praticiens × organisations du secteur dentaire.")}\n${t("Gérer vos notifications")} : ${appUrl()}/compte`;
+  const footer = m.unsubscribe
+    ? `${t("KolBase — praticiens × organisations du secteur dentaire.")}\n${t("Se désinscrire de la lettre d'information")} : ${m.unsubscribe.page}`
+    : `${t("KolBase — praticiens × organisations du secteur dentaire.")}\n${t("Gérer vos notifications")} : ${appUrl()}/compte`;
   const text = [m.text, link ? `${m.cta!.label} : ${link}` : null, "—", footer].filter(Boolean).join("\n\n");
   const paragraphs = m.text.split(/\n{2,}/).map((p) => `<p style="margin:0 0 14px">${esc(p).replace(/\n/g, "<br>")}</p>`).join("");
   const button = link
@@ -33,7 +35,7 @@ export function renderMail(m: Mail) {
 <div style="max-width:560px;margin:0 auto;padding:28px 20px">
 <p style="font-size:22px;font-weight:700;color:#0e0066;margin:0 0 20px">KolBase</p>
 <div style="background:#fff;border-radius:14px;padding:24px;font-size:15px;line-height:1.5">${paragraphs}${button}</div>
-<p style="font-size:12px;color:#6b6990;margin:16px 4px">${esc(t("KolBase — praticiens × organisations du secteur dentaire."))}<br><a href="${esc(appUrl())}/compte" style="color:#6b6990">${esc(t("Gérer vos notifications"))}</a></p>
+<p style="font-size:12px;color:#6b6990;margin:16px 4px">${esc(t("KolBase — praticiens × organisations du secteur dentaire."))}<br>${m.unsubscribe ? `<a href="${esc(m.unsubscribe.page)}" style="color:#6b6990">${esc(t("Se désinscrire de la lettre d'information"))}</a>` : `<a href="${esc(appUrl())}/compte" style="color:#6b6990">${esc(t("Gérer vos notifications"))}</a>`}</p>
 </div></body></html>`;
   return { text, html };
 }
@@ -54,7 +56,8 @@ export async function sendMail(m: Mail): Promise<boolean> {
     console.info(`[e-mail non envoyé : SMTP_URL absent] À : ${m.to} — ${m.subject} ${body}`);
     return false;
   }
-  await t.sendMail({ from: FROM(), to: m.to, subject: m.subject, text, html });
+  const headers = m.unsubscribe ? { "List-Unsubscribe": `<${m.unsubscribe.oneClick}>`, "List-Unsubscribe-Post": "List-Unsubscribe=One-Click" } : undefined;
+  await t.sendMail({ from: FROM(), to: m.to, subject: m.subject, text, html, headers });
   return true;
 }
 

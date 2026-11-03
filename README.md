@@ -145,6 +145,17 @@ Premier mois offert (une fois), dossiers et déclarations toujours accessibles, 
 vers `<APP_URL>/api/stripe/webhook`), `STRIPE_TAX_RATE` (taux de TVA `txr_…`). Sans clé, rien n'est facturé.
 Activer le portail client dans le tableau de bord Stripe (moyen de paiement, factures, résiliation).
 
+### Services KolBase
+
+Sur chaque événement publié, les organisateurs commandent des services réalisés par l'équipe KolBase
+(`src/lib/services.ts`) : e-mailing dédié, publication sur les réseaux sociaux, mise à la une de la page d'accueil
+(7 jours). Catalogue et prix modifiables dans `/admin › Services`, où l'équipe planifie, réalise ou refuse les
+commandes. Une commande réalisée est ajoutée à la prochaine facture Stripe de l'organisation (ou signalée « à
+facturer hors Stripe » si elle n'a pas de client Stripe).
+
+L'e-mailing ne part qu'aux membres qui ont accepté la lettre d'information (« Mon compte ») ; chaque envoi porte un
+lien de désinscription et les en-têtes `List-Unsubscribe` (désinscription en un clic).
+
 ## Surveillance
 
 Toute erreur serveur (page, action, route) est journalisée en JSON (Render › kolbase-web › Logs) et signalée par

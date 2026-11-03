@@ -126,7 +126,7 @@ export default async function Page({ searchParams }: { searchParams: Promise<{ a
               : null
           }
         />
-        <NotificationsForm email={wantsEmail(user)} />
+        <NotificationsForm email={wantsEmail(user)} newsletter={!!(user.notifyPrefs && typeof user.notifyPrefs === "object" && (user.notifyPrefs as Record<string, unknown>).newsletter === true)} />
         <PasswordForm email={user.email} />
         <MyDataCard keep={await retentionReasons(user.id)} />
         <section className="card">

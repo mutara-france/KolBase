@@ -1720,6 +1720,100 @@ async function submitNewOrg(page, siren) {
   await pgc.end();
 }
 
+// ── Services KolBase sur les événements : commande, réalisation, e-mailing, facturation ──
+{
+  const pgc = new pg.Client({ connectionString: process.env.DATABASE_URL });
+  await pgc.connect();
+  // Deux praticiens acceptent la lettre d'information depuis « Mon compte ».
+  for (const email of ["ines.lambert@demo.kolbase.local", "hugo.robert@demo.kolbase.local"]) {
+    const p = await session();
+    await login(p.page, email);
+    await p.page.goto(`${BASE}/compte`);
+    await p.page.locator('input[name="newsletter"]').check();
+    await p.page.locator('form:has(input[name="newsletter"]) button:has-text("Enregistrer")').click();
+    await p.page.waitForTimeout(800);
+    await p.ctx.close();
+  }
+  const subs = (await pgc.query(`select count(*)::int n from "User" where "notifyPrefs"->>'newsletter' = 'true'`)).rows[0].n;
+  check("Lettre d'information : consentement enregistré", subs >= 2, String(subs));
+  // L'organisateur commande deux services pour un événement publié.
+  const { ctx, page } = await session();
+  await login(page, "julien.faure@demo.kolbase.local");
+  await page.goto(`${BASE}/organisations/demo-org-dentalys/evenements/demo-ev-soiree-implanto`);
+  check("Événement : services KolBase proposés", (await text(page)).includes("Faire connaître l'événement") && (await text(page)).includes("E-mailing dédié aux membres KolBase"));
+  const orderIt = async (label) => {
+    const li = page.locator(`.service-list li:has-text("${label}")`);
+    await li.locator('button:has-text("Commander")').click();
+    await li.locator('textarea[name="brief"]').fill("Mettre en avant les cas cliniques complexes.");
+    await li.locator('button:has-text("Commander —")').click();
+    await page.waitForTimeout(1200);
+  };
+  await orderIt("E-mailing dédié aux membres KolBase");
+  check("Commande : transmise à l'équipe KolBase", (await text(page)).includes("Commande transmise") || (await text(page)).includes("Demandée"));
+  check("Commande : équipe KolBase prévenue", !!(await waitMail("anne.chevalier@demo.kolbase.local", "Service commandé : E-mailing dédié")));
+  await page.goto(`${BASE}/organisations/demo-org-dentalys/evenements/demo-ev-soiree-implanto`);
+  await orderIt("À la une de la page d'accueil");
+  // L'équipe KolBase : mise à la une, e-mailing.
+  const adm = await session();
+  await login(adm.page, "anne.chevalier@demo.kolbase.local");
+  await adm.page.goto(`${BASE}/admin?onglet=services`);
+  check("Admin : commandes à traiter", (await text(adm.page)).includes("Commandes à traiter (2)"));
+  const une = adm.page.locator('li.card:has-text("À la une de la page")');
+  await une.locator('button:has-text("marquer réalisé")').click();
+  await adm.page.waitForTimeout(1000);
+  const anon = await session();
+  await anon.page.goto(`${BASE}/`);
+  const firstCard = await anon.page.locator(".event-card").first().innerText();
+  check("Accueil : événement à la une en tête de l'agenda", firstCard.includes("Soirée implantologie") && /à la une/i.test(firstCard), firstCard.replace(/\s+/g, " ").slice(0, 80));
+  await anon.ctx.close();
+  await adm.page.goto(`${BASE}/admin?onglet=services`);
+  check("Admin : service à facturer hors Stripe signalé", (await text(adm.page)).includes("à facturer hors Stripe"));
+  await adm.page.locator('li.card:has-text("E-mailing dédié") a:has-text("Préparer l\'e-mailing")').click();
+  await adm.page.waitForURL(/\/admin\/services\//);
+  await adm.page.click('button:has-text("Proposer un texte avec l\'IA")');
+  await adm.page.waitForFunction(() => document.querySelector('textarea[name="body"]')?.value.includes("PROPOSITION IA"), null, { timeout: 15000 });
+  await adm.page.click('button:has-text("Envoyer à")');
+  await adm.page.waitForTimeout(2000);
+  check("E-mailing : envoyé aux membres consentants", /Lettre envoyée à \d+ membre/.test(await text(adm.page)));
+  const nl = await waitMail("ines.lambert@demo.kolbase.local", /^Soirée implantologie.* — /);
+  check("E-mailing : annonceur identifié et désinscription", !!nl && nl.text.includes("Communication de Dentalys Implants, diffusée par KolBase") && /\/desinscription\/[A-Za-z0-9_-]+/.test(nl.text));
+  check("E-mailing : pas d'envoi sans consentement", !mails.some((m) => m.to === "olivier.girard@demo.kolbase.local" && /^Soirée implantologie.* — /.test(m.subject)));
+  check("Organisateur prévenu de la réalisation", !!(await waitMail("julien.faure@demo.kolbase.local", "Service KolBase : E-mailing dédié")));
+  await page.goto(`${BASE}/organisations/demo-org-dentalys/evenements/demo-ev-soiree-implanto`);
+  check("Événement : services réalisés affichés", ((await text(page)).match(/Réalisée/g) ?? []).length >= 2);
+  // Désinscription depuis le lien reçu, et en un clic.
+  const link = nl.text.match(/https?:\/\/\S+\/desinscription\/[A-Za-z0-9_-]+/)[0].replace(/^https?:\/\/[^/]+/, BASE);
+  const un = await session();
+  await un.page.goto(link);
+  await un.page.click('button:has-text("Me désinscrire")');
+  await un.page.waitForTimeout(800);
+  check("Désinscription : confirmée sans connexion", (await text(un.page)).includes("C'est fait"));
+  await un.ctx.close();
+  const token = link.split("/").at(-1);
+  const robert = (await pgc.query(`select "unsubscribeToken" from "User" where id = 'demo-u-robert'`)).rows[0].unsubscribeToken;
+  const oneClick = await fetch(`${BASE}/api/desinscription/${robert}`, { method: "POST" });
+  const still = (await pgc.query(`select count(*)::int n from "User" where "notifyPrefs"->>'newsletter' = 'true' and id in ('demo-u-lambert', 'demo-u-robert')`)).rows[0].n;
+  check("Désinscription en un clic (List-Unsubscribe)", oneClick.status === 200 && still === 0 && !!token);
+  // Facturation Stripe d'un service pour une organisation abonnée (client Stripe existant).
+  const cdra = await session();
+  await login(cdra.page, "pierre.vidal@demo.kolbase.local");
+  await cdra.page.goto(`${BASE}/organisations/demo-org-cdra/evenements/demo-ev-journee-cdra`);
+  const li = cdra.page.locator('.service-list li:has-text("réseaux sociaux")');
+  await li.locator('button:has-text("Commander")').click();
+  await li.locator('button:has-text("Commander —")').click();
+  await cdra.page.waitForTimeout(1000);
+  await cdra.ctx.close();
+  await adm.page.goto(`${BASE}/admin?onglet=services`);
+  await adm.page.locator('li.card:has-text("Collège Dentaire") input[name="resultUrl"]').fill("https://www.linkedin.com/posts/kolbase-test");
+  await adm.page.locator('li.card:has-text("Collège Dentaire") button:has-text("marquer réalisé")').click();
+  await adm.page.waitForTimeout(1200);
+  const item = stripeState.invoiceItems.at(-1);
+  check("Service facturé sur la prochaine facture Stripe", item?.amount === 29000 && item?.currency === "eur" && item?.description.includes("Publication sur les réseaux sociaux"), JSON.stringify(item));
+  await adm.ctx.close();
+  await ctx.close();
+  await pgc.end();
+}
+
 // ── 4. Limitation des tentatives ───────────────────────────────────────────
 {
   const { ctx, page } = await session();

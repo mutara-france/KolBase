@@ -36,7 +36,7 @@ export function StatCard({ label, value, hint, electric }: { label: string; valu
 export type EventCardData = {
   id: string; title: string; typeId: string; therapeuticArea: string | null; startsAt: Date; durationMinutes: number | null;
   format: "PRESENTIEL" | "DISTANCIEL" | "HYBRIDE"; city: string | null; capacity: number | null; registrationOpen: boolean;
-  organization: { name: string }; registrations: number;
+  organization: { name: string }; registrations: number; featured?: boolean;
 };
 const FORMAT = { PRESENTIEL: "présentiel", DISTANCIEL: "visioconférence", HYBRIDE: "hybride" } as const;
 export async function EventCard({ ev, compact = false }: { ev: EventCardData; compact?: boolean }) {
@@ -59,6 +59,7 @@ export async function EventCard({ ev, compact = false }: { ev: EventCardData; co
           <span className="event-year">{get("year")}</span>
         </time>
         <span className="event-type">{t(eventTypeLabel(ev.typeId))}</span>
+        {ev.featured && <span className="event-featured">{t("À la une")}</span>}
       </Link>
       <div className="event-body">
         <h3 className="card-title" style={{ marginBottom: 2 }}><Link href={href} className="ink">{ev.title}</Link></h3>
