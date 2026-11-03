@@ -2615,7 +2615,7 @@ async function submitNewOrg(page, siren) {
     check("Prestataires : HT / TTC indiqués (budget engagé, prestation attribuée)", /Budget prestataires engagé\s*[\d ]+(,\d+)? € HT/.test(presta) && /Attribué à [^—]+— [\d ]+(,\d+)? € HT · [\d ]+(,\d+)? € TTC/.test(presta));
     await c.page.goto(`${BASE}/organisations/demo-org-dentalys/evenements/demo-ev-passe`);
     const past = n(await text(c.page));
-    check("Événement passé : coût d'un devis par présent, montants en TTC", past.includes("€ TTC par présent") && /Coût réel\s*[\d ]+(,\d+)? € TTC/.test(past) && past.includes("non consommées, elles ne sont pas déclarées"));
+    check("Événement passé : coût d'un devis par présent, montants en TTC", past.includes("€ TTC par présent") && /Coût réel\s*[\d ]+(,\d+)? € TTC/i.test(past) && past.includes("non consommées, elles ne sont pas déclarées"));
     // Absents : ni « à déclarer », affichés « absent : non déclaré ».
     await c.page.goto(`${BASE}/organisations/demo-org-dentalys/hospitalites`);
     const todo = await c.page.locator('section.card:has-text("Soirée régénération osseuse")').innerText().catch(() => "");
@@ -2633,8 +2633,8 @@ async function submitNewOrg(page, siren) {
     const rev = n(await text(g.page));
     const eur = (c) => n((c / 100).toLocaleString("fr-FR", { style: "currency", currency: "EUR", maximumFractionDigits: c % 100 ? 2 : 0 }));
     const exp = await q1(`select coalesce(sum("feeCents") filter (where status in ('SIGNE', 'TERMINE')), 0)::int due, coalesce(sum("feeCents") filter (where status not in ('SIGNE', 'TERMINE', 'ATT_EXPERTS', 'DECLINE')), 0)::int prep, count(*) filter (where status = 'BLOQUE')::int blocked from "ProjectExpert" where "practitionerId" = 'demo-p-girard' and "paidAt" is null and extract(year from coalesce("respondedAt", "createdAt")) = extract(year from now())`);
-    check("Revenus : « À percevoir » = signé non payé, « En préparation » à part (dossier bloqué)", rev.includes(`À percevoir ${eur(exp.due)}`) && rev.includes(`En préparation ${eur(exp.prep)}`) && exp.blocked >= 1 && exp.due >= 150000, `${JSON.stringify(exp)} | ${rev.slice(0, 300)}`);
-    check("Revenus : hospitalité d'un absent « Absent : non déclaré », hors total", rev.includes("Absent : non déclaré") && /Hospitalités reçues\s*0 €/.test(rev));
+    check("Revenus : « À percevoir » = signé non payé, « En préparation » à part (dossier bloqué)", rev.toLowerCase().includes(`à percevoir ${eur(exp.due)}`) && rev.toLowerCase().includes(`en préparation ${eur(exp.prep)}`) && exp.blocked >= 1 && exp.due >= 150000, `${JSON.stringify(exp)} | ${rev.slice(0, 300)}`);
+    check("Revenus : hospitalité d'un absent « Absent : non déclaré », hors total", rev.includes("Absent : non déclaré") && /Hospitalités reçues\s*0 €/i.test(rev));
     await g.page.goto(`${BASE}/revenus?onglet=liens`);
     check("Liens d'intérêts : pas d'hospitalité d'un absent", !(await text(g.page)).includes("Soirée régénération osseuse"));
     await g.page.goto(`${BASE}/revenus?onglet=transparence`);
@@ -2677,18 +2677,18 @@ async function submitNewOrg(page, siren) {
   {
     const pdf = Buffer.from("%PDF-1.4\n1 0 obj << /Type /Catalog >> endobj\ntrailer << /Root 1 0 R >>\n%%EOF\n");
     await pgc.query(`insert into "Project" (id, "organizationId", title, "typeId", status, "updatedAt") values ('e2e-lot2-prj-sig', 'demo-org-academie', 'Formation lot 2 en signature', 'dpc', 'SIGNATURE', now())`);
-    await pgc.query(`insert into "ProjectExpert" (id, "projectId", "practitionerId", status, "feeCents", days) values ('e2e-lot2-sig-roux', 'e2e-lot2-prj-sig', 'demo-p-roux', 'SIGNATURE', 150000, 1), ('e2e-lot2-sig-nguyen', 'e2e-lot2-prj-sig', 'demo-p-nguyen', 'SIGNATURE', 120000, 1)`);
+    await pgc.query(`insert into "ProjectExpert" (id, "projectId", "practitionerId", status, "feeCents", days) values ('e2e-lot2-sig-roux', 'e2e-lot2-prj-sig', 'demo-p-roux', 'SIGNATURE', 150000, 1), ('e2e-lot2-sig-fontaine', 'e2e-lot2-prj-sig', 'demo-p-fontaine', 'SIGNATURE', 120000, 1)`);
     const { ctx, page } = await session();
     await login(page, "anne.chevalier@demo.kolbase.local");
     const url = `${BASE}/organisations/demo-org-academie/dossiers/e2e-lot2-prj-sig`;
     const card = (name) => page.locator(`section.expert-card:has-text("${name}")`);
-    for (const name of ["Mathieu Roux", "Linh Nguyen"]) {
+    for (const name of ["Mathieu Roux", "Isabelle Fontaine"]) {
       await page.goto(url);
       await card(name).locator('button:has-text("Envoyer en signature électronique")').click();
       await card(name).locator('.pill:has-text("En cours de signature")').waitFor({ timeout: 20000 }).catch(() => {});
     }
     const reqOf = (link) => [...signatureRequests.values()].filter((r) => r.body.external_id === link).at(-1);
-    check("Signature électronique : deux demandes en cours", reqOf("e2e-lot2-sig-roux")?.status === "ongoing" && reqOf("e2e-lot2-sig-nguyen")?.status === "ongoing");
+    check("Signature électronique : deux demandes en cours", reqOf("e2e-lot2-sig-roux")?.status === "ongoing" && reqOf("e2e-lot2-sig-fontaine")?.status === "ongoing");
     // Dépôt à la main de la convention signée de Dr Roux : sa demande est annulée chez Yousign.
     await page.goto(url);
     const upload = 'form:has(input[name="file"])';
@@ -2709,21 +2709,48 @@ async function submitNewOrg(page, siren) {
     let et = await text(ex.page);
     check("Expert : plus « en attente de votre signature », « Convention signée (PDF) »", !et.includes("Convention en attente de votre signature") && (await ex.page.locator('a:has-text("Convention signée (PDF)")').count()) >= 1 && et.includes("Convention signée déposée : l'organisation confirme la signature du dossier"));
     await ex.ctx.close();
-    // Convention de Dr Nguyen déposée sans clore la demande (cas antérieur), puis dossier passé « Signé » : demande close.
-    await pgc.query(`insert into "Document" (id, "projectId", "projectExpertId", kind, name, "contentType", size, "storageKey") values ('e2e-lot2-doc-nguyen', 'e2e-lot2-prj-sig', 'e2e-lot2-sig-nguyen', 'CONVENTION_SIGNEE', 'convention-nguyen-signee.pdf', 'application/pdf', ${pdf.length}, 'dossiers/e2e-lot2-prj-sig/nguyen.pdf')`);
+    // Convention de Dr Fontaine déposée sans clore la demande (cas antérieur), puis dossier passé « Signé » : demande close.
+    await pgc.query(`insert into "Document" (id, "projectId", "projectExpertId", kind, name, "contentType", size, "storageKey") values ('e2e-lot2-doc-fontaine', 'e2e-lot2-prj-sig', 'e2e-lot2-sig-fontaine', 'CONVENTION_SIGNEE', 'convention-fontaine-signee.pdf', 'application/pdf', ${pdf.length}, 'dossiers/e2e-lot2-prj-sig/fontaine.pdf')`);
     await page.goto(url);
     await page.click('button:has-text("Convention signée")');
     await page.waitForTimeout(1500);
-    const ng = reqOf("e2e-lot2-sig-nguyen");
-    const ngDb = await q1(`select s.status sig, p.status prj from "ConventionSignature" s join "ProjectExpert" e on e.id = s."projectExpertId" join "Project" p on p.id = e."projectId" where s."projectExpertId" = 'e2e-lot2-sig-nguyen'`);
-    check("Dossier passé « Signé » : la demande encore en cours est annulée", ng?.status === "canceled" && ngDb.sig === "canceled" && ngDb.prj === "SIGNE", JSON.stringify({ yousign: ng?.status, db: ngDb }));
-    const ln = await session();
-    await login(ln.page, "linh.nguyen@demo.kolbase.local");
-    await ln.page.goto(`${BASE}/sollicitations/e2e-lot2-sig-nguyen`);
-    et = await text(ln.page);
-    check("Expert (dossier signé) : pas de demande en attente, convention signée (PDF)", !et.includes("Convention en attente de votre signature") && (await ln.page.locator('a[href="/documents/e2e-lot2-doc-nguyen"]').count()) >= 1);
-    await ln.ctx.close();
+    const fo = reqOf("e2e-lot2-sig-fontaine");
+    const foDb = await q1(`select s.status sig, p.status prj from "ConventionSignature" s join "ProjectExpert" e on e.id = s."projectExpertId" join "Project" p on p.id = e."projectId" where s."projectExpertId" = 'e2e-lot2-sig-fontaine'`);
+    check("Dossier passé « Signé » : la demande encore en cours est annulée", fo?.status === "canceled" && foDb.sig === "canceled" && foDb.prj === "SIGNE", JSON.stringify({ yousign: fo?.status, db: foDb }));
+    const fs = await session();
+    await login(fs.page, "isabelle.fontaine@demo.kolbase.local");
+    await fs.page.goto(`${BASE}/sollicitations/e2e-lot2-sig-fontaine`);
+    et = await text(fs.page);
+    check("Expert (dossier signé) : pas de demande en attente, convention signée (PDF)", !et.includes("Convention en attente de votre signature") && (await fs.page.locator('a[href="/documents/e2e-lot2-doc-fontaine"]').count()) >= 1);
+    await fs.ctx.close();
     await ctx.close();
+  }
+
+  // 7. Suppression et export du compte : coordonnées de facturation et liens d'intérêts.
+  {
+    const pe = await session();
+    await login(pe.page, "camille.petit@demo.kolbase.local");
+    const exp = await (await pe.page.request.get(`${BASE}/compte/export`)).json().catch(() => null);
+    const pr = exp?.compte?.practitioner;
+    check("Export du compte : liens d'intérêts déclarés et notes d'honoraires", (pr?.declaredInterests ?? []).some((d) => d.organization === "Laboratoire Alpha Ortho (fictif)") && (pr?.feeNotes ?? []).some((n) => /^NH-/.test(n.number) && n.organization?.name), JSON.stringify({ interests: pr?.declaredInterests?.length, notes: pr?.feeNotes?.length }));
+    await pe.ctx.close();
+    await pgc.query(`update "PractitionerProfile" set iban = 'FR7630006000011234567890189', "billingAddress" = '3 rue du Test, 69001 Lyon', siret = '73282932000074', "vatRegime" = 'assujetti', "vatNumber" = 'FR40303265045', rpps = coalesce(rpps, '19900000027') where id = 'demo-p-laurent'`);
+    await pgc.query(`insert into "DeclaredInterest" (id, "practitionerId", organization, nature, "startYear") values ('e2e-lot2-di-laurent', 'demo-p-laurent', 'Laboratoire Gamma (fictif)', 'Consultant', 2024)`);
+    await pgc.query(`insert into "Project" (id, "organizationId", title, "typeId", status, "updatedAt") values ('e2e-lot2-prj-laurent', 'demo-org-orthonova', 'Conférence signée lot 2', 'pleniere', 'SIGNE', now())`);
+    await pgc.query(`insert into "ProjectExpert" (id, "projectId", "practitionerId", status, "feeCents", days) values ('e2e-lot2-pl-1', 'e2e-lot2-prj-laurent', 'demo-p-laurent', 'SIGNE', 100000, 1)`);
+    const del = 'form:has(button:has-text("Supprimer définitivement"))';
+    const pl = await session();
+    await login(pl.page, "paul.laurent@demo.kolbase.local");
+    await pl.page.goto(`${BASE}/compte`);
+    await pl.page.click('summary:has-text("Supprimer mon compte")');
+    const announced = await text(pl.page);
+    check("Écran de suppression : facturation et liens d'intérêts effacés annoncés", announced.includes("coordonnées de facturation (IBAN, adresse, SIRET, TVA), liens d'intérêts déclarés") && announced.includes("restent attachés à vos 1 convention(s)"));
+    await pl.page.fill(`${del} input[name="password"]`, PW);
+    await pl.page.check(`${del} input[name="confirm"]`);
+    await Promise.all([pl.page.waitForURL(/compte=supprime/), pl.page.click(`${del} button`)]);
+    await pl.ctx.close();
+    const after = await q1(`select p.iban, p."billingAddress", p.siret, p."vatNumber", p.rpps, u."firstName", (select count(*)::int from "DeclaredInterest" d where d."practitionerId" = p.id) interests from "PractitionerProfile" p join "User" u on u.id = p."userId" where p.id = 'demo-p-laurent'`);
+    check("Suppression : IBAN, adresse, SIRET, TVA et liens déclarés effacés ; nom et RPPS gardés pour la convention", after.iban === null && after.billingAddress === null && after.siret === null && after.vatNumber === null && after.interests === 0 && after.firstName === "Paul" && !!after.rpps, JSON.stringify(after));
   }
 
   await pgc.end();

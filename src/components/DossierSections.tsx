@@ -64,8 +64,8 @@ export async function BudgetPanel({ orgId, projectId, canEdit }: { orgId: string
         <div className="stat-card"><div className="stat-value">{budget != null ? formatEUR(budget) : "—"}</div><div className="stat-label">Budget prévu (HT)</div></div>
         <div className="stat-card"><div className="stat-value">{formatEUR(fees)}</div><div className="stat-label">Honoraires engagés (HT)</div></div>
         {proposed > 0 && <div className="stat-card"><div className="stat-value muted">{formatEUR(proposed)}</div><div className="stat-label">Honoraires proposés, sans réponse (HT)</div></div>}
-        {sup > 0 && <div className="stat-card"><div className="stat-value">{formatEUR(sup)}</div><div className="stat-label">Prestataires, devis retenus (HT)</div></div>}
-        <div className="stat-card"><div className="stat-value">{formatEUR(exp)}</div><div className="stat-label">Autres dépenses</div></div>
+        {sup > 0 && <div className="stat-card"><div className="stat-value">{formatEUR(sup)} HT</div><div className="stat-label">Prestataires (devis retenus)</div></div>}
+        <div className="stat-card"><div className="stat-value">{formatEUR(exp)}</div><div className="stat-label">Autres dépenses (HT)</div></div>
         <div className="stat-card"><div className={`stat-value${over ? " tone-danger" : " tone-electric"}`}>{formatEUR(total)}</div><div className="stat-label">Total engagé (HT){realPct != null ? ` · ${realPct} % du budget` : ""}</div></div>
       </div>
       {pct != null && <div className="gauge-track"><div className={`gauge-fill${over ? " over" : ""}`} style={{ width: `${pct}%` }} /></div>}

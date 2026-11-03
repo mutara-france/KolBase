@@ -14,6 +14,9 @@ export async function exportAccount(userId: string) {
         include: {
           publications: true,
           structures: true,
+          // Liens d'intérêts déclarés et notes d'honoraires établies (données de l'émetteur figées dans la note).
+          declaredInterests: { select: { organization: true, nature: true, startYear: true, endYear: true, createdAt: true } },
+          feeNotes: { select: { number: true, issuedAt: true, amountCents: true, vatBp: true, totalCents: true, data: true, organization: { select: { name: true } } }, orderBy: { issuedAt: "asc" } },
           projectLinks: { include: { project: { select: { title: true, typeId: true, status: true, organization: { select: { name: true } } } }, messages: { select: { body: true, createdAt: true, authorId: true } } } },
           applications: { include: { openCall: { select: { title: true, organization: { select: { name: true } }, event: { select: { title: true, startsAt: true } } } } } },
         },
@@ -39,7 +42,9 @@ export async function retentionReasons(userId: string) {
   // Un absent au pointage n'a pas consommé ses hospitalités : rien à déclarer, rien à conserver (sauf si déjà déclaré).
   const pointed = await pointedPastEvents(past.map((r) => r.eventId));
   const regs = past.filter((r) => r.declared || !isAbsent(r, pointed.has(r.eventId))).length;
-  return { conventions: links, hospitalities: regs, keep: links + regs > 0 };
+  // Notes d'honoraires établies : pièces comptables des organisations, conservées telles qu'émises.
+  const feeNotes = await db.feeNote.count({ where: { practitioner: { userId } } });
+  return { conventions: links, hospitalities: regs, feeNotes, keep: links + regs > 0 };
 }
 
 /** Organisations dont l'utilisateur est le seul administrateur alors que d'autres membres restent. */
@@ -57,9 +62,11 @@ export async function soleAdminOrgs(userId: string) {
 }
 
 /**
- * Suppression du compte par anonymisation : connexion impossible, profil retiré, données personnelles effacées.
+ * Suppression du compte par anonymisation : connexion impossible, profil retiré, données personnelles effacées
+ * (dont coordonnées de facturation : IBAN, adresse, SIRET, TVA, et liens d'intérêts déclarés).
  * Restent, si le compte en a, les éléments liés aux conventions et aux hospitalités déclarées (nom, profession,
- * RPPS, ville, structure de facturation), que les organisations doivent conserver.
+ * RPPS, ville, structure de facturation), que les organisations doivent conserver ; les notes d'honoraires déjà
+ * établies gardent les données figées à leur émission.
  */
 export async function anonymizeAccount(userId: string) {
   const { keep } = await retentionReasons(userId);
@@ -75,6 +82,7 @@ export async function anonymizeAccount(userId: string) {
     ...(p
       ? [
           db.publication.deleteMany({ where: { practitionerId: p.id } }),
+          db.declaredInterest.deleteMany({ where: { practitionerId: p.id } }),
           db.practitionerStructure.deleteMany({ where: { practitionerId: p.id, ...(keep ? { isPayee: false } : {}) } }),
           db.application.deleteMany({ where: { practitionerId: p.id, status: "pending" } }),
           db.projectExpert.updateMany({ where: { practitionerId: p.id, status: "ATT_EXPERTS" }, data: { status: "DECLINE", respondedAt: now, responseNote: "Compte supprimé" } }),
@@ -83,6 +91,8 @@ export async function anonymizeAccount(userId: string) {
             data: {
               listed: false, listedAt: null, bio: null, hospital: null, subspecialty: null, languages: [], interventionTypes: [], dayRateCents: null,
               orcid: null, orcidVerified: false, orcidSyncedAt: null, visibility: {}, responseDays: null,
+              // Coordonnées de facturation : effacées (celles d'une note déjà établie y restent figées).
+              iban: null, billingAddress: null, siret: null, vatNumber: null, vatRegime: "franchise",
               ...(keep ? {} : { rpps: null, rppsVerified: false, rppsCheckedAt: null, rppsCheckNote: null, city: null, specialty: null }),
             },
           }),
