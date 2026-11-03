@@ -204,7 +204,8 @@ export function startFakeStripe(port = 3993) {
       if (!s) return json(res, { error: "session" }, 404);
       const now = Math.floor(Date.now() / 1000);
       const trial = Number(s.trialDays || 0);
-      const sub = { id: `sub_${randomUUID().slice(0, 10).replace(/-/g, "")}`, object: "subscription", customer: s.customer, status: trial ? "trialing" : "active", trial_end: trial ? now + trial * 86400 : null, current_period_end: now + (trial || 30) * 86400, cancel_at_period_end: false, metadata: { orgId: s.metadata.orgId }, amount: s.amount };
+      const year = s.interval === "year";
+      const sub = { id: `sub_${randomUUID().slice(0, 10).replace(/-/g, "")}`, object: "subscription", customer: s.customer, status: trial ? "trialing" : "active", trial_end: trial ? now + trial * 86400 : null, current_period_end: now + (trial || (year ? 365 : 30)) * 86400, cancel_at_period_end: false, metadata: { orgId: s.metadata.orgId }, amount: s.amount, items: { data: [{ price: { recurring: { interval: s.interval } } }] } };
       stripeState.subscriptions.set(sub.id, sub);
       s.subscription = sub.id;
       s.status = "complete";
@@ -224,7 +225,7 @@ export function startFakeStripe(port = 3993) {
       const s = {
         id, customer: get("customer"), mode: get("mode"), success_url: get("success_url"), cancel_url: get("cancel_url"),
         metadata: { orgId: get("metadata[orgId]") }, trialDays: get("subscription_data[trial_period_days]"),
-        amount: Number(get("line_items[0][price_data][unit_amount]")), methods: form.getAll("payment_method_types[0]").concat(form.getAll("payment_method_types[1]")),
+        amount: Number(get("line_items[0][price_data][unit_amount]")), interval: get("line_items[0][price_data][recurring][interval]"), methods: form.getAll("payment_method_types[0]").concat(form.getAll("payment_method_types[1]")),
         url: `http://localhost:${port}/pay/${id}`,
       };
       stripeState.sessions.set(id, s);

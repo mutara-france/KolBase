@@ -140,7 +140,7 @@ Abonnements mensuels sans engagement, payés par carte ou prélèvement SEPA via
 - **prestataire** : référencement gratuit ; 249 € HT par mois pour répondre à de nouvelles demandes après le premier
   devis retenu (le prestataire est prévenu à ce moment-là).
 
-Premier mois offert (une fois), dossiers et déclarations toujours accessibles, gratuités accordées depuis
+Formule annuelle au choix : dix mois facturés pour douze (5 990 € HT et 2 490 € HT par an). Premier mois offert (une fois), dossiers et déclarations toujours accessibles, gratuités accordées depuis
 `/admin › Abonnements`. Variables : `STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET` (notification déclarée chez Stripe
 vers `<APP_URL>/api/stripe/webhook`), `STRIPE_TAX_RATE` (taux de TVA `txr_…`). Sans clé, rien n'est facturé.
 Activer le portail client dans le tableau de bord Stripe (moyen de paiement, factures, résiliation).

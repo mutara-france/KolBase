@@ -15,7 +15,7 @@ import { signatureApiUrl, signatureEnabled, signatureSandbox, webhookSecret } fr
 import { Avatar } from "@/components/Avatar";
 import { logoSrc } from "@/lib/logos";
 import { aiEnabled } from "@/lib/ai";
-import { displayStatus, exempt, PLANS, planFor, STATUS_LABEL } from "@/lib/billing-plans";
+import { asInterval, displayStatus, exempt, monthlyCents, PLANS, planFor, STATUS_LABEL } from "@/lib/billing-plans";
 import { stripeEnabled } from "@/lib/billing";
 import { setExemption } from "@/lib/billing-actions";
 import { saveServiceOffer, updateServiceOrder } from "@/lib/service-actions";
@@ -323,7 +323,8 @@ async function BillingAdmin() {
   const orgs = await db.organization.findMany({ where: { verification: "VERIFIED" }, select: { id: true, name: true, kind: true, subscription: true }, orderBy: { name: "asc" } });
   const now = new Date();
   const paying = orgs.filter((o) => ["essai", "active", "impayee"].includes(o.subscription?.status ?? "") && !exempt(o.subscription, now));
-  const mrr = paying.filter((o) => o.subscription!.status !== "essai").reduce((s, o) => s + PLANS[planFor(o.kind)].cents, 0);
+  // Revenu mensuel récurrent : une formule annuelle compte pour un douzième.
+  const mrr = paying.filter((o) => o.subscription!.status !== "essai").reduce((s, o) => s + monthlyCents(planFor(o.kind), asInterval(o.subscription!.interval)), 0);
   return (
     <section className="card stack-sm">
       <h2>Abonnements</h2>
@@ -339,7 +340,7 @@ async function BillingAdmin() {
             return (
               <tr key={o.id}>
                 <td>{o.name}</td>
-                <td>{PLANS[planFor(o.kind)].label.replace("Abonnement ", "")}</td>
+                <td>{PLANS[planFor(o.kind)].label.replace("Abonnement ", "")}{o.subscription && ["essai", "active", "impayee"].includes(o.subscription.status) ? <div className="text-xs muted">{asInterval(o.subscription.interval) === "year" ? "annuel" : "mensuel"}</div> : null}</td>
                 <td><span className={`pill ${["active", "essai", "offerte"].includes(st) ? "ok" : st === "impayee" ? "wait" : ""}`}>{STATUS_LABEL[st]}</span>{o.subscription?.triggeredAt ? <div className="text-xs muted">{o.subscription.triggeredBy}</div> : null}</td>
                 <td>{o.subscription?.trialEndsAt && o.subscription.status === "essai" ? `essai → ${formatDate(o.subscription.trialEndsAt)}` : o.subscription?.currentPeriodEnd ? formatDate(o.subscription.currentPeriodEnd) : "—"}</td>
                 <td>

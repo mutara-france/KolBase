@@ -1668,11 +1668,12 @@ async function submitNewOrg(page, siren) {
   await page.goto(`${BASE}/organisations/demo-org-cdra/abonnement`);
   let t = await text(page);
   check("Abonnement : page de l'organisation (tarif, déclencheur)", t.includes("599 € HT par mois") && t.includes("première action qui engage un tiers"));
-  await page.click('button:has-text("Activer l\'abonnement")');
+  check("Abonnement : formule annuelle proposée (deux mois offerts)", t.replace(/\s/g, " ").includes("5 990 € HT par an") && t.includes("2 mois offerts") && t.replace(/\s/g, " ").includes("Soit 499,17 € HT par mois"));
+  await page.click('button:has-text("Activer l\'abonnement mensuel")');
   await page.waitForURL(/\/abonnement\?session=cs_/, { timeout: 15000 });
   t = await text(page);
   const session1 = [...stripeState.sessions.values()].at(-1);
-  check("Stripe : paiement mensuel 599 € HT, 30 jours offerts, carte et SEPA", session1?.amount === 59900 && session1?.trialDays === "30" && session1?.methods.includes("sepa_debit") && session1?.mode === "subscription", JSON.stringify(session1));
+  check("Stripe : paiement mensuel 599 € HT, 30 jours offerts, carte et SEPA", session1?.amount === 59900 && session1?.interval === "month" && session1?.trialDays === "30" && session1?.methods.includes("sepa_debit") && session1?.mode === "subscription", JSON.stringify(session1));
   check("Abonnement : mois offert en cours", t.includes("Premier mois offert") && /mois offert jusqu/i.test(t));
   check("Stripe : notification signée acceptée", stripeState.webhooks.at(-1)?.status === 200);
   await fillDossier("Conférence implantologie — abonnement actif");
@@ -1683,9 +1684,18 @@ async function submitNewOrg(page, siren) {
   check("Paiement en échec : signalé, sans blocage", (await text(page)).includes("Paiement en attente"));
   await stripeWebhook("customer.subscription.deleted", { ...sub, status: "canceled" });
   await page.goto(`${BASE}/organisations/demo-org-cdra/abonnement`);
-  check("Résiliation : réactivation proposée sans nouveau mois offert", (await text(page)).includes("Résilié") && (await page.locator('button:has-text("Réactiver l\'abonnement")').count()) === 1);
+  check("Résiliation : réactivation proposée sans nouveau mois offert", (await text(page)).includes("Résilié") && (await page.locator('button:has-text("Réactiver l\'abonnement")').count()) === 2 && !(await text(page)).includes("jours offerts"));
   await page.goto(`${BASE}/organisations/demo-org-cdra/dossiers`);
   check("Résiliation : dossiers toujours accessibles", (await text(page)).includes("abonnement actif"));
+  // Réactivation à l'année : dix mois facturés, sans nouveau mois offert.
+  await page.goto(`${BASE}/organisations/demo-org-cdra/abonnement`);
+  await page.click('button:has-text("Réactiver l\'abonnement annuel")');
+  await page.waitForURL(/\/abonnement\?session=cs_/, { timeout: 15000 });
+  const session2 = [...stripeState.sessions.values()].at(-1);
+  t = await text(page);
+  const interval = (await pgc.query(`select interval from "Subscription" where "organizationId" = 'demo-org-cdra'`)).rows[0]?.interval;
+  check("Stripe : formule annuelle 5 990 € HT, sans nouveau mois offert", session2?.amount === 599000 && session2?.interval === "year" && !session2?.trialDays && interval === "year", JSON.stringify({ amount: session2?.amount, interval: session2?.interval, trial: session2?.trialDays, db: interval }));
+  check("Abonnement annuel : formule et renouvellement affichés", t.includes("Actif") && t.includes("Annuelle") && t.includes("renouvellement annuel"));
   const forged = await fetch(`${BASE}/api/stripe/webhook`, { method: "POST", headers: { "Stripe-Signature": "t=1,v1=00" }, body: JSON.stringify({ type: "customer.subscription.updated", data: { object: { ...sub, status: "active" } } }) });
   check("Stripe : notification non signée refusée", forged.status === 400);
   await ctx.close();
@@ -1720,6 +1730,7 @@ async function submitNewOrg(page, siren) {
   const adm = await session();
   await login(adm.page, "anne.chevalier@demo.kolbase.local");
   await adm.page.goto(`${BASE}/admin?onglet=abonnements`);
+  check("Admin : formule annuelle comptée pour un douzième", (await text(adm.page)).replace(/\s/g, " ").includes("revenu mensuel hors essais : 499,17 € HT") && (await adm.page.locator('tr:has-text("Collège Dentaire Rhône-Alpes")').innerText()).includes("annuel"));
   const row = adm.page.locator('tr:has-text("Collège Dentaire Rhône-Alpes")');
   await row.locator('input[name="until"]').fill(`${new Date().getFullYear() + 1}-06-30`);
   await row.locator('input[name="note"]').fill("Pilote");

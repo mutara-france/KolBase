@@ -4,12 +4,21 @@
  *   appel à candidatures ou événement publié, demande de devis envoyée).
  * - Prestataire : référencement gratuit ; 249 € HT/mois à partir du premier devis retenu via KolBase.
  * - Premier mois offert (une fois), sans engagement ; gratuités accordées par KolBase.
+ * - Formule annuelle : dix mois payés pour douze (deux mois offerts).
  */
 export const PLANS = {
-  organisation: { label: "Abonnement organisation", cents: 59900 },
-  prestataire: { label: "Abonnement prestataire", cents: 24900 },
+  organisation: { label: "Abonnement organisation", cents: 59900, yearCents: 599000 },
+  prestataire: { label: "Abonnement prestataire", cents: 24900, yearCents: 249000 },
 } as const;
 export type Plan = keyof typeof PLANS;
+export type Interval = "month" | "year";
+export const asInterval = (v: unknown): Interval => (v === "year" ? "year" : "month");
+/** Prix d'une échéance (centimes HT). */
+export const planPrice = (plan: Plan, interval: Interval) => (interval === "year" ? PLANS[plan].yearCents : PLANS[plan].cents);
+/** Équivalent mensuel (revenu mensuel récurrent, affichage « soit … par mois »). */
+export const monthlyCents = (plan: Plan, interval: Interval) => Math.round(planPrice(plan, interval) / (interval === "year" ? 12 : 1));
+/** Mois offerts par la formule annuelle. */
+export const freeMonths = (plan: Plan) => Math.round(12 - PLANS[plan].yearCents / PLANS[plan].cents);
 export const TRIAL_DAYS = 30;
 export const planFor = (kind: string): Plan => (kind === "PRESTATAIRE" ? "prestataire" : "organisation");
 
@@ -43,4 +52,4 @@ export const ENGAGING = {
   reponse: "répondre à de nouvelles demandes de devis",
 } as const;
 export type Motive = keyof typeof ENGAGING;
-export const formatPrice = (cents: number) => `${(cents / 100).toLocaleString("fr-FR")} € HT par mois`;
+export const formatPrice = (cents: number, interval: Interval = "month") => `${(cents / 100).toLocaleString("fr-FR")} € HT par ${interval === "year" ? "an" : "mois"}`;

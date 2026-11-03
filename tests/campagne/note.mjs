@@ -1,0 +1,10 @@
+import { chromium } from "playwright";
+import fs from "node:fs";
+const b = await chromium.launch(); const ctx = await b.newContext({ locale: "fr-FR" }); const page = await ctx.newPage();
+await page.goto("http://localhost:3000/connexion"); await page.fill('input[name="email"]', "camille.petit@demo.kolbase.local"); await page.fill('input[name="password"]', "demo-ci-mot-de-passe-1");
+await Promise.all([page.waitForURL((u) => !u.pathname.startsWith("/connexion")), page.click("form button.btn")]);
+await page.goto("http://localhost:3000/revenus?onglet=facturation");
+const href = await page.locator('a[href^="/notes-honoraires/"]').first().getAttribute("href");
+fs.writeFileSync("/home/claude/kb-tests/ux/note.pdf", await (await ctx.request.get("http://localhost:3000" + href)).body());
+await page.screenshot({ path: "/home/claude/kb-tests/ux/note-page.png", fullPage: true });
+await b.close();
