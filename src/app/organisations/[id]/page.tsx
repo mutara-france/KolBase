@@ -6,6 +6,8 @@ import { requireMembership } from "@/lib/orgs";
 import { orgOverview } from "@/lib/org-overview";
 import { formatEUR } from "@/lib/events";
 import { supplierCategoryLabel } from "@/lib/suppliers";
+import { orgOnboarding } from "@/lib/onboarding";
+import { CheckCircle2, Circle } from "lucide-react";
 import { STATS_ROLES } from "@/lib/org-roles";
 
 export const metadata = { title: "Accueil — KolBase" };
@@ -19,6 +21,7 @@ export default async function Page({ params }: { params: Promise<{ id: string }>
   const o = await orgOverview(id);
   if (!o) notFound();
   const { org, can, todos, projects, events, calls, hosp, rfqs } = o;
+  const onboarding = isAdmin ? await orgOnboarding(id) : [];
   const now = new Date();
   const base = `/organisations/${id}`;
 
@@ -91,6 +94,23 @@ export default async function Page({ params }: { params: Promise<{ id: string }>
               : "Votre organisation est en attente de validation par KolBase. D'ici là, elle ne peut ni solliciter de praticiens, ni publier."}{" "}
             {isAdmin ? <Link href={`${base}/membres?onglet=organisation`}>{org.siren ? "Voir la demande" : "Renseigner le SIREN"}</Link> : "Un administrateur de l'organisation peut compléter la demande."}
           </p>
+        )}
+        {onboarding.length > 0 && onboarding.some((s) => !s.done) && (
+          <section className="card onboarding" aria-labelledby="prise-en-main">
+            <div className="flex-between">
+              <h2 id="prise-en-main" className="dash-title">Prise en main</h2>
+              <span className="muted text-sm">{onboarding.filter((s) => s.done).length} étape{onboarding.filter((s) => s.done).length > 1 ? "s" : ""} sur {onboarding.length}</span>
+            </div>
+            <div className="gauge-track"><div className="gauge-fill" style={{ width: `${Math.round((onboarding.filter((s) => s.done).length / onboarding.length) * 100)}%` }} /></div>
+            <ol className="onboarding-steps">
+              {onboarding.map((s) => (
+                <li key={s.key} className={s.done ? "done" : ""}>
+                  {s.done ? <CheckCircle2 size={18} aria-label="Fait" /> : <Circle size={18} aria-label="À faire" />}
+                  <span>{s.done ? <strong>{s.label}</strong> : <Link href={s.href}><strong>{s.label}</strong></Link>}<small>{s.hint}</small></span>
+                </li>
+              ))}
+            </ol>
+          </section>
         )}
         <DashStats stats={stats} />
         {org.kind !== "PRESTATAIRE" && roles.some((r) => STATS_ROLES.includes(r)) && (

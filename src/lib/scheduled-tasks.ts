@@ -18,5 +18,9 @@ export async function runDueTasks(now = new Date()) {
   });
   let followUps = 0;
   for (const e of recent) if (eventEnd(e).getTime() + FOLLOWUP_DELAY_MS <= now.getTime()) followUps += await sendEventFollowUps(e.id, now);
-  return { reminders, followUps };
+  // Conservation : sessions et liens de connexion expirés depuis plus de 30 jours.
+  const old = new Date(now.getTime() - 30 * 24 * 3600 * 1000);
+  const sessions = (await db.session.deleteMany({ where: { expiresAt: { lt: old } } })).count;
+  const tokens = (await db.authToken.deleteMany({ where: { OR: [{ expiresAt: { lt: old } }, { usedAt: { lt: old } }] } })).count;
+  return { reminders, followUps, purged: { sessions, tokens } };
 }

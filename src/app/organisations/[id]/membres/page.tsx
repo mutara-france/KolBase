@@ -6,10 +6,13 @@ import { logoSrc } from "@/lib/logos";
 import { db } from "@/lib/db";
 import { ORG_KIND_LABEL, invitableRoles, requireMembership, roleLabel } from "@/lib/orgs";
 import { ROLE_DESC } from "@/lib/org-roles";
-import { revokeInvitation } from "@/lib/org-actions";
+import { acceptDpa, revokeInvitation } from "@/lib/org-actions";
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { OrgVisibilityForm } from "@/components/ProfileForms";
+import { DPA_VERSION } from "@/lib/dpa";
+import { formatDate } from "@/lib/events";
+import { ShieldCheck } from "lucide-react";
 import { companyVisibility } from "@/lib/visibility";
 
 export const metadata = { title: "Membres et réglages — KolBase" };
@@ -20,6 +23,7 @@ export default async function Page({ params, searchParams }: { params: Promise<{
   const { id } = await params;
   const onglet = (await searchParams).onglet === "organisation" ? "organisation" : "equipe";
   const { org, roles, isAdmin, user } = await requireMembership(id);
+  const dpaBy = org.dpaAcceptedById ? await db.user.findUnique({ where: { id: org.dpaAcceptedById }, select: { firstName: true, lastName: true } }).then((u) => (u ? `${u.firstName} ${u.lastName}` : null)) : null;
   // Un prestataire mandaté (externe) ne voit pas l'équipe ni les réglages de l'organisation.
   if (roles.every((r) => r === "PRESTATAIRE")) redirect(`/organisations/${id}`);
   const [members, invitations, mandates] = await Promise.all([
@@ -139,6 +143,26 @@ export default async function Page({ params, searchParams }: { params: Promise<{
         ) : (
           <>
             <VerificationCard orgId={id} canEdit={isAdmin} v={{ status: org.verification, siren: org.siren, legalName: org.legalName, note: org.verificationNote }} />
+            {!isSupplier && (
+              <section className="card stack-sm" id="sous-traitance">
+                <h2 className="section-title"><ShieldCheck size={15} /> Contrat de sous-traitance (RGPD)</h2>
+                <p className="muted">
+                  Votre organisation est responsable des données qu&apos;elle traite dans KolBase (experts, inscrits, conventions) ; l&apos;éditeur de KolBase agit comme sous-traitant.{" "}
+                  <Link href="/sous-traitance" target="_blank">Lire le contrat (version {DPA_VERSION})</Link>
+                </p>
+                {org.dpaVersion === DPA_VERSION && org.dpaAcceptedAt ? (
+                  <p className="pill ok">Accepté le {formatDate(org.dpaAcceptedAt)}{dpaBy ? ` par ${dpaBy}` : ""}</p>
+                ) : isAdmin ? (
+                  <form action={acceptDpa} className="inline wrap">
+                    <input type="hidden" name="orgId" value={id} />
+                    {org.dpaVersion && <span className="text-sm warn-text">Le contrat a changé depuis la version {org.dpaVersion} acceptée.</span>}
+                    <button className="btn small">Accepter au nom de {org.name}</button>
+                  </form>
+                ) : (
+                  <p className="hint">À accepter par un administrateur de l&apos;organisation.</p>
+                )}
+              </section>
+            )}
             {isAdmin ? (
               <>
                 <EditOrgForm org={{ id: org.id, name: org.name, sector: org.sector, headquarters: org.headquarters, contactEmail: org.contactEmail, about: org.about, policy: org.policy, areas: org.areas }} />

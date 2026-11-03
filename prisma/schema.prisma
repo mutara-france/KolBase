@@ -226,6 +226,10 @@ model Organization {
   verificationNote   String?
   // Logo (image stockée à part, servie par /logos/[id]) : date de mise à jour, null si aucun logo.
   logoUpdatedAt      DateTime?
+  // Contrat de sous-traitance (RGPD, art. 28) accepté au nom de l'organisation : version, date, administrateur.
+  dpaVersion         String?
+  dpaAcceptedAt      DateTime?
+  dpaAcceptedById    String?
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
 

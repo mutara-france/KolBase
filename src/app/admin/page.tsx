@@ -14,6 +14,7 @@ import { orcidOAuth } from "@/lib/orcid";
 import { signatureApiUrl, signatureEnabled, signatureSandbox, webhookSecret } from "@/lib/yousign";
 import { Avatar } from "@/components/Avatar";
 import { logoSrc } from "@/lib/logos";
+import { aiEnabled } from "@/lib/ai";
 import { country, licenseRule, practicesInFrance, registryLink } from "@/lib/countries";
 
 export const metadata = { title: "Administration — KolBase" };
@@ -236,6 +237,8 @@ function LaunchChecklist({ demoOrgs, admins }: { demoOrgs: number; admins: { ema
     { ok: mailEnabled(), label: "Envoi d'e-mails (SMTP_URL, MAIL_FROM)", detail: mailEnabled() ? `Expéditeur : ${process.env.MAIL_FROM ?? "par défaut"}` : "Non configuré : aucun e-mail n'est envoyé (mot de passe oublié, notifications)." },
     { ok: storageEnabled(), label: "Stockage des documents (S3_*)", detail: storageEnabled() ? `Compartiment : ${process.env.S3_BUCKET}` : "Non configuré : le dépôt de documents est désactivé." },
     { ok: esign && !!webhookSecret() && !signatureSandbox(), optional: !esign, label: "Signature électronique (YOUSIGN_*, facultatif)", detail: esignDetail },
+    { ok: !!process.env.CRON_SECRET, label: "Tâches planifiées (CRON_SECRET, service cron kolbase-taches)", detail: process.env.CRON_SECRET ? "Configurées : rappels de la veille, attestations et questionnaires, purge des sessions expirées (toutes les heures)." : "Non configurées : synchroniser le Blueprint Render (service cron) ; ni rappels ni envois après les événements." },
+    { ok: aiEnabled(), optional: true, label: "Assistant d'IA (ANTHROPIC_API_KEY, facultatif)", detail: aiEnabled() ? `Actif (modèle ${process.env.ANTHROPIC_MODEL ?? "par défaut"}).` : "Non configuré : brouillons, suggestion d'experts (sans résumé) et relecture assistée indisponibles." },
     { ok: !!orcidOAuth(), optional: true, label: "Connexion ORCID (facultatif)", detail: orcidOAuth() ? "Active." : "Non configurée : l'iD ORCID se saisit à la main." },
     { ok: legalGaps.length === 0, label: "Textes légaux (src/lib/legal.ts)", detail: legalGaps.length ? `À compléter : ${legalGaps.join(", ")}.` : "Complets." },
     { ok: process.env.SEED_DEMO !== "1", label: "Rechargement de la démo (SEED_DEMO)", detail: process.env.SEED_DEMO === "1" ? "Actif : la démo est rechargée à chaque déploiement. Passer à 0 avant l'ouverture." : "Désactivé." },
