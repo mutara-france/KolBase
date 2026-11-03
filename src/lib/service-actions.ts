@@ -171,7 +171,7 @@ export async function unsubscribe(form: FormData) {
   const u = await db.user.findUnique({ where: { unsubscribeToken: token }, select: { id: true, notifyPrefs: true } });
   if (!u) return;
   const prefs = u.notifyPrefs && typeof u.notifyPrefs === "object" ? (u.notifyPrefs as Record<string, unknown>) : {};
-  await db.user.update({ where: { id: u.id }, data: { notifyPrefs: { ...prefs, newsletter: false } } });
+  await db.user.update({ where: { id: u.id }, data: { notifyPrefs: { ...prefs, newsletter: false, newsletterAsked: true } } });
   await audit(u.id, "user.newsletter_off", "User", u.id);
   revalidatePath(`/desinscription/${token}`);
 }

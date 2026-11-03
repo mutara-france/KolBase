@@ -1,5 +1,6 @@
 import { SiteHeader } from "@/components/SiteHeader";
 import { NewsCard } from "@/components/News";
+import { NewsletterCta } from "@/components/NewsletterCta";
 import { publishedArticles } from "@/lib/news";
 import { fmtDate } from "@/lib/i18n";
 import { getT } from "@/lib/i18n/server";
@@ -31,6 +32,7 @@ export default async function Page() {
                 {articles.map((a) => <NewsCard key={a.id} a={a} dateLabel={fmtDate(locale, a.publishedAt!, { day: "numeric", month: "long", year: "numeric" })} minutesLabel={t("{n} min de lecture")} />)}
               </div>
             )}
+            <NewsletterCta />
           </div>
         </section>
       </main>

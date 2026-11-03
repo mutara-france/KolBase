@@ -7,7 +7,7 @@ export async function POST(_: Request, { params }: { params: Promise<{ token: st
   const u = await db.user.findUnique({ where: { unsubscribeToken: token }, select: { id: true, notifyPrefs: true } });
   if (!u) return new Response(null, { status: 404 });
   const prefs = u.notifyPrefs && typeof u.notifyPrefs === "object" ? (u.notifyPrefs as Record<string, unknown>) : {};
-  await db.user.update({ where: { id: u.id }, data: { notifyPrefs: { ...prefs, newsletter: false } } });
+  await db.user.update({ where: { id: u.id }, data: { notifyPrefs: { ...prefs, newsletter: false, newsletterAsked: true } } });
   await db.auditLog.create({ data: { actorId: u.id, action: "user.newsletter_off", entityType: "User", entityId: u.id, data: { via: "one-click" } } });
   return new Response(null, { status: 200 });
 }

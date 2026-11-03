@@ -65,6 +65,7 @@ export async function signUp(_: FormState, form: FormData): Promise<FormState> {
   if (pwErr) return { error: t(pwErr) };
   if (!form.get("cgu")) return { error: t("Vous devez accepter les conditions d'utilisation.") };
   if (profession && !(PROFESSIONS as readonly string[]).includes(profession)) return { error: t("Profession invalide.") };
+  const newsletter = form.get("newsletter") === "1";
   const signupKey = `signup:ip:${await clientIp()}`;
   const wait = blockedFor(signupKey, SIGNUP_MAX_PER_IP, SIGNUP_WINDOW_MS);
   if (wait) return tooMany(t, wait);
@@ -80,11 +81,14 @@ export async function signUp(_: FormState, form: FormData): Promise<FormState> {
       passwordHash: await hashPassword(password),
       // Langue utilisée pendant l'inscription : elle sert ensuite pour l'interface et les e-mails.
       locale: await getLocale(),
+      // Lettre d'information : case décochée par défaut, la question n'est plus reposée ensuite.
+      notifyPrefs: { newsletter, newsletterAsked: true },
       practitioner: profession ? { create: { profession, country: countryCode, languages: practicesInFrance(countryCode) ? ["fr"] : [] } } : undefined,
     },
   });
   hit(signupKey);
   await audit(user.id, "user.signup", "User", user.id);
+  if (newsletter) await audit(user.id, "user.notify_prefs", "User", user.id, { newsletter, source: "inscription" });
   await sendVerification(user);
   await createSession(user.id);
   redirect(safeNext(str(form, "next"), profession ? "/tableau-de-bord" : "/organisations/nouvelle"));
@@ -298,12 +302,24 @@ export async function updateNotifyPrefs(_: FormState, form: FormData): Promise<F
   const email = form.get("email") === "1";
   const newsletter = form.get("newsletter") === "1";
   const prefs = user.notifyPrefs && typeof user.notifyPrefs === "object" ? (user.notifyPrefs as Record<string, unknown>) : {};
-  await db.user.update({ where: { id: user.id }, data: { notifyPrefs: { ...prefs, email, newsletter } } });
+  await db.user.update({ where: { id: user.id }, data: { notifyPrefs: { ...prefs, email, newsletter, newsletterAsked: true } } });
   // Consentement à la lettre d'information tracé (date, choix).
-  await audit(user.id, "user.notify_prefs", "User", user.id, { email, newsletter });
+  await audit(user.id, "user.notify_prefs", "User", user.id, { email, newsletter, source: "compte" });
   revalidatePath("/compte");
   const { t } = await getT();
   return { ok: email ? t("Vous recevrez les notifications par e-mail.") : t("Vous ne recevrez plus de notifications par e-mail (hors e-mails de service).") };
+}
+
+/** Réponse à la proposition de lettre d'information (accueil du praticien), posée une seule fois. */
+export async function answerNewsletter(form: FormData) {
+  const user = await requireUser();
+  const newsletter = form.get("choice") === "oui";
+  const prefs = user.notifyPrefs && typeof user.notifyPrefs === "object" ? (user.notifyPrefs as Record<string, unknown>) : {};
+  await db.user.update({ where: { id: user.id }, data: { notifyPrefs: { ...prefs, newsletter, newsletterAsked: true } } });
+  await audit(user.id, "user.notify_prefs", "User", user.id, { newsletter, source: String(form.get("source") ?? "accueil").slice(0, 20) });
+  revalidatePath("/tableau-de-bord");
+  revalidatePath("/actualites");
+  revalidatePath("/compte");
 }
 
 /** Suppression du compte (anonymisation), après confirmation par le mot de passe. */

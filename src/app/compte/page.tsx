@@ -14,6 +14,7 @@ import { wantsEmail } from "@/lib/notifications";
 import { removePublication, removeStructure } from "@/lib/profile-actions";
 import { fmtDate } from "@/lib/i18n";
 import { getT } from "@/lib/i18n/server";
+import { subscribed } from "@/lib/newsletter";
 
 export async function generateMetadata() {
   const { t } = await getT();
@@ -126,7 +127,7 @@ export default async function Page({ searchParams }: { searchParams: Promise<{ a
               : null
           }
         />
-        <NotificationsForm email={wantsEmail(user)} newsletter={!!(user.notifyPrefs && typeof user.notifyPrefs === "object" && (user.notifyPrefs as Record<string, unknown>).newsletter === true)} />
+        <NotificationsForm email={wantsEmail(user)} newsletter={subscribed(user)} />
         <PasswordForm email={user.email} />
         <MyDataCard keep={await retentionReasons(user.id)} />
         <section className="card">
