@@ -11,6 +11,7 @@ const LINKS = [
   { href: "/evenements", label: "Événements" },
   { href: "/appels", label: "Opportunités" },
   { href: "/structures", label: "Organisations" },
+  { href: "/actualites", label: "Actualités" },
   { href: "/aide", label: "Aide" },
 ];
 

@@ -1595,6 +1595,46 @@ async function submitNewOrg(page, siren) {
   await adm.ctx.close();
 }
 
+// ── Actualités administrables ───────────────────────────────────────────────
+{
+  const anon = await session();
+  await anon.page.goto(`${BASE}/actualites`);
+  check("Actualités : rubrique publique", (await text(anon.page)).includes("Attestations de présence vérifiables"));
+  const { ctx, page } = await session();
+  await login(page, "anne.chevalier@demo.kolbase.local");
+  await page.goto(`${BASE}/admin?onglet=actualites`);
+  await page.click('a:has-text("Nouvelle actualité")');
+  await page.fill('input[name="title"]', "Nouveau : rubrique Actualités");
+  await page.fill('textarea[name="excerpt"]', "KolBase publie ses nouveautés et des repères réglementaires.");
+  await page.fill('textarea[name="body"]', "Premier paragraphe avec **du gras**.\n\n## Ce qui change\n\n- un point\n- un autre point\n\nVoir [l'aide](/aide).");
+  const png = Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==", "base64");
+  await page.locator('input[name="cover"]').setInputFiles({ name: "une.png", mimeType: "image/png", buffer: png });
+  await Promise.all([page.waitForURL(/\/admin\/actualites\/[^/?]+\?cree=1/), page.click('button:has-text("Créer le brouillon")')]);
+  check("Actualités : brouillon créé", (await text(page)).includes("Brouillon créé"));
+  await anon.page.goto(`${BASE}/actualites`);
+  check("Actualités : brouillon invisible du public", !(await text(anon.page)).includes("rubrique Actualités"));
+  await page.click('button:has-text("Publier")');
+  await page.waitForTimeout(1000);
+  await anon.page.goto(`${BASE}/actualites/nouveau-rubrique-actualites`);
+  const t = await text(anon.page);
+  check("Actualités : article publié et mis en forme", t.includes("Nouveau : rubrique Actualités") && (await anon.page.locator(".article-body h2").innerText()) === "Ce qui change" && (await anon.page.locator('.article-body a[href="/aide"]').count()) === 1 && (await anon.page.locator(".article-body li").count()) === 2);
+  const cover = await anon.page.locator(".article-cover").getAttribute("src");
+  check("Actualités : image publique", !!cover && (await anon.ctx.request.get(`${BASE}${cover}`)).ok());
+  await anon.page.goto(`${BASE}/`);
+  check("Accueil : dernières actualités", (await text(anon.page)).includes("Les nouvelles de KolBase") && (await text(anon.page)).includes("Nouveau : rubrique Actualités"));
+  await page.click('button:has-text("Repasser en brouillon")');
+  await page.waitForTimeout(1000);
+  const gone = await anon.page.goto(`${BASE}/actualites/nouveau-rubrique-actualites`);
+  check("Actualités : dépublication", gone?.status() === 404);
+  await ctx.close();
+  const other = await session();
+  await login(other.page, "claire.morel@demo.kolbase.local");
+  const r = await other.page.goto(`${BASE}/admin/actualites/nouveau`);
+  check("Actualités : rédaction réservée à l'équipe KolBase", r?.status() === 404);
+  await other.ctx.close();
+  await anon.ctx.close();
+}
+
 // ── 4. Limitation des tentatives ───────────────────────────────────────────
 {
   const { ctx, page } = await session();

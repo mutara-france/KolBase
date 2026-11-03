@@ -28,7 +28,7 @@ const PERSONAL_MAIL = /@(gmail|googlemail|hotmail|outlook|live|msn|yahoo|ymail|i
 export default async function Page({ searchParams }: { searchParams: Promise<{ onglet?: string }> }) {
   await requirePlatformAdmin();
   const o = (await searchParams).onglet;
-  const onglet = o === "praticiens" || o === "lancement" ? o : "organisations";
+  const onglet = o === "praticiens" || o === "lancement" || o === "actualites" ? o : "organisations";
 
   const [orgs, rppsQueue, rppsDone] = await Promise.all([
     db.organization.findMany({
@@ -65,6 +65,7 @@ export default async function Page({ searchParams }: { searchParams: Promise<{ o
         <nav className="tabs">
           <Link href="?onglet=organisations" className={onglet === "organisations" ? "active" : ""}>Organisations ({pending.length} à valider)</Link>
           <Link href="?onglet=praticiens" className={onglet === "praticiens" ? "active" : ""}>Identités ({rppsQueue.length} à vérifier)</Link>
+          <Link href="?onglet=actualites" className={onglet === "actualites" ? "active" : ""}>Actualités</Link>
           <Link href="?onglet=lancement" className={onglet === "lancement" ? "active" : ""}>Lancement</Link>
         </nav>
 
@@ -150,6 +151,8 @@ export default async function Page({ searchParams }: { searchParams: Promise<{ o
             </section>
           ))}
 
+        {onglet === "actualites" && <NewsAdmin />}
+
         {onglet === "lancement" && (
           <LaunchChecklist
             demoOrgs={orgs.filter((x) => x.id.startsWith("demo-")).length}
@@ -211,6 +214,34 @@ export default async function Page({ searchParams }: { searchParams: Promise<{ o
 }
 
 /** État de la configuration en production (lecture seule) : ce qui reste à faire avant l'ouverture. */
+async function NewsAdmin() {
+  const articles = await db.article.findMany({ select: { id: true, slug: true, title: true, category: true, publishedAt: true, updatedAt: true }, orderBy: [{ publishedAt: { sort: "desc", nulls: "first" } }, { updatedAt: "desc" }] });
+  return (
+    <section className="card stack-sm">
+      <div className="actions spread">
+        <h2>Actualités ({articles.length})</h2>
+        <Link className="btn small" href="/admin/actualites/nouveau">Nouvelle actualité</Link>
+      </div>
+      <p className="muted">Publiées dans la rubrique « Actualités » et sur la page d&apos;accueil (les trois plus récentes).</p>
+      {articles.length === 0 ? <p className="muted">Aucune actualité.</p> : (
+        <table className="table" tabIndex={0}>
+          <thead><tr><th>Titre</th><th>Rubrique</th><th>Statut</th><th>Mise à jour</th></tr></thead>
+          <tbody>
+            {articles.map((a) => (
+              <tr key={a.id}>
+                <td><Link href={`/admin/actualites/${a.id}`}>{a.title}</Link></td>
+                <td>{a.category}</td>
+                <td><span className={`pill ${a.publishedAt ? "ok" : "wait"}`}>{a.publishedAt ? `Publiée le ${formatDate(a.publishedAt)}` : "Brouillon"}</span></td>
+                <td>{formatDate(a.updatedAt)}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      )}
+    </section>
+  );
+}
+
 function LaunchChecklist({ demoOrgs, admins }: { demoOrgs: number; admins: { email: string; emailVerifiedAt: Date | null }[] }) {
   const unconfirmed = admins.filter((a) => !a.emailVerifiedAt).map((a) => a.email);
   const missing = platformAdminEmails().filter((e) => !admins.some((a) => a.email.toLowerCase() === e));
