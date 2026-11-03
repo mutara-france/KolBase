@@ -296,9 +296,11 @@ export async function resendVerification(_: FormState): Promise<FormState> {
 export async function updateNotifyPrefs(_: FormState, form: FormData): Promise<FormState> {
   const user = await requireUser();
   const email = form.get("email") === "1";
+  const newsletter = form.get("newsletter") === "1";
   const prefs = user.notifyPrefs && typeof user.notifyPrefs === "object" ? (user.notifyPrefs as Record<string, unknown>) : {};
-  await db.user.update({ where: { id: user.id }, data: { notifyPrefs: { ...prefs, email } } });
-  await audit(user.id, "user.notify_prefs", "User", user.id, { email });
+  await db.user.update({ where: { id: user.id }, data: { notifyPrefs: { ...prefs, email, newsletter } } });
+  // Consentement à la lettre d'information tracé (date, choix).
+  await audit(user.id, "user.notify_prefs", "User", user.id, { email, newsletter });
   revalidatePath("/compte");
   const { t } = await getT();
   return { ok: email ? t("Vous recevrez les notifications par e-mail.") : t("Vous ne recevrez plus de notifications par e-mail (hors e-mails de service).") };

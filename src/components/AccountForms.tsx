@@ -153,7 +153,7 @@ export function EmailVerificationNotice({ email }: { email: string }) {
   );
 }
 
-export function NotificationsForm({ email }: { email: boolean }) {
+export function NotificationsForm({ email, newsletter = false }: { email: boolean; newsletter?: boolean }) {
   const [state, action, pending] = useActionState(updateNotifyPrefs, undefined);
   const t = useT();
   return (
@@ -163,7 +163,10 @@ export function NotificationsForm({ email }: { email: boolean }) {
       <label className="check">
         <input type="checkbox" name="email" value="1" defaultChecked={email} /> {t("Recevoir par e-mail les sollicitations, réponses, messages, candidatures et devis")}
       </label>
-      <p className="hint">{t("Les e-mails de service (mot de passe, confirmation d'adresse, invitations) sont toujours envoyés.")}</p>
+      <label className="check">
+        <input type="checkbox" name="newsletter" value="1" defaultChecked={newsletter} /> {t("Recevoir la lettre d'information de KolBase : événements scientifiques et nouveautés (deux envois par mois au plus)")}
+      </label>
+      <p className="hint">{t("Les e-mails de service (mot de passe, confirmation d'adresse, invitations) sont toujours envoyés. La lettre d'information peut présenter des événements d'organisations partenaires ; chaque envoi contient un lien de désinscription.")}</p>
       <button className="btn secondary" disabled={pending}>{t("Enregistrer")}</button>
     </form>
   );

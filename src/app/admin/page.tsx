@@ -18,6 +18,8 @@ import { aiEnabled } from "@/lib/ai";
 import { displayStatus, exempt, PLANS, planFor, STATUS_LABEL } from "@/lib/billing-plans";
 import { stripeEnabled } from "@/lib/billing";
 import { setExemption } from "@/lib/billing-actions";
+import { saveServiceOffer, updateServiceOrder } from "@/lib/service-actions";
+import { ORDER_STATUS } from "@/lib/services";
 import { country, licenseRule, practicesInFrance, registryLink } from "@/lib/countries";
 
 export const metadata = { title: "Administration — KolBase" };
@@ -31,7 +33,7 @@ const PERSONAL_MAIL = /@(gmail|googlemail|hotmail|outlook|live|msn|yahoo|ymail|i
 export default async function Page({ searchParams }: { searchParams: Promise<{ onglet?: string }> }) {
   await requirePlatformAdmin();
   const o = (await searchParams).onglet;
-  const onglet = o === "praticiens" || o === "lancement" || o === "actualites" || o === "abonnements" ? o : "organisations";
+  const onglet = o === "praticiens" || o === "lancement" || o === "actualites" || o === "abonnements" || o === "services" ? o : "organisations";
 
   const [orgs, rppsQueue, rppsDone] = await Promise.all([
     db.organization.findMany({
@@ -68,6 +70,7 @@ export default async function Page({ searchParams }: { searchParams: Promise<{ o
         <nav className="tabs">
           <Link href="?onglet=organisations" className={onglet === "organisations" ? "active" : ""}>Organisations ({pending.length} à valider)</Link>
           <Link href="?onglet=praticiens" className={onglet === "praticiens" ? "active" : ""}>Identités ({rppsQueue.length} à vérifier)</Link>
+          <Link href="?onglet=services" className={onglet === "services" ? "active" : ""}>Services ({await db.serviceOrder.count({ where: { status: "demandee" } })} à traiter)</Link>
           <Link href="?onglet=abonnements" className={onglet === "abonnements" ? "active" : ""}>Abonnements</Link>
           <Link href="?onglet=actualites" className={onglet === "actualites" ? "active" : ""}>Actualités</Link>
           <Link href="?onglet=lancement" className={onglet === "lancement" ? "active" : ""}>Lancement</Link>
@@ -157,6 +160,7 @@ export default async function Page({ searchParams }: { searchParams: Promise<{ o
 
         {onglet === "actualites" && <NewsAdmin />}
         {onglet === "abonnements" && <BillingAdmin />}
+        {onglet === "services" && <ServicesAdmin />}
 
         {onglet === "lancement" && (
           <LaunchChecklist
@@ -219,6 +223,90 @@ export default async function Page({ searchParams }: { searchParams: Promise<{ o
 }
 
 /** État de la configuration en production (lecture seule) : ce qui reste à faire avant l'ouverture. */
+async function ServicesAdmin() {
+  const [orders, offers, audience] = await Promise.all([
+    db.serviceOrder.findMany({ include: { event: { select: { id: true, title: true, startsAt: true } }, organization: { select: { name: true } }, offer: { select: { kind: true } } }, orderBy: { createdAt: "desc" }, take: 100 }),
+    db.serviceOffer.findMany({ orderBy: { position: "asc" } }),
+    db.user.count({ where: { notifyPrefs: { path: ["newsletter"], equals: true }, emailVerifiedAt: { not: null } } }),
+  ]);
+  const open = orders.filter((o) => ["demandee", "planifiee"].includes(o.status));
+  const done = orders.filter((o) => !["demandee", "planifiee"].includes(o.status));
+  const toInvoice = done.filter((o) => o.status === "realisee" && !o.invoicedAt && o.priceCents > 0);
+  const Row = ({ o }: { o: (typeof orders)[number] }) => (
+    <li className="card stack-sm">
+      <div className="actions spread">
+        <div>
+          <strong>{o.label}</strong> · {formatEUR(o.priceCents)} HT · <span className={`pill ${ORDER_STATUS[o.status]?.tone ?? ""}`}>{ORDER_STATUS[o.status]?.label}</span>
+          <div className="text-sm muted">{o.organization.name} · « <Link href={`/evenements/${o.event.id}`}>{o.event.title}</Link> » du {formatDate(o.event.startsAt)} · commandé le {formatDate(o.createdAt)}{o.wishedAt ? ` · souhaité le ${formatDate(o.wishedAt)}` : ""}</div>
+          {o.brief && <p className="text-sm">« {o.brief} »</p>}
+          {o.adminNote && <p className="text-xs muted">{o.adminNote}</p>}
+          {o.status === "realisee" && <p className="text-xs muted">{o.invoicedAt ? `Facturé (${o.invoiceRef})` : o.invoiceRef ?? "À facturer"}</p>}
+        </div>
+        {["newsletter", "social"].includes(o.offer.kind) && ["demandee", "planifiee"].includes(o.status) && <Link className="btn small" href={`/admin/services/${o.id}`}>{o.offer.kind === "newsletter" ? "Préparer l'e-mailing" : "Préparer le post"}</Link>}
+      </div>
+      {["demandee", "planifiee"].includes(o.status) && (
+        <div className="actions" style={{ marginTop: 0 }}>
+          <form action={updateServiceOrder} className="inline wrap"><input type="hidden" name="orderId" value={o.id} /><input type="hidden" name="action" value="plan" /><input type="date" name="plannedAt" required aria-label="Date de réalisation" /><button className="link">planifier</button></form>
+          {o.offer.kind !== "newsletter" && <form action={updateServiceOrder} className="inline wrap"><input type="hidden" name="orderId" value={o.id} /><input type="hidden" name="action" value="done" /><input name="resultUrl" placeholder="Lien du résultat (facultatif)" aria-label="Lien du résultat" /><button className="link">marquer réalisé</button></form>}
+          <form action={updateServiceOrder} className="inline wrap"><input type="hidden" name="orderId" value={o.id} /><input type="hidden" name="action" value="refuse" /><input name="note" placeholder="Motif du refus" aria-label="Motif du refus" required /><button className="link danger">refuser</button></form>
+        </div>
+      )}
+      {o.status === "realisee" && !o.invoicedAt && o.priceCents > 0 && (
+        <form action={updateServiceOrder} className="inline wrap"><input type="hidden" name="orderId" value={o.id} /><input type="hidden" name="action" value="invoiced" /><input name="note" placeholder="Réf. de facture" aria-label="Référence de facture" /><button className="link">marquer facturé</button></form>
+      )}
+    </li>
+  );
+  return (
+    <>
+      <section className="stack-sm">
+        <div className="actions spread">
+          <h2>Commandes à traiter ({open.length})</h2>
+          <Link className="btn ghost small" href="/admin/services/lettre">Lettre d&apos;information libre ({audience} abonné{audience > 1 ? "s" : ""})</Link>
+        </div>
+        {open.length === 0 ? <p className="muted">Aucune commande en attente.</p> : <ul className="plain stack-sm">{open.map((o) => <Row key={o.id} o={o} />)}</ul>}
+        {toInvoice.length > 0 && <p className="notice warn">{toInvoice.length} service{toInvoice.length > 1 ? "s" : ""} réalisé{toInvoice.length > 1 ? "s" : ""} à facturer hors Stripe.</p>}
+        {done.length > 0 && (
+          <details className="older"><summary>Commandes traitées ({done.length})</summary><ul className="plain stack-sm">{done.map((o) => <Row key={o.id} o={o} />)}</ul></details>
+        )}
+      </section>
+      <section className="card stack-sm">
+        <h2>Catalogue des services</h2>
+        <p className="muted">Proposés aux organisateurs sur chaque événement publié. Le prix est figé à la commande.</p>
+        {offers.map((f) => (
+          <form key={f.id} action={saveServiceOffer} className="form offer-admin">
+            <input type="hidden" name="id" value={f.id} />
+            <div className="row">
+              <label>Libellé<input name="label" defaultValue={f.label} required maxLength={120} /></label>
+              <label>Prix HT (€)<input name="price" defaultValue={String(f.priceCents / 100)} inputMode="decimal" required /></label>
+              <label>Ordre<input name="position" type="number" defaultValue={f.position} /></label>
+            </div>
+            <label>Description<textarea name="description" rows={2} defaultValue={f.description} /></label>
+            <div className="actions" style={{ marginTop: 0 }}>
+              <label className="check"><input type="checkbox" name="active" defaultChecked={f.active} /> Proposé</label>
+              <button className="btn small secondary">Enregistrer</button>
+            </div>
+          </form>
+        ))}
+        <details className="older">
+          <summary>Ajouter un service</summary>
+          <form action={saveServiceOffer} className="form">
+            <div className="row">
+              <label>Libellé<input name="label" required maxLength={120} /></label>
+              <label>Prix HT (€)<input name="price" inputMode="decimal" required /></label>
+              <label>Type
+                <select name="kind" defaultValue="autre"><option value="newsletter">E-mailing aux membres</option><option value="social">Réseaux sociaux</option><option value="une">À la une de l&apos;accueil</option><option value="autre">Autre</option></select>
+              </label>
+            </div>
+            <label>Description<textarea name="description" rows={2} /></label>
+            <input type="hidden" name="active" value="on" />
+            <button className="btn small">Ajouter</button>
+          </form>
+        </details>
+      </section>
+    </>
+  );
+}
+
 async function BillingAdmin() {
   const orgs = await db.organization.findMany({ where: { verification: "VERIFIED" }, select: { id: true, name: true, kind: true, subscription: true }, orderBy: { name: "asc" } });
   const now = new Date();

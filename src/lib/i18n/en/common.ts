@@ -24,4 +24,11 @@ export const COMMON: Record<string, string> = {
   "Navigation": "Navigation",
   "https://… (Drive, SharePoint, Dropbox…)": "https://… (Drive, SharePoint, Dropbox…)",
   "Document": "Document",
+  "Lettre d'information": "Newsletter",
+  "Ne plus recevoir la lettre d'information de KolBase à l'adresse {email} ?": "Stop receiving the KolBase newsletter at {email}?",
+  "Me désinscrire": "Unsubscribe",
+  "C'est fait : vous ne recevrez plus la lettre d'information. Vous pouvez vous réinscrire depuis « Mon compte ».": "Done: you will no longer receive the newsletter. You can subscribe again from “My account”.",
+  "Recevoir la lettre d'information de KolBase : événements scientifiques et nouveautés (deux envois par mois au plus)": "Receive the KolBase newsletter: scientific events and updates (no more than two emails a month)",
+  "Les e-mails de service (mot de passe, confirmation d'adresse, invitations) sont toujours envoyés. La lettre d'information peut présenter des événements d'organisations partenaires ; chaque envoi contient un lien de désinscription.": "Service emails (password, address confirmation, invitations) are always sent. The newsletter may feature events from partner organisations; every issue contains an unsubscribe link.",
+  "Se désinscrire de la lettre d'information": "Unsubscribe from the newsletter",
 };

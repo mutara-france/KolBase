@@ -6,16 +6,18 @@ import { supplierCategoryLabel } from "@/lib/suppliers";
 import { canSee, companyVisibility, kolVisibility } from "@/lib/visibility";
 import { logoSrc } from "@/lib/logos";
 import { country } from "@/lib/countries";
+import { featuredEventIds } from "@/lib/services";
 import type { CallCardData, EventCardData, KolCardData, OrgCardData } from "@/components/PublicCards";
 
 export async function publicEvents(take?: number): Promise<EventCardData[]> {
-  const events = await db.event.findMany({
-    where: { publishedAt: { not: null }, startsAt: { gte: new Date() }, organization: { verification: "VERIFIED" } },
-    include: { organization: { select: { name: true } }, _count: { select: { registrations: true } } },
-    orderBy: { startsAt: "asc" },
-    take,
-  });
-  return events.map((e) => ({ ...e, registrations: e._count.registrations }));
+  // Événements « à la une » (service KolBase) d'abord, puis les prochains par date.
+  const featured = await featuredEventIds();
+  const where = { publishedAt: { not: null }, startsAt: { gte: new Date() }, organization: { verification: "VERIFIED" as const } };
+  const include = { organization: { select: { name: true } }, _count: { select: { registrations: true } } } as const;
+  const top = featured.length ? await db.event.findMany({ where: { ...where, id: { in: featured } }, include, take }) : [];
+  const rest = await db.event.findMany({ where: { ...where, id: { notIn: top.map((e) => e.id) } }, include, orderBy: { startsAt: "asc" }, take: take != null ? Math.max(take - top.length, 0) : undefined });
+  const sorted = top.sort((a, b) => featured.indexOf(a.id) - featured.indexOf(b.id));
+  return [...sorted.map((e) => ({ ...e, featured: true })), ...rest].map((e) => ({ ...e, registrations: e._count.registrations }));
 }
 
 /** Experts référencés tels qu'un visiteur non connecté peut les voir (réglages de visibilité appliqués). */

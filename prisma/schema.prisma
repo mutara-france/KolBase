@@ -22,6 +22,7 @@ model User {
   locale       String    @default("fr")
   notifyPrefs  Json      @default("{}")
   emailVerifiedAt DateTime? // adresse confirmée par le lien reçu par e-mail
+  unsubscribeToken String?  @unique // désinscription de la lettre d'information en un clic
   followsSeenAt DateTime?
   createdAt    DateTime  @default(now())
   updatedAt    DateTime  @updatedAt
@@ -236,6 +237,7 @@ model Organization {
   logo          OrganizationLogo?
   feeNotes      FeeNote[]
   subscription  Subscription?
+  serviceOrders ServiceOrder[]
   photos        OrganizationPhoto[]
   offers        SupplierOffer[]
   reviewsReceived SupplierReview[] @relation("reviewSupplier")
@@ -517,6 +519,7 @@ model Event {
   benefits      EventBenefit[]
   registrations Registration[]
   surveys       SurveyResponse[]
+  serviceOrders ServiceOrder[]
   rfqs          Rfq[]
   calls         OpenCall[]
 }
@@ -874,4 +877,61 @@ model Subscription {
   exemptNote           String?
   createdAt            DateTime     @default(now())
   updatedAt            DateTime     @updatedAt
+}
+
+// Services additionnels proposés par KolBase sur les événements (catalogue réglé depuis /admin).
+model ServiceOffer {
+  id          String         @id @default(cuid())
+  code        String         @unique // newsletter | reseaux | une | …
+  kind        String         // newsletter (lettre aux membres) | social (réseaux sociaux) | une (accueil) | autre
+  label       String
+  description String
+  priceCents  Int            // HT
+  active      Boolean        @default(true)
+  position    Int            @default(0)
+  createdAt   DateTime       @default(now())
+  updatedAt   DateTime       @updatedAt
+  orders      ServiceOrder[]
+}
+
+// Commande d'un service sur un événement : réalisée par l'équipe KolBase, facturée une fois réalisée.
+model ServiceOrder {
+  id             String       @id @default(cuid())
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  eventId        String
+  event          Event        @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  offerId        String
+  offer          ServiceOffer @relation(fields: [offerId], references: [id])
+  label          String       // libellé et prix figés à la commande
+  priceCents     Int
+  brief          String?
+  wishedAt       DateTime?
+  status         String       @default("demandee") // demandee | planifiee | realisee | refusee | annulee
+  adminNote      String?
+  resultUrl      String?
+  orderedById    String
+  plannedAt      DateTime?
+  doneAt         DateTime?
+  invoicedAt     DateTime?
+  invoiceRef     String?      // ligne de facture Stripe, ou « hors Stripe »
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+  campaign       NewsletterCampaign?
+
+  @@index([organizationId])
+  @@index([status])
+}
+
+// Lettre d'information envoyée aux membres qui ont accepté de la recevoir.
+model NewsletterCampaign {
+  id          String        @id @default(cuid())
+  orderId     String?       @unique
+  order       ServiceOrder? @relation(fields: [orderId], references: [id], onDelete: SetNull)
+  subject     String
+  body        String
+  recipients  Int           @default(0)
+  sentAt      DateTime?
+  createdById String
+  createdAt   DateTime      @default(now())
 }
