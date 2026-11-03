@@ -10,6 +10,8 @@ import { collabType, recruitmentOpen } from "@/lib/projects";
 import { drPrefix } from "@/lib/professions";
 import { fmtDate, fmtEur } from "@/lib/i18n";
 import { getT } from "@/lib/i18n/server";
+import { answerNewsletter } from "@/lib/auth-actions";
+import { newsletterPending } from "@/lib/newsletter";
 
 export async function generateMetadata() {
   const { t } = await getT();
@@ -109,6 +111,20 @@ export default async function Page() {
               <p className="muted">{t("Recevez des sollicitations, candidatez aux opportunités et gérez vos conventions.")}</p>
             </div>
             <Link className="btn" href="/compte">{t("Me référencer")}</Link>
+          </section>
+        )}
+
+        {newsletterPending(user) && (
+          <section className="card newsletter-ask" aria-labelledby="lettre">
+            <div>
+              <h2 id="lettre">{t("Recevoir la lettre d'information de KolBase ?")}</h2>
+              <p className="muted">{t("Les événements scientifiques à venir et les nouveautés de la plateforme, deux envois par mois au plus. Désinscription en un clic depuis chaque envoi.")}</p>
+            </div>
+            <form action={answerNewsletter} className="actions">
+              <input type="hidden" name="source" value="accueil" />
+              <button className="btn" name="choice" value="oui">{t("Oui, je m'abonne")}</button>
+              <button className="btn ghost" name="choice" value="non">{t("Non merci")}</button>
+            </form>
           </section>
         )}
 

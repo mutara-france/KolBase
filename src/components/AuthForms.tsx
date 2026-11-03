@@ -60,6 +60,7 @@ export function SignUpForm({ next }: { next?: string }) {
       <label>{t("Mot de passe")}<input name="password" type="password" autoComplete="new-password" minLength={10} required />
         <span className="hint">{t("10 caractères minimum, avec au moins une lettre et un chiffre.")}</span>
       </label>
+      <label className="check"><input type="checkbox" name="newsletter" value="1" /> {t("Recevoir la lettre d'information de KolBase : événements scientifiques et nouveautés (deux envois par mois au plus, désinscription en un clic)")}</label>
       <label className="check"><input type="checkbox" name="cgu" required /> {t("J'accepte les")} <Link href="/cgu" target="_blank">{t("conditions d'utilisation")}</Link> {t("et la")} <Link href="/confidentialite" target="_blank">{t("politique de confidentialité")}</Link>.</label>
       <button className="btn" disabled={pending}>{pending ? t("Création…") : t("Créer mon compte")}</button>
       <p className="muted">{t("Déjà inscrit ?")} <Link href="/connexion">{t("Se connecter")}</Link></p>

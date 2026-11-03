@@ -551,8 +551,18 @@ async function submitNewOrg(page, siren) {
   await page.fill('input[name="lastName"]', "Nouvel");
   await page.fill('input[name="email"]', "camille.nouvel@exemple.fr");
   await page.fill('input[name="password"]', "premier-mot-de-passe-1");
+  await page.check('input[name="newsletter"]');
   await page.check('input[name="cgu"]');
   await Promise.all([page.waitForURL(/tableau-de-bord|organisations\/nouvelle|compte/), page.click('button:has-text("Créer")')]);
+  check("Inscription : lettre d'information non reproposée à l'accueil", !(await text(page)).includes("Recevoir la lettre d'information de KolBase ?"));
+  {
+    const c = new pg.Client({ connectionString: process.env.DATABASE_URL });
+    await c.connect();
+    const prefs = (await c.query(`select "notifyPrefs" p from "User" where email = 'camille.nouvel@exemple.fr'`)).rows[0]?.p;
+    const consent = (await c.query(`select count(*)::int n from "AuditLog" a join "User" u on u.id = a."actorId" where u.email = 'camille.nouvel@exemple.fr' and a.action = 'user.notify_prefs'`)).rows[0].n;
+    await c.end();
+    check("Inscription : consentement à la lettre enregistré et tracé", prefs?.newsletter === true && consent === 1, JSON.stringify(prefs));
+  }
   const verify = await waitMail("camille.nouvel@exemple.fr", "Confirmez votre adresse");
   check("Inscription : e-mail de confirmation envoyé", !!linkIn(verify), verify?.subject ?? "aucun e-mail");
   await page.goto(`${BASE}/compte`);
@@ -1718,6 +1728,34 @@ async function submitNewOrg(page, siren) {
   check("Admin : gratuité accordée", (await adm.page.locator('tr:has-text("Collège Dentaire Rhône-Alpes")').innerText()).includes("Offert par KolBase"));
   await adm.ctx.close();
   await pgc.end();
+}
+
+// ── Lettre d'information : proposée une fois à l'accueil, encart des actualités ──
+{
+  const no = await session();
+  await login(no.page, "emma.simon@demo.kolbase.local");
+  await no.page.goto(`${BASE}/tableau-de-bord`);
+  check("Accueil : lettre d'information proposée", (await text(no.page)).includes("Recevoir la lettre d'information de KolBase ?"));
+  await no.page.click('button:has-text("Non merci")');
+  await no.page.waitForTimeout(800);
+  await no.page.goto(`${BASE}/tableau-de-bord`);
+  check("Accueil : « Non merci » respecté, plus reproposé", !(await text(no.page)).includes("Recevoir la lettre d'information de KolBase ?"));
+  await no.ctx.close();
+  const yes = await session();
+  await login(yes.page, "camille.petit@demo.kolbase.local");
+  await yes.page.goto(`${BASE}/tableau-de-bord`);
+  await yes.page.click('button:has-text("Oui, je m\'abonne")');
+  await yes.page.waitForTimeout(800);
+  await yes.page.goto(`${BASE}/actualites`);
+  check("Actualités : abonnement confirmé", (await text(yes.page)).includes("Vous êtes abonné à la lettre d'information"));
+  await yes.page.goto(`${BASE}/compte`);
+  check("Mon compte : case de la lettre cochée", await yes.page.locator('input[name="newsletter"]').isChecked());
+  await yes.ctx.close();
+  const anon = await session();
+  await anon.page.goto(`${BASE}/actualites`);
+  const cta = anon.page.locator('.newsletter-cta a:has-text("Créer un compte gratuit")');
+  check("Actualités : inscription proposée aux visiteurs", (await cta.count()) === 1 && (await cta.getAttribute("href")) === "/inscription?next=%2Factualites");
+  await anon.ctx.close();
 }
 
 // ── Services KolBase sur les événements : commande, réalisation, e-mailing, facturation ──

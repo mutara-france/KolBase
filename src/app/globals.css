@@ -1027,3 +1027,15 @@ body:has(.sidebar) .site-footer { padding: 24px 32px; }
 .service-order { gap: 12px; flex-wrap: wrap; }
 .offer-admin { padding: 12px 0; border-top: 1px solid var(--line); }
 .event-featured { position: absolute; left: 12px; bottom: 10px; background: var(--corail); color: #fff; font-size: 11px; font-weight: 700; letter-spacing: 0.04em; text-transform: uppercase; padding: 4px 9px; border-radius: 999px; }
+
+/* Lettre d'information : proposition à l'accueil et encart des actualités */
+.newsletter-ask { display: flex; gap: 1rem 2rem; align-items: center; justify-content: space-between; flex-wrap: wrap; border-color: #cfc8f5; background: linear-gradient(180deg, var(--tint), #fff 70%); }
+.newsletter-ask > div { flex: 1 1 22rem; }
+.newsletter-ask h2 { margin: 0 0 .25rem; }
+.newsletter-ask .actions { margin: 0; }
+.newsletter-cta { display: grid; grid-template-columns: auto 1fr auto; gap: 1rem 1.25rem; align-items: center; margin-top: 2rem; }
+.newsletter-cta h2 { margin: 0 0 .25rem; font-size: 1.15rem; }
+.newsletter-cta p { margin: 0; }
+.newsletter-cta > svg { color: var(--indigo); }
+.newsletter-done { display: flex; gap: .4rem; align-items: center; margin-top: 2rem; }
+@media (max-width: 640px) { .newsletter-cta { grid-template-columns: 1fr; } .newsletter-cta > svg { display: none; } }
