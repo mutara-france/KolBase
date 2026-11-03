@@ -1493,6 +1493,36 @@ async function submitNewOrg(page, siren) {
   await other.ctx.close();
 }
 
+// ── Déclaration Transparence Santé : fichier du semestre ────────────────────
+{
+  const sem = (d) => `${d.getFullYear()}-S${d.getMonth() < 6 ? 1 : 2}`;
+  const signed = sem(new Date(Date.now() - 26 * 86400e3)); // comité scientifique signé il y a 26 jours
+  const { ctx, page } = await session();
+  await login(page, "lea.rousseau@demo.kolbase.local");
+  await page.goto(`${BASE}/organisations/demo-org-orthonova/conformite?onglet=transparence&periode=${signed}`);
+  const t = await text(page);
+  check("Transparence : préparation de la déclaration", t.includes("Préparer la déclaration") && /Télécharger le fichier \(\d+ lignes?\)/.test(t));
+  const csv = await (await ctx.request.get(`${BASE}/organisations/demo-org-orthonova/conformite/declaration?periode=${signed}`)).text();
+  const lines = csv.replace(/^﻿/, "").split("\r\n").map((l) => l.split(";"));
+  const head = lines[0];
+  const col = (name) => head.indexOf(name);
+  const conv = lines.find((l) => l[col("Déclaration")] === "Convention" && l[col("Information convention")].includes("Comité scientifique aligneurs"));
+  check("Fichier : en-têtes de la plateforme", col("Identifiant unique") >= 0 && col("Convention liée") >= 0 && col("Objet convention / nature avantage") >= 0);
+  check("Fichier : convention du comité scientifique", !!conv && conv[col("Objet convention / nature avantage")] === "Contrat d'expert scientifique" && conv[col("Montant des conventions / avantages / rémunération")] === "4500" && conv[col("Identité / Nom")] === "PETIT", conv?.join(" | "));
+  const rem = lines.filter((l) => l[col("Déclaration")] === "Rémunération");
+  check("Fichier : rémunérations rattachées à leur convention", rem.every((l) => lines.some((c) => c[col("Identifiant unique")] === l[col("Convention liée")])));
+  await page.click('button:has-text("Tout marquer publié")');
+  await page.waitForTimeout(1000);
+  check("Transparence : semestre marqué publié", /Télécharger le fichier \(0 ligne\)/.test(await text(page)));
+  await ctx.close();
+  const comp = await session();
+  await login(comp.page, "sophie.bernard@demo.kolbase.local");
+  const passe = sem(new Date(Date.now() - 40 * 86400e3));
+  await comp.page.goto(`${BASE}/organisations/demo-org-dentalys/conformite?onglet=transparence&periode=${passe}`);
+  check("Transparence : avantages d'absents exclus du fichier", (await text(comp.page)).includes("absents au pointage"));
+  await comp.ctx.close();
+}
+
 // ── 4. Limitation des tentatives ───────────────────────────────────────────
 {
   const { ctx, page } = await session();

@@ -6,6 +6,7 @@ import { audit } from "@/lib/auth";
 import { requireMembership } from "@/lib/orgs";
 import { COMPLIANCE_ROLES } from "@/lib/events";
 import { SETTING_FIELDS, complianceSettings, legalBound } from "@/lib/compliance";
+import { declarationRows, parseSemester, semesterKey } from "@/lib/transparence";
 import { str } from "@/lib/form";
 
 export type ActionState = { error?: string; ok?: string } | undefined;
@@ -43,4 +44,20 @@ export async function markProjectPublished(form: FormData) {
   if (!count) return;
   await audit(user.id, undo ? "project.unpublish" : "project.publish", "Project", projectId, { ref: str(form, "ref") || undefined });
   revalidatePath(`/organisations/${orgId}/conformite`);
+}
+
+/** Toutes les déclarations du fichier d'un semestre marquées publiées (après dépôt sur la plateforme). */
+export async function markSemesterPublished(form: FormData) {
+  const orgId = str(form, "orgId");
+  const { user } = await requireMembership(orgId, COMPLIANCE_ROLES);
+  const s = parseSemester(str(form, "periode"));
+  if (!s) return;
+  const r = await declarationRows(orgId, s);
+  const ref = str(form, "ref").slice(0, 80) || null;
+  const now = new Date();
+  await db.project.updateMany({ where: { id: { in: r.projectIds }, organizationId: orgId }, data: { declared: true, declarationRef: ref, declaredAt: now } });
+  await db.registration.updateMany({ where: { id: { in: r.registrationIds }, event: { organizationId: orgId } }, data: { declared: true, declarationRef: ref } });
+  await audit(user.id, "transparence.publish", "Organization", orgId, { periode: semesterKey(s), dossiers: r.projectIds.length, hospitalites: r.registrationIds.length, ref: ref ?? undefined });
+  revalidatePath(`/organisations/${orgId}/conformite`);
+  revalidatePath(`/organisations/${orgId}/hospitalites`);
 }
