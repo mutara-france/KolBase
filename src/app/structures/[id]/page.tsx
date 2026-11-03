@@ -1,7 +1,9 @@
 import Link from "next/link";
 import { logoSrc } from "@/lib/logos";
 import { notFound } from "next/navigation";
-import { ArrowLeft, Clock, Lock, Mail, MapPin, ShieldCheck } from "lucide-react";
+import { ArrowLeft, Clock, Lock, Mail, MapPin, ShieldCheck, Star } from "lucide-react";
+import { CAPACITY_LABEL, delayLabel, OFFER_UNITS, photoSrc, readCapacities, supplierBook } from "@/lib/supplier-book";
+import { supplierCategoryLabel } from "@/lib/suppliers";
 import { SiteHeader } from "@/components/SiteHeader";
 import { Avatar } from "@/components/Avatar";
 import { CallCard, EventCard } from "@/components/PublicCards";
@@ -25,7 +27,7 @@ export async function generateMetadata({ params }: { params: Promise<{ id: strin
 
 export default async function Page({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
-  const [user, { t }] = await Promise.all([getCurrentUser(), getT()]);
+  const [user, { t, locale }] = await Promise.all([getCurrentUser(), getT()]);
   const isMember = !!user?.memberships.some((m) => m.organizationId === id);
   const viewer: Viewer = isMember ? "proprietaire" : user ? "membre" : "public";
   const now = new Date();
@@ -39,6 +41,15 @@ export default async function Page({ params }: { params: Promise<{ id: string }>
   });
   if (!o) notFound();
   const v = companyVisibility(o.visibility);
+  const isSupplier = o.kind === "PRESTATAIRE";
+  const [book, photos, offers] = isSupplier
+    ? await Promise.all([
+        supplierBook(o.id),
+        db.organizationPhoto.findMany({ where: { organizationId: o.id }, select: { id: true, caption: true, createdAt: true }, orderBy: { position: "asc" } }),
+        db.supplierOffer.findMany({ where: { organizationId: o.id }, orderBy: { unitCents: "asc" } }),
+      ])
+    : [null, [], []];
+  const caps = readCapacities(o.capacities);
   const lock = (label: string) => (
     <p className="hidden-note"><Lock size={13} /> {t("{label} : réservé aux membres connectés.", { label })} {viewer === "public" && <Link href="/connexion">{t("Se connecter")}</Link>}</p>
   );
@@ -58,15 +69,91 @@ export default async function Page({ params }: { params: Promise<{ id: string }>
             </div>
             {isMember ? <Link className="btn ghost" href={`/organisations/${o.id}`}>{t("Gérer l'organisation")}</Link> : <FollowButton type="organization" id={o.id} userId={user?.id ?? null} label={t("cette organisation")} />}
           </section>
-          {!isMember && user?.practitioner?.listed && (
+          {isSupplier && book && (
+            <>
+              <div className="stats-row">
+                <div className="stat-card"><div className="stat-value">{book.rating != null ? <span className="rating"><Star size={20} /> {book.rating.toFixed(1).replace(".", ",")}</span> : "—"}</div><div className="stat-label">{t(book.reviews.length > 1 ? "{n} avis vérifiés" : "{n} avis vérifié", { n: book.reviews.length })}</div></div>
+                <div className="stat-card"><div className="stat-value">{delayLabel(book.delayHours, locale) ?? "—"}</div><div className="stat-label">{t("Délai de réponse médian")}</div></div>
+                <div className="stat-card"><div className="stat-value">{book.responseRate != null ? `${book.responseRate} %` : "—"}</div><div className="stat-label">{t("Taux de réponse aux demandes")}</div></div>
+                <div className="stat-card"><div className="stat-value tone-electric">{book.retained}</div><div className="stat-label">{t("Prestations réalisées via KolBase")}</div></div>
+              </div>
+              {photos.length > 0 && (
+                <div className="gallery">
+                  {photos.map((ph) => (
+                    <figure key={ph.id}>
+                      {/* eslint-disable-next-line @next/next/no-img-element */}
+                      <img src={photoSrc(ph)} alt={ph.caption ?? o.name} loading="lazy" />
+                      {ph.caption && <figcaption>{ph.caption}</figcaption>}
+                    </figure>
+                  ))}
+                </div>
+              )}
+              <div className="grid-2">
+                <section className="card stack-sm">
+                  <h2 className="section-title">{t("Présentation")}</h2>
+                  {o.about ? <p>{o.about}</p> : <p className="muted">{t("Pas encore de présentation.")}</p>}
+                  {o.supplierCategories.length > 0 && <div className="tags">{o.supplierCategories.map((c) => <span key={c} className="tag">{t(supplierCategoryLabel(c))}</span>)}</div>}
+                  {o.coverage && <p className="meta-line"><MapPin size={12} /> {t("Zone couverte : {zone}", { zone: o.coverage })}</p>}
+                  {Object.keys(caps).length > 0 && (
+                    <ul className="plain text-sm">
+                      {(Object.keys(caps) as (keyof typeof caps)[]).map((k) => <li key={k}><strong>{caps[k]}</strong> {t(CAPACITY_LABEL[k])}</li>)}
+                    </ul>
+                  )}
+                  {(o.equipment.length > 0 || o.accessible) && (
+                    <div className="tags">{[...o.equipment, ...(o.accessible ? ["Accessible PMR"] : [])].map((e) => <span key={e} className="tag">{t(e)}</span>)}</div>
+                  )}
+                </section>
+                <section className="card stack-sm">
+                  <h2 className="section-title">{t("Tarifs indicatifs")}</h2>
+                  {o.priceHint && <p>{o.priceHint}</p>}
+                  {offers.length > 0 ? (
+                    <ul className="offer-list">
+                      {offers.map((f) => <li key={f.id}><span>{f.label}</span><span><strong>{t("{amount} HT", { amount: (f.unitCents / 100).toLocaleString("fr-FR", { style: "currency", currency: "EUR" }) })}</strong> <span className="muted text-sm">{t(OFFER_UNITS[f.unit as keyof typeof OFFER_UNITS] ?? f.unit)}</span></span></li>)}
+                    </ul>
+                  ) : !o.priceHint && <p className="muted">{t("Sur devis.")}</p>}
+                  <p className="hint">{t("Les organisations consultent ce prestataire depuis « Prestataires et devis » : il répond par un devis détaillé.")}</p>
+                </section>
+              </div>
+              <section className="card stack-sm">
+                <h2 className="section-title">{t("Références")}</h2>
+                {book.references.length === 0 ? <p className="muted">{t("Pas encore de prestation réalisée via KolBase.")}</p> : (
+                  <ul className="plain stack-sm">
+                    {book.references.slice(0, 10).map((r, i) => (
+                      <li key={i} className="text-sm">
+                        {t(supplierCategoryLabel(r.category))}{r.city ? ` · ${r.city}` : ""} · {r.date.toLocaleDateString(locale === "en" ? "en-GB" : "fr-FR", { month: "long", year: "numeric", timeZone: "Europe/Paris" })}{r.headcount ? ` · ${t("{n} participants", { n: r.headcount })}` : ""}
+                      </li>
+                    ))}
+                  </ul>
+                )}
+                <p className="hint">{t("Événements scientifiques organisés via KolBase ; le nom des clients n'est pas affiché.")}</p>
+              </section>
+              <section className="card stack-sm">
+                <h2 className="section-title">{t("Avis vérifiés")}</h2>
+                {book.reviews.length === 0 ? <p className="muted">{t("Aucun avis pour l'instant.")}</p> : book.reviews.map((r) => (
+                  <div key={r.id} className="review">
+                    <span><span className="rating">{Array.from({ length: r.rating }, (_, i) => <Star key={i} size={14} />)}</span> <strong>{r.client.name}</strong> <span className="muted text-xs">{r.createdAt.toLocaleDateString(locale === "en" ? "en-GB" : "fr-FR", { month: "long", year: "numeric", timeZone: "Europe/Paris" })}</span></span>
+                    {r.comment && <p className="text-sm">{r.comment}</p>}
+                  </div>
+                ))}
+                <p className="hint">{t("Avis laissés uniquement par les organisations qui ont retenu ce prestataire, après la prestation.")}</p>
+              </section>
+            </>
+          )}
+          {!isMember && !isSupplier && user?.practitioner?.listed && (
             <ProposeForm orgId={o.id} orgName={o.name} types={COLLAB_TYPES} defaultFee={user.practitioner.dayRateCents != null ? String(user.practitioner.dayRateCents / 100) : ""} />
           )}
-          <div className="stats-row">
+          {!isSupplier && <div className="stats-row">
             <div className="stat-card"><div className="stat-value">{o.openCalls.length}</div><div className="stat-label">{t("Appels ouverts")}</div></div>
             <div className="stat-card"><div className="stat-value tone-electric">{o.events.length}</div><div className="stat-label">{t("Événements à venir")}</div></div>
             <div className="stat-card"><div className="stat-value">{o._count.projects}</div><div className="stat-label">{t("Collaborations")}</div></div>
-          </div>
-          <div className="grid-2">
+          </div>}
+          {isSupplier ? (
+            <section className="card">
+              <h2 className="section-title"><Mail size={15} /> {t("Contact")}</h2>
+              {v.contact === "masque" && viewer !== "proprietaire" ? <p className="muted">{t("Non communiqué.")}</p> : canSee(v.contact, viewer) ? <p>{o.contactEmail ? <a href={`mailto:${o.contactEmail}`}>{o.contactEmail}</a> : t("Non renseigné.")}</p> : lock(t("Contact"))}
+              {o.headquarters && <p className="meta-line mt-2"><MapPin size={12} /> {o.headquarters}</p>}
+            </section>
+          ) : <div className="grid-2">
             <section className="card">
               <h2 className="section-title">{t("Présentation")}</h2>
               {o.about ? <p>{o.about}</p> : <p className="muted">{t("Pas encore de présentation.")}</p>}
@@ -80,8 +167,8 @@ export default async function Page({ params }: { params: Promise<{ id: string }>
               {v.contact === "masque" && viewer !== "proprietaire" ? <p className="muted">{t("Non communiqué.")}</p> : canSee(v.contact, viewer) ? <p>{o.contactEmail ? <a href={`mailto:${o.contactEmail}`}>{o.contactEmail}</a> : t("Non renseigné.")}</p> : lock(t("Contact"))}
               {o.headquarters && <p className="meta-line mt-2"><MapPin size={12} /> {o.headquarters}</p>}
             </section>
-          </div>
-          {v.projets !== "masque" && (
+          </div>}
+          {!isSupplier && v.projets !== "masque" && (
             <section>
               <div className="section-head"><div><div className="eyebrow mb-1">{t("Opportunités")}</div><h2 className="section-h2">{t("Appels ouverts")}</h2></div></div>
               {canSee(v.projets, viewer) ? (
@@ -91,7 +178,7 @@ export default async function Page({ params }: { params: Promise<{ id: string }>
               ) : lock(t("Appels ouverts"))}
             </section>
           )}
-          <section>
+          {!isSupplier && <section>
             <div className="section-head"><div><div className="eyebrow mb-1">{t("Agenda")}</div><h2 className="section-h2">{t("Événements à venir")}</h2></div></div>
             {o.events.length === 0 ? <p className="muted"><Clock size={13} /> {t("Aucun événement à venir.")}</p> : (
               <>
@@ -102,7 +189,7 @@ export default async function Page({ params }: { params: Promise<{ id: string }>
                 })()}
               </>
             )}
-          </section>
+          </section>}
         </div>
       </main>
     </>

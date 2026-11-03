@@ -196,6 +196,19 @@ export function notifyTransparencyIssue(orgId: string, who: string, label: strin
   });
 }
 
+/** Nouvel avis vérifié : le prestataire est prévenu. */
+export function notifySupplierReview(reviewId: string) {
+  later(async () => {
+    const r = await db.supplierReview.findUnique({ where: { id: reviewId }, include: { client: { select: { name: true } } } });
+    if (!r) return;
+    await send(await supplierTeam(r.supplierId), {
+      subject: `Nouvel avis de ${r.client.name} : ${r.rating}/5`,
+      text: `Bonjour,\n\n${r.client.name} a évalué votre prestation : ${r.rating}/5.${r.comment ? `\n\n« ${r.comment} »` : ""}`,
+      cta: { label: "Voir ma page publique", href: `/structures/${r.supplierId}` },
+    });
+  });
+}
+
 /** Circuit de conformité : dossier soumis (→ conformité), validé ou bloqué (→ équipe projet). */
 export function notifyCompliance(projectId: string, step: "submit" | "validate" | "block", actorId: string) {
   later(async () => {

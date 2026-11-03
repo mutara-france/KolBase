@@ -31,6 +31,7 @@ model User {
   registrations Registration[]
   messages      Message[]
   rfqMessages   RfqMessage[]
+  supplierReviews SupplierReview[]
   auditLogs     AuditLog[]
   sessions      Session[]
   invitationsSent     Invitation[] @relation("invitedBy")
@@ -201,6 +202,11 @@ model Organization {
   // Prestataires référencés : catégories de prestation et zone couverte.
   supplierCategories String[] @default([])
   coverage           String?
+  // Book prestataire : capacités ({ seats, cocktail, banquet, rooms }), équipements, accessibilité, prix indicatif.
+  capacities         Json     @default("{}")
+  equipment          String[] @default([])
+  accessible         Boolean  @default(false)
+  priceHint          String?
   // Identité légale et validation par KolBase.
   siren              String?
   legalName          String?          // dénomination officielle (API Recherche d'entreprises)
@@ -216,6 +222,10 @@ model Organization {
   updatedAt    DateTime @updatedAt
 
   logo          OrganizationLogo?
+  photos        OrganizationPhoto[]
+  offers        SupplierOffer[]
+  reviewsReceived SupplierReview[] @relation("reviewSupplier")
+  reviewsGiven    SupplierReview[] @relation("reviewClient")
   members       Membership[]
   projects      Project[]
   events        Event[]       @relation("orgEvents")
@@ -515,6 +525,7 @@ model Rfq {
   suppliers RfqSupplier[]
   quotes    Quote[]
   messages  RfqMessage[]
+  review    SupplierReview?
 }
 
 // Questions et échanges sur une demande de devis : un fil privé entre le demandeur et chaque prestataire consulté.
@@ -709,6 +720,51 @@ enum ExpenseStatus {
 enum RegistrationKind {
   participant
   speaker
+}
+
+// Photo du book d'un prestataire (salle, réalisation…), conservée en base comme le logo.
+model OrganizationPhoto {
+  id             String       @id @default(cuid())
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  data           Bytes
+  contentType    String
+  caption        String?
+  position       Int          @default(0)
+  createdAt      DateTime     @default(now())
+
+  @@index([organizationId])
+}
+
+// Forfait du catalogue d'un prestataire : prérempli dans ses devis.
+model SupplierOffer {
+  id             String       @id @default(cuid())
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  label          String
+  unitCents      Int
+  unit           String       // personne, forfait, jour, nuit
+  createdAt      DateTime     @default(now())
+
+  @@index([organizationId])
+}
+
+// Avis vérifié : laissé par l'organisation qui a retenu le prestataire, une fois la prestation passée (un avis par demande).
+model SupplierReview {
+  id         String       @id @default(cuid())
+  supplierId String
+  supplier   Organization @relation("reviewSupplier", fields: [supplierId], references: [id], onDelete: Cascade)
+  clientId   String
+  client     Organization @relation("reviewClient", fields: [clientId], references: [id], onDelete: Cascade)
+  rfqId      String       @unique
+  rfq        Rfq          @relation(fields: [rfqId], references: [id], onDelete: Cascade)
+  authorId   String
+  author     User         @relation(fields: [authorId], references: [id])
+  rating     Int
+  comment    String?
+  createdAt  DateTime     @default(now())
+
+  @@index([supplierId])
 }
 
 /** Logo d'une organisation (PNG, JPEG ou WebP, 500 Ko au plus), conservé en base pour ne pas dépendre du stockage S3. */
