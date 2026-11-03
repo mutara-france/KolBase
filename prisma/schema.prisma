@@ -123,6 +123,14 @@ model PractitionerProfile {
   orcidVerified Boolean   @default(false) // iD obtenu par connexion au compte ORCID
   rppsCheckedAt DateTime? // contrôle du RPPS par un administrateur KolBase (validé ou refusé)
   rppsCheckNote String?   // motif d'un refus
+  // Coordonnées de facturation (notes d'honoraires) : société d'exercice éventuelle, adresse, SIRET, TVA, IBAN.
+  billingEntity  String?
+  billingAddress String?
+  siret          String?
+  vatRegime      String   @default("franchise") // franchise (art. 293 B du CGI) ou assujetti
+  vatNumber      String?
+  iban           String?
+  feeNotes       FeeNote[]
 }
 
 // Publication scientifique déclarée par le praticien.
@@ -222,6 +230,7 @@ model Organization {
   updatedAt    DateTime @updatedAt
 
   logo          OrganizationLogo?
+  feeNotes      FeeNote[]
   photos        OrganizationPhoto[]
   offers        SupplierOffer[]
   reviewsReceived SupplierReview[] @relation("reviewSupplier")
@@ -387,6 +396,7 @@ model ProjectExpert {
   messages  Message[]
   documents Document[]
   signature ConventionSignature?
+  feeNote   FeeNote?
 
   @@unique([projectId, practitionerId])
 }
@@ -800,4 +810,24 @@ model SurveyResponse {
   createdAt      DateTime     @default(now())
 
   @@index([eventId])
+}
+
+// Note d'honoraires établie par un expert pour une convention signée : figée à l'émission (données recopiées).
+model FeeNote {
+  id              String              @id @default(cuid())
+  number          String              // NH-AAAA-NNN, séquentiel par expert et par année
+  practitionerId  String
+  practitioner    PractitionerProfile @relation(fields: [practitionerId], references: [id], onDelete: Cascade)
+  projectExpertId String?             @unique
+  projectExpert   ProjectExpert?      @relation(fields: [projectExpertId], references: [id], onDelete: SetNull)
+  organizationId  String
+  organization    Organization        @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  amountCents     Int                 // HT
+  vatBp           Int                 // TVA en points de base (0 en franchise)
+  totalCents      Int                 // TTC
+  data            Json                // émetteur, destinataire, objet, quantités (figés)
+  issuedAt        DateTime            @default(now())
+
+  @@unique([practitionerId, number])
+  @@index([organizationId])
 }

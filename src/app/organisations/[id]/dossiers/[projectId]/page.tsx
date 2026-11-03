@@ -74,6 +74,7 @@ export default async function Page({ params }: { params: Promise<{ id: string; p
         include: {
           practitioner: { include: { user: { select: { firstName: true, lastName: true } } } },
           signature: true,
+          feeNote: { select: { id: true, number: true, totalCents: true, vatBp: true, issuedAt: true } },
           messages: { include: { author: { select: { firstName: true, lastName: true } } }, orderBy: { createdAt: "asc" } },
         },
         orderBy: { createdAt: "asc" },
@@ -260,6 +261,11 @@ export default async function Page({ params }: { params: Promise<{ id: string; p
                           </form>
                         ) : (
                           <span className="pill wait">Honoraires à payer</span>
+                        )}
+                        {e.feeNote ? (
+                          <a className="fee-note-link" href={`/notes-honoraires/${e.feeNote.id}`}>Note d&apos;honoraires {e.feeNote.number} · {formatEUR(e.feeNote.totalCents)} {e.feeNote.vatBp ? "TTC" : "(TVA non applicable)"}</a>
+                        ) : (
+                          <span className="text-xs muted">Note d&apos;honoraires : pas encore établie par l&apos;expert (depuis « Mes revenus »).</span>
                         )}
                       </div>
                     )}

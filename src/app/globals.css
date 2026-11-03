@@ -963,3 +963,5 @@ body:has(.sidebar) .site-footer { padding: 24px 32px; }
 .reg-actions { margin-top: 0; gap: 8px; }
 .verify-card h1 { margin: 6px 0 0; }
 .verify-card .pill { align-self: flex-start; }
+.fee-note-link { font-size: 13px; font-weight: 600; }
+.err { color: var(--danger); }

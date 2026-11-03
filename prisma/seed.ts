@@ -633,6 +633,25 @@ async function main() {
 
   // ─── Revenus d'un expert : honoraires payés et lien déclaré hors KolBase ───
   await db.projectExpert.updateMany({ where: { projectId: "demo-prj-webinaire", practitionerId: "demo-p-petit", paidAt: null }, data: { paidAt: at(-20), paidCents: 90000 } });
+  // Coordonnées de facturation et note d'honoraires du webinaire (la convention du comité attend la sienne).
+  await db.practitionerProfile.updateMany({
+    where: { id: "demo-p-petit", billingAddress: null },
+    data: { billingAddress: "Cabinet d'orthodontie (fictif)\n12 rue de la Fosse\n44000 Nantes", siret: "99900123000013", vatRegime: "franchise", iban: "FR7630006000011234567890189" },
+  });
+  if (!(await db.feeNote.findUnique({ where: { projectExpertId: "demo-prj-webinaire-x0" } }))) {
+    const issued = at(-21);
+    await db.feeNote.create({
+      data: {
+        number: `NH-${issued.getFullYear()}-001`, practitionerId: "demo-p-petit", projectExpertId: "demo-prj-webinaire-x0", organizationId: "demo-org-orthonova",
+        amountCents: 90000, vatBp: 0, totalCents: 90000, issuedAt: issued,
+        data: {
+          issuer: { name: "Dr Camille Petit", entity: null, address: "Cabinet d'orthodontie (fictif)\n12 rue de la Fosse\n44000 Nantes", siret: "99900123000013", vatNumber: null, rpps: null, iban: "FR76 3000 6000 0112 3456 7890 189", vatRegime: "franchise" },
+          recipient: { name: "OrthoNova", siren: null, address: "Nantes, France" },
+          object: { title: "Webinaire planification numérique", type: "Webinaire", unit: "session", units: 1, signedAt: null, projectRef: "WEBINAIRE" },
+        },
+      },
+    });
+  }
   await db.declaredInterest.upsert({
     where: { id: "demo-interest-petit" },
     update: {},
