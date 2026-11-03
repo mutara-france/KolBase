@@ -694,6 +694,24 @@ async function main() {
       });
   }
 
+  // ─── Actualités : deux articles de présentation (modifiables ou supprimables dans /admin) ───
+  const ARTICLES = [
+    { slug: "attestations-de-presence-et-questionnaire", category: "Plateforme", days: 2,
+      title: "Attestations de présence vérifiables et questionnaire de satisfaction",
+      excerpt: "Après chaque événement, KolBase envoie aux participants pointés à l'accueil leur attestation de présence et un questionnaire de satisfaction, sans travail supplémentaire pour l'organisateur.",
+      body: "Organiser un événement scientifique ne s'arrête pas à la fin de la dernière session. Attestations, retours des participants, bilan : KolBase prend désormais en charge ces étapes.\n\n## La veille : un rappel aux inscrits\n\nChaque inscrit reçoit la veille un rappel avec la date, le lieu, le programme et le lien vers son badge d'accueil.\n\n## Le jour J : le pointage par QR code\n\nL'organisateur, ou l'agence qu'il a mandatée, scanne le badge avec l'appareil photo de son téléphone, ou coche le nom dans la liste. La feuille d'émargement se télécharge en un clic.\n\n## Après l'événement : attestation et questionnaire\n\n- Les participants pointés reçoivent leur **attestation de présence** en PDF, avec un QR code qui permet d'en vérifier l'authenticité.\n- Un **questionnaire de satisfaction** court leur est proposé ; les réponses sont transmises à l'organisateur sans le nom des participants.\n- Le **bilan** de l'événement réunit présents, coût réel et coût par présent.\n\nLes participants retrouvent leurs attestations dans [Mes inscriptions](/inscriptions)." },
+    { slug: "transparence-sante-preparer-sa-declaration", category: "Réglementation", days: 1,
+      title: "Transparence Santé : préparer sa déclaration semestrielle avec KolBase",
+      excerpt: "Conventions, rémunérations et avantages : KolBase prépare le fichier du semestre, une ligne par déclaration, avec les libellés de la plateforme publique.",
+      body: "Les entreprises du secteur de la santé rendent publics, deux fois par an, les conventions conclues avec les professionnels de santé, les rémunérations versées et les avantages accordés à partir de 10\u00a0€ TTC.\n\n## Ce que KolBase prépare\n\n- Les **conventions** de collaboration signées sur le semestre, avec leur objet et leur montant.\n- Les **rémunérations** versées, rattachées à leur convention.\n- Les **conventions d'hospitalité** et leurs **avantages** (restauration, hébergement, transport), rattachés eux aussi.\n\nLes avantages d'un inscrit absent au pointage sont écartés et signalés : l'équipe conformité vérifie avant de déclarer.\n\n## Comment s'en servir\n\nDans l'espace Conformité, choisissez le semestre, téléchargez le fichier, relisez-le dans un tableur puis reportez les lignes sur la plateforme [Transparence Santé](https://www.transparence.sante.gouv.fr). Une fois le dépôt fait, marquez le semestre comme publié.\n\nLe fichier est une aide à la déclaration : la responsabilité de son contenu reste celle de l'entreprise." },
+  ];
+  for (const a of ARTICLES)
+    await db.article.upsert({
+      where: { slug: a.slug },
+      update: {},
+      create: { slug: a.slug, title: a.title, category: a.category, excerpt: a.excerpt, body: a.body, publishedAt: at(-a.days, 9) },
+    });
+
   // ─── Comptes réels rattachés aux organisations de démo ───────────────────
   const admins = (process.env.DEMO_ADMIN_EMAILS ?? "").split(",").map((e) => e.trim().toLowerCase()).filter(Boolean);
   for (const email of admins) {

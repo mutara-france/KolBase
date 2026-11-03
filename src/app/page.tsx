@@ -9,6 +9,8 @@ import { specialtyVisual } from "@/lib/specialties";
 import { publicCalls, publicCounts, publicEvents, publicExperts, publicOrgAgenda, publicOrgs, publicSpecialties } from "@/lib/public-data";
 import { fmtDate } from "@/lib/i18n";
 import { getT } from "@/lib/i18n/server";
+import { NewsCard } from "@/components/News";
+import { publishedArticles } from "@/lib/news";
 
 export const dynamic = "force-dynamic";
 
@@ -16,8 +18,8 @@ export const dynamic = "force-dynamic";
 export default async function Home({ searchParams }: { searchParams: Promise<{ compte?: string }> }) {
   const deleted = (await searchParams).compte === "supprime";
   const { t, locale } = await getT();
-  const [events, experts, orgs, calls, n, specialties] = await Promise.all([
-    publicEvents(3), publicExperts(4), publicOrgs(), publicCalls(2), publicCounts(), publicSpecialties(),
+  const [events, experts, orgs, calls, n, specialties, news] = await Promise.all([
+    publicEvents(3), publicExperts(4), publicOrgs(), publicCalls(2), publicCounts(), publicSpecialties(), publishedArticles(3),
   ]);
   // Les prestataires (agences, logistique) ne sont pas mis en avant sur l'accueil.
   const ranked = orgs
@@ -199,6 +201,23 @@ export default async function Home({ searchParams }: { searchParams: Promise<{ c
                 {calls.map((c) => (
                   <CallCard key={c.id} c={c} action={<Link href={`/connexion?next=${encodeURIComponent(`/opportunites/${c.id}`)}`} className="btn">{t("Candidater")}</Link>} />
                 ))}
+              </div>
+            </div>
+          </section>
+        )}
+
+        {news.length > 0 && (
+          <section className="home-section" aria-labelledby="home-actualites">
+            <div className="home-wrap">
+              <div className="home-head">
+                <div>
+                  <span className="kicker">{t("Actualités")}</span>
+                  <h2 id="home-actualites">{t("Les nouvelles de KolBase")}</h2>
+                </div>
+                <Link href="/actualites" className="home-more">{t("Toutes les actualités")} <ArrowRight size={16} /></Link>
+              </div>
+              <div className="news-grid">
+                {news.map((a) => <NewsCard key={a.id} a={a} dateLabel={fmtDate(locale, a.publishedAt!, { day: "numeric", month: "long", year: "numeric" })} minutesLabel={t("{n} min de lecture")} />)}
               </div>
             </div>
           </section>

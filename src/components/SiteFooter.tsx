@@ -18,6 +18,7 @@ export async function SiteFooter() {
           <Link href="/mentions-legales" className="footer-link">{t("Mentions légales")}</Link>
           <Link href="/confidentialite" className="footer-link">{t("Confidentialité")}</Link>
           <Link href="/cgu" className="footer-link">{t("Conditions d'utilisation")}</Link>
+          <Link href="/actualites" className="footer-link">{t("Actualités")}</Link>
           <Link href="/aide" className="footer-link">{t("Aide")}</Link>
           <LocaleSwitch className="on-dark" />
         </nav>

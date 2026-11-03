@@ -835,3 +835,21 @@ model FeeNote {
   @@unique([practitionerId, number])
   @@index([organizationId])
 }
+
+// Actualités de KolBase (rédigées et publiées par l'équipe depuis /admin).
+model Article {
+  id          String    @id @default(cuid())
+  slug        String    @unique
+  title       String
+  category    String    @default("Plateforme")
+  excerpt     String
+  body        String    // texte simple : paragraphes, « ## » intertitres, « - » listes, **gras**, [lien](url)
+  coverData   Bytes?
+  coverType   String?
+  authorId    String?
+  publishedAt DateTime? // null : brouillon
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  @@index([publishedAt])
+}
