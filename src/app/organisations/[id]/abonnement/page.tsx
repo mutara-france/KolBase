@@ -58,14 +58,14 @@ export default async function Page({ params, searchParams }: { params: Promise<{
                   <div className="plan-option">
                     <strong>Mensuel</strong>
                     <span className="plan-price">{formatPrice(PLANS[plan].cents)}</span>
-                    <span className="text-sm muted">Sans engagement, résiliable à tout moment.</span>
-                    <button className="btn secondary" name="interval" value="month"><CreditCard size={15} /> {sub?.trialUsed ? "Réactiver l'abonnement mensuel" : `Activer l'abonnement mensuel — ${TRIAL_DAYS} jours offerts`}</button>
+                    <span className="text-sm muted">Sans engagement, résiliable à tout moment.{sub?.trialUsed ? "" : ` ${TRIAL_DAYS} jours offerts avant le premier prélèvement.`}</span>
+                    <button className="btn secondary" name="interval" value="month"><CreditCard size={15} /> {sub?.trialUsed ? "Réactiver l'abonnement mensuel" : "Activer l'abonnement mensuel"}</button>
                   </div>
                   <div className="plan-option recommended">
                     <strong>Annuel <span className="pill ok">{freeMonths(plan)} mois offerts</span></strong>
                     <span className="plan-price">{formatPrice(PLANS[plan].yearCents, "year")}</span>
-                    <span className="text-sm muted">Soit {formatPrice(monthlyCents(plan, "year"))}, réglé en une fois.</span>
-                    <button className="btn" name="interval" value="year"><CreditCard size={15} /> {sub?.trialUsed ? "Réactiver l'abonnement annuel" : `Activer l'abonnement annuel — ${TRIAL_DAYS} jours offerts`}</button>
+                    <span className="text-sm muted">Soit {formatPrice(monthlyCents(plan, "year"))}, réglé en une fois.{sub?.trialUsed ? "" : ` ${TRIAL_DAYS} jours offerts avant le premier prélèvement.`}</span>
+                    <button className="btn" name="interval" value="year"><CreditCard size={15} /> {sub?.trialUsed ? "Réactiver l'abonnement annuel" : "Activer l'abonnement annuel"}</button>
                   </div>
                 </form>
               )}

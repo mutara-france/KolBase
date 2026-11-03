@@ -1061,4 +1061,4 @@ p.service-stats { color: var(--ink-soft); }
 .plan-option.recommended { border-color: #cfc8f5; background: linear-gradient(180deg, var(--tint), #fff 75%); }
 .plan-option strong { display: flex; align-items: center; gap: 8px; }
 .plan-price { font-size: 1.25rem; font-weight: 600; color: var(--ink); }
-.plan-option .btn { margin-top: auto; align-self: flex-start; }
+.plan-option .btn { margin-top: auto; align-self: flex-start; white-space: normal; text-align: left; }
