@@ -57,8 +57,9 @@ export async function orgStats(orgId: string, year: number) {
       where: { organizationId: orgId, startsAt: { gte: start, lt: end } },
       select: {
         id: true, title: true, startsAt: true, capacity: true, internal: true,
-        registrations: { select: { kind: true, declared: true, profession: true, benefits: { select: { valueCents: true } } } },
+        registrations: { select: { kind: true, declared: true, profession: true, checkedInAt: true, benefits: { select: { valueCents: true } } } },
         rfqs: { select: { quotes: { where: { status: "retained" }, select: { amountCents: true } } } },
+        surveys: { select: { overall: true } },
       },
       orderBy: { startsAt: "asc" },
     }),
@@ -121,6 +122,9 @@ export async function orgStats(orgId: string, year: number) {
       registrations: ev.registrations.length, participants, hospitality, suppliers,
       perParticipant: ev.registrations.length ? Math.round((hospitality + suppliers) / ev.registrations.length) : null,
       fillRate: ev.capacity ? Math.round((ev.registrations.length / ev.capacity) * 100) : null,
+      present: ev.registrations.filter((r) => r.checkedInAt).length,
+      rating: ev.surveys.length ? ev.surveys.reduce((s, x) => s + x.overall, 0) / ev.surveys.length : null,
+      responses: ev.surveys.length,
     };
   });
 
@@ -164,6 +168,10 @@ export async function orgStats(orgId: string, year: number) {
     specialties: [...specialties.entries()].map(([label, count]) => ({ label, count })).sort((a, b) => b.count - a.count || a.label.localeCompare(b.label)),
     events: eventRows,
     participants: eventRows.reduce((s, e) => s + e.participants, 0),
+    satisfaction: (() => {
+      const all = events.flatMap((e) => e.surveys.map((x) => x.overall));
+      return { average: all.length ? all.reduce((s, x) => s + x, 0) / all.length : null, responses: all.length };
+    })(),
     delays: {
       expertResponse: { days: median(expertResponse), n: expertResponse.length },
       compliance: { days: median(compliance), n: compliance.length },

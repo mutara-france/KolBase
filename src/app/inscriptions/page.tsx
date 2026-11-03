@@ -1,5 +1,6 @@
 import Link from "next/link";
-import { QrCode } from "lucide-react";
+import { FileDown, QrCode, Star } from "lucide-react";
+import { eventEnded } from "@/lib/event-followup";
 import { SiteHeader } from "@/components/SiteHeader";
 import { SectionNav } from "@/components/SectionNav";
 import { practitionerSectionTabs } from "@/lib/nav";
@@ -21,7 +22,7 @@ export default async function Page() {
     d.toLocaleString(intlLocale(locale), { timeZone: TZ, weekday: "long", day: "numeric", month: "long", year: "numeric", hour: "2-digit", minute: "2-digit" });
   const regs = await db.registration.findMany({
     where: { userId: user.id },
-    include: { event: { include: { organization: { select: { name: true } } } }, benefits: { include: { benefit: true } } },
+    include: { event: { include: { organization: { select: { name: true } } } }, benefits: { include: { benefit: true } }, survey: { select: { id: true } } },
     orderBy: { event: { startsAt: "asc" } },
   });
   const now = new Date();
@@ -43,6 +44,12 @@ export default async function Page() {
           </span>
         </Link>
         {badge && <Link className="btn small secondary" href={`/inscriptions/${r.id}/badge`}><QrCode size={14} /> {t("Mon badge d'accueil")}</Link>}
+        {eventEnded(r.event, now) && (r.checkedInAt || !r.survey) && (
+          <div className="actions reg-actions">
+            {r.checkedInAt && <a className="btn small secondary" href={`/inscriptions/${r.id}/attestation`}><FileDown size={14} /> {t("Mon attestation de présence")}</a>}
+            {!r.survey && <Link className="btn small ghost" href={`/evenements/${r.eventId}/avis`}><Star size={14} /> {t("Donner mon avis")}</Link>}
+          </div>
+        )}
       </div>
     );
   };

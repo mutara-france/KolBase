@@ -501,6 +501,7 @@ model Event {
 
   benefits      EventBenefit[]
   registrations Registration[]
+  surveys       SurveyResponse[]
   rfqs          Rfq[]
   calls         OpenCall[]
 }
@@ -608,8 +609,13 @@ model Registration {
   checkinCode    String?   @unique
   checkedInAt    DateTime?
   checkedInById  String?
+  // Rappel de la veille, envoi après l'événement (attestation, questionnaire), code de vérification de l'attestation.
+  reminderSentAt  DateTime?
+  followUpSentAt  DateTime?
+  certificateCode String?   @unique
 
   benefits RegistrationBenefit[]
+  survey   SurveyResponse?
 
   @@unique([eventId, userId])
 }
@@ -778,4 +784,20 @@ model OrganizationLogo {
   data           Bytes
   contentType    String
   updatedAt      DateTime     @updatedAt
+}
+
+// Questionnaire de satisfaction d'un participant (une réponse par inscription ; anonyme pour l'organisateur).
+model SurveyResponse {
+  id             String       @id @default(cuid())
+  registrationId String       @unique
+  registration   Registration @relation(fields: [registrationId], references: [id], onDelete: Cascade)
+  eventId        String
+  event          Event        @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  overall        Int          // note globale, 1 à 5
+  content        Int?         // contenu scientifique
+  logistics      Int?         // organisation et accueil
+  comment        String?
+  createdAt      DateTime     @default(now())
+
+  @@index([eventId])
 }
