@@ -4,6 +4,7 @@ import { useActionState, useState, useTransition } from "react";
 import { createInvitation, createOrganization, removeOrgLogo, setMemberRoles, submitSiren, updateOrganization, updateExpertProfile, updateOrgLogo, type InviteState } from "@/lib/org-actions";
 import { Avatar } from "@/components/Avatar";
 import { Notice } from "@/components/AuthForms";
+import { ActionForm } from "@/components/ActionForm";
 import { useT } from "@/components/I18nProvider";
 
 type Opt = { value: string; label: string };
@@ -11,7 +12,7 @@ type Opt = { value: string; label: string };
 export function NewOrgForm({ kinds }: { kinds: Opt[] }) {
   const [state, action, pending] = useActionState(createOrganization, undefined);
   return (
-    <form action={action} className="card form">
+    <ActionForm action={action} className="card form">
       <h1>Créer une organisation</h1>
       <p className="muted">Vous en serez l&apos;administrateur et pourrez ensuite inviter vos collègues.</p>
       <Notice state={state} />
@@ -28,7 +29,7 @@ export function NewOrgForm({ kinds }: { kinds: Opt[] }) {
       </label>
       <label>E-mail de contact<input name="contactEmail" type="email" /></label>
       <button className="btn" disabled={pending}>{pending ? "Création…" : "Créer l'organisation"}</button>
-    </form>
+    </ActionForm>
   );
 }
 

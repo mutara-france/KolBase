@@ -4,6 +4,7 @@ import { AiDraft } from "@/components/AiDraft";
 import { useActionState, useState } from "react";
 import { applyToCall, createOpenCall, retainApplication } from "@/lib/opportunity-actions";
 import { Notice } from "@/components/AuthForms";
+import { ActionForm } from "@/components/ActionForm";
 import { useT } from "@/components/I18nProvider";
 
 type CType = { id: string; label: string; category: string; unit: string; fmv: readonly number[] };
@@ -24,7 +25,7 @@ export function NewCallForm({ orgId, types, ai = false, events = [], defaultEven
     if (e && types.some((t) => t.id === e.typeId)) setTypeId(e.typeId);
   };
   return (
-    <form action={action} className="card form">
+    <ActionForm action={action} className="card form">
       <h2>Nouvel appel à candidatures</h2>
       <p className="muted">Visible de tous les experts référencés, qui peuvent y candidater. Rattachez-le à un événement si la personne retenue doit y intervenir.</p>
       <Notice state={state} />
@@ -56,7 +57,7 @@ export function NewCallForm({ orgId, types, ai = false, events = [], defaultEven
       </div>
       <p className="hint">Repère : {type.fmv[0].toLocaleString("fr-FR")} à {type.fmv[1].toLocaleString("fr-FR")} € HT par {type.unit}.</p>
       <button className="btn" disabled={pending}>{pending ? "Publication…" : "Publier l'appel"}</button>
-    </form>
+    </ActionForm>
   );
 }
 

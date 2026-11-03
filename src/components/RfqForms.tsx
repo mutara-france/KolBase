@@ -4,7 +4,8 @@ import { useActionState, useState } from "react";
 import { Check, Plus, Send } from "lucide-react";
 import { createRfq, postRfqMessage, submitQuote, updateSupplierProfile } from "@/lib/rfq-actions";
 import { Notice } from "@/components/AuthForms";
-import { VAT_OPTIONS } from "@/lib/quotes";
+import { ActionForm } from "@/components/ActionForm";
+import { defaultVatBp, VAT_OPTIONS } from "@/lib/quotes";
 import { Avatar } from "@/components/Avatar";
 import { AiDraft } from "@/components/AiDraft";
 
@@ -42,7 +43,7 @@ export function NewRfqForm({ orgId, categories, suppliers, events, defaultEventI
   const matching = suppliers.filter((s) => s.categories.includes(category));
   const toggle = (id: string) => setPicked((p) => (p.includes(id) ? p.filter((x) => x !== id) : [...p, id]));
   return (
-    <form action={action} className="card form">
+    <ActionForm action={action} className="card form">
       <h2>Nouvelle demande de devis</h2>
       <p className="muted">Consultez en une fois les prestataires référencés. Ils répondent directement sur KolBase, depuis leur espace prestataire.</p>
       <Notice state={state} />
@@ -79,7 +80,7 @@ export function NewRfqForm({ orgId, categories, suppliers, events, defaultEventI
         <button className="btn" name="intent" value="send" disabled={pending || picked.length === 0}><Send size={14} /> {picked.length > 1 ? `Envoyer aux ${picked.length} prestataires` : "Envoyer au prestataire"}</button>
         <button className="btn ghost" name="intent" value="draft" disabled={pending || picked.length === 0}>Enregistrer en brouillon</button>
       </div>
-    </form>
+    </ActionForm>
   );
 }
 
@@ -113,14 +114,25 @@ export function QuoteForm({ orgId, rfqId, category, current, headcount, uploads,
         ? [{ key: 0, label: "Forfait", qty: "1", unit: current.amount }]
         : [{ key: 0, label: "", qty: "1", unit: "" }],
   );
-  const [vat, setVat] = useState(current?.vatBp ?? 2000);
-  if (!open) return <button type="button" className="btn ghost small" onClick={() => setOpen(true)}>Réviser mon devis</button>;
+  const [vat, setVat] = useState(current?.vatBp ?? defaultVatBp(category));
+  // Devis envoyé : le formulaire se referme (la saisie reste pour une révision).
+  const [answered, setAnswered] = useState(state);
+  if (state !== answered) {
+    setAnswered(state);
+    if (state?.ok) setOpen(false);
+  }
+  if (!open) return (
+    <div className="stack-sm">
+      <Notice state={state?.ok ? state : undefined} />
+      <button type="button" className="btn ghost small" onClick={() => setOpen(true)}>Réviser mon devis</button>
+    </div>
+  );
   const detailed = rows.some((r) => r.label || r.unit);
   const ht = rows.reduce((s, r) => s + num(r.qty) * num(r.unit), 0);
   const ttc = ht * (1 + vat / 10000);
   const update = (key: number, patch: Partial<Row>) => setRows((rs) => rs.map((r) => (r.key === key ? { ...r, ...patch } : r)));
   return (
-    <form action={action} className="form quote-form">
+    <ActionForm action={action} className="form quote-form">
       <Notice state={state} />
       <input type="hidden" name="orgId" value={orgId} />
       <input type="hidden" name="rfqId" value={rfqId} />
@@ -184,7 +196,7 @@ export function QuoteForm({ orgId, rfqId, category, current, headcount, uploads,
         </label>
       )}
       <button className="btn" disabled={pending}><Send size={14} /> {pending ? "Envoi…" : current ? `Envoyer la version ${current.revision + 1}` : "Envoyer le devis"}</button>
-    </form>
+    </ActionForm>
   );
 }
 

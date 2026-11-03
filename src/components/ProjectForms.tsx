@@ -5,6 +5,7 @@ import { ExpertSuggestions } from "@/components/ExpertSuggestions";
 import { useActionState, useMemo, useState } from "react";
 import { createProject, postMessage, respondToSolicitation } from "@/lib/project-actions";
 import { Notice } from "@/components/AuthForms";
+import { ActionForm } from "@/components/ActionForm";
 import { useT } from "@/components/I18nProvider";
 
 type CType = { id: string; label: string; category: string; unit: string; fmv: readonly number[] };
@@ -25,7 +26,7 @@ export function NewProjectForm({ orgId, types, experts, preselected, ai = false 
   const categories = [...new Set(types.map((t) => t.category))];
 
   return (
-    <form action={action} className="card form">
+    <ActionForm action={action} className="card form">
       <h1>Nouveau dossier</h1>
       <p className="muted">Sollicitez un ou plusieurs experts. Chacun reçoit la proposition dans son espace et y répond.</p>
       <Notice state={state} />
@@ -90,7 +91,7 @@ export function NewProjectForm({ orgId, types, experts, preselected, ai = false 
       )}
       <label>Message d&apos;accompagnement<textarea name="message" rows={3} placeholder="Message envoyé à chaque expert sollicité" /></label>
       <button className="btn" disabled={pending}>{pending ? "Envoi…" : "Envoyer les sollicitations"}</button>
-    </form>
+    </ActionForm>
   );
 }
 

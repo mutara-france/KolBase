@@ -4,6 +4,7 @@ import { useActionState, useState } from "react";
 import { createEvent, registerToEvent, saveEventProgram } from "@/lib/event-actions";
 import { AiDraft } from "@/components/AiDraft";
 import { Notice } from "@/components/AuthForms";
+import { ActionForm } from "@/components/ActionForm";
 import { useLocale, useT } from "@/components/I18nProvider";
 import { intlLocale, type Locale } from "@/lib/i18n";
 
@@ -17,7 +18,7 @@ export function NewEventForm({ orgId, types, formats, catalog, project }: { orgI
   // Créé depuis un dossier (board, comité) : réunion interne par défaut.
   const [internal, setInternal] = useState(!!project);
   return (
-    <form action={action} className="card form">
+    <ActionForm action={action} className="card form">
       <h1>Nouvel événement</h1>
       <Notice state={state} />
       <input type="hidden" name="orgId" value={orgId} />
@@ -67,7 +68,7 @@ export function NewEventForm({ orgId, types, formats, catalog, project }: { orgI
       </label>
       {!internal && <label className="check"><input type="checkbox" name="publish" value="1" /> Publier immédiatement dans l&apos;agenda</label>}
       <button className="btn" disabled={pending}>{pending ? "Création…" : "Créer l'événement"}</button>
-    </form>
+    </ActionForm>
   );
 }
 
