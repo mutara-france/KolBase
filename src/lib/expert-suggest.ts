@@ -1,13 +1,14 @@
 import "server-only";
 import { db } from "@/lib/db";
-import { collabType } from "@/lib/projects";
+import { collabType, interestWarning, SIGNED_STATUSES } from "@/lib/projects";
 import { normalize } from "@/lib/search";
 import { canSee, kolVisibility } from "@/lib/visibility";
 
 /**
  * Suggestion d'experts pour un besoin : pertinence (spécialité, sous-spécialité, publications, types d'intervention)
  * pondérée par la diversité (part des honoraires déjà versés par l'organisation) et signalement des liens d'intérêts.
- * Le classement est explicable : chaque point du score a sa raison.
+ * Le classement est explicable : chaque point du score a sa raison. Seuls les dossiers signés comptent comme
+ * collaborations ; aucune autre organisation n'est nommée (ni à l'écran, ni dans ce qui est transmis à l'assistant).
  */
 export type Suggestion = { id: string; name: string; detail: string; score: number; reasons: string[]; notes: string[]; warnings: string[]; dayRateCents: number | null };
 
@@ -22,15 +23,15 @@ export async function suggestExperts(orgId: string, need: { title: string; typeI
       include: {
         user: { select: { firstName: true, lastName: true } },
         publications: { select: { title: true, keywords: true }, take: 50 },
-        declaredInterests: { select: { organization: true, endYear: true } },
+        declaredInterests: { select: { endYear: true } },
         projectLinks: {
-          where: { status: { notIn: ["DECLINE", "ATT_EXPERTS"] }, createdAt: { gte: since } },
-          select: { feeCents: true, project: { select: { organizationId: true, organization: { select: { name: true, kind: true } } } } },
+          where: { status: { in: SIGNED_STATUSES }, createdAt: { gte: since } },
+          select: { feeCents: true, project: { select: { organizationId: true, organization: { select: { kind: true } } } } },
         },
       },
       take: 1000,
     }),
-    db.projectExpert.findMany({ where: { project: { organizationId: orgId }, status: { notIn: ["DECLINE", "ATT_EXPERTS"] }, createdAt: { gte: since } }, select: { feeCents: true } }),
+    db.projectExpert.findMany({ where: { project: { organizationId: orgId }, status: { in: SIGNED_STATUSES }, createdAt: { gte: since } }, select: { feeCents: true } }),
   ]);
   const orgTotal = orgLinks.reduce((s, l) => s + (l.feeCents ?? 0), 0);
   const type = collabType(need.typeId);
@@ -66,12 +67,10 @@ export async function suggestExperts(orgId: string, need: { title: string; typeI
       if (share >= 0.2) { score -= 3; warnings.push(`Déjà ${Math.round(share * 100)} % de vos honoraires sur 12 mois (${mine.length} collaboration${mine.length > 1 ? "s" : ""})`); }
       else notes.push(`${mine.length} collaboration${mine.length > 1 ? "s" : ""} avec vous sur 12 mois`);
     }
-    // Liens d'intérêts avec d'autres entreprises (KolBase et déclarés).
-    const others = [...new Set([
-      ...p.projectLinks.filter((l) => l.project.organizationId !== orgId && l.project.organization.kind === "INDUSTRIEL").map((l) => l.project.organization.name),
-      ...p.declaredInterests.filter((d) => d.endYear == null || d.endYear >= year - 1).map((d) => d.organization),
-    ])];
-    if (others.length) { score -= 1; warnings.push(`Liens d'intérêts : ${others.slice(0, 3).join(", ")}${others.length > 3 ? "…" : ""}`); }
+    // Liens d'intérêts avec d'autres entreprises (dossiers signés sur KolBase, liens déclarés), sans les nommer.
+    const otherCompanies = new Set(p.projectLinks.filter((l) => l.project.organizationId !== orgId && l.project.organization.kind === "INDUSTRIEL").map((l) => l.project.organizationId)).size;
+    const interests = interestWarning(otherCompanies, p.declaredInterests.filter((d) => d.endYear == null || d.endYear >= year - 1).length);
+    if (interests) { score -= 1; warnings.push(interests); }
 
     const v = kolVisibility(p.visibility);
     return {

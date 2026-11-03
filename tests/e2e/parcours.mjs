@@ -2527,6 +2527,33 @@ async function submitNewOrg(page, siren) {
     await p.ctx.close();
   }
 
+  // 2. Suggestions d'experts : aucune autre organisation nommée (écran et assistant), seuls les dossiers signés comptent.
+  {
+    await pgc.query(`insert into "DeclaredInterest" (id, "practitionerId", organization, nature, "startYear") values ('e2e-lot2-di', 'demo-p-durand', 'Laboratoire Concurrent Lot Deux', 'Consultante', 2025)`);
+    await pgc.query(`insert into "Project" (id, "organizationId", title, "typeId", "therapeuticArea", status, "updatedAt") values ('e2e-lot2-prj-signe', 'demo-org-orthonova', 'Board OrthoNova signé', 'advisory', 'Implantologie', 'SIGNE', now()), ('e2e-lot2-prj-accord', 'demo-org-orthonova', 'Board OrthoNova en accord', 'advisory', 'Implantologie', 'ACCORD', now())`);
+    await pgc.query(`insert into "ProjectExpert" (id, "projectId", "practitionerId", status, "feeCents", days) values ('e2e-lot2-pe-signe', 'e2e-lot2-prj-signe', 'demo-p-durand', 'SIGNE', 200000, 1), ('e2e-lot2-pe-accord', 'e2e-lot2-prj-accord', 'demo-p-moreau', 'ACCORD', 200000, 1)`);
+    const { ctx, page } = await session();
+    await login(page, "claire.morel@demo.kolbase.local");
+    await page.goto(`${BASE}/organisations/demo-org-dentalys/dossiers/nouveau`);
+    await page.fill('input[name="title"]', "Board implants courts — lot 2");
+    await page.fill('input[name="therapeuticArea"]', "Implantologie");
+    const before = aiRequests.length;
+    await page.click('button:has-text("Suggérer des experts")');
+    await page.waitForSelector(".suggest-box", { timeout: 15000 });
+    const box = await page.locator(".suggest-box").innerText();
+    const durand = await page.locator('.suggest-list li:has-text("Hélène Durand")').innerText().catch(() => "");
+    const moreau = await page.locator('.suggest-list li:has-text("Vincent Moreau")').innerText().catch(() => "");
+    check("Suggestions : « collaboration récente avec une autre entreprise », lien déclaré compté", durand.includes("collaboration récente avec une autre entreprise") && durand.includes("1 lien déclaré par l'expert"), durand.replace(/\s+/g, " "));
+    check("Suggestions : aucun nom d'autre organisation", !box.includes("OrthoNova") && !box.includes("Laboratoire Concurrent Lot Deux") && !box.includes("Alpha Ortho"));
+    check("Suggestions : un dossier non signé ne compte pas comme collaboration", !!moreau && !moreau.includes("autre entreprise"), moreau.replace(/\s+/g, " "));
+    const prompt = JSON.stringify(aiRequests.slice(before));
+    check("Assistant d'IA : aucun nom d'autre organisation transmis", prompt.includes("collaboration récente avec une autre entreprise") && !prompt.includes("OrthoNova") && !prompt.includes("Laboratoire Concurrent Lot Deux"));
+    await ctx.close();
+    await pgc.query(`delete from "ProjectExpert" where id in ('e2e-lot2-pe-signe', 'e2e-lot2-pe-accord')`);
+    await pgc.query(`delete from "Project" where id in ('e2e-lot2-prj-signe', 'e2e-lot2-prj-accord')`);
+    await pgc.query(`delete from "DeclaredInterest" where id = 'e2e-lot2-di'`);
+  }
+
   await pgc.end();
 }
 

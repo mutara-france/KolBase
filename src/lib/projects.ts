@@ -65,6 +65,29 @@ export const STATUS_TONE: Record<ProjectStatus, "wait" | "ok" | "bad" | "done"> 
   ORDRE: "wait", REFUS_ORDRE: "bad", SIGNATURE: "wait", SIGNE: "ok", TERMINE: "done", DECLINE: "done",
 };
 
+/**
+ * Une définition par indicateur :
+ * - collaboration (comptée, citée, déclarée) : convention signée, puis prestation terminée ;
+ * - expert engagé : il a accepté la proposition (accord de principe et au-delà), hors abandon ;
+ * - expert proposé : sollicité, sa réponse est attendue.
+ */
+export const SIGNED_STATUSES: ProjectStatus[] = ["SIGNE", "TERMINE"];
+export const isSigned = (status: ProjectStatus | string) => (SIGNED_STATUSES as string[]).includes(status);
+export const isEngaged = (status: ProjectStatus | string) => status !== "ATT_EXPERTS" && status !== "DECLINE";
+
+/**
+ * Liens d'intérêts d'un expert suggéré, sans jamais nommer d'autre organisation : les dossiers des autres
+ * organisations sont confidentiels et les liens déclarés par l'expert servent à sa propre diapositive.
+ * `otherCompanies` : entreprises distinctes avec un dossier signé récent ; `declared` : liens déclarés en cours.
+ */
+export function interestWarning(otherCompanies: number, declared: number) {
+  const parts = [
+    otherCompanies === 1 ? "collaboration récente avec une autre entreprise" : otherCompanies > 1 ? `collaborations récentes avec ${otherCompanies} autres entreprises` : null,
+    declared ? `${declared} lien${declared > 1 ? "s" : ""} déclaré${declared > 1 ? "s" : ""} par l'expert` : null,
+  ].filter(Boolean);
+  return parts.length ? `Liens d'intérêts : ${parts.join(" ; ")}` : null;
+}
+
 /** Étapes affichées dans la frise du dossier. */
 export const PIPELINE: ProjectStatus[] = ["ATT_EXPERTS", "ACCORD", "EN_VALID", "VALIDE", "SIGNATURE", "SIGNE", "TERMINE"];
 
