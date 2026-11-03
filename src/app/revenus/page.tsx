@@ -2,7 +2,8 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 import { Building2, Euro, Gift, Hourglass } from "lucide-react";
 import { SiteHeader } from "@/components/SiteHeader";
-import { InterestForm, ReportForm } from "@/components/RevenueForms";
+import { BillingForm, InterestForm, IssueNoteButton, ReportForm } from "@/components/RevenueForms";
+import { billingComplete } from "@/lib/fee-notes";
 import { requireUser } from "@/lib/auth";
 import { INTEREST_YEARS, interestLines, practitionerLedger } from "@/lib/revenues";
 import { removeDeclaredInterest } from "@/lib/revenue-actions";
@@ -20,7 +21,7 @@ export default async function Page({ searchParams }: { searchParams: Promise<{ o
   const p = user.practitioner;
   if (!p) redirect("/tableau-de-bord");
   const sp = await searchParams;
-  const onglet = sp.onglet === "liens" ? "liens" : sp.onglet === "transparence" ? "transparence" : "revenus";
+  const onglet = sp.onglet === "liens" ? "liens" : sp.onglet === "transparence" ? "transparence" : sp.onglet === "facturation" ? "facturation" : "revenus";
   const { t, locale } = await getT();
   const ledger = await practitionerLedger(user.id, p.id);
   const years = [...new Set([...ledger.fees.map((f) => f.year), ...ledger.hospitality.map((h) => h.year), new Date().getFullYear()])].sort((a, b) => b - a);
@@ -32,7 +33,15 @@ export default async function Page({ searchParams }: { searchParams: Promise<{ o
   const hospTotal = hosp.reduce((s, h) => s + h.valueCents, 0);
   const orgs = new Set([...fees.map((f) => f.org.id), ...hosp.map((h) => h.org.id)]).size;
   const interests = interestLines(ledger);
-  const tabs = [["revenus", t("Honoraires et avantages")], ["liens", t("Liens d'intérêts")], ["transparence", t("Transparence Santé")]] as const;
+  const tabs = [["revenus", t("Honoraires et avantages")], ["facturation", t("Notes d'honoraires")], ["liens", t("Liens d'intérêts")], ["transparence", t("Transparence Santé")]] as const;
+  const billingOk = billingComplete(p);
+  const notes = ledger.fees.filter((f) => f.note).sort((a, b) => b.note!.issuedAt.getTime() - a.note!.issuedAt.getTime());
+  const toInvoice = ledger.fees.filter((f) => f.signed && !f.note && f.feeCents > 0);
+  const NoteCell = ({ f }: { f: (typeof ledger.fees)[number] }) =>
+    f.note ? <a href={`/notes-honoraires/${f.note.id}`}>{f.note.number}</a>
+      : !f.signed || !f.feeCents ? <span className="muted">—</span>
+      : billingOk ? <IssueNoteButton linkId={f.id} />
+      : <Link className="text-xs" href="?onglet=facturation">{t("Compléter la facturation")}</Link>;
   const feeStatus = (f: (typeof ledger.fees)[number]) =>
     f.paidAt ? t("Payé le {date}", { date: fmtDate(locale, f.paidAt) }) : f.signed ? t("Convention signée, paiement à venir") : t(STATUS_LABEL[f.status]);
 
@@ -66,7 +75,7 @@ export default async function Page({ searchParams }: { searchParams: Promise<{ o
               <h2>{t("Honoraires")}</h2>
               {fees.length === 0 ? <p className="muted">{t("Aucune collaboration engagée cette année.")}</p> : (
                 <table className="table" tabIndex={0}>
-                  <thead><tr><th>{t("Date")}</th><th>{t("Organisation")}</th><th>{t("Collaboration")}</th><th>{t("Montant HT")}</th><th>{t("Statut")}</th></tr></thead>
+                  <thead><tr><th>{t("Date")}</th><th>{t("Organisation")}</th><th>{t("Collaboration")}</th><th>{t("Montant HT")}</th><th>{t("Statut")}</th><th>{t("Note d'honoraires")}</th></tr></thead>
                   <tbody>
                     {fees.map((f) => (
                       <tr key={f.id}>
@@ -75,6 +84,7 @@ export default async function Page({ searchParams }: { searchParams: Promise<{ o
                         <td><Link href={`/sollicitations/${f.id}`}>{f.title}</Link><div className="text-xs muted">{t(f.type)}</div></td>
                         <td>{fmtEur(locale, f.paidCents ?? f.feeCents)}</td>
                         <td><span className={`pill ${f.paidAt ? "ok" : f.signed ? "wait" : ""}`}>{feeStatus(f)}</span></td>
+                        <td><NoteCell f={f} /></td>
                       </tr>
                     ))}
                   </tbody>
@@ -100,6 +110,47 @@ export default async function Page({ searchParams }: { searchParams: Promise<{ o
                 </table>
               )}
               <p className="hint">{t("KolBase n'est pas un logiciel comptable : ces montants vous aident à préparer votre déclaration, vos justificatifs restent ceux des organisations.")}</p>
+            </section>
+          </>
+        )}
+
+        {onglet === "facturation" && (
+          <>
+            <section className="card stack-sm">
+              <h2>{t("Notes d'honoraires")}</h2>
+              <p className="muted">{t("Une note par convention signée : numérotée, établie à partir de la convention et transmise à l'organisation, qui la retrouve dans le dossier.")}</p>
+              {toInvoice.length > 0 && (
+                <ul className="plain stack-sm">
+                  {toInvoice.map((f) => (
+                    <li key={f.id} className="flex-between">
+                      <span><strong>{f.title}</strong> · {f.org.name} · {fmtEur(locale, f.feeCents)} {t("HT")}</span>
+                      <NoteCell f={f} />
+                    </li>
+                  ))}
+                </ul>
+              )}
+              {notes.length === 0 ? <p className="muted">{t("Aucune note établie pour l'instant.")}</p> : (
+                <table className="table" tabIndex={0}>
+                  <thead><tr><th>{t("Numéro")}</th><th>{t("Date")}</th><th>{t("Organisation")}</th><th>{t("Collaboration")}</th><th>{t("Montant")}</th><th>{t("Paiement")}</th></tr></thead>
+                  <tbody>
+                    {notes.map((f) => (
+                      <tr key={f.id}>
+                        <td><a href={`/notes-honoraires/${f.note!.id}`}>{f.note!.number}</a></td>
+                        <td>{fmtDate(locale, f.note!.issuedAt)}</td>
+                        <td>{f.org.name}</td>
+                        <td>{f.title}</td>
+                        <td>{fmtEur(locale, f.note!.totalCents)}</td>
+                        <td>{f.paidAt ? <span className="pill ok">{t("Payé le {date}", { date: fmtDate(locale, f.paidAt) })}</span> : <span className="pill wait">{t("En attente")}</span>}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              )}
+            </section>
+            <section className="card stack-sm">
+              <h2>{t("Coordonnées de facturation")}</h2>
+              <p className="muted">{t("Imprimées sur vos notes d'honoraires. Vérifiez les mentions applicables à votre situation avec votre comptable.")}</p>
+              <BillingForm current={{ billingEntity: p.billingEntity ?? "", billingAddress: p.billingAddress ?? "", siret: p.siret ?? "", vatRegime: p.vatRegime, vatNumber: p.vatNumber ?? "", iban: p.iban ?? "" }} />
             </section>
           </>
         )}

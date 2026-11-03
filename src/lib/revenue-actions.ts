@@ -4,10 +4,12 @@ import { revalidatePath } from "next/cache";
 import { db } from "@/lib/db";
 import { audit, requireUser } from "@/lib/auth";
 import { requireMembership } from "@/lib/orgs";
-import { PROJECT_ROLES } from "@/lib/projects";
+import { collabType, PROJECT_ROLES } from "@/lib/projects";
 import { eurToCents, str } from "@/lib/form";
 import { parisToday, parseParisDateTime } from "@/lib/events";
-import { notifyFeePaid, notifyTransparencyIssue } from "@/lib/notifications";
+import { notifyFeeNote, notifyFeePaid, notifyTransparencyIssue } from "@/lib/notifications";
+import { billingComplete, formatIban, nextNumber, validIban, validSiret, vatBpOf, type FeeNoteData } from "@/lib/fee-notes";
+import { drPrefix } from "@/lib/professions";
 import { blockedFor, hit } from "@/lib/rate-limit";
 import { getT } from "@/lib/i18n/server";
 
@@ -70,6 +72,73 @@ export async function reportTransparencyIssue(_: FormState, form: FormData): Pro
   await audit(user.id, "transparency.report", kind === "convention" ? "ProjectExpert" : "Registration", id, { orgId: target.orgId });
   notifyTransparencyIssue(target.orgId, `${user.firstName} ${user.lastName}`, target.label, comment);
   return { ok: t("Signalement envoyé à l'équipe conformité de l'organisation.") };
+}
+
+/** Coordonnées de facturation de l'expert (notes d'honoraires). */
+export async function updateBilling(_: FormState, form: FormData): Promise<FormState> {
+  const user = await requireUser();
+  const { t } = await getT();
+  const p = user.practitioner;
+  if (!p) return { error: t("Réservé aux praticiens.") };
+  const billingAddress = str(form, "billingAddress").slice(0, 300);
+  const siret = str(form, "siret").replace(/\s/g, "");
+  const iban = str(form, "iban").replace(/\s/g, "").toUpperCase();
+  const vatRegime = str(form, "vatRegime") === "assujetti" ? "assujetti" : "franchise";
+  const vatNumber = str(form, "vatNumber").replace(/\s/g, "").toUpperCase().slice(0, 20);
+  if (!billingAddress) return { error: t("Indiquez votre adresse de facturation.") };
+  if (siret && !validSiret(siret)) return { error: t("Numéro SIRET invalide (14 chiffres).") };
+  if (iban && !validIban(iban)) return { error: t("IBAN invalide.") };
+  if (vatRegime === "assujetti" && !/^[A-Z]{2}[A-Z0-9]{8,14}$/.test(vatNumber)) return { error: t("Indiquez votre numéro de TVA intracommunautaire.") };
+  await db.practitionerProfile.update({
+    where: { id: p.id },
+    data: { billingEntity: str(form, "billingEntity").slice(0, 120) || null, billingAddress, siret: siret || null, iban: iban || null, vatRegime, vatNumber: vatRegime === "assujetti" ? vatNumber : null },
+  });
+  await audit(user.id, "practitioner.billing", "PractitionerProfile", p.id);
+  revalidatePath("/revenus");
+  return { ok: t("Coordonnées de facturation enregistrées.") };
+}
+
+/** Note d'honoraires pour une convention signée : numérotée, figée, transmise à l'organisation. */
+export async function issueFeeNote(_: FormState, form: FormData): Promise<FormState> {
+  const user = await requireUser();
+  const { t } = await getT();
+  const p = user.practitioner;
+  if (!p) return { error: t("Réservé aux praticiens.") };
+  const prof = await db.practitionerProfile.findUnique({ where: { id: p.id } });
+  if (!prof || !billingComplete(prof)) return { error: t("Complétez d'abord vos coordonnées de facturation.") };
+  const link = await db.projectExpert.findFirst({
+    where: { id: str(form, "linkId"), practitionerId: p.id, status: { in: ["SIGNE", "TERMINE"] } },
+    include: { project: { include: { organization: true } }, signature: { select: { completedAt: true } }, feeNote: { select: { id: true } } },
+  });
+  if (!link) return { error: t("Convention signée introuvable.") };
+  if (link.feeNote) return { ok: t("La note d'honoraires est déjà établie.") };
+  if (!link.feeCents) return { error: t("Aucun montant d'honoraires dans la convention.") };
+  const signedLog = await db.auditLog.findFirst({ where: { entityType: "Project", entityId: link.projectId, action: { in: ["project.signed", "project.attest"] } }, orderBy: { createdAt: "desc" } });
+  const signedAt = link.signature?.completedAt ?? link.project.signatureAttestedAt ?? signedLog?.createdAt ?? null;
+  const type = collabType(link.project.typeId);
+  const data: FeeNoteData = {
+    issuer: { name: `${drPrefix(prof.profession)}${user.firstName} ${user.lastName}`, entity: prof.billingEntity, address: prof.billingAddress!, siret: prof.siret, vatNumber: prof.vatNumber, rpps: prof.rpps, iban: prof.iban ? formatIban(prof.iban) : null, vatRegime: prof.vatRegime },
+    recipient: { name: link.project.organization.name, siren: link.project.organization.siren, address: link.project.organization.headquarters },
+    object: { title: link.project.title, type: type?.label ?? link.project.typeId, unit: type?.unit ?? null, units: link.days, signedAt: signedAt ? signedAt.toLocaleDateString("fr-FR", { timeZone: "Europe/Paris", day: "numeric", month: "long", year: "numeric" }) : null, projectRef: link.projectId.slice(-8).toUpperCase() },
+  };
+  const vatBp = vatBpOf(prof.vatRegime);
+  const year = new Date().getFullYear();
+  let note;
+  for (let attempt = 0; attempt < 3 && !note; attempt++) {
+    const existing = await db.feeNote.findMany({ where: { practitionerId: p.id, number: { startsWith: `NH-${year}-` } }, select: { number: true } });
+    try {
+      note = await db.feeNote.create({
+        data: { number: nextNumber(year, existing.map((e) => e.number)), practitionerId: p.id, projectExpertId: link.id, organizationId: link.project.organizationId, amountCents: link.feeCents, vatBp, totalCents: link.feeCents + Math.round((link.feeCents * vatBp) / 10000), data },
+      });
+    } catch (e) {
+      if (attempt === 2) throw e; // numéro pris entre-temps (double clic) : on recommence
+    }
+  }
+  await audit(user.id, "feenote.issue", "FeeNote", note!.id, { number: note!.number });
+  notifyFeeNote(note!.id);
+  revalidatePath("/revenus");
+  revalidatePath(`/organisations/${link.project.organizationId}/dossiers/${link.projectId}`);
+  return { ok: t("Note {number} établie et transmise à {org}.", { number: note!.number, org: link.project.organization.name }) };
 }
 
 // ─── Organisation ───────────────────────────────────────────────────────────

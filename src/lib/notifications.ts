@@ -185,6 +185,20 @@ export function notifyFeePaid(linkId: string) {
   });
 }
 
+/** Note d'honoraires établie par l'expert : l'interlocuteur du dossier la reçoit (lien vers le dossier). */
+export function notifyFeeNote(noteId: string) {
+  later(async () => {
+    const n = await db.feeNote.findUnique({ where: { id: noteId }, include: { projectExpert: { include: linkInclude } } });
+    const l = n?.projectExpert;
+    if (!n || !l) return;
+    await send(await projectTeam(l.project), {
+      subject: `Note d'honoraires ${n.number} de ${expertName(l.practitioner)}`,
+      text: `Bonjour,\n\n${expertName(l.practitioner)} a établi sa note d'honoraires pour « ${l.project.title} » : ${fmtEur("fr", n.totalCents)} (${n.vatBp ? "TTC" : "TVA non applicable"}).\n\nElle est disponible dans le dossier ; indiquez le paiement une fois le virement fait.`,
+      cta: { label: "Ouvrir le dossier", href: `/organisations/${l.project.organizationId}/dossiers/${l.projectId}` },
+    });
+  });
+}
+
 /** Erreur signalée par un praticien sur une déclaration Transparence Santé : l'équipe conformité est prévenue. */
 export function notifyTransparencyIssue(orgId: string, who: string, label: string, comment: string) {
   later(async () => {

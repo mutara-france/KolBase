@@ -1457,6 +1457,42 @@ async function submitNewOrg(page, siren) {
   await pgc.end();
 }
 
+// ── Notes d'honoraires : l'expert les établit, l'organisation les retrouve ──
+{
+  const { ctx, page } = await session();
+  await login(page, "camille.petit@demo.kolbase.local");
+  await page.goto(`${BASE}/revenus?onglet=facturation`);
+  let t = await text(page);
+  check("Notes d'honoraires : note existante et convention à facturer", /NH-\d{4}-001/.test(t) && t.includes("Comité scientifique aligneurs"));
+  await page.fill('input[name="siret"]', "12345678901234");
+  await page.click('form:has(textarea[name="billingAddress"]) button:has-text("Enregistrer")');
+  await page.waitForTimeout(800);
+  check("Facturation : SIRET invalide refusé", (await text(page)).includes("Numéro SIRET invalide"));
+  await page.goto(`${BASE}/revenus?onglet=facturation`);
+  await page.locator('li:has-text("Comité scientifique aligneurs") button:has-text("Établir la note")').click();
+  await page.waitForTimeout(1200);
+  await page.goto(`${BASE}/revenus?onglet=facturation`);
+  const row = await page.locator('tr:has-text("Comité scientifique aligneurs")').innerText().catch(() => "");
+  const num = row.match(/NH-\d{4}-\d{3}/)?.[0];
+  check("Note d'honoraires établie et numérotée", !!num && !num.endsWith("-001"), num ?? row);
+  check("Organisation prévenue de la note", !!(await waitMail("thomas.garnier@demo.kolbase.local", `Note d'honoraires ${num}`)));
+  const href = await page.locator(`a:has-text("${num}")`).first().getAttribute("href");
+  const own = await ctx.request.get(`${BASE}${href}`);
+  const doc = own.ok() ? await PDFDocument.load(await own.body()) : null;
+  check("Note d'honoraires : PDF pour l'expert", doc?.getTitle() === `Note d'honoraires ${num}`, doc?.getTitle());
+  await ctx.close();
+  const org = await session();
+  await login(org.page, "thomas.garnier@demo.kolbase.local");
+  await org.page.goto(`${BASE}/organisations/demo-org-orthonova/dossiers/demo-prj-aligneurs`);
+  check("Dossier : note d'honoraires de l'expert", (await text(org.page)).includes(`Note d'honoraires ${num}`));
+  check("Note d'honoraires : PDF pour l'organisation", (await org.ctx.request.get(`${BASE}${href}`)).ok());
+  await org.ctx.close();
+  const other = await session();
+  await login(other.page, "claire.morel@demo.kolbase.local");
+  check("Note d'honoraires : refusée à une autre organisation", (await other.ctx.request.get(`${BASE}${href}`)).status() === 404);
+  await other.ctx.close();
+}
+
 // ── 4. Limitation des tentatives ───────────────────────────────────────────
 {
   const { ctx, page } = await session();
