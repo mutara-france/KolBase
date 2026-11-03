@@ -270,7 +270,20 @@ async function main() {
   type Proj = {
     id: string; org: string; title: string; type: string; area: string; status: ProjectStatus; desc: string; note?: string; ordre?: string;
     experts: { p: string; status: ProjectStatus; fee: number; units: number; msgs?: [string, string][] }[]; steps: [string, ProjectStatus, string, number, string?][];
+    /** Dossier clos (historique) : date de dernière mise à jour et référence Transparence Santé. */
+    closed?: { days: number; ref: string };
   };
+  // Historique de Dentalys (dossiers terminés et déclarés) : alimente les statistiques de l'organisation.
+  const hist = (id: string, title: string, type: string, area: string, d: number, experts: [string, number, number][], ref: string): Proj => ({
+    id, org: "demo-org-dentalys", title, type, area, status: "TERMINE", desc: "Dossier clos (démonstration de l'historique).",
+    experts: experts.map(([p, fee, units]) => ({ p, status: "TERMINE" as ProjectStatus, fee, units })),
+    steps: [
+      ["demo-u-julien", "ATT_EXPERTS", "project.create", d], [experts[0][0].replace("demo-p-", "demo-u-"), "ACCORD", "solicitation.accept", d - 3],
+      ["demo-u-julien", "EN_VALID", "project.submit", d - 6], ["demo-u-sophie", "VALIDE", "project.validate", d - 9],
+      ["demo-u-julien", "SIGNATURE", "project.declaration", d - 10], ["demo-u-julien", "SIGNE", "project.signed", d - 14], ["demo-u-julien", "TERMINE", "project.done", d - 40],
+    ],
+    closed: { days: d - 40, ref: ref },
+  });
   const PROJECTS: Proj[] = [
     { id: "demo-prj-board", org: "demo-org-dentalys", title: "Board implantologie — gamme 2027", type: "advisory", area: "Implantologie", status: "ATT_EXPERTS",
       desc: "Réunion d'une journée à Lyon pour évaluer la nouvelle gamme d'implants courts. Livrable : compte rendu et recommandations.",
@@ -309,6 +322,13 @@ async function main() {
       desc: "Je propose un webinaire de 60 minutes sur la gestion esthétique des implants antérieurs, à partir de cas cliniques documentés, à destination des omnipraticiens.",
       experts: [{ p: "demo-p-fontaine", status: "ACCORD", fee: 1200, units: 1, msgs: [["demo-u-fontaine", "Je propose un webinaire de 60 minutes sur la gestion esthétique des implants antérieurs, à partir de cas cliniques documentés."]] }],
       steps: [["demo-u-fontaine", "ATT_IND", "project.propose", 2]] },
+    hist("demo-prj-hist-board25", "Board implantologie — gamme 2026", "advisory", "Implantologie", 430, [["demo-p-moreau", 4400, 2], ["demo-p-martin", 4000, 2]], "TS-2025-118402"),
+    hist("demo-prj-hist-adf25", "Symposium ADF 2025 — régénération osseuse", "symposium", "Implantologie", 390, [["demo-p-blanc", 2800, 1]], "TS-2025-131977"),
+    hist("demo-prj-hist-board26", "Comité consultatif implants courts", "advisory", "Implantologie", 290, [["demo-p-moreau", 4800, 2], ["demo-p-martin", 4400, 2], ["demo-p-blanc", 4000, 2]], "TS-2026-020115"),
+    hist("demo-prj-hist-eao", "Symposium EAO — mise en charge immédiate", "symposium", "Implantologie", 200, [["demo-p-moreau", 3000, 1], ["demo-p-janssens", 2800, 1]], "TS-2026-061340"),
+    hist("demo-prj-hist-webinaire", "Webinaire greffes osseuses et implants", "webinaire", "Chirurgie orale", 165, [["demo-p-blanc", 1200, 1]], "TS-2026-070288"),
+    hist("demo-prj-hist-dpc", "Formation DPC chirurgie guidée", "dpc", "Chirurgie orale", 115, [["demo-p-martin", 4800, 2], ["demo-p-simon", 2000, 1]], "TS-2026-093517"),
+    hist("demo-prj-hist-relecture", "Relecture du guide de pose", "relecture", "Parodontologie", 95, [["demo-p-lemoine", 600, 1]], "TS-2026-101864"),
   ];
   for (const p of PROJECTS) {
     const created = at(-(p.steps[0]?.[3] ?? 0));
@@ -318,6 +338,7 @@ async function main() {
       create: {
         id: p.id, organizationId: p.org, title: p.title, typeId: p.type, therapeuticArea: p.area, status: p.status, description: p.desc,
         complianceNote: p.note, ordreRef: p.ordre, origin: p.status === "ATT_IND" ? "Proposition de l'expert" : "Sollicitation directe", createdById: p.steps[0]?.[0], createdAt: created,
+        ...(p.closed ? { updatedAt: at(-p.closed.days), declared: true, declarationRef: p.closed.ref, declaredAt: at(-p.closed.days + 5) } : {}),
       },
     });
     for (const [i, e] of p.experts.entries()) {

@@ -90,7 +90,7 @@ export function AppShell({
 
       {space && (
         <nav className="bottom-nav" aria-label={t("Navigation principale")}>
-          {space.items.map((i) => {
+          {space.items.filter((i) => !i.secondary || space.items.length <= 5).map((i) => {
             const Icon = ICONS[i.icon];
             return (
               <Link key={i.key} href={i.href} className={isActive(i) ? "active" : undefined} aria-current={isActive(i) ? "page" : undefined}>
