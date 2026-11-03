@@ -129,7 +129,8 @@ export async function updateEvent(_: ActionState, form: FormData): Promise<Actio
   revalidatePath(`/organisations/${orgId}/evenements/${eventId}`);
   revalidatePath(`/evenements/${eventId}`);
   revalidatePath("/evenements");
-  const told = changes.length > 0 && event._count.registrations > 0 ? ` Les ${event._count.registrations} inscrit${event._count.registrations > 1 ? "s sont prévenus" : " est prévenu"} par e-mail.` : "";
+  const n = event._count.registrations;
+  const told = changes.length > 0 && n > 0 ? (n > 1 ? ` Les ${n} inscrits sont prévenus par e-mail.` : " L'inscrit est prévenu par e-mail.") : "";
   return { ok: `Événement mis à jour.${told}` };
 }
 
