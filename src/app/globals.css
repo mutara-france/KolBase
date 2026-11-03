@@ -921,3 +921,32 @@ body:has(.sidebar) .site-footer { padding: 24px 32px; }
 .delay-list span { display: flex; flex-direction: column; font-size: 13.5px; color: var(--ink); }
 .delay-list small { font-size: 12px; color: var(--ink-soft); }
 .delay-list strong { font-family: var(--font-display); font-size: 18px; color: var(--ink); white-space: nowrap; }
+
+/* ─── Pointage, badge, bilan ─────────────────────────────────── */
+.checkin-tools { display: flex; flex-wrap: wrap; gap: 10px 16px; align-items: center; }
+.checkin-search { flex: 1 1 240px; display: flex; align-items: center; gap: 8px; padding: 0 14px; min-height: 48px; border: 1px solid var(--line); border-radius: 14px; background: var(--bg); color: var(--ink-soft); }
+.checkin-search:focus-within { border-color: var(--outremer); box-shadow: 0 0 0 3px rgba(86, 56, 240, 0.15); }
+.checkin-search input { flex: 1; min-width: 0; border: 0; background: transparent; font: inherit; font-size: 16px; color: var(--ink); outline: none; }
+.checkin-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
+.checkin-list li { display: flex; justify-content: space-between; align-items: center; gap: 12px; padding: 10px 14px; border: 1px solid var(--line); border-radius: 14px; background: var(--bg); min-height: 56px; }
+.checkin-list li.done { background: var(--ok-bg); border-color: transparent; }
+.checkin-list li > span { display: flex; flex-direction: column; min-width: 0; }
+.checkin-list small { color: var(--ink-soft); font-size: 12.5px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.presence-form { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; justify-content: flex-end; margin: 0; }
+.presence-form .btn.small { min-width: 92px; }
+.checkin-error { color: var(--danger); font-size: 12.5px; }
+.checkin-count { font-family: var(--font-display); font-size: 20px; }
+.checkin-count .muted { font-family: var(--font-ui); font-size: 14px; font-weight: 400; }
+.scan-card h1 { display: flex; align-items: center; gap: 10px; margin: 4px 0 0; }
+.scan-card.done { border-color: var(--ok); }
+.scan-card .presence-form { justify-content: flex-start; }
+.scan-card .presence-form .btn { min-height: 52px; font-size: 16px; padding: 0 28px; }
+.badge-card { display: flex; flex-direction: column; align-items: center; text-align: center; gap: 8px; padding: 28px 20px; }
+.badge-card h1 { font-size: 22px; margin: 0; }
+.badge-qr { width: min(280px, 80vw); aspect-ratio: 1; margin: 8px 0; padding: 10px; border: 1px solid var(--line); border-radius: 18px; background: #fff; }
+.badge-qr svg { width: 100%; height: 100%; display: block; }
+.badge-name { font-family: var(--font-display); font-size: 20px; }
+.reg-tile { gap: 10px; }
+.reg-tile-link { display: flex; flex-direction: column; gap: 6px; color: var(--ink); text-decoration: none !important; }
+.reg-tile > .btn { align-self: flex-start; }
+.bilan h2 { display: flex; align-items: center; gap: 8px; }

@@ -266,6 +266,10 @@ async function main() {
     });
   }
 
+  // Pointage de l'édition précédente : deux présents, une absente (son cocktail n'est pas à déclarer sans vérification).
+  for (const [user, minutes] of [["demo-u-lambert", 52], ["demo-u-robert", 58]] as const)
+    await db.registration.updateMany({ where: { eventId: "demo-ev-passe", userId: user, checkedInAt: null }, data: { checkedInAt: new Date(at(-40, 18).getTime() + minutes * 60e3), checkedInById: "demo-u-julien" } });
+
   // ─── Dossiers de collaboration à différents stades ───────────────────────
   type Proj = {
     id: string; org: string; title: string; type: string; area: string; status: ProjectStatus; desc: string; note?: string; ordre?: string;

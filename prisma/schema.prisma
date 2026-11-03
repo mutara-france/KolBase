@@ -604,6 +604,10 @@ model Registration {
   createdAt      DateTime @default(now())
   declared       Boolean  @default(false)
   declarationRef String?
+  // Pointage à l'accueil : code du badge (QR), heure d'arrivée et personne qui a pointé.
+  checkinCode    String?   @unique
+  checkedInAt    DateTime?
+  checkedInById  String?
 
   benefits RegistrationBenefit[]
 
