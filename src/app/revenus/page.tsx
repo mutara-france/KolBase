@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
-import { Building2, Euro, Gift, Hourglass } from "lucide-react";
+import { Building2, Euro, FileClock, Gift, Hourglass } from "lucide-react";
 import { SiteHeader } from "@/components/SiteHeader";
 import { BillingForm, InterestForm, IssueNoteButton, ReportForm } from "@/components/RevenueForms";
 import { billingComplete } from "@/lib/fee-notes";
@@ -8,6 +8,7 @@ import { requireUser } from "@/lib/auth";
 import { INTEREST_YEARS, interestLines, practitionerLedger } from "@/lib/revenues";
 import { removeDeclaredInterest } from "@/lib/revenue-actions";
 import { STATUS_LABEL } from "@/lib/projects";
+import { feeTotals } from "@/lib/indicators";
 import { fmtDate, fmtEur } from "@/lib/i18n";
 import { getT } from "@/lib/i18n/server";
 
@@ -28,9 +29,9 @@ export default async function Page({ searchParams }: { searchParams: Promise<{ o
   const year = years.includes(Number(sp.annee)) ? Number(sp.annee) : years[0];
   const fees = ledger.fees.filter((f) => f.year === year);
   const hosp = ledger.hospitality.filter((h) => h.year === year);
-  const paid = fees.reduce((s, f) => s + (f.paidCents ?? 0), 0);
-  const due = fees.filter((f) => !f.paidAt).reduce((s, f) => s + f.feeCents, 0);
-  const hospTotal = hosp.reduce((s, h) => s + h.valueCents, 0);
+  // À percevoir : convention signée, pas encore payée ; en préparation : le reste (pas encore dû).
+  const { paid, due, preparing } = feeTotals(fees);
+  const hospTotal = hosp.filter((h) => !h.absent).reduce((s, h) => s + h.valueCents, 0);
   const orgs = new Set([...fees.map((f) => f.org.id), ...hosp.map((h) => h.org.id)]).size;
   const interests = interestLines(ledger);
   const tabs = [["revenus", t("Honoraires et avantages")], ["facturation", t("Notes d'honoraires")], ["liens", t("Liens d'intérêts")], ["transparence", t("Transparence Santé")]] as const;
@@ -67,7 +68,8 @@ export default async function Page({ searchParams }: { searchParams: Promise<{ o
             </div>
             <dl className="hero-facts">
               <div><dt><Euro size={13} /> {t("Honoraires payés")}</dt><dd>{fmtEur(locale, paid)}<small>{t("HT, en {year}", { year })}</small></dd></div>
-              <div><dt><Hourglass size={13} /> {t("À percevoir")}</dt><dd>{fmtEur(locale, due)}<small>{t("HT, conventions en cours")}</small></dd></div>
+              <div><dt><Hourglass size={13} /> {t("À percevoir")}</dt><dd>{fmtEur(locale, due)}<small>{t("HT, conventions signées non payées")}</small></dd></div>
+              <div><dt><FileClock size={13} /> {t("En préparation")}</dt><dd>{fmtEur(locale, preparing)}<small>{t("HT, conventions pas encore signées")}</small></dd></div>
               <div><dt><Gift size={13} /> {t("Hospitalités reçues")}</dt><dd>{fmtEur(locale, hospTotal)}<small>{t("TTC, valeur déclarée")}</small></dd></div>
               <div><dt><Building2 size={13} /> {t("Organisations")}</dt><dd>{orgs}<small>{t("partenaires cette année")}</small></dd></div>
             </dl>
@@ -103,7 +105,7 @@ export default async function Page({ searchParams }: { searchParams: Promise<{ o
                         <td>{h.org.name}</td>
                         <td><Link href={`/evenements/${h.eventId}`}>{h.title}</Link></td>
                         <td>{h.items.map((i) => t(i)).join(", ")}</td>
-                        <td>{fmtEur(locale, h.valueCents)}</td>
+                        <td>{h.absent ? <><s className="muted">{fmtEur(locale, h.valueCents)}</s> <span className="pill">{t("Absent : non déclaré")}</span></> : fmtEur(locale, h.valueCents)}</td>
                       </tr>
                     ))}
                   </tbody>
@@ -218,7 +220,7 @@ export default async function Page({ searchParams }: { searchParams: Promise<{ o
                 <li key={h.id}>
                   <div className="actions spread">
                     <strong>{t("Avantages")} · {h.title}</strong>
-                    <span className={`pill ${h.declared ? "ok" : "wait"}`}>{h.declared ? t("Déclarée{ref}", { ref: h.declarationRef ? ` (${h.declarationRef})` : "" }) : t("À déclarer par l'organisation")}</span>
+                    <span className={`pill ${h.declared ? "ok" : h.absent ? "" : "wait"}`}>{h.declared ? t("Déclarée{ref}", { ref: h.declarationRef ? ` (${h.declarationRef})` : "" }) : h.absent ? t("Absent : non déclaré") : t("À déclarer par l'organisation")}</span>
                   </div>
                   <span className="muted">{h.org.name} · {h.items.map((i) => t(i)).join(", ")} · {fmtEur(locale, h.valueCents)} TTC · {fmtDate(locale, h.date)}</span>
                   <ReportForm kind="hospitalite" id={h.id} />

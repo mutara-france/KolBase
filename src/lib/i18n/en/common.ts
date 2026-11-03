@@ -118,4 +118,13 @@ export const COMMON: Record<string, string> = {
   "Publiez des appels, sollicitez des praticiens, ouvrez vos événements. L'espace de l'organisation est gratuit jusqu'à votre première action qui engage un tiers, puis sur abonnement (premier mois offert).": "Publish calls, approach practitioners, open your events. The organisation's space is free until your first action that commits a third party, then by subscription (first month free).",
   "Créer le compte de votre organisation": "Create your organisation's account",
   "Commencez par votre compte personnel : vous créerez ensuite l'espace de votre organisation, ou rejoindrez celle qui vous invite. Gratuit jusqu'à votre première action qui engage un tiers.": "Start with your personal account: you will then create your organisation's space, or join the one inviting you. Free until your first action that commits a third party.",
+  "Le questionnaire est réservé aux participants dont la présence a été enregistrée à l'accueil.": "The survey is reserved for participants whose attendance was recorded at check-in.",
+  "absent : non déclaré": "absent: not declared",
+  "Absent : non déclaré": "Absent: not declared",
+  "Honoraires proposés, à accepter": "Proposed fees, awaiting your acceptance",
+  "Voir la proposition et répondre": "View the proposal and reply",
+  "HT, conventions signées non payées": "excl. VAT, signed agreements not yet paid",
+  "En préparation": "In preparation",
+  "HT, conventions pas encore signées": "excl. VAT, agreements not yet signed",
+  "Honoraires proposés, à accepter · {org}": "Proposed fees, awaiting your acceptance · {org}",
 };

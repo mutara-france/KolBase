@@ -1,5 +1,8 @@
 import "server-only";
 import { db } from "@/lib/db";
+import { SIGNED_STATUSES } from "@/lib/projects";
+import { pointedPastEvents } from "@/lib/checkin";
+import { isAbsent } from "@/lib/indicators";
 
 /** Données personnelles d'un compte, au format JSON (droit d'accès et de portabilité, art. 15 et 20 RGPD). */
 export async function exportAccount(userId: string) {
@@ -27,11 +30,15 @@ export async function exportAccount(userId: string) {
 
 /** Le compte a-t-il des données à conserver au titre des obligations « anti-cadeaux » et Transparence Santé ? */
 export async function retentionReasons(userId: string) {
-  const [links, regs] = await Promise.all([
-    db.projectExpert.count({ where: { practitioner: { userId }, status: { notIn: ["ATT_EXPERTS", "DECLINE"] } } }),
+  const [links, past] = await Promise.all([
+    // Conventions : signées seulement (une collaboration non signée n'a pas de convention à conserver).
+    db.projectExpert.count({ where: { practitioner: { userId }, status: { in: SIGNED_STATUSES } } }),
     // Les inscriptions à venir non déclarées sont annulées à la suppression : seules comptent celles passées ou déclarées.
-    db.registration.count({ where: { userId, benefits: { some: {} }, OR: [{ declared: true }, { event: { startsAt: { lte: new Date() } } }] } }),
+    db.registration.findMany({ where: { userId, benefits: { some: {} }, OR: [{ declared: true }, { event: { startsAt: { lte: new Date() } } }] }, select: { eventId: true, declared: true, checkedInAt: true } }),
   ]);
+  // Un absent au pointage n'a pas consommé ses hospitalités : rien à déclarer, rien à conserver (sauf si déjà déclaré).
+  const pointed = await pointedPastEvents(past.map((r) => r.eventId));
+  const regs = past.filter((r) => r.declared || !isAbsent(r, pointed.has(r.eventId))).length;
   return { conventions: links, hospitalities: regs, keep: links + regs > 0 };
 }
 

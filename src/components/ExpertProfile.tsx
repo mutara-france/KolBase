@@ -3,7 +3,7 @@ import { BadgeCheck, BookOpen, Building, Clock, EyeOff, Languages, Lock, MapPin,
 import { Avatar } from "@/components/Avatar";
 import { FollowButton } from "@/components/FollowButton";
 import { db } from "@/lib/db";
-import { collabType } from "@/lib/projects";
+import { collabType, SIGNED_STATUSES } from "@/lib/projects";
 import { drPrefix } from "@/lib/professions";
 import { canSee, kolVisibility, type Viewer, type VisLevel } from "@/lib/visibility";
 import { country } from "@/lib/countries";
@@ -28,7 +28,8 @@ export async function ExpertProfile({ id, viewer, solicitHref, userId = null }: 
       user: { select: { firstName: true, lastName: true } },
       publications: { orderBy: [{ year: "desc" }, { createdAt: "desc" }] },
       structures: true,
-      projectLinks: { where: { status: { notIn: ["ATT_EXPERTS", "DECLINE"] } }, include: { project: { include: { organization: { select: { id: true, name: true } } } } } },
+      // Collaborations : conventions signées seulement (même définition partout).
+      projectLinks: { where: { status: { in: SIGNED_STATUSES } }, include: { project: { include: { organization: { select: { id: true, name: true } } } } } },
     },
   });
   if (!p) return null;

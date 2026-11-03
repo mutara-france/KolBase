@@ -36,6 +36,8 @@ export default async function Page({ params }: { params: Promise<{ id: string }>
           <p className="notice ok">{t("Merci : votre avis est transmis à l'organisateur, sans votre nom.")}</p>
         ) : !ended ? (
           <p className="notice">{t("Le questionnaire ouvre à la fin de l'événement.")}</p>
+        ) : !reg.checkedInAt ? (
+          <p className="notice">{t("Le questionnaire est réservé aux participants dont la présence a été enregistrée à l'accueil.")}</p>
         ) : (
           <SurveyForm eventId={id} />
         )}

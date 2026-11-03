@@ -8,6 +8,8 @@ import { PROJECT_ROLES, PROJECT_VIEW_ROLES, REVIEW_ROLES, SOURCING_ROLES } from 
 import { countFor, orgSectionTabs, type OrgSectionKey, type SectionTab } from "@/lib/nav";
 import type { OrgRole } from "@/generated/prisma/client";
 import { billingBlocked } from "@/lib/billing";
+import { pointedPastEvents } from "@/lib/checkin";
+import { toDeclare } from "@/lib/indicators";
 import { subscribeHref } from "@/lib/billing-plans";
 
 
@@ -43,7 +45,7 @@ export const orgOverview = cache(async (orgId: string) => {
   const now = new Date();
   const base = `/organisations/${orgId}`;
 
-  const [projects, events, calls, hosp, reviewQueue, rfqs, waitingQuotes] = await Promise.all([
+  const [projects, events, calls, undeclared, reviewQueue, rfqs, waitingQuotes] = await Promise.all([
     can.view ? db.project.findMany({ where: { organizationId: orgId }, include: { experts: true }, orderBy: { updatedAt: "desc" } }) : Promise.resolve([]),
     can.events || can.compliance
       ? db.event.findMany({ where: { organizationId: orgId, ...(can.compliance ? {} : evScope) }, include: { _count: { select: { registrations: true } } }, orderBy: { startsAt: "asc" } })
@@ -68,6 +70,9 @@ export const orgOverview = cache(async (orgId: string) => {
       : Promise.resolve([]),
   ]);
 
+  // Hospitalités à déclarer : pas celles des absents au pointage (avantage non consommé).
+  const pointed = await pointedPastEvents(undeclared.map((r) => r.eventId));
+  const hosp = undeclared.filter((r) => toDeclare(r, pointed.has(r.eventId)));
   const todos: TodoItem[] = [];
   const dossier = (p: (typeof projects)[number]) => `${base}/dossiers/${p.id}`;
   if (can.project) {

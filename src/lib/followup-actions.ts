@@ -55,6 +55,7 @@ export async function submitSurvey(_: FormState, form: FormData): Promise<FormSt
   const reg = await db.registration.findFirst({ where: { eventId: str(form, "eventId"), userId: user.id }, include: { event: true, survey: { select: { id: true } } } });
   if (!reg) return { error: t("Inscription introuvable.") };
   if (!eventEnded(reg.event)) return { error: t("Le questionnaire ouvre à la fin de l'événement.") };
+  if (!reg.checkedInAt) return { error: t("Le questionnaire est réservé aux participants dont la présence a été enregistrée à l'accueil.") };
   if (reg.survey) return { ok: t("Merci, votre avis est déjà enregistré.") };
   const overall = rating(form, "overall", true);
   const content = rating(form, "content", false);

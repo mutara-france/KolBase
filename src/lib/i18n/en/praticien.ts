@@ -655,7 +655,6 @@ export const PRATICIEN: Record<string, string> = {
   "Honoraires payés": "Fees paid",
   "HT, en {year}": "excl. VAT, in {year}",
   "À percevoir": "Outstanding",
-  "HT, conventions en cours": "excl. VAT, current agreements",
   "Hospitalités reçues": "Hospitality received",
   "TTC, valeur déclarée": "incl. VAT, declared value",
   "partenaires cette année": "partners this year",

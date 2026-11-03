@@ -2,7 +2,8 @@ import { AlertTriangle, ExternalLink, FileSignature, FileText, Info, ShieldAlert
 import { db } from "@/lib/db";
 import { detectConflicts } from "@/lib/conflicts";
 import { formatDate, formatEUR } from "@/lib/events";
-import { MATERIAL_KINDS, MATERIAL_STATUS, REVIEW_ROLES } from "@/lib/projects";
+import { MATERIAL_KINDS, MATERIAL_STATUS, recruitmentOpen, REVIEW_ROLES } from "@/lib/projects";
+import { expertSplit } from "@/lib/indicators";
 import { supplierCategoryLabel } from "@/lib/suppliers";
 import { reviewMaterial, updateExpense } from "@/lib/dossier-actions";
 import { FOUR_EYES_BLOCKED, fourEyes } from "@/lib/four-eyes";
@@ -44,7 +45,8 @@ export async function BudgetPanel({ orgId, projectId, canEdit }: { orgId: string
     include: { supplier: { select: { name: true } }, rfq: { select: { category: true } } },
     orderBy: { updatedAt: "asc" },
   });
-  const fees = project.experts.reduce((s, e) => s + (e.feeCents ?? 0), 0);
+  // Même définition que l'en-tête du dossier : honoraires engagés (acceptés par l'expert), proposés à part.
+  const { engagedCents: fees, proposedCents: proposed } = expertSplit(project.experts, recruitmentOpen(project.status));
   const exp = project.expenses.reduce((s, e) => s + e.amountCents, 0);
   const sup = quotes.reduce((s, q) => s + q.amountCents, 0);
   const total = fees + exp + sup;
@@ -60,16 +62,17 @@ export async function BudgetPanel({ orgId, projectId, canEdit }: { orgId: string
       </div>
       <div className="stats-row" style={{ marginBottom: 12 }}>
         <div className="stat-card"><div className="stat-value">{budget != null ? formatEUR(budget) : "—"}</div><div className="stat-label">Budget prévu (HT)</div></div>
-        <div className="stat-card"><div className="stat-value">{formatEUR(fees)}</div><div className="stat-label">Honoraires des experts</div></div>
-        {sup > 0 && <div className="stat-card"><div className="stat-value">{formatEUR(sup)}</div><div className="stat-label">Prestataires (devis retenus)</div></div>}
+        <div className="stat-card"><div className="stat-value">{formatEUR(fees)}</div><div className="stat-label">Honoraires engagés (HT)</div></div>
+        {proposed > 0 && <div className="stat-card"><div className="stat-value muted">{formatEUR(proposed)}</div><div className="stat-label">Honoraires proposés, sans réponse (HT)</div></div>}
+        {sup > 0 && <div className="stat-card"><div className="stat-value">{formatEUR(sup)}</div><div className="stat-label">Prestataires, devis retenus (HT)</div></div>}
         <div className="stat-card"><div className="stat-value">{formatEUR(exp)}</div><div className="stat-label">Autres dépenses</div></div>
-        <div className="stat-card"><div className={`stat-value${over ? " tone-danger" : " tone-electric"}`}>{formatEUR(total)}</div><div className="stat-label">Total engagé{realPct != null ? ` · ${realPct} % du budget` : ""}</div></div>
+        <div className="stat-card"><div className={`stat-value${over ? " tone-danger" : " tone-electric"}`}>{formatEUR(total)}</div><div className="stat-label">Total engagé (HT){realPct != null ? ` · ${realPct} % du budget` : ""}</div></div>
       </div>
       {pct != null && <div className="gauge-track"><div className={`gauge-fill${over ? " over" : ""}`} style={{ width: `${pct}%` }} /></div>}
       {over && <p className="notice error mt-2">Le total engagé dépasse le budget prévu de {formatEUR(total - budget!)}.</p>}
       {(project.expenses.length > 0 || quotes.length > 0) && (
         <table className="table mt-3">
-          <thead><tr><th>Date</th><th>Poste</th><th>Montant</th><th>Statut</th>{canEdit && <th />}</tr></thead>
+          <thead><tr><th>Date</th><th>Poste</th><th>Montant HT</th><th>Statut</th>{canEdit && <th />}</tr></thead>
           <tbody>
             {quotes.map((q) => (
               <tr key={q.id}>

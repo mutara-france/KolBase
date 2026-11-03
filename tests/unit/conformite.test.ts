@@ -5,6 +5,7 @@ import { interestWarning, isEngaged, isSigned } from "@/lib/projects";
 import { benefitLimit, complianceSettings, hospitalityRegime } from "@/lib/compliance";
 import { hospitalityRegimeClause } from "@/lib/convention-pdf";
 import { makeT } from "@/lib/i18n";
+import { costHeadcount, expertSplit, feeTotals, isAbsent, speakerConfirmed, toDeclare } from "@/lib/indicators";
 
 describe("contrat de sous-traitance exigé avant d'engager un tiers", () => {
   it("version en vigueur acceptée ; un prestataire n'en a pas", () => {
@@ -65,5 +66,49 @@ describe("seuils d'hospitalité visibles à la saisie et dans les conventions", 
     expect(hospitalityRegimeClause(t, "autorisation")).toContain("est soumise à l'autorisation préalable de l'instance ordinale");
     expect(hospitalityRegimeClause(t, "declaration")).toContain("sous les seuils d'autorisation, est déclarée à l'instance ordinale");
     expect(hospitalityRegimeClause(makeT("en"), "autorisation")).toContain("subject to prior authorisation");
+  });
+});
+
+describe("une définition par indicateur", () => {
+  const d = new Date("2026-10-01T10:00:00Z");
+  it("honoraires : à percevoir = signé non payé ; en préparation = le reste (bloqué compris)", () => {
+    const fees = [
+      { status: "SIGNE", feeCents: 100000, paidAt: null, paidCents: null },
+      { status: "TERMINE", feeCents: 50000, paidAt: d, paidCents: 50000 },
+      { status: "BLOQUE", feeCents: 30000, paidAt: null, paidCents: null },
+      { status: "ACCORD", feeCents: 20000, paidAt: null, paidCents: null },
+      { status: "SIGNATURE", feeCents: 10000, paidAt: null, paidCents: null },
+      { status: "ATT_EXPERTS", feeCents: 99999, paidAt: null, paidCents: null },
+    ];
+    expect(feeTotals(fees)).toEqual({ paid: 50000, due: 100000, preparing: 60000 });
+  });
+
+  it("absent : non pointé à un événement pointé ; ni à déclarer, sauf déjà déclaré", () => {
+    expect(isAbsent({ checkedInAt: null }, true)).toBe(true);
+    expect(isAbsent({ checkedInAt: d }, true)).toBe(false);
+    expect(isAbsent({ checkedInAt: null }, false)).toBe(false);
+    expect(toDeclare({ declared: false, checkedInAt: null }, true)).toBe(false);
+    expect(toDeclare({ declared: false, checkedInAt: null }, false)).toBe(true);
+    expect(toDeclare({ declared: true, checkedInAt: d }, true)).toBe(false);
+  });
+
+  it("dossier : engagés (acceptés) et proposés (réponse attendue, recrutement ouvert)", () => {
+    const experts = [{ status: "ACCORD", feeCents: 2000 }, { status: "ATT_EXPERTS", feeCents: 1500 }, { status: "DECLINE", feeCents: 900 }, { status: "SIGNE", feeCents: 1000 }];
+    expect(expertSplit(experts, true)).toMatchObject({ engagedCents: 3000, proposedCents: 1500 });
+    expect(expertSplit(experts, false)).toMatchObject({ engagedCents: 3000, proposedCents: 0 });
+  });
+
+  it("coût par participant d'un devis : les présents après l'événement pointé", () => {
+    expect(costHeadcount(50, 0, false)).toEqual({ n: 50, per: "participant" });
+    expect(costHeadcount(50, 32, true)).toEqual({ n: 32, per: "présent" });
+    expect(costHeadcount(50, 0, true)).toEqual({ n: 50, per: "participant" });
+  });
+
+  it("« Vous intervenez » : candidature retenue et honoraires acceptés", () => {
+    expect(speakerConfirmed({ status: "retained" }, { status: "ACCORD" })).toBe(true);
+    expect(speakerConfirmed({ status: "retained" }, { status: "ATT_EXPERTS" })).toBe(false);
+    expect(speakerConfirmed({ status: "retained" }, { status: "DECLINE" })).toBe(false);
+    expect(speakerConfirmed({ status: "retained" }, undefined)).toBe(false);
+    expect(speakerConfirmed({ status: "pending" }, { status: "ACCORD" })).toBe(false);
   });
 });

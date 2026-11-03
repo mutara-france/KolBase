@@ -62,7 +62,7 @@ export default async function Page({ params, searchParams }: { params: Promise<{
         <div className="stats">
           <div className="card stat"><span className="muted">À traiter</span><strong>{todo.length}</strong></div>
           <div className="card stat"><span className="muted">Devis retenus</span><strong>{won.length}</strong></div>
-          <div className="card stat"><span className="muted">Montant retenu</span><strong>{formatEUR(won.reduce((s, i) => s + i.rfq.quotes[0].amountCents, 0))}</strong></div>
+          <div className="card stat"><span className="muted">Montant retenu</span><strong>{formatEUR(won.reduce((s, i) => s + i.rfq.quotes[0].amountCents, 0))} HT</strong></div>
         </div>
         <nav className="tabs">
           {tabs.map(([k, l]) => <Link key={k} href={`?onglet=${k}`} className={k === onglet ? "active" : ""}>{l}</Link>)}
@@ -86,7 +86,7 @@ export default async function Page({ params, searchParams }: { params: Promise<{
               </dl>
               {book.market.map((m) => (
                 <p key={m.category} className={`text-sm ${m.mine > m.median * 1.15 ? "warn-text" : ""}`}>
-                  {supplierCategoryLabel(m.category)} : votre prix médian est de {m.mine.toLocaleString("fr-FR", { maximumFractionDigits: 2 })} € TTC par participant, pour une médiane de {m.median.toLocaleString("fr-FR", { maximumFractionDigits: 2 })} € sur {m.count} devis de la catégorie (données anonymisées).
+                  {supplierCategoryLabel(m.category)} : votre prix médian est de {m.mine.toLocaleString("fr-FR", { maximumFractionDigits: 2 })} € TTC par participant, pour une médiane de {m.median.toLocaleString("fr-FR", { maximumFractionDigits: 2 })} € TTC sur {m.count} devis de la catégorie (données anonymisées).
                 </p>
               ))}
             </section>

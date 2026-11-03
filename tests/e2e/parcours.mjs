@@ -1398,7 +1398,8 @@ async function submitNewOrg(page, siren) {
   await ctx.close();
   const comp = await session();
   await login(comp.page, "sophie.bernard@demo.kolbase.local");
-  await comp.page.goto(`${BASE}/organisations/demo-org-dentalys/hospitalites`);
+  // L'absent n'est plus « à déclarer » : il figure dans « Toutes », signalé.
+  await comp.page.goto(`${BASE}/organisations/demo-org-dentalys/hospitalites?statut=toutes`);
   t = await text(comp.page);
   check("Hospitalités : absente au pointage signalée", /GIRARD Olivier\s*Absent au pointage/.test(t), t.match(/GIRARD[^\n]*/)?.[0]);
   await comp.ctx.close();
@@ -2588,6 +2589,88 @@ async function submitNewOrg(page, siren) {
     const conv = await page.request.get(`${BASE}/organisations/demo-org-dentalys/hospitalites/convention/e2e-lot2-reg-hosp`);
     check("Convention d'hospitalité (PDF) disponible pour une hospitalité soumise à autorisation", conv.status() === 200 && (conv.headers()["content-type"] ?? "").includes("pdf"));
     await ctx.close();
+  }
+
+  // 4. Une définition par indicateur.
+  {
+    const n = (s) => s.replace(/\s/g, " ");
+    // Collaborations = dossiers signés : fiche publique et écran de suppression du compte.
+    const counts = await q1(`select count(*) filter (where status in ('SIGNE', 'TERMINE'))::int signed, count(*) filter (where status not in ('ATT_EXPERTS', 'DECLINE'))::int engaged from "ProjectExpert" where "practitionerId" = 'demo-p-martin'`);
+    const c = await session();
+    await login(c.page, "claire.morel@demo.kolbase.local");
+    await c.page.goto(`${BASE}/experts/demo-p-martin`);
+    const collab = await c.page.locator('.stat-card:has-text("Collaborations via KolBase") .stat-value').innerText().catch(() => "");
+    check("Fiche expert : seules les collaborations signées sont comptées", collab === String(counts.signed) && counts.engaged > counts.signed, `${collab} / ${JSON.stringify(counts)}`);
+    // Dossier : « engagé » = accepté par l'expert, « proposé » à part, même définition dans l'en-tête et le budget.
+    await pgc.query(`insert into "Project" (id, "organizationId", title, "typeId", "therapeuticArea", status, "budgetCents", "updatedAt") values ('e2e-lot2-prj-budget', 'demo-org-dentalys', 'Board budget lot 2', 'advisory', 'Implantologie', 'ACCORD', 1000000, now())`);
+    await pgc.query(`insert into "ProjectExpert" (id, "projectId", "practitionerId", status, "feeCents", days) values ('e2e-lot2-pb-1', 'e2e-lot2-prj-budget', 'demo-p-durand', 'ACCORD', 200000, 1), ('e2e-lot2-pb-2', 'e2e-lot2-prj-budget', 'demo-p-moreau', 'ATT_EXPERTS', 150000, 1), ('e2e-lot2-pb-3', 'e2e-lot2-prj-budget', 'demo-p-blanc', 'DECLINE', 90000, 1)`);
+    await c.page.goto(`${BASE}/organisations/demo-org-dentalys/dossiers/e2e-lot2-prj-budget`);
+    const head = n(await c.page.locator("header.page-hero").innerText());
+    const budget = n(await c.page.locator('section.card:has(h2:has-text("Budget et dépenses"))').innerText());
+    check("Dossier : en-tête, engagé = accepté, proposé à part", head.includes("1 engagé") && head.includes("2 000 € HT") && head.includes("1 500 € HT proposés, sans réponse") && head.includes("20 % engagé ; 1 500 € HT proposés en plus"), head);
+    check("Dossier : budget, même définition", /2 000 €\s*Honoraires engagés \(HT\)/.test(budget) && /1 500 €\s*Honoraires proposés, sans réponse \(HT\)/.test(budget) && /2 000 €\s*Total engagé \(HT\) · 20 % du budget/.test(budget), budget);
+    // HT / TTC toujours indiqué ; coût par participant d'un devis rapporté aux présents après l'événement.
+    await c.page.goto(`${BASE}/organisations/demo-org-dentalys/prestataires`);
+    const presta = n(await text(c.page));
+    check("Prestataires : HT / TTC indiqués (budget engagé, prestation attribuée)", /Budget prestataires engagé\s*[\d ]+(,\d+)? € HT/.test(presta) && /Attribué à [^—]+— [\d ]+(,\d+)? € HT · [\d ]+(,\d+)? € TTC/.test(presta));
+    await c.page.goto(`${BASE}/organisations/demo-org-dentalys/evenements/demo-ev-passe`);
+    const past = n(await text(c.page));
+    check("Événement passé : coût d'un devis par présent, montants en TTC", past.includes("€ TTC par présent") && /Coût réel\s*[\d ]+(,\d+)? € TTC/.test(past) && past.includes("non consommées, elles ne sont pas déclarées"));
+    // Absents : ni « à déclarer », affichés « absent : non déclaré ».
+    await c.page.goto(`${BASE}/organisations/demo-org-dentalys/hospitalites`);
+    const todo = await c.page.locator('section.card:has-text("Soirée régénération osseuse")').innerText().catch(() => "");
+    check("Hospitalités à déclarer : sans l'absent au pointage", !todo.includes("GIRARD"), todo.slice(0, 200));
+    await c.page.goto(`${BASE}/organisations/demo-org-dentalys/hospitalites?statut=toutes`);
+    const girardRow = await c.page.locator('section.card:has-text("Soirée régénération osseuse") tr:has-text("GIRARD")').innerText().catch(() => "");
+    check("Hospitalités (toutes) : « Absent : non déclaré », pas de déclaration proposée", girardRow.includes("Absent : non déclaré") && !girardRow.includes("Marquer déclaré"), girardRow);
+    await c.ctx.close();
+    // Côté praticien absent : revenus, liens d'intérêts, Transparence, inscriptions, avis.
+    await pgc.query(`insert into "Project" (id, "organizationId", title, "typeId", status, "updatedAt") values ('e2e-lot2-prj-g1', 'demo-org-orthonova', 'Atelier CFAO signé', 'travaux-pratiques', 'SIGNE', now()), ('e2e-lot2-prj-g2', 'demo-org-orthonova', 'Atelier CFAO bloqué', 'travaux-pratiques', 'BLOQUE', now())`);
+    await pgc.query(`insert into "ProjectExpert" (id, "projectId", "practitionerId", status, "feeCents", days) values ('e2e-lot2-pg-1', 'e2e-lot2-prj-g1', 'demo-p-girard', 'SIGNE', 150000, 1), ('e2e-lot2-pg-2', 'e2e-lot2-prj-g2', 'demo-p-girard', 'BLOQUE', 200000, 1)`);
+    const g = await session();
+    await login(g.page, "olivier.girard@demo.kolbase.local");
+    await g.page.goto(`${BASE}/revenus`);
+    const rev = n(await text(g.page));
+    const eur = (c) => n((c / 100).toLocaleString("fr-FR", { style: "currency", currency: "EUR", maximumFractionDigits: c % 100 ? 2 : 0 }));
+    const exp = await q1(`select coalesce(sum("feeCents") filter (where status in ('SIGNE', 'TERMINE')), 0)::int due, coalesce(sum("feeCents") filter (where status not in ('SIGNE', 'TERMINE', 'ATT_EXPERTS', 'DECLINE')), 0)::int prep, count(*) filter (where status = 'BLOQUE')::int blocked from "ProjectExpert" where "practitionerId" = 'demo-p-girard' and "paidAt" is null and extract(year from coalesce("respondedAt", "createdAt")) = extract(year from now())`);
+    check("Revenus : « À percevoir » = signé non payé, « En préparation » à part (dossier bloqué)", rev.includes(`À percevoir ${eur(exp.due)}`) && rev.includes(`En préparation ${eur(exp.prep)}`) && exp.blocked >= 1 && exp.due >= 150000, `${JSON.stringify(exp)} | ${rev.slice(0, 300)}`);
+    check("Revenus : hospitalité d'un absent « Absent : non déclaré », hors total", rev.includes("Absent : non déclaré") && /Hospitalités reçues\s*0 €/.test(rev));
+    await g.page.goto(`${BASE}/revenus?onglet=liens`);
+    check("Liens d'intérêts : pas d'hospitalité d'un absent", !(await text(g.page)).includes("Soirée régénération osseuse"));
+    await g.page.goto(`${BASE}/revenus?onglet=transparence`);
+    const tr = await g.page.locator('li:has-text("Soirée régénération osseuse")').innerText().catch(() => "");
+    check("Transparence (praticien) : « Absent : non déclaré »", tr.includes("Absent : non déclaré") && !tr.includes("À déclarer par l'organisation"), tr);
+    await g.page.goto(`${BASE}/inscriptions`);
+    const reg = await g.page.locator('.reg-tile:has-text("Soirée régénération osseuse")').innerText().catch(() => "");
+    check("Mes inscriptions : absent, pas de « Donner mon avis »", reg.includes("absent : non déclaré") && !reg.includes("Donner mon avis"), reg);
+    await g.page.goto(`${BASE}/evenements/demo-ev-passe/avis`);
+    check("Questionnaire : réservé aux présents", (await text(g.page)).includes("réservé aux participants dont la présence a été enregistrée") && (await g.page.locator("form.survey-form").count()) === 0);
+    // « Vous intervenez » seulement quand l'expert a accepté les honoraires proposés.
+    await pgc.query(`insert into "OpenCall" (id, "organizationId", title, "typeId", "eventId", status) values ('e2e-lot2-call', 'demo-org-dentalys', 'Intervenant live surgery lot 2', 'pleniere', 'demo-ev-live-surgery', 'closed')`);
+    await pgc.query(`insert into "Project" (id, "organizationId", title, "typeId", status, "updatedAt") values ('e2e-lot2-prj-spk', 'demo-org-dentalys', 'Intervention live surgery lot 2', 'pleniere', 'ATT_EXPERTS', now())`);
+    await pgc.query(`insert into "ProjectExpert" (id, "projectId", "practitionerId", status, "feeCents", days) values ('e2e-lot2-ps-1', 'e2e-lot2-prj-spk', 'demo-p-girard', 'ATT_EXPERTS', 80000, 1)`);
+    await pgc.query(`insert into "Application" (id, "openCallId", "practitionerId", status, "projectId") values ('e2e-lot2-app', 'e2e-lot2-call', 'demo-p-girard', 'retained', 'e2e-lot2-prj-spk')`);
+    await g.page.goto(`${BASE}/tableau-de-bord`);
+    let dash = await text(g.page);
+    check("Tableau de bord : « Honoraires proposés, à accepter » avant l'acceptation", dash.includes("Honoraires proposés, à accepter · Dentalys Implants") && !dash.includes("Vous intervenez · Dentalys Implants"));
+    await g.page.goto(`${BASE}/interventions?onglet=interventions`);
+    let card = await g.page.locator('.card:has-text("Intervenant live surgery lot 2"), .card:has(a[href="/evenements/demo-ev-live-surgery"])').first().innerText().catch(() => "");
+    check("Mes interventions : à accepter, pas encore « Vous intervenez »", card.includes("Honoraires proposés, à accepter") && !card.includes("Vous intervenez"), card);
+    await pgc.query(`update "ProjectExpert" set status = 'ACCORD', "respondedAt" = now() where id = 'e2e-lot2-ps-1'`);
+    await g.page.goto(`${BASE}/tableau-de-bord`);
+    dash = await text(g.page);
+    await g.page.goto(`${BASE}/interventions?onglet=interventions`);
+    card = await g.page.locator('.card:has(a[href="/evenements/demo-ev-live-surgery"])').first().innerText().catch(() => "");
+    check("Honoraires acceptés : « Vous intervenez »", dash.includes("Vous intervenez · Dentalys Implants") && card.includes("Vous intervenez"), card);
+    await g.ctx.close();
+    // Suppression du compte : seules les conventions signées sont retenues.
+    const m = await session();
+    await login(m.page, "antoine.martin@demo.kolbase.local");
+    await m.page.goto(`${BASE}/compte`);
+    await m.page.click('summary:has-text("Supprimer mon compte")');
+    const del = await m.page.locator('details:has(summary:has-text("Supprimer mon compte"))').innerText();
+    check("Suppression du compte : conventions signées seulement", del.includes(`vos ${counts.signed} convention(s)`), del.slice(0, 400));
+    await m.ctx.close();
   }
 
   await pgc.end();

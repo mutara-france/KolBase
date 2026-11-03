@@ -10,6 +10,7 @@ import { eventTypeLabel, TZ } from "@/lib/events";
 import { SPEAKER_STATUS } from "@/lib/suppliers";
 import { withdrawApplication } from "@/lib/opportunity-actions";
 import { collabType } from "@/lib/projects";
+import { speakerConfirmed } from "@/lib/indicators";
 import { fmtDate, intlLocale } from "@/lib/i18n";
 import { getT } from "@/lib/i18n/server";
 
@@ -38,9 +39,13 @@ export default async function Page({ searchParams }: { searchParams: Promise<{ o
     include: { openCall: { include: { organization: true, event: { include: { _count: { select: { registrations: true } } } } } } },
     orderBy: { createdAt: "desc" },
   });
-  const speaking = mine.filter((a) => a.status === "retained" && a.openCall.event).sort((a, b) => a.openCall.event!.startsAt.getTime() - b.openCall.event!.startsAt.getTime());
   const links = await db.projectExpert.findMany({ where: { practitionerId: p.id, projectId: { in: mine.map((a) => a.projectId).filter((x): x is string => !!x) } } });
-  const linkOf = (projectId: string | null) => links.find((l) => l.projectId === projectId)?.id;
+  const linkFor = (projectId: string | null) => links.find((l) => l.projectId === projectId);
+  const linkOf = (projectId: string | null) => linkFor(projectId)?.id;
+  // Retenu : l'intervention est confirmée quand l'expert accepte les honoraires proposés (pas s'il les décline).
+  const speaking = mine
+    .filter((a) => a.status === "retained" && a.openCall.event && linkFor(a.projectId)?.status !== "DECLINE")
+    .sort((a, b) => a.openCall.event!.startsAt.getTime() - b.openCall.event!.startsAt.getTime());
   const onglet = raw === "candidatures" ? "candidatures" : raw === "interventions" ? "interventions" : speaking.length ? "interventions" : "candidatures";
   const group = onglet === "interventions" ? "agenda" : "opportunites";
   const heading = onglet === "interventions"
@@ -65,8 +70,12 @@ export default async function Page({ searchParams }: { searchParams: Promise<{ o
                   <div className="eyebrow-sm">{a.openCall.organization.name} · {t(eventTypeLabel(ev.typeId))}</div>
                   <h3><Link href={`/evenements/${ev.id}`}>{ev.title}</Link></h3>
                   <span className="muted"><Clock size={12} /> {formatDateTime(ev.startsAt)}{ev.city ? ` · ${ev.city}` : ""}</span>
-                  <span className="pill electric"><Megaphone size={12} /> {t(ev._count.registrations > 1 ? "Vous intervenez — {n} inscrits" : "Vous intervenez — {n} inscrit", { n: ev._count.registrations })}</span>
-                  {linkOf(a.projectId) && <Link href={`/sollicitations/${linkOf(a.projectId)}`}>{t("Dossier de collaboration")}</Link>}
+                  {speakerConfirmed(a, linkFor(a.projectId)) ? (
+                    <span className="pill electric"><Megaphone size={12} /> {t(ev._count.registrations > 1 ? "Vous intervenez — {n} inscrits" : "Vous intervenez — {n} inscrit", { n: ev._count.registrations })}</span>
+                  ) : (
+                    <span className="pill wait">{t("Honoraires proposés, à accepter")}</span>
+                  )}
+                  {linkOf(a.projectId) && <Link href={`/sollicitations/${linkOf(a.projectId)}`}>{speakerConfirmed(a, linkFor(a.projectId)) ? t("Dossier de collaboration") : t("Voir la proposition et répondre")}</Link>}
                 </div>
               );
             })}

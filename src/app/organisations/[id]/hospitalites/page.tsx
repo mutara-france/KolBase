@@ -8,6 +8,8 @@ import { COMPLIANCE_ROLES, formatDate, formatEUR } from "@/lib/events";
 import { markDeclared } from "@/lib/event-actions";
 import { complianceSettings, foreignRegime, hospitalityRegime, REGIME_LABEL } from "@/lib/compliance";
 import { practicesInFrance } from "@/lib/countries";
+import { pointedPastEvents } from "@/lib/checkin";
+import { isAbsent } from "@/lib/indicators";
 
 export const metadata = { title: "Hospitalités — KolBase" };
 
@@ -17,7 +19,7 @@ export default async function Page({ params, searchParams }: { params: Promise<{
   const { org } = await requireMembership(id, COMPLIANCE_ROLES);
 
   // Uniquement les inscriptions de praticiens ayant accepté au moins une prestation.
-  const regs = await db.registration.findMany({
+  const all = await db.registration.findMany({
     where: {
       event: { organizationId: id },
       profession: { not: null },
@@ -27,9 +29,12 @@ export default async function Page({ params, searchParams }: { params: Promise<{
     include: { user: { include: { practitioner: { select: { country: true } } } }, event: true, benefits: { include: { benefit: true } } },
     orderBy: [{ event: { startsAt: "desc" } }, { createdAt: "asc" }],
   });
-  // Événements pointés à l'accueil : un inscrit non pointé est signalé absent (avantage à vérifier avant déclaration).
-  const pointed = new Set((await db.registration.groupBy({ by: ["eventId"], where: { event: { organizationId: id, startsAt: { lt: new Date() } }, checkedInAt: { not: null } } })).map((g) => g.eventId));
-  const absent = (r: (typeof regs)[number]) => pointed.has(r.eventId) && !r.checkedInAt;
+  // Événements passés pointés à l'accueil : un inscrit non pointé est absent, son avantage n'a pas été consommé.
+  // Il n'est pas à déclarer (même règle que le fichier Transparence Santé) : « absent : non déclaré ».
+  const pointed = await pointedPastEvents(all.map((r) => r.eventId));
+  const absent = (r: (typeof all)[number]) => !r.declared && isAbsent(r, pointed.has(r.eventId));
+  const regs = statut === "a-declarer" ? all.filter((r) => !absent(r)) : all;
+  const counted = regs.filter((r) => !absent(r));
   const byEvent = new Map<string, typeof regs>();
   for (const r of regs) byEvent.set(r.eventId, [...(byEvent.get(r.eventId) ?? []), r]);
   // Régime de chaque convention d'hospitalité, avec les seuils de l'organisation.
@@ -59,15 +64,15 @@ export default async function Page({ params, searchParams }: { params: Promise<{
           {tabs.map(([k, l]) => <Link key={k} href={`?statut=${k}`} className={k === statut ? "active" : ""}>{l}</Link>)}
         </nav>
         <div className="stats">
-          <div className="card stat"><span className="muted">Bénéficiaires</span><strong>{regs.length}</strong></div>
-          <div className="card stat"><span className="muted">Valeur totale</span><strong>{formatEUR(sum(regs))}</strong></div>
+          <div className="card stat"><span className="muted">Bénéficiaires</span><strong>{counted.length}</strong></div>
+          <div className="card stat"><span className="muted">Valeur totale</span><strong>{formatEUR(sum(counted))} TTC</strong></div>
         </div>
         {regs.length === 0 && <p className="muted">Rien à afficher.</p>}
         {[...byEvent].map(([eventId, rs]) => (
           <section key={eventId} className="card">
             <h2>{rs[0].event.title}</h2>
-            <p className="muted">{formatDate(rs[0].event.startsAt)} · {rs.length} bénéficiaire{rs.length > 1 ? "s" : ""} · {formatEUR(sum(rs))}</p>
-            {rs.some(absent) && <p className="notice warn">{rs.filter(absent).length} bénéficiaire{rs.filter(absent).length > 1 ? "s" : ""} absent{rs.filter(absent).length > 1 ? "s" : ""} au pointage ({formatEUR(sum(rs.filter(absent)))}) : l&apos;avantage n&apos;a peut-être pas été consommé, vérifiez avant de déclarer.</p>}
+            <p className="muted">{formatDate(rs[0].event.startsAt)} · {rs.filter((r) => !absent(r)).length} bénéficiaire{rs.filter((r) => !absent(r)).length > 1 ? "s" : ""} · {formatEUR(sum(rs.filter((r) => !absent(r))))} TTC</p>
+            {rs.some(absent) && <p className="notice warn">{rs.filter(absent).length} inscrit{rs.filter(absent).length > 1 ? "s" : ""} absent{rs.filter(absent).length > 1 ? "s" : ""} au pointage ({formatEUR(sum(rs.filter(absent)))} TTC) : avantage non consommé, non déclaré. <Link href={`/organisations/${id}/evenements/${eventId}/pointage`}>Corriger le pointage</Link> si la personne était présente.</p>}
             <table className="table" tabIndex={0}>
               <thead><tr><th>Bénéficiaire</th><th>Profession</th><th>Prestations</th><th>Valeur</th><th>Régime</th><th>Convention</th><th>Déclaration</th></tr></thead>
               <tbody>
@@ -76,10 +81,11 @@ export default async function Page({ params, searchParams }: { params: Promise<{
                     <td>{r.user.lastName.toUpperCase()} {r.user.firstName}{absent(r) && <> <span className="pill wait">Absent au pointage</span></>}</td>
                     <td>{r.profession}</td>
                     <td>{r.benefits.map((b) => b.benefit.label).join(", ")}</td>
-                    <td>{formatEUR(r.benefits.reduce((s, b) => s + b.valueCents, 0))}</td>
+                    <td>{formatEUR(r.benefits.reduce((s, b) => s + b.valueCents, 0))} TTC</td>
                     <td>{(() => { const g = regimeOf(r); return <span className={`pill ${g.regime === "autorisation" ? "wait" : g.regime === "hors_france" ? "" : "ok"}`} title={g.reason}>{REGIME_LABEL[g.regime]}</span>; })()}</td>
                     <td><a href={`/organisations/${id}/hospitalites/convention/${r.id}`} target="_blank" rel="noreferrer">PDF</a></td>
                     <td>
+                      {absent(r) ? <span className="pill">Absent : non déclaré</span> : (
                       <form action={markDeclared} className="inline">
                         <input type="hidden" name="orgId" value={id} />
                         <input type="hidden" name="registrationId" value={r.id} />
@@ -96,6 +102,7 @@ export default async function Page({ params, searchParams }: { params: Promise<{
                           </>
                         )}
                       </form>
+                      )}
                     </td>
                   </tr>
                 ))}

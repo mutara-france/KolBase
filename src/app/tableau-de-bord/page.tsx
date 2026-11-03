@@ -7,6 +7,7 @@ import { TodoList, type TodoItem } from "@/components/Todo";
 import { db } from "@/lib/db";
 import { requireUser } from "@/lib/auth";
 import { collabType, recruitmentOpen } from "@/lib/projects";
+import { speakerConfirmed } from "@/lib/indicators";
 import { drPrefix } from "@/lib/professions";
 import { fmtDate, fmtEur } from "@/lib/i18n";
 import { getT } from "@/lib/i18n/server";
@@ -78,13 +79,17 @@ export default async function Page() {
     : [];
 
   const agenda: TimelineItem[] = [
-    ...apps.flatMap((a) => (a.openCall.event ? [{ ...a, event: a.openCall.event }] : [])).map((a) => ({
-      date: a.event.startsAt,
-      title: a.event.title,
-      detail: a.status === "retained" ? t("Vous intervenez · {org}", { org: a.event.organization.name }) : t("Candidature en attente de réponse"),
-      href: a.status === "retained" ? "/interventions?onglet=interventions" : "/interventions?onglet=candidatures",
-      strong: a.status === "retained",
-    })),
+    // « Vous intervenez » une fois les honoraires proposés acceptés ; avant, la proposition est à accepter.
+    ...apps.flatMap((a) => (a.openCall.event ? [{ ...a, event: a.openCall.event, link: links.find((l) => l.projectId === a.projectId) }] : [])).filter((a) => a.link?.status !== "DECLINE").map((a) => {
+      const confirmed = speakerConfirmed(a, a.link);
+      return {
+        date: a.event.startsAt,
+        title: a.event.title,
+        detail: confirmed ? t("Vous intervenez · {org}", { org: a.event.organization.name }) : a.status === "retained" ? t("Honoraires proposés, à accepter · {org}", { org: a.event.organization.name }) : t("Candidature en attente de réponse"),
+        href: confirmed ? "/interventions?onglet=interventions" : a.status === "retained" && a.link ? `/sollicitations/${a.link.id}` : "/interventions?onglet=candidatures",
+        strong: a.status === "retained",
+      };
+    }),
     ...regs.map((r) => ({ date: r.event.startsAt, title: r.event.title, detail: t("Inscrit · {org}", { org: r.event.organization.name }), href: `/evenements/${r.eventId}`, strong: true })),
   ]
     .sort((a, b) => a.date.getTime() - b.date.getTime())
