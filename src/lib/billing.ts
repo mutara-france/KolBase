@@ -1,7 +1,7 @@
 import "server-only";
 import { db } from "@/lib/db";
 import { stripe, stripeEnabled, type StripeSubscription } from "@/lib/stripe";
-import { canEngage, ENGAGING, fromStripeStatus, planFor, PLANS, TRIAL_DAYS, type Motive } from "@/lib/billing-plans";
+import { asInterval, canEngage, ENGAGING, fromStripeStatus, planFor, planPrice, PLANS, TRIAL_DAYS, type Interval, type Motive } from "@/lib/billing-plans";
 
 export { stripeEnabled };
 
@@ -46,14 +46,16 @@ export async function applyStripeSubscription(orgId: string, s: StripeSubscripti
   const data = {
     status, stripeCustomerId: s.customer, stripeSubscriptionId: s.id, trialEndsAt: date(s.trial_end), currentPeriodEnd: date(s.current_period_end),
     cancelAtPeriodEnd: !!s.cancel_at_period_end, ...(status === "essai" ? { trialUsed: true } : {}),
+    interval: asInterval(s.items?.data?.[0]?.price?.recurring?.interval ?? s.metadata?.interval),
   };
   await db.subscription.upsert({ where: { organizationId: orgId }, update: data, create: { organizationId: orgId, plan: planFor(org.kind), ...data } });
 }
 
-/** Page de paiement Stripe (abonnement mensuel, premier mois offert si jamais utilisé). */
-export async function checkoutUrl(orgId: string, adminEmail: string) {
+/** Page de paiement Stripe (mensuel ou annuel, premier mois offert si jamais utilisé). */
+export async function checkoutUrl(orgId: string, adminEmail: string, interval: Interval = "month") {
   const org = await db.organization.findUniqueOrThrow({ where: { id: orgId }, include: { subscription: true } });
   const plan = PLANS[planFor(org.kind)];
+  const amount = planPrice(planFor(org.kind), interval);
   let customer = org.subscription?.stripeCustomerId ?? null;
   if (!customer) {
     const c = await stripe<{ id: string }>("POST", "/v1/customers", { email: adminEmail, name: org.legalName ?? org.name, metadata: { orgId, siren: org.siren ?? "" } });
@@ -70,9 +72,9 @@ export async function checkoutUrl(orgId: string, adminEmail: string) {
     billing_address_collection: "required",
     customer_update: { name: "auto", address: "auto" },
     tax_id_collection: { enabled: true },
-    line_items: [{ quantity: 1, price_data: { currency: "eur", unit_amount: plan.cents, recurring: { interval: "month" }, tax_behavior: "exclusive", product_data: { name: `KolBase — ${plan.label}` } } }],
-    subscription_data: { metadata: { orgId }, ...(org.subscription?.trialUsed ? {} : { trial_period_days: TRIAL_DAYS }), ...(taxRate ? { default_tax_rates: [taxRate] } : {}) },
-    metadata: { orgId },
+    line_items: [{ quantity: 1, price_data: { currency: "eur", unit_amount: amount, recurring: { interval }, tax_behavior: "exclusive", product_data: { name: `KolBase — ${plan.label}${interval === "year" ? " (annuel)" : ""}` } } }],
+    subscription_data: { metadata: { orgId, interval }, ...(org.subscription?.trialUsed ? {} : { trial_period_days: TRIAL_DAYS }), ...(taxRate ? { default_tax_rates: [taxRate] } : {}) },
+    metadata: { orgId, interval },
     success_url: `${app}/organisations/${orgId}/abonnement?session={CHECKOUT_SESSION_ID}`,
     cancel_url: `${app}/organisations/${orgId}/abonnement?annule=1`,
   });

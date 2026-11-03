@@ -4,7 +4,7 @@ import { SiteHeader } from "@/components/SiteHeader";
 import { db } from "@/lib/db";
 import { requireMembership } from "@/lib/orgs";
 import { stripeEnabled, syncCheckout } from "@/lib/billing";
-import { canEngage, displayStatus, ENGAGING, formatPrice, planFor, PLANS, STATUS_LABEL, TRIAL_DAYS, type Motive } from "@/lib/billing-plans";
+import { asInterval, canEngage, displayStatus, ENGAGING, formatPrice, freeMonths, monthlyCents, planFor, planPrice, PLANS, STATUS_LABEL, TRIAL_DAYS, type Motive } from "@/lib/billing-plans";
 import { openBillingPortal, startSubscription } from "@/lib/billing-actions";
 import { formatDate } from "@/lib/events";
 
@@ -39,22 +39,34 @@ export default async function Page({ params, searchParams }: { params: Promise<{
           <div className="actions spread">
             <div>
               <h2>{PLANS[plan].label}</h2>
-              <p className="muted">{formatPrice(PLANS[plan].cents)}, sans engagement ; premier mois offert.</p>
+              <p className="muted">{formatPrice(PLANS[plan].cents)} sans engagement, ou {formatPrice(PLANS[plan].yearCents, "year")} ({freeMonths(plan)} mois offerts) ; premier mois offert.</p>
             </div>
             <span className={`pill ${tone}`}>{STATUS_LABEL[status]}</span>
           </div>
           <dl className="hero-facts">
             {status === "offerte" && <div><dt><Gift size={13} /> Offert jusqu&apos;au</dt><dd>{formatDate(sub!.exemptUntil!)}<small>{sub!.exemptNote ?? "accordé par KolBase"}</small></dd></div>}
             {sub?.status === "essai" && sub.trialEndsAt && <div><dt>Mois offert jusqu&apos;au</dt><dd>{formatDate(sub.trialEndsAt)}<small>premier prélèvement ensuite</small></dd></div>}
-            {sub?.status === "active" && sub.currentPeriodEnd && <div><dt>Prochaine échéance</dt><dd>{formatDate(sub.currentPeriodEnd)}<small>{sub.cancelAtPeriodEnd ? "résiliation programmée à cette date" : "renouvellement mensuel"}</small></dd></div>}
+            {sub?.status === "active" && sub.currentPeriodEnd && <div><dt>Prochaine échéance</dt><dd>{formatDate(sub.currentPeriodEnd)}<small>{sub.cancelAtPeriodEnd ? "résiliation programmée à cette date" : asInterval(sub.interval) === "year" ? "renouvellement annuel" : "renouvellement mensuel"}</small></dd></div>}
+            {["essai", "active", "impayee"].includes(sub?.status ?? "") && <div><dt>Formule</dt><dd>{asInterval(sub!.interval) === "year" ? "Annuelle" : "Mensuelle"}<small>{formatPrice(planPrice(plan, asInterval(sub!.interval)), asInterval(sub!.interval))}</small></dd></div>}
             {sub?.triggeredAt && <div><dt>Déclenché le</dt><dd>{formatDate(sub.triggeredAt)}<small>{sub.triggeredBy}</small></dd></div>}
           </dl>
           {isAdmin && stripeEnabled() && (
             <div className="actions">
               {!ok && (
-                <form action={startSubscription}>
+                <form action={startSubscription} className="plan-choice">
                   <input type="hidden" name="orgId" value={id} />
-                  <button className="btn"><CreditCard size={15} /> {sub?.trialUsed ? "Réactiver l'abonnement" : `Activer l'abonnement — ${TRIAL_DAYS} jours offerts`}</button>
+                  <div className="plan-option">
+                    <strong>Mensuel</strong>
+                    <span className="plan-price">{formatPrice(PLANS[plan].cents)}</span>
+                    <span className="text-sm muted">Sans engagement, résiliable à tout moment.</span>
+                    <button className="btn secondary" name="interval" value="month"><CreditCard size={15} /> {sub?.trialUsed ? "Réactiver l'abonnement mensuel" : `Activer l'abonnement mensuel — ${TRIAL_DAYS} jours offerts`}</button>
+                  </div>
+                  <div className="plan-option recommended">
+                    <strong>Annuel <span className="pill ok">{freeMonths(plan)} mois offerts</span></strong>
+                    <span className="plan-price">{formatPrice(PLANS[plan].yearCents, "year")}</span>
+                    <span className="text-sm muted">Soit {formatPrice(monthlyCents(plan, "year"))}, réglé en une fois.</span>
+                    <button className="btn" name="interval" value="year"><CreditCard size={15} /> {sub?.trialUsed ? "Réactiver l'abonnement annuel" : `Activer l'abonnement annuel — ${TRIAL_DAYS} jours offerts`}</button>
+                  </div>
                 </form>
               )}
               {sub?.stripeCustomerId && (
@@ -66,7 +78,7 @@ export default async function Page({ params, searchParams }: { params: Promise<{
             </div>
           )}
           {!isAdmin && !ok && stripeEnabled() && <p className="hint">Seul un administrateur peut activer l&apos;abonnement : {admins.map((a) => `${a.user.firstName} ${a.user.lastName}`).join(", ")}.</p>}
-          <p className="hint">Paiement par carte ou prélèvement SEPA, factures envoyées par e-mail chaque mois (TVA en sus). Résiliable à tout moment, effet à la fin du mois en cours.</p>
+          <p className="hint">Paiement par carte ou prélèvement SEPA, facture envoyée par e-mail à chaque échéance (TVA en sus). Résiliable à tout moment, effet à la fin de la période en cours (mois ou année).</p>
         </section>
 
         <section className="card stack-sm">

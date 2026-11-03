@@ -1054,3 +1054,11 @@ p.service-stats { color: var(--ink-soft); }
 .published-offer p { margin: 0; }
 .published-offer > svg { color: var(--indigo); }
 @media (max-width: 640px) { .published-offer { grid-template-columns: 1fr; } .published-offer > svg { display: none; } }
+
+/* Abonnement : choix de la formule */
+.plan-choice { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(260px, 100%), 1fr)); gap: 12px; flex: 1 1 100%; }
+.plan-option { display: flex; flex-direction: column; gap: 6px; padding: 16px; border: 1px solid var(--line); border-radius: 14px; }
+.plan-option.recommended { border-color: #cfc8f5; background: linear-gradient(180deg, var(--tint), #fff 75%); }
+.plan-option strong { display: flex; align-items: center; gap: 8px; }
+.plan-price { font-size: 1.25rem; font-weight: 600; color: var(--ink); }
+.plan-option .btn { margin-top: auto; align-self: flex-start; }

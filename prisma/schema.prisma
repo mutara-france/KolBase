@@ -867,6 +867,7 @@ model Subscription {
   organizationId       String       @id
   organization         Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   plan                 String       // organisation | prestataire
+  interval             String       @default("month") // month | year (formule annuelle, deux mois offerts)
   status               String       @default("a_activer") // a_activer | essai | active | impayee | resiliee
   triggeredAt          DateTime?    // déclenchement (premier devis retenu pour un prestataire)
   triggeredBy          String?

@@ -1,0 +1,24 @@
+import { chromium } from "playwright";
+import pg from "pg";
+const db = new pg.Client({ connectionString: process.env.DATABASE_URL }); await db.connect();
+const b = await chromium.launch(); const ctx = await b.newContext(); const page = await ctx.newPage();
+await page.goto("http://localhost:3000/connexion"); await page.fill('input[name="email"]', "anne.chevalier@demo.kolbase.local"); await page.fill('input[name="password"]', "demo-ci-mot-de-passe-1");
+await Promise.all([page.waitForURL((u) => !u.pathname.startsWith("/connexion")), page.click("form button.btn")]);
+const url = "http://localhost:3000/organisations/demo-org-academie/dossiers/demo-prj-formation";
+await page.goto(url);
+const t0 = await page.locator("main").innerText();
+console.log("statut :", (await db.query(`select status from "Project" where id='demo-prj-formation'`)).rows[0].status);
+console.log("indication :", (t0.match(/Le dépôt de documents n'est pas encore activé[^\n]*/) ?? ["(absente)"])[0].slice(0, 140));
+console.log("case d'attestation :", await page.locator('input[name="attest"]').count());
+// Envoi forcé sans la case (contrôle serveur)
+await page.evaluate(() => document.querySelectorAll('input[name="attest"]').forEach((i) => { i.removeAttribute("required"); }));
+await page.click('button:has-text("Convention signée")'); await page.waitForTimeout(1000);
+console.log("sans attestation → statut :", (await db.query(`select status from "Project" where id='demo-prj-formation'`)).rows[0].status);
+await page.goto(url);
+await page.check('input[name="attest"]');
+await page.click('button:has-text("Convention signée")'); await page.waitForTimeout(1000);
+const r = (await db.query(`select status, "signatureAttestedAt" is not null a from "Project" where id='demo-prj-formation'`)).rows[0];
+console.log("avec attestation → statut :", r.status, "attestée :", r.a);
+await page.goto(url);
+console.log("mention :", ((await page.locator("main").innerText()).match(/Signature attestée par[^\n]*/) ?? ["(absente)"])[0]);
+await b.close(); await db.end();

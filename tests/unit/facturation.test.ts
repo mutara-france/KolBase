@@ -38,3 +38,19 @@ describe("facturation", () => {
     expect(verifyWebhook(payload, header, "whsec_test", 1_700_001_000)).toBe(false);
   });
 });
+
+import { freeMonths, monthlyCents, planPrice, formatPrice as fmt } from "@/lib/billing-plans";
+
+describe("formule annuelle", () => {
+  it("dix mois payés pour douze", () => {
+    expect(planPrice("organisation", "year")).toBe(599000);
+    expect(planPrice("prestataire", "year")).toBe(249000);
+    expect(freeMonths("organisation")).toBe(2);
+    expect(freeMonths("prestataire")).toBe(2);
+  });
+  it("revenu mensuel et affichage", () => {
+    expect(monthlyCents("organisation", "year")).toBe(49917);
+    expect(monthlyCents("organisation", "month")).toBe(59900);
+    expect(fmt(599000, "year").replace(/\s/g, " ")).toBe("5 990 € HT par an");
+  });
+});

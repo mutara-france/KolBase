@@ -8,15 +8,16 @@ import { requireMembership } from "@/lib/orgs";
 import { requirePlatformAdmin } from "@/lib/platform";
 import { str } from "@/lib/form";
 import { checkoutUrl, portalUrl, stripeEnabled } from "@/lib/billing";
-import { planFor } from "@/lib/billing-plans";
+import { asInterval, planFor } from "@/lib/billing-plans";
 
 /** Activation de l'abonnement par un administrateur : page de paiement Stripe. */
 export async function startSubscription(form: FormData) {
   const orgId = str(form, "orgId");
   const { user, isAdmin } = await requireMembership(orgId, undefined, { allowSupplier: true });
   if (!isAdmin || !stripeEnabled()) redirect(`/organisations/${orgId}/abonnement`);
-  const url = await checkoutUrl(orgId, user.email);
-  await audit(user.id, "billing.checkout", "Organization", orgId);
+  const interval = asInterval(form.get("interval"));
+  const url = await checkoutUrl(orgId, user.email, interval);
+  await audit(user.id, "billing.checkout", "Organization", orgId, { interval });
   redirect(url);
 }
 
