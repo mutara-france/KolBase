@@ -1071,6 +1071,9 @@ async function submitNewOrg(page, siren) {
   check("Événement : inscription réservée aux membres, création de compte proposée", (await text(anon.page)).includes("Inscription réservée aux membres KolBase") && (await anon.page.locator('a:has-text("Créer mon compte et m\'inscrire")').getAttribute("href")).startsWith("/inscription?next="));
   const pub = await anon.page.goto(`${BASE}/structures/straumann`);
   check("Partenaires : fiche publique de Straumann", pub?.status() === 200 && (await text(anon.page)).includes("Straumann Group"), String(pub?.status()));
+  const logo = await anon.page.locator('img[src^="/logos/straumann"]').first().getAttribute("src").catch(() => null);
+  const logoRes = logo ? await anon.ctx.request.get(`${BASE}${logo}`) : null;
+  check("Partenaires : logo affiché", !!logoRes?.ok() && logoRes.headers()["content-type"] === "image/png", logo ?? "aucun logo");
   const old = await anon.page.goto(`${BASE}/structures/apercu-straumann`);
   check("Partenaires : ancienne adresse d'aperçu retirée", old?.status() === 404);
   await anon.page.goto(`${BASE}/structures`);
