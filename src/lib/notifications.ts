@@ -407,6 +407,99 @@ export function notifyPlatformAdmins(subject: string, text: string, href: string
   });
 }
 
+// ─── Décisions de l'équipe KolBase (toujours envoyées : elles concernent le compte) ───
+
+/** Envoi à chaque destinataire, sans tenir compte de la préférence de notifications (e-mail de service). */
+async function sendService(recipients: Recipient[], mail: Omit<Mail, "to"> | Compose) {
+  const seen = new Set<string>();
+  for (const u of recipients) {
+    if (seen.has(u.id)) continue;
+    seen.add(u.id);
+    const locale: Locale = isLocale(u.locale) ? u.locale : "fr";
+    await sendMail({ ...(typeof mail === "function" ? mail(makeT(locale), locale) : mail), to: u.email, locale });
+  }
+}
+
+/** Validation, refus ou suspension d'une organisation : ses administrateurs sont prévenus (motif compris). */
+export function notifyOrgDecision(orgId: string, decision: "verify" | "reject" | "suspend", note: string | null) {
+  later(async () => {
+    const org = await db.organization.findUnique({ where: { id: orgId }, select: { name: true, kind: true, listed: true } });
+    if (!org) return;
+    const supplier = org.kind === "PRESTATAIRE";
+    const motif = note ? `\n\nMotif : ${note}` : "";
+    const mail =
+      decision === "verify"
+        ? {
+            subject: `${org.name} est validée sur KolBase`,
+            text: `Bonjour,\n\nL'équipe KolBase a validé ${org.name}.${note ? `\n\nNote de l'équipe KolBase : ${note}` : ""}\n\n${
+              supplier
+                ? `Vous pouvez répondre aux demandes de devis des organisations${org.listed ? " ; votre fiche figure dans l'annuaire des prestataires" : " et vous référencer dans l'annuaire des prestataires (catégories de prestation) depuis la page Devis"}.`
+                : "Vous pouvez désormais solliciter des experts, publier vos événements et vos appels à candidatures, et consulter des prestataires. Votre page publique est en ligne ; vous pouvez la retirer de l'annuaire dans Membres et réglages."
+            }`,
+            cta: { label: supplier ? "Ouvrir mes demandes de devis" : "Ouvrir l'espace de l'organisation", href: supplier ? `/organisations/${orgId}/devis` : `/organisations/${orgId}` },
+          }
+        : decision === "reject"
+          ? {
+              subject: `${org.name} n'a pas été validée sur KolBase`,
+              text: `Bonjour,\n\nL'équipe KolBase n'a pas pu valider ${org.name}.${motif}\n\nCorrigez l'identité de l'organisation (SIREN, nom) dans Membres et réglages : la demande sera examinée de nouveau. Pour toute question, répondez à cet e-mail.`,
+              cta: { label: "Corriger l'identité de l'organisation", href: `/organisations/${orgId}/membres?onglet=organisation` },
+            }
+          : {
+              subject: `${org.name} est suspendue sur KolBase`,
+              text: `Bonjour,\n\nL'équipe KolBase a suspendu ${org.name}.${motif}\n\nPendant la suspension, votre page publique est retirée, vos appels à candidatures sont clos, et l'organisation ne peut plus solliciter d'experts, publier ni envoyer de demandes de devis. Pour en discuter, répondez à cet e-mail.`,
+              cta: { label: "Voir l'organisation", href: `/organisations/${orgId}/membres?onglet=organisation` },
+            };
+    await sendService(await members(orgId, ["ADMIN"]), mail);
+  });
+}
+
+/** Identité professionnelle d'un praticien vérifiée ou refusée (motif et consigne). */
+export function notifyIdentityDecision(practitionerId: string, verified: boolean, note: string | null) {
+  later(async () => {
+    const p = await db.practitionerProfile.findUnique({ where: { id: practitionerId }, include: { user: { select: userSelect } } });
+    if (!p) return;
+    await sendService([p.user], (t) =>
+      verified
+        ? {
+            subject: t("Votre identité est vérifiée sur KolBase"),
+            text: `${t("Bonjour,")}\n\n${t("L'équipe KolBase a vérifié votre identifiant professionnel : le badge « Identité vérifiée » s'affiche sur votre fiche d'expert.")}`,
+            cta: { label: t("Voir mon compte"), href: "/compte" },
+          }
+        : {
+            subject: t("Votre identifiant professionnel n'a pas pu être vérifié"),
+            text: [
+              t("Bonjour,"),
+              t("L'équipe KolBase n'a pas pu vérifier votre identifiant professionnel."),
+              note ? t("Motif : {note}", { note }) : null,
+              t("Corrigez-le dans « Mon compte › Informations personnelles » (nom, profession, identifiant tels qu'ils figurent au registre), puis référencez-vous de nouveau : il sera contrôlé à nouveau."),
+            ].filter(Boolean).join("\n\n"),
+            cta: { label: t("Corriger mes informations"), href: "/compte" },
+          },
+    );
+  });
+}
+
+/** Gratuité de l'abonnement offerte ou retirée par l'équipe KolBase : les administrateurs de l'organisation sont prévenus. */
+export function notifyExemption(orgId: string, until: Date | null, note: string | null) {
+  later(async () => {
+    const org = await db.organization.findUnique({ where: { id: orgId }, select: { name: true, kind: true } });
+    if (!org) return;
+    const actions = org.kind === "PRESTATAIRE" ? "répondre aux demandes de devis" : "solliciter des experts, publier vos événements et vos appels, envoyer des demandes de devis";
+    const date = until?.toLocaleDateString("fr-FR", { timeZone: "Europe/Paris", day: "numeric", month: "long", year: "numeric" });
+    await sendService(await members(orgId, ["ADMIN"]), until
+      ? {
+          subject: `KolBase vous offre l'abonnement jusqu'au ${date}`,
+          text: `Bonjour,\n\nL'équipe KolBase offre l'abonnement de ${org.name} jusqu'au ${date}${note ? ` (${note})` : ""}. D'ici là, vous pouvez ${actions} sans rien payer.`,
+          cta: { label: "Voir l'abonnement", href: `/organisations/${orgId}/abonnement` },
+        }
+      : {
+          subject: "KolBase : gratuité de l'abonnement retirée",
+          text: `Bonjour,\n\nL'abonnement de ${org.name} n'est plus offert par l'équipe KolBase. Pour continuer à ${actions}, un administrateur active l'abonnement depuis la page Abonnement. Vos dossiers, événements et échanges restent accessibles.`,
+          cta: { label: "Voir l'abonnement", href: `/organisations/${orgId}/abonnement` },
+        });
+  });
+}
+
 // ─── Avant et après l'événement (tâche planifiée ou envoi par l'organisateur) ───
 
 /** Rappel aux inscrits pas encore prévenus : date, lieu, programme, badge d'accueil. Renvoie le nombre d'inscriptions traitées. */

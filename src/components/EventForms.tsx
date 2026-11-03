@@ -114,7 +114,7 @@ export function EditEventForm({ orgId, eventId, types, formats, catalog, initial
       <input type="hidden" name="eventId" value={eventId} />
       {registrations > 0 && <p className="hint">{registrations} inscrit{registrations > 1 ? "s" : ""} : un changement de date, d&apos;heure, de lieu, de format ou de lien de connexion leur est annoncé par e-mail.</p>}
       <EventFields types={types} formats={formats} catalog={catalog} initial={initial} frozen={frozen} />
-      <button className="btn" disabled={pending}>{pending ? "Enregistrement…" : "Enregistrer les modifications"}</button>
+      <button className="btn" disabled={pending}>{pending ? "Enregistrement…" : "Mettre à jour l'événement"}</button>
     </ActionForm>
   );
 }

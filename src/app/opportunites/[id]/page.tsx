@@ -7,6 +7,7 @@ import { ApplyForm } from "@/components/OpportunityForms";
 import { db } from "@/lib/db";
 import { requireUser } from "@/lib/auth";
 import { collabType } from "@/lib/projects";
+import { orgIsPublic } from "@/lib/org-roles";
 import { withdrawApplication } from "@/lib/opportunity-actions";
 import type { ApplicationStatus } from "@/generated/prisma/client";
 import { fmtDate, fmtEur, intlLocale } from "@/lib/i18n";
@@ -78,7 +79,7 @@ export default async function Page({ params }: { params: Promise<{ id: string }>
             <section className="card stack-sm">
               <h2 className="section-title">{call.organization.name}</h2>
               {call.organization.about && <p className="text-sm">{call.organization.about}</p>}
-              <Link className="link" href={`/structures/${call.organizationId}`}>{t("Voir la page de l'organisation")}</Link>
+              {orgIsPublic(call.organization) && <Link className="link" href={`/structures/${call.organizationId}`}>{t("Voir la page de l'organisation")}</Link>}
             </section>
             <p className="hint">{t("Si votre candidature est retenue, l'organisation vous propose des honoraires ; votre accord ouvre un dossier de collaboration avec une convention.")}</p>
           </div>

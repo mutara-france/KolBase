@@ -14,6 +14,7 @@ import { fmtDate, fmtEur, intlLocale, type Locale } from "@/lib/i18n";
 import { getT } from "@/lib/i18n/server";
 import { appUrl } from "@/lib/ics";
 import { jsonLd } from "@/lib/jsonld";
+import { orgIsPublic } from "@/lib/org-roles";
 
 /** « lundi 3 novembre 2026 à 14:00 » / « Monday, 3 November 2026 at 14:00 » (heure de Paris). */
 const dateTime = (locale: Locale, d: Date) => fmtDate(locale, d, { weekday: "long", day: "numeric", month: "long", year: "numeric", hour: "2-digit", minute: "2-digit" });
@@ -85,7 +86,7 @@ export default async function Page({ params }: { params: Promise<{ id: string }>
       ? { "@type": "VirtualLocation", url: `${base}/evenements/${id}` }
       : { "@type": "Place", name: event.venue ?? event.city ?? undefined, address: { "@type": "PostalAddress", addressLocality: event.city ?? undefined, addressCountry: "FR" } },
     image: [`${base}/evenements/${id}/opengraph-image`],
-    organizer: { "@type": "Organization", name: event.organization.name, url: `${base}/structures/${event.organization.id}` },
+    organizer: { "@type": "Organization", name: event.organization.name, url: orgIsPublic(event.organization) ? `${base}/structures/${event.organization.id}` : undefined },
     offers: { "@type": "Offer", price: 0, priceCurrency: "EUR", url: `${base}/evenements/${id}`, availability: `https://schema.org/${full || !event.registrationOpen ? "SoldOut" : "InStock"}`, validFrom: event.publishedAt?.toISOString() },
     maximumAttendeeCapacity: event.capacity ?? undefined,
   };
@@ -190,7 +191,7 @@ export default async function Page({ params }: { params: Promise<{ id: string }>
             <section className="card stack-sm">
               <h2 className="section-title">{event.organization.name}</h2>
               {event.organization.about && <p className="text-sm clamp-4">{event.organization.about}</p>}
-              <Link className="link" href={`/structures/${event.organizationId}`}>{t("Voir la page de l'organisation")}</Link>
+              {orgIsPublic(event.organization) && <Link className="link" href={`/structures/${event.organizationId}`}>{t("Voir la page de l'organisation")}</Link>}
             </section>
           </aside>
         </div>

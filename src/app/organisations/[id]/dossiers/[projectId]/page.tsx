@@ -220,47 +220,6 @@ export default async function Page({ params, searchParams }: { params: Promise<{
 
         <div className="page-grid">
           <div className="page-main">
-            {editable && (
-              <details className="card edit-block" id="modifier" open={modifier === "1"}>
-                <summary><h2>Modifier le dossier</h2></summary>
-                <div className="stack">
-                  <p className="hint">Tant que le dossier n&apos;est pas soumis à la conformité, vous pouvez en modifier l&apos;objet et les conditions de chaque expert, ou solliciter un expert de plus. Des unités ou des honoraires modifiés renvoient la proposition à l&apos;expert : sa réponse est de nouveau attendue.</p>
-                  <ProjectObjectForm orgId={id} projectId={projectId} title={project.title} area={project.therapeuticArea ?? ""} description={project.description ?? ""} />
-                  {project.experts.length > 0 && (
-                    <div className="stack-sm">
-                      <h3>Conditions proposées</h3>
-                      {project.experts.map((e) => (
-                        <ExpertTermsForm
-                          key={`${e.id}-${e.feeCents}-${e.days}`}
-                          orgId={id} projectId={projectId} linkId={e.id}
-                          name={`${drPrefix(e.practitioner.profession)}${e.practitioner.user.firstName} ${e.practitioner.user.lastName}${e.status === "DECLINE" ? " (a décliné)" : ""}`}
-                          unit={type?.unit ?? "unité"}
-                          units={e.days != null ? String(e.days).replace(".", ",") : ""}
-                          fee={e.feeCents != null ? String(e.feeCents / 100).replace(".", ",") : ""}
-                          desired={e.desiredFeeCents != null ? formatEUR(e.desiredFeeCents) : null}
-                        />
-                      ))}
-                    </div>
-                  )}
-                  <div className="stack-sm">
-                    <h3>Solliciter un autre expert</h3>
-                    <AddExpertForm
-                      orgId={id} projectId={projectId} unit={type?.unit ?? "unité"}
-                      experts={candidates.map((c) => {
-                        const v = kolVisibility(c.visibility);
-                        return {
-                          id: c.id,
-                          name: `${drPrefix(c.profession)}${c.user.firstName} ${c.user.lastName}`,
-                          detail: [c.specialty || c.profession, canSee(v.contact, "membre") ? c.city : null].filter(Boolean).join(" · "),
-                          dayRateCents: canSee(v.tarif, "membre") ? c.dayRateCents : null,
-                        };
-                      })}
-                    />
-                  </div>
-                </div>
-              </details>
-            )}
-
             <section className="stack-sm">
               <div className="block-head">
                 <h2>Experts</h2>
@@ -355,6 +314,47 @@ export default async function Page({ params, searchParams }: { params: Promise<{
                 );
               })}
             </section>
+
+            {editable && (
+              <details className="card edit-block" id="modifier" open={modifier === "1"}>
+                <summary><h2>Modifier le dossier</h2></summary>
+                <div className="stack">
+                  <p className="hint">Tant que le dossier n&apos;est pas soumis à la conformité, vous pouvez en modifier l&apos;objet et les conditions de chaque expert, ou solliciter un expert de plus. Des unités ou des honoraires modifiés renvoient la proposition à l&apos;expert : sa réponse est de nouveau attendue.</p>
+                  <ProjectObjectForm orgId={id} projectId={projectId} title={project.title} area={project.therapeuticArea ?? ""} description={project.description ?? ""} />
+                  {project.experts.length > 0 && (
+                    <div className="stack-sm">
+                      <h3>Conditions proposées</h3>
+                      {project.experts.map((e) => (
+                        <ExpertTermsForm
+                          key={`${e.id}-${e.feeCents}-${e.days}`}
+                          orgId={id} projectId={projectId} linkId={e.id}
+                          name={`${drPrefix(e.practitioner.profession)}${e.practitioner.user.firstName} ${e.practitioner.user.lastName}${e.status === "DECLINE" ? " (a décliné)" : ""}`}
+                          unit={type?.unit ?? "unité"}
+                          units={e.days != null ? String(e.days).replace(".", ",") : ""}
+                          fee={e.feeCents != null ? String(e.feeCents / 100).replace(".", ",") : ""}
+                          desired={e.desiredFeeCents != null ? formatEUR(e.desiredFeeCents) : null}
+                        />
+                      ))}
+                    </div>
+                  )}
+                  <div className="stack-sm">
+                    <h3>Solliciter un autre expert</h3>
+                    <AddExpertForm
+                      orgId={id} projectId={projectId} unit={type?.unit ?? "unité"}
+                      experts={candidates.map((c) => {
+                        const v = kolVisibility(c.visibility);
+                        return {
+                          id: c.id,
+                          name: `${drPrefix(c.profession)}${c.user.firstName} ${c.user.lastName}`,
+                          detail: [c.specialty || c.profession, canSee(v.contact, "membre") ? c.city : null].filter(Boolean).join(" · "),
+                          dayRateCents: canSee(v.tarif, "membre") ? c.dayRateCents : null,
+                        };
+                      })}
+                    />
+                  </div>
+                </div>
+              </details>
+            )}
 
             <MaterialsPanel orgId={id} projectId={projectId} canSubmit={isProject} canReview={roles.some((r) => REVIEW_ROLES.includes(r))} />
             <DocumentsPanel projectId={projectId} canUpload={isProject || isCompliance} openUpload={project.status === "SIGNATURE"} />

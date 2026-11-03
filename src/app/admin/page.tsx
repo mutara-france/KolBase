@@ -128,21 +128,31 @@ export default async function Page({ searchParams }: { searchParams: Promise<{ o
                         {o.members.some((m) => PERSONAL_MAIL.test(m.user.email)) && <span className="pill wait" style={{ marginLeft: 8 }}>Adresse personnelle</span>}
                       </dd>
                       {o.contactEmail && (<><dt>Contact</dt><dd>{o.contactEmail}</dd></>)}
+                      <dt>Page publique</dt>
+                      <dd>{o.listed && o.verification === "VERIFIED" ? "oui" : "non"}{o.listed && o.verification !== "VERIFIED" ? " (activée à la validation)" : ""}</dd>
                       {o.verificationNote && (<><dt>Note</dt><dd>{o.verificationNote}</dd></>)}
                     </dl>
                     <div className="actions wrap">
                       {o.verification !== "VERIFIED" && (
-                        <form action={reviewOrganization} className="inline wrap">
-                          <input type="hidden" name="orgId" value={o.id} />
-                          <input name="note" placeholder="Note (facultatif pour valider, obligatoire pour refuser)" style={{ minWidth: 320 }} />
-                          <button className="btn small" name="decision" value="verify">Valider</button>
-                          {o.verification !== "REJECTED" && <button className="btn ghost small" name="decision" value="reject">Refuser</button>}
-                        </form>
+                        <>
+                          <form action={reviewOrganization} className="inline wrap">
+                            <input type="hidden" name="orgId" value={o.id} />
+                            <input name="note" placeholder="Note (facultatif)" aria-label="Note de validation (facultatif)" />
+                            <button className="btn small" name="decision" value="verify">Valider</button>
+                          </form>
+                          {o.verification !== "REJECTED" && (
+                            <form action={reviewOrganization} className="inline wrap">
+                              <input type="hidden" name="orgId" value={o.id} />
+                              <input name="note" placeholder="Motif du refus (obligatoire)" aria-label="Motif du refus" required style={{ minWidth: 260 }} />
+                              <button className="btn ghost small" name="decision" value="reject">Refuser</button>
+                            </form>
+                          )}
+                        </>
                       )}
                       {o.verification === "VERIFIED" && (
                         <form action={reviewOrganization} className="inline wrap">
                           <input type="hidden" name="orgId" value={o.id} />
-                          <input name="note" placeholder="Motif de la suspension" />
+                          <input name="note" placeholder="Motif de la suspension (obligatoire)" aria-label="Motif de la suspension" required />
                           <button className="btn ghost small" name="decision" value="suspend">Suspendre</button>
                         </form>
                       )}
@@ -191,13 +201,19 @@ export default async function Page({ searchParams }: { searchParams: Promise<{ o
                     {reg.url && <> · <a href={reg.url} target="_blank" rel="noreferrer">{reg.label} <ExternalLink size={12} /></a></>}
                   </span>
                 </span>
-                <form action={reviewRpps} className="inline wrap">
-                  <input type="hidden" name="practitionerId" value={p.id} />
-                  <input type="hidden" name="identifier" value={id} />
-                  <input name="note" placeholder="Motif (obligatoire pour refuser)" />
-                  <button className="btn small" name="decision" value="verify">Valider</button>
-                  <button className="btn ghost small" name="decision" value="reject">Refuser</button>
-                </form>
+                <span className="actions wrap">
+                  <form action={reviewRpps} className="inline wrap">
+                    <input type="hidden" name="practitionerId" value={p.id} />
+                    <input type="hidden" name="identifier" value={id} />
+                    <button className="btn small" name="decision" value="verify">Valider</button>
+                  </form>
+                  <form action={reviewRpps} className="inline wrap">
+                    <input type="hidden" name="practitionerId" value={p.id} />
+                    <input type="hidden" name="identifier" value={id} />
+                    <input name="note" placeholder="Motif du refus (obligatoire)" aria-label="Motif du refus" required />
+                    <button className="btn ghost small" name="decision" value="reject">Refuser</button>
+                  </form>
+                </span>
               </section>
               );
             })}

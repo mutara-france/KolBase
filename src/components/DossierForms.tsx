@@ -186,7 +186,7 @@ export function ProjectObjectForm({ orgId, projectId, title, area, description }
         <label>Domaine thérapeutique<input name="therapeuticArea" defaultValue={area} /></label>
       </div>
       <label>Objet et déroulé<textarea name="description" rows={4} defaultValue={description} /></label>
-      <button className="btn ghost small" disabled={pending}>{pending ? "Enregistrement…" : "Enregistrer l'objet"}</button>
+      <button className="btn ghost small" disabled={pending}>{pending ? "Enregistrement…" : "Mettre à jour l'objet"}</button>
     </ActionForm>
   );
 }
@@ -202,7 +202,7 @@ export function ExpertTermsForm({ orgId, projectId, linkId, name, unit, units, f
         <strong>{name}</strong>
         <label>Unités ({unit})<input name="units" inputMode="decimal" defaultValue={units} /></label>
         <label>Honoraires totaux (€ HT)<input name="fee" inputMode="decimal" defaultValue={fee} required /></label>
-        <button className="btn ghost small" disabled={pending}>{pending ? "Envoi…" : "Envoyer la nouvelle proposition"}</button>
+        <button className="btn ghost small" disabled={pending}>{pending ? "Envoi…" : "Proposer ces conditions"}</button>
       </div>
       {desired && <p className="hint">Honoraires souhaités par l&apos;expert : {desired} HT.</p>}
       <Notice state={state} />

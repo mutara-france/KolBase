@@ -8,6 +8,7 @@ import { MessageForm, RespondForm } from "@/components/ProjectForms";
 import { db } from "@/lib/db";
 import { requireUser } from "@/lib/auth";
 import { collabType, recruitmentOpen } from "@/lib/projects";
+import { orgIsPublic } from "@/lib/org-roles";
 import { DocumentsPanel, ExpertSignatureBlock, MaterialsPanel } from "@/components/DossierSections";
 import { fmtEur, intlLocale } from "@/lib/i18n";
 import { getT } from "@/lib/i18n/server";
@@ -105,7 +106,7 @@ export default async function Page({ params }: { params: Promise<{ linkId: strin
               <h2 className="section-title">{p.organization.name}</h2>
               {p.organization.about && <p className="text-sm clamp-4">{p.organization.about}</p>}
               {p.organization.policy && <p className="text-xs muted">{t("Politique de collaboration")} : {p.organization.policy}</p>}
-              <Link className="link" href={`/structures/${p.organizationId}`}>{t("Voir la page de l'organisation")}</Link>
+              {orgIsPublic(p.organization) && <Link className="link" href={`/structures/${p.organizationId}`}>{t("Voir la page de l'organisation")}</Link>}
             </section>
           </aside>
         </div>

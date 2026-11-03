@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { defaultVatBp } from "@/lib/quotes";
 import { loginPath } from "@/lib/safe-redirect";
+import { orgIsPublic } from "@/lib/org-roles";
 import { projectEditable, termsChanged, TRANSITIONS } from "@/lib/projects";
 import { eventChanges, needsOnlineLink, parseOnlineUrl, parseParisDateTime, toParisInput } from "@/lib/events";
 
@@ -89,5 +90,14 @@ describe("page d'origine conservée à la connexion", () => {
     expect(loginPath("/\\evil.example")).toBe("/connexion");
     expect(loginPath("https://evil.example/x")).toBe("/connexion");
     expect(loginPath("/connexion?next=/x")).toBe("/connexion");
+  });
+});
+
+describe("page publique d'une organisation", () => {
+  it("visible seulement validée et présente dans l'annuaire", () => {
+    expect(orgIsPublic({ verification: "VERIFIED", listed: true })).toBe(true);
+    expect(orgIsPublic({ verification: "VERIFIED", listed: false })).toBe(false);
+    expect(orgIsPublic({ verification: "PENDING", listed: true })).toBe(false);
+    expect(orgIsPublic({ verification: "REJECTED", listed: true })).toBe(false);
   });
 });
