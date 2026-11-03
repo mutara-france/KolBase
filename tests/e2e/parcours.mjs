@@ -1616,6 +1616,25 @@ async function submitNewOrg(page, siren) {
   await adm.ctx.close();
 }
 
+// ── Articles de lancement : en brouillon, invisibles du public ─────────────
+{
+  const anon = await session();
+  await anon.page.goto(`${BASE}/actualites`);
+  check("Articles de lancement : non publiés", !(await text(anon.page)).includes("La lettre d'information de KolBase : les événements"));
+  const r = await anon.page.goto(`${BASE}/actualites/la-lettre-d-information-de-kolbase`);
+  check("Article en brouillon : introuvable pour le public", r.status() === 404);
+  await anon.ctx.close();
+  const adm = await session();
+  await login(adm.page, "anne.chevalier@demo.kolbase.local");
+  await adm.page.goto(`${BASE}/admin?onglet=actualites`);
+  const t = await text(adm.page);
+  check("Articles de lancement : brouillons dans l'admin", t.includes("Experts : ce que change le référencement sur KolBase") && t.includes("Organisations : une collaboration conforme"));
+  await adm.page.goto(`${BASE}/actualites/organisations-une-collaboration-conforme-de-la-sollicitation-a-la-declaration`);
+  const a = await text(adm.page);
+  check("Article de lancement : aperçu mis en forme", a.includes("Brouillon") && (await adm.page.locator("article h2").count()) >= 5 && !a.includes("**"));
+  await adm.ctx.close();
+}
+
 // ── Actualités administrables ───────────────────────────────────────────────
 {
   const anon = await session();
