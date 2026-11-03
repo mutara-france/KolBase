@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { defaultVatBp } from "@/lib/quotes";
+import { projectEditable, termsChanged, TRANSITIONS } from "@/lib/projects";
 import { eventChanges, needsOnlineLink, parseOnlineUrl, parseParisDateTime, toParisInput } from "@/lib/events";
 
 describe("devis : taux de TVA proposé", () => {
@@ -52,5 +53,27 @@ describe("événements en ligne : lien de connexion", () => {
     expect(eventChanges(base, { ...base, format: "DISTANCIEL", city: null, venue: null })).toEqual(["lieu", "format"]);
     expect(eventChanges(base, { ...base, onlineUrl: "https://meet.example.com/b" })).toEqual(["lien"]);
     expect(eventChanges({ ...base, city: null }, { ...base, city: "" as unknown as null })).toEqual([]);
+  });
+});
+
+describe("dossier modifiable avant la signature", () => {
+  it("modifiable pendant le recrutement seulement", () => {
+    expect(projectEditable("ATT_EXPERTS")).toBe(true);
+    expect(projectEditable("ACCORD")).toBe(true);
+    for (const s of ["ATT_IND", "EN_VALID", "BLOQUE", "VALIDE", "ORDRE", "SIGNATURE", "SIGNE", "TERMINE", "DECLINE"]) expect(projectEditable(s), s).toBe(false);
+  });
+  it("reprise après blocage et retour en accord de principe ramènent à la modification", () => {
+    expect(TRANSITIONS.revise.to).toBe("ACCORD");
+    expect(TRANSITIONS.back_to_accord.to).toBe("ACCORD");
+    expect([...TRANSITIONS.back_to_accord.from]).toEqual(expect.arrayContaining(["SIGNATURE", "ORDRE"]));
+    expect([...TRANSITIONS.abandon.from]).toEqual(expect.arrayContaining(["SIGNATURE", "ORDRE", "ACCORD", "BLOQUE"]));
+    expect(TRANSITIONS.abandon.from as readonly string[]).not.toContain("SIGNE");
+  });
+  it("unités ou honoraires modifiés : nouvelle proposition", () => {
+    expect(termsChanged({ feeCents: 150000, days: 1 }, { feeCents: 150000, days: 1 })).toBe(false);
+    expect(termsChanged({ feeCents: 150000, days: 1 }, { feeCents: 180000, days: 1 })).toBe(true);
+    expect(termsChanged({ feeCents: 150000, days: 1 }, { feeCents: 150000, days: 2 })).toBe(true);
+    expect(termsChanged({ feeCents: 150000, days: null }, { feeCents: 150000, days: null })).toBe(false);
+    expect(termsChanged({ feeCents: null, days: 1 }, { feeCents: 0, days: 1 })).toBe(true);
   });
 });

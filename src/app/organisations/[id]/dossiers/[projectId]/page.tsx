@@ -6,10 +6,12 @@ import { Avatar } from "@/components/Avatar";
 import { SiteHeader } from "@/components/SiteHeader";
 import { FmvBadge, Pipeline, StatusPill, Thread } from "@/components/ProjectBits";
 import { MessageForm } from "@/components/ProjectForms";
+import { AddExpertForm, ExpertTermsForm, ProjectObjectForm } from "@/components/DossierForms";
+import { canSee, kolVisibility } from "@/lib/visibility";
 import { db } from "@/lib/db";
 import { requireMembership } from "@/lib/orgs";
 import { COMPLIANCE_ROLES, formatDate, formatDateTime, formatEUR, parisToday } from "@/lib/events";
-import { collabType, needsMeeting, PROJECT_ROLES, PROJECT_VIEW_ROLES, recruitmentOpen, REVIEW_ROLES, STATUS_LABEL, TRANSITIONS, type TransitionKey } from "@/lib/projects";
+import { collabType, needsMeeting, PROJECT_ROLES, PROJECT_VIEW_ROLES, projectEditable, recruitmentOpen, REVIEW_ROLES, STATUS_LABEL, TRANSITIONS, type TransitionKey } from "@/lib/projects";
 import { storageEnabled } from "@/lib/storage";
 import { advanceProject } from "@/lib/project-actions";
 import { markExpertPaid } from "@/lib/revenue-actions";
@@ -46,6 +48,11 @@ const ACTION_LABEL: Record<string, string> = {
   "project.validate": "Validé par la conformité",
   "project.block": "Bloqué par la conformité",
   "project.revise": "Dossier repris après blocage",
+  "project.back_to_accord": "Retour en accord de principe",
+  "project.abandon": "Dossier abandonné",
+  "project.edit": "Objet du dossier modifié",
+  "project.terms": "Nouvelle proposition envoyée à un expert",
+  "project.add_expert": "Expert ajouté au dossier",
 };
 
 /** Ce qu'il reste à faire, selon l'étape : affiché en tête de la colonne de droite. */
@@ -54,7 +61,7 @@ const NEXT_HINT: Partial<Record<ProjectStatus, string>> = {
   ATT_IND: "Proposition spontanée d'un expert : acceptez-la pour ouvrir le circuit, ou déclinez-la.",
   ACCORD: "Vérifiez les honoraires, les supports et le budget, puis soumettez le dossier à la conformité.",
   EN_VALID: "La conformité contrôle le dossier : elle le valide, ou le bloque avec un commentaire.",
-  BLOQUE: "Corrigez le dossier selon le commentaire de la conformité, puis reprenez-le pour le soumettre à nouveau.",
+  BLOQUE: "Reprenez le dossier pour le corriger selon le commentaire de la conformité (objet, conditions des experts), puis soumettez-le à nouveau.",
   VALIDE: "Effectuez la démarche EPS adaptée au régime (déclaration ou autorisation), puis passez en signature.",
   ORDRE: "Demande d'autorisation transmise : indiquez la réponse de l'Ordre dès réception.",
   SIGNATURE: "Faites signer la convention de chaque expert engagé, électroniquement ou en déposant le PDF signé.",
@@ -63,11 +70,12 @@ const NEXT_HINT: Partial<Record<ProjectStatus, string>> = {
   DECLINE: "Dossier clos : décliné ou abandonné.",
   REFUS_ORDRE: "Autorisation refusée : revoyez les conditions avec les experts ou abandonnez le dossier.",
 };
-const DANGER: TransitionKey[] = ["abandon", "block", "ordre_ko", "decline_proposal"];
+const DANGER: TransitionKey[] = ["abandon", "block", "ordre_ko", "decline_proposal", "back_to_accord"];
 
 
-export default async function Page({ params }: { params: Promise<{ id: string; projectId: string }> }) {
+export default async function Page({ params, searchParams }: { params: Promise<{ id: string; projectId: string }>; searchParams: Promise<{ modifier?: string }> }) {
   const { id, projectId } = await params;
+  const { modifier } = await searchParams;
   const { org, roles, user } = await requireMembership(id, PROJECT_VIEW_ROLES);
   const project = await db.project.findFirst({
     where: { id: projectId, organizationId: id },
@@ -111,6 +119,20 @@ export default async function Page({ params }: { params: Promise<{ id: string; p
   const attestable = unsigned.length > 0 && !storageEnabled();
   const attester = project.signatureAttestedById ? await db.user.findUnique({ where: { id: project.signatureAttestedById }, select: { firstName: true, lastName: true } }) : null;
   const closed = !recruitmentOpen(project.status);
+  // Modification (objet, conditions, ajout d'un expert) pendant le recrutement ; le retour en accord de principe
+  // n'est plus possible une fois une convention en signature ou signée.
+  const editable = isProject && projectEditable(project.status);
+  const signStarted = ["VALIDE", "ORDRE", "REFUS_ORDRE", "SIGNATURE"].includes(project.status)
+    ? (await db.conventionSignature.count({ where: { projectExpert: { projectId }, status: { in: ["ongoing", "done"] } } })) + (await db.document.count({ where: { projectId, kind: "CONVENTION_SIGNEE" } })) > 0
+    : false;
+  const candidates = editable
+    ? await db.practitionerProfile.findMany({
+        where: { listed: true, id: { notIn: project.experts.map((e) => e.practitionerId) } },
+        include: { user: { select: { firstName: true, lastName: true } } },
+        orderBy: { user: { lastName: "asc" } },
+        take: 500,
+      })
+    : [];
   // Contrôle à quatre yeux : qui a monté ou soumis le dossier ne le valide pas seul.
   const fourEyesRule = project.status === "EN_VALID" && isCompliance ? await fourEyes(await projectAuthors(projectId), id, user.id, COMPLIANCE_ROLES) : "ok";
   const available = (Object.keys(TRANSITIONS) as TransitionKey[]).filter((k) => {
@@ -124,10 +146,11 @@ export default async function Page({ params }: { params: Promise<{ id: string; p
     // sans stockage configuré, l'étape reste proposée mais exige une attestation.
     if (k === "signed" && unsigned.length > 0 && !attestable) return false;
     if (k === "validate" && fourEyesRule === "blocked") return false;
+    if (k === "back_to_accord" && signStarted) return false;
     return (t.from as readonly string[]).includes(project.status) && (t.roles === "compliance" ? isCompliance : isProject);
   }).sort((a, b) => Number(DANGER.includes(a)) - Number(DANGER.includes(b)));
-  const needsNote = (k: TransitionKey) => k === "block" || k === "validate" || k === "ordre";
-  const notePlaceholder = (k: TransitionKey) => (k === "ordre" ? "Référence de la demande" : k === "validate" && fourEyesRule === "justify" ? "Justification (obligatoire)" : k === "block" ? "Motif du blocage (obligatoire)" : "Commentaire (facultatif)");
+  const needsNote = (k: TransitionKey) => k === "block" || k === "validate" || k === "ordre" || k === "abandon";
+  const notePlaceholder = (k: TransitionKey) => (k === "ordre" ? "Référence de la demande" : k === "validate" && fourEyesRule === "justify" ? "Justification (obligatoire)" : k === "block" ? "Motif du blocage (obligatoire)" : k === "abandon" ? "Motif de l'abandon (obligatoire)" : "Commentaire (facultatif)");
 
   // Engagé = experts ayant accepté ; les honoraires proposés sans réponse sont indiqués à part.
   const live = project.experts.filter((e) => e.status !== "DECLINE");
@@ -197,6 +220,47 @@ export default async function Page({ params }: { params: Promise<{ id: string; p
 
         <div className="page-grid">
           <div className="page-main">
+            {editable && (
+              <details className="card edit-block" id="modifier" open={modifier === "1"}>
+                <summary><h2>Modifier le dossier</h2></summary>
+                <div className="stack">
+                  <p className="hint">Tant que le dossier n&apos;est pas soumis à la conformité, vous pouvez en modifier l&apos;objet et les conditions de chaque expert, ou solliciter un expert de plus. Des unités ou des honoraires modifiés renvoient la proposition à l&apos;expert : sa réponse est de nouveau attendue.</p>
+                  <ProjectObjectForm orgId={id} projectId={projectId} title={project.title} area={project.therapeuticArea ?? ""} description={project.description ?? ""} />
+                  {project.experts.length > 0 && (
+                    <div className="stack-sm">
+                      <h3>Conditions proposées</h3>
+                      {project.experts.map((e) => (
+                        <ExpertTermsForm
+                          key={`${e.id}-${e.feeCents}-${e.days}`}
+                          orgId={id} projectId={projectId} linkId={e.id}
+                          name={`${drPrefix(e.practitioner.profession)}${e.practitioner.user.firstName} ${e.practitioner.user.lastName}${e.status === "DECLINE" ? " (a décliné)" : ""}`}
+                          unit={type?.unit ?? "unité"}
+                          units={e.days != null ? String(e.days).replace(".", ",") : ""}
+                          fee={e.feeCents != null ? String(e.feeCents / 100).replace(".", ",") : ""}
+                          desired={e.desiredFeeCents != null ? formatEUR(e.desiredFeeCents) : null}
+                        />
+                      ))}
+                    </div>
+                  )}
+                  <div className="stack-sm">
+                    <h3>Solliciter un autre expert</h3>
+                    <AddExpertForm
+                      orgId={id} projectId={projectId} unit={type?.unit ?? "unité"}
+                      experts={candidates.map((c) => {
+                        const v = kolVisibility(c.visibility);
+                        return {
+                          id: c.id,
+                          name: `${drPrefix(c.profession)}${c.user.firstName} ${c.user.lastName}`,
+                          detail: [c.specialty || c.profession, canSee(v.contact, "membre") ? c.city : null].filter(Boolean).join(" · "),
+                          dayRateCents: canSee(v.tarif, "membre") ? c.dayRateCents : null,
+                        };
+                      })}
+                    />
+                  </div>
+                </div>
+              </details>
+            )}
+
             <section className="stack-sm">
               <div className="block-head">
                 <h2>Experts</h2>
@@ -227,6 +291,7 @@ export default async function Page({ params }: { params: Promise<{ id: string; p
                       <span className="term"><CalendarDays size={13} /> {e.days ?? "—"} {type?.unit ?? "unité"}{(e.days ?? 0) > 1 ? "s" : ""}</span>
                       <span className="term"><Euro size={13} /> {e.feeCents != null ? formatEUR(e.feeCents) : "—"} HT</span>
                       <FmvBadge typeId={project.typeId} feeCents={e.feeCents} units={e.days} />
+                      {e.desiredFeeCents != null && <span className="term desired"><Euro size={13} /> Souhaités par l&apos;expert : {formatEUR(e.desiredFeeCents)} HT</span>}
                     </div>
                     {active && (
                       <div className="expert-docs">
@@ -325,7 +390,7 @@ export default async function Page({ params }: { params: Promise<{ id: string; p
                       <input type="hidden" name="orgId" value={id} />
                       <input type="hidden" name="projectId" value={projectId} />
                       <input type="hidden" name="transition" value={k} />
-                      {needsNote(k) && <input name="note" aria-label={notePlaceholder(k)} placeholder={notePlaceholder(k)} required={k === "block" || (k === "validate" && fourEyesRule === "justify")} />}
+                      {needsNote(k) && <input name="note" aria-label={notePlaceholder(k)} placeholder={notePlaceholder(k)} required={k === "block" || k === "abandon" || (k === "validate" && fourEyesRule === "justify")} />}
                       {k === "signed" && attestable && (
                         <label className="check text-sm">
                           <input type="checkbox" name="attest" value="1" required /> J&apos;atteste que la convention de {unsigned.join(", ")} est signée par les deux parties et conservée par l&apos;organisation.
@@ -335,6 +400,9 @@ export default async function Page({ params }: { params: Promise<{ id: string; p
                     </form>
                   ))}
                 </div>
+              )}
+              {signStarted && isProject && (
+                <p className="hint">Une convention est en cours de signature ou déjà signée : le retour en accord de principe n&apos;est plus possible. Si les conditions doivent changer, abandonnez le dossier (motif obligatoire) et ouvrez-en un nouveau.</p>
               )}
               {unsigned.length > 0 && !attestable && (
                 <p className="hint">

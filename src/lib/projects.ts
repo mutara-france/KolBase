@@ -86,6 +86,15 @@ export const PROJECT_VIEW_ROLES: OrgRole[] = [...PROJECT_ROLES, "CONFORMITE"];
  */
 export const RECRUITING_STATUSES: ProjectStatus[] = ["ATT_EXPERTS", "ACCORD"];
 export const recruitmentOpen = (status: ProjectStatus | string) => (RECRUITING_STATUSES as string[]).includes(status);
+/**
+ * Dossier modifiable (objet, conditions de chaque expert, ajout d'un expert) : pendant le recrutement.
+ * Bloqué par la conformité, validé, en autorisation ou en signature : « Reprendre le dossier » ou « Retour en
+ * accord de principe » le remet d'abord en accord de principe (il repassera par la conformité).
+ */
+export const projectEditable = recruitmentOpen;
+/** Conditions d'un expert modifiées (unités, honoraires) : la proposition lui est renvoyée. */
+export const termsChanged = (before: { feeCents: number | null; days: number | null }, after: { feeCents: number | null; days: number | null }) =>
+  before.feeCents !== after.feeCents || (before.days ?? null) !== (after.days ?? null);
 
 export const TRANSITIONS = {
   accept_proposal: { from: ["ATT_IND"], to: "ACCORD", roles: "project", label: "Accepter la proposition" },
@@ -94,6 +103,8 @@ export const TRANSITIONS = {
   validate: { from: ["EN_VALID"], to: "VALIDE", roles: "compliance", label: "Valider" },
   block: { from: ["EN_VALID"], to: "BLOQUE", roles: "compliance", label: "Bloquer" },
   revise: { from: ["BLOQUE"], to: "ACCORD", roles: "project", label: "Reprendre le dossier" },
+  // Revenir en arrière pour modifier les conditions : le dossier repassera par la conformité.
+  back_to_accord: { from: ["VALIDE", "ORDRE", "REFUS_ORDRE", "SIGNATURE"], to: "ACCORD", roles: "project", label: "Retour en accord de principe" },
   ordre: { from: ["VALIDE"], to: "ORDRE", roles: "project", label: "Demander l'autorisation à l'Ordre" },
   declaration: { from: ["VALIDE"], to: "SIGNATURE", roles: "project", label: "Déclaration simple → signature" },
   // Experts exerçant tous hors de France : pas de démarche EPS, les règles du pays d'exercice s'appliquent.
@@ -102,7 +113,7 @@ export const TRANSITIONS = {
   ordre_ko: { from: ["ORDRE"], to: "REFUS_ORDRE", roles: "project", label: "Autorisation refusée" },
   signed: { from: ["SIGNATURE"], to: "SIGNE", roles: "project", label: "Convention signée" },
   done: { from: ["SIGNE"], to: "TERMINE", roles: "project", label: "Prestation réalisée" },
-  abandon: { from: ["ATT_EXPERTS", "ACCORD", "BLOQUE", "VALIDE", "REFUS_ORDRE"], to: "DECLINE", roles: "project", label: "Abandonner le dossier" },
+  abandon: { from: ["ATT_EXPERTS", "ACCORD", "BLOQUE", "VALIDE", "ORDRE", "REFUS_ORDRE", "SIGNATURE"], to: "DECLINE", roles: "project", label: "Abandonner le dossier" },
 } as const satisfies Record<string, { from: ProjectStatus[]; to: ProjectStatus; roles: "project" | "compliance"; label: string }>;
 
 export type TransitionKey = keyof typeof TRANSITIONS;

@@ -46,7 +46,7 @@ export default async function Page({ params }: { params: Promise<{ linkId: strin
   const next =
     abandoned ? t("Ce dossier a été abandonné par l'organisation.")
     : closed ? t("Le recrutement de ce dossier est clos : l'organisation doit vous solliciter de nouveau.")
-    : link.status === "ATT_EXPERTS" ? t("Donnez votre réponse : accord de principe, contre-proposition ou refus.")
+    : link.status === "ATT_EXPERTS" ? t("Donnez votre réponse : accord de principe ou refus. Si les honoraires proposés ne vous conviennent pas, indiquez ceux que vous souhaitez.")
     : link.status === "DECLINE" ? t("Vous avez décliné cette sollicitation.")
     : p.status === "SIGNATURE" && link.signature?.status !== "done" ? t("Signez la convention : électroniquement si une demande vous a été envoyée, sinon déposez-la signée dans Documents.")
     : ["ATT_EXPERTS", "ACCORD", "EN_VALID", "BLOQUE", "VALIDE", "ORDRE"].includes(p.status) ? t("L'organisation prépare le dossier (validation, démarches). Vous pouvez relire le projet de convention et soumettre vos supports.")
@@ -66,7 +66,7 @@ export default async function Page({ params }: { params: Promise<{ linkId: strin
           lead={p.description}
           facts={[
             { icon: <CalendarDays size={13} />, label: t("Prestation"), value: `${link.days ?? "—"} ${units}` },
-            { icon: <Euro size={13} />, label: t("Honoraires proposés"), value: link.feeCents != null ? t("{amount} HT", { amount: fmtEur(locale, link.feeCents) }) : "—" },
+            { icon: <Euro size={13} />, label: t("Honoraires proposés"), value: link.feeCents != null ? t("{amount} HT", { amount: fmtEur(locale, link.feeCents) }) : "—", sub: link.desiredFeeCents != null ? t("souhaités : {amount} HT", { amount: fmtEur(locale, link.desiredFeeCents) }) : undefined },
             ...(type ? [{ icon: <Scale size={13} />, label: t("Référence de marché"), value: t("{min} à {max} € HT", { min: num(type.fmv[0]), max: num(type.fmv[1]) }), sub: t("par {unit}", { unit: t(type.unit) }) }] : []),
             { icon: <Building2 size={13} />, label: t("Organisation"), value: p.organization.name, sub: p.organization.sector ?? undefined },
           ]}

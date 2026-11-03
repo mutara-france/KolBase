@@ -6,7 +6,7 @@ import { platformAdminEmails } from "@/lib/platform";
 import { drPrefix } from "@/lib/professions";
 import { COMPLIANCE_ROLES, EVENT_ORGANIZER_ROLES, FORMAT_LABEL, type EventChange } from "@/lib/events";
 import { fmtEur, isLocale, makeT, type Locale, type T } from "@/lib/i18n";
-import { PROJECT_ROLES, SOURCING_ROLES, STATUS_LABEL } from "@/lib/projects";
+import { collabType, PROJECT_ROLES, SOURCING_ROLES, STATUS_LABEL } from "@/lib/projects";
 import { orderStats } from "@/lib/services";
 import { conversion, reportParts } from "@/lib/service-report";
 import type { OrgRole } from "@/generated/prisma/client";
@@ -59,6 +59,12 @@ async function projectTeam(project: { organizationId: string; createdById: strin
   return creator ? [creator] : team;
 }
 
+/** Unité de prestation du type de collaboration (« journée », « séances »…), au pluriel au-delà de 1. */
+const unitLabel = (t: T, typeId: string, n: number) => {
+  const unit = collabType(typeId)?.unit ?? "unité";
+  return n > 1 ? t(`${unit}s`) : t(unit);
+};
+
 const expertName = (p: { profession: string; user: { firstName: string; lastName: string } }) => `${drPrefix(p.profession)}${p.user.firstName} ${p.user.lastName}`;
 
 const linkInclude = {
@@ -68,10 +74,13 @@ const linkInclude = {
 
 // ─── Praticiens ────────────────────────────────────────────────────────────
 
-/** Nouvelle sollicitation (dossier ouvert par une organisation) ou honoraires proposés après une candidature retenue. */
-export function notifySolicitations(projectId: string, kind: "sollicitation" | "honoraires" = "sollicitation") {
+/**
+ * Nouvelle sollicitation (dossier ouvert par une organisation) ou honoraires proposés après une candidature retenue.
+ * `linkIds` : seulement ces experts (expert ajouté à un dossier existant).
+ */
+export function notifySolicitations(projectId: string, kind: "sollicitation" | "honoraires" = "sollicitation", linkIds?: string[]) {
   later(async () => {
-    const links = await db.projectExpert.findMany({ where: { projectId, status: "ATT_EXPERTS" }, include: linkInclude });
+    const links = await db.projectExpert.findMany({ where: { projectId, status: "ATT_EXPERTS", ...(linkIds ? { id: { in: linkIds } } : {}) }, include: linkInclude });
     for (const l of links) {
       const org = l.project.organization.name;
       const title = l.project.title;
@@ -87,6 +96,25 @@ export function notifySolicitations(projectId: string, kind: "sollicitation" | "
         };
       });
     }
+  });
+}
+
+/** Conditions modifiées par l'organisation (unités, honoraires) : la proposition est renvoyée à l'expert. */
+export function notifyNewProposal(linkId: string) {
+  later(async () => {
+    const l = await db.projectExpert.findUnique({ where: { id: linkId }, include: linkInclude });
+    if (!l || l.status !== "ATT_EXPERTS") return;
+    const org = l.project.organization.name;
+    await send([l.practitioner.user], (t, locale) => ({
+      subject: t("Nouvelle proposition de {org}", { org }),
+      text: [
+        t("Bonjour,"),
+        t("{org} a modifié sa proposition pour « {titre} ».", { org, titre: l.project.title }),
+        [l.days != null ? t("Prestation : {n} {unit}.", { n: l.days.toLocaleString(locale === "en" ? "en-GB" : "fr-FR"), unit: unitLabel(t, l.project.typeId, l.days) }) : null, l.feeCents != null ? t("Honoraires proposés : {montant} HT.", { montant: fmtEur(locale, l.feeCents) }) : null].filter(Boolean).join(" "),
+        t("Votre réponse précédente ne vaut plus pour ces nouvelles conditions : acceptez ou déclinez la proposition sur KolBase."),
+      ].filter(Boolean).join("\n\n"),
+      cta: { label: t("Répondre"), href: `/sollicitations/${l.id}` },
+    }));
   });
 }
 
@@ -134,9 +162,10 @@ export function notifyExpertAnswer(linkId: string, accepted: boolean) {
     if (!l) return;
     await send(await projectTeam(l.project), {
       subject: `${expertName(l.practitioner)} ${accepted ? "a donné son accord de principe" : "a décliné"} — ${l.project.title}`,
-      text: accepted
+      text: (accepted
         ? `Bonjour,\n\n${expertName(l.practitioner)} a donné son accord de principe pour « ${l.project.title} ». Vous pouvez soumettre le dossier à la conformité.`
-        : `Bonjour,\n\n${expertName(l.practitioner)} a décliné « ${l.project.title} ».${l.responseNote ? `\n\nSon message : ${l.responseNote}` : ""}`,
+        : `Bonjour,\n\n${expertName(l.practitioner)} a décliné « ${l.project.title} ».${l.responseNote ? `\n\nSon message : ${l.responseNote}` : ""}`)
+        + (l.desiredFeeCents != null ? `\n\nHonoraires souhaités : ${fmtEur("fr", l.desiredFeeCents)} HT (proposés : ${l.feeCents != null ? `${fmtEur("fr", l.feeCents)} HT` : "non indiqués"}). Vous pouvez modifier la proposition depuis le dossier.` : ""),
       cta: { label: "Ouvrir le dossier", href: `/organisations/${l.project.organizationId}/dossiers/${l.projectId}` },
     });
   });

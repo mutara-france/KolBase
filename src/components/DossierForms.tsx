@@ -7,6 +7,8 @@ import { uploadDocument } from "@/lib/document-actions";
 import { intlLocale } from "@/lib/i18n";
 import { useLocale, useT } from "@/components/I18nProvider";
 import { refreshSignatureStatus, sendConventionForSignature } from "@/lib/signature-actions";
+import { addProjectExpert, updateExpertTerms, updateProjectObject } from "@/lib/project-actions";
+import { ActionForm } from "@/components/ActionForm";
 
 type Hidden = { orgId: string; projectId: string };
 const H = ({ orgId, projectId }: Hidden) => (<><input type="hidden" name="orgId" value={orgId} /><input type="hidden" name="projectId" value={projectId} /></>);
@@ -167,5 +169,69 @@ export function RefreshSignatureForm({ linkId }: { linkId: string }) {
       {state?.error && <span className="text-xs" style={{ color: "var(--danger)" }} role="alert">{state.error}</span>}
       {state?.ok && <span className="text-xs" role="status">{state.ok}</span>}
     </form>
+  );
+}
+
+// ─── Modification du dossier (avant la signature) ──────────────────────────
+
+/** Objet du dossier : titre, domaine thérapeutique, objet et déroulé. */
+export function ProjectObjectForm({ orgId, projectId, title, area, description }: Hidden & { title: string; area: string; description: string }) {
+  const [state, action, pending] = useActionState(updateProjectObject, undefined);
+  return (
+    <ActionForm action={action} className="form">
+      <Notice state={state} />
+      <H orgId={orgId} projectId={projectId} />
+      <div className="row">
+        <label>Titre du dossier<input name="title" required defaultValue={title} /></label>
+        <label>Domaine thérapeutique<input name="therapeuticArea" defaultValue={area} /></label>
+      </div>
+      <label>Objet et déroulé<textarea name="description" rows={4} defaultValue={description} /></label>
+      <button className="btn ghost small" disabled={pending}>{pending ? "Enregistrement…" : "Enregistrer l'objet"}</button>
+    </ActionForm>
+  );
+}
+
+/** Unités et honoraires d'un expert : modifiés, la proposition lui est renvoyée. */
+export function ExpertTermsForm({ orgId, projectId, linkId, name, unit, units, fee, desired }: Hidden & { linkId: string; name: string; unit: string; units: string; fee: string; desired?: string | null }) {
+  const [state, action, pending] = useActionState(updateExpertTerms, undefined);
+  return (
+    <ActionForm action={action} className="form terms-form">
+      <H orgId={orgId} projectId={projectId} />
+      <input type="hidden" name="linkId" value={linkId} />
+      <div className="fee-row">
+        <strong>{name}</strong>
+        <label>Unités ({unit})<input name="units" inputMode="decimal" defaultValue={units} /></label>
+        <label>Honoraires totaux (€ HT)<input name="fee" inputMode="decimal" defaultValue={fee} required /></label>
+        <button className="btn ghost small" disabled={pending}>{pending ? "Envoi…" : "Envoyer la nouvelle proposition"}</button>
+      </div>
+      {desired && <p className="hint">Honoraires souhaités par l&apos;expert : {desired} HT.</p>}
+      <Notice state={state} />
+    </ActionForm>
+  );
+}
+
+/** Ajouter un expert référencé au dossier : il reçoit la sollicitation. */
+export function AddExpertForm({ orgId, projectId, unit, experts }: Hidden & { unit: string; experts: { id: string; name: string; detail: string; dayRateCents: number | null }[] }) {
+  const [state, action, pending] = useActionState(addProjectExpert, undefined);
+  const [expertId, setExpertId] = useState("");
+  const chosen = experts.find((e) => e.id === expertId);
+  if (experts.length === 0) return <p className="muted text-sm">Tous les experts référencés sont déjà sollicités.</p>;
+  return (
+    <ActionForm action={action} className="form">
+      <Notice state={state} />
+      <H orgId={orgId} projectId={projectId} />
+      <label>Expert
+        <select name="expertId" value={expertId} onChange={(e) => setExpertId(e.target.value)} required>
+          <option value="">— choisir un expert référencé —</option>
+          {experts.map((e) => <option key={e.id} value={e.id}>{e.name}{e.detail ? ` · ${e.detail}` : ""}</option>)}
+        </select>
+      </label>
+      <div className="row">
+        <label>Unités ({unit})<input name="units" inputMode="decimal" defaultValue="1" /></label>
+        <label>Honoraires totaux (€ HT)<input key={expertId} name="fee" inputMode="decimal" defaultValue={chosen?.dayRateCents != null ? String(chosen.dayRateCents / 100) : ""} required /></label>
+      </div>
+      <label>Message d&apos;accompagnement<textarea name="message" rows={2} placeholder="Message envoyé avec la sollicitation" /></label>
+      <button className="btn ghost small" disabled={pending}>{pending ? "Envoi…" : "Ajouter et solliciter l'expert"}</button>
+    </ActionForm>
   );
 }

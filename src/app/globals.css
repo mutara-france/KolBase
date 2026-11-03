@@ -1087,10 +1087,13 @@ p.service-stats { color: var(--ink-soft); }
 .legal section.card { scroll-margin-top: 80px; }
 .legal .lead-sm p { margin: 8px 0 0; color: var(--ink-soft); }
 
-/* Modification d'un événement (fiche organisation) : bloc repliable. */
-.edit-event > summary { cursor: pointer; list-style: none; display: flex; align-items: center; gap: 8px; }
-.edit-event > summary::-webkit-details-marker { display: none; }
-.edit-event > summary::before { content: "▸"; color: var(--outremer); font-size: 13px; }
-.edit-event[open] > summary::before { content: "▾"; }
-.edit-event > summary h2 { margin: 0; }
-.edit-event[open] > summary { margin-bottom: 12px; }
+/* Modification d'un événement ou d'un dossier (fiche organisation) : bloc repliable. */
+.edit-block > summary { cursor: pointer; list-style: none; display: flex; align-items: center; gap: 8px; }
+.edit-block > summary::-webkit-details-marker { display: none; }
+.edit-block > summary::before { content: "▸"; color: var(--outremer); font-size: 13px; }
+.edit-block[open] > summary::before { content: "▾"; }
+.edit-block > summary h2 { margin: 0; }
+.edit-block[open] > summary { margin-bottom: 12px; }
+.edit-block h3 { margin: 0; font-size: 15px; }
+.terms-form .fee-row { align-items: end; }
+.term.desired { color: var(--outremer); font-weight: 600; }

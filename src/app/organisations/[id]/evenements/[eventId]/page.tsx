@@ -275,7 +275,7 @@ export default async function Page({ params, searchParams }: { params: Promise<{
 
         <div className="page-grid">
           <div className="page-main">
-            <details className="card edit-event" id="modifier" open={missingLink}>
+            <details className="card edit-block" id="modifier" open={missingLink}>
               <summary><h2>Modifier l&apos;événement</h2></summary>
               <EditEventForm
                 orgId={id}

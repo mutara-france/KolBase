@@ -115,15 +115,18 @@ export function RespondForm({ linkId }: { linkId: string }) {
   const t = useT();
   if (state?.ok) return <p className="notice ok">{state.ok}</p>;
   return (
-    <form action={action} className="form">
+    <ActionForm action={action} className="form">
       <Notice state={state} />
       <input type="hidden" name="linkId" value={linkId} />
       <label>{t("Commentaire (facultatif)")}<textarea name="note" rows={2} placeholder={t("Disponibilités, conditions, questions…")} /></label>
+      <label>{t("Honoraires souhaités (€ HT, facultatif)")}<input name="desiredFee" inputMode="decimal" placeholder={t("Total pour la prestation")} />
+        <span className="hint">{t("Si les honoraires proposés ne vous conviennent pas : l'organisation voit ce montant et peut vous faire une nouvelle proposition.")}</span>
+      </label>
       <div className="actions">
         <button className="btn" name="answer" value="accept" disabled={pending}>{t("Donner mon accord de principe")}</button>
         <button className="btn ghost" name="answer" value="decline" disabled={pending}>{t("Décliner")}</button>
       </div>
       <p className="hint">{t("L'accord de principe n'engage pas encore : la convention vous sera soumise après validation par la conformité.")}</p>
-    </form>
+    </ActionForm>
   );
 }
