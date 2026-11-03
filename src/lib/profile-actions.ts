@@ -108,10 +108,9 @@ export async function addStructure(_: ActionState, form: FormData): Promise<Acti
   const siren = str(form, "siren").replace(/\s/g, "");
   if (siren && !/^\d{9}$/.test(siren)) return { error: t("Le SIREN comporte 9 chiffres.") };
   const share = str(form, "sharePercent") ? Math.min(100, Math.max(0, Math.round(Number(str(form, "sharePercent"))))) : null;
-  const isPayee = form.get("isPayee") === "1";
-  if (isPayee) await db.practitionerStructure.updateMany({ where: { practitionerId: user.practitioner.id }, data: { isPayee: false } });
+  // La structure de facturation se règle avec les coordonnées de facturation (Mes revenus), seule source.
   const s = await db.practitionerStructure.create({
-    data: { practitionerId: user.practitioner.id, name, legalForm, siren: siren || null, role: str(form, "role") || null, sharePercent: share, isPayee },
+    data: { practitionerId: user.practitioner.id, name, legalForm, siren: siren || null, role: str(form, "role") || null, sharePercent: share },
   });
   await audit(user.id, "practitioner.structure_add", "PractitionerStructure", s.id);
   revalidatePath("/compte");

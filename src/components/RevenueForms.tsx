@@ -4,6 +4,7 @@ import { useActionState } from "react";
 import { addDeclaredInterest, issueFeeNote, reportTransparencyIssue, updateBilling } from "@/lib/revenue-actions";
 import { Notice } from "@/components/AuthForms";
 import { useT } from "@/components/I18nProvider";
+import { LEGAL_FORMS } from "@/lib/structures";
 
 /** Ajout d'un lien d'intérêts noué hors de KolBase. */
 export function InterestForm() {
@@ -46,13 +47,21 @@ export function ReportForm({ kind, id }: { kind: "convention" | "hospitalite"; i
 }
 
 /** Coordonnées de facturation (notes d'honoraires). */
-export function BillingForm({ current }: { current: { billingEntity: string; billingAddress: string; siret: string; vatRegime: string; vatNumber: string; iban: string } }) {
+/**
+ * Coordonnées de facturation : seul formulaire de la structure de facturation (société d'exercice), reprise par
+ * les conventions et par les notes d'honoraires, avec l'adresse, le SIRET, la TVA et l'IBAN.
+ */
+export function BillingForm({ current }: { current: { billingEntity: string; billingLegalForm: string; billingAddress: string; siret: string; vatRegime: string; vatNumber: string; iban: string } }) {
   const [state, action, pending] = useActionState(updateBilling, undefined);
   const t = useT();
   return (
     <form action={action} className="form">
       <Notice state={state} />
-      <label>{t("Société d'exercice (facultatif)")}<input name="billingEntity" maxLength={120} defaultValue={current.billingEntity} placeholder={t("SELARL, SELAS… si vous facturez par une société")} /></label>
+      <div className="row">
+        <label>{t("Structure de facturation (facultatif)")}<input name="billingEntity" maxLength={120} defaultValue={current.billingEntity} placeholder={t("SELARL Dr Dupont… si vous facturez par une société")} /></label>
+        <label>{t("Forme juridique")}<select name="billingLegalForm" defaultValue={current.billingLegalForm || "SELARL"}>{LEGAL_FORMS.map((f) => <option key={f} value={f}>{t(f)}</option>)}</select></label>
+      </div>
+      <p className="hint">{t("Elle figure sur vos conventions et vos notes d'honoraires. Laissez vide si vous facturez en votre nom propre.")}</p>
       <label>{t("Adresse de facturation")}<textarea name="billingAddress" rows={3} maxLength={300} required defaultValue={current.billingAddress} /></label>
       <div className="row">
         <label>{t("SIRET (facultatif)")}<input name="siret" inputMode="numeric" maxLength={17} defaultValue={current.siret} /></label>

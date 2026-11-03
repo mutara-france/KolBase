@@ -131,8 +131,8 @@ model PractitionerProfile {
   orcidVerified Boolean   @default(false) // iD obtenu par connexion au compte ORCID
   rppsCheckedAt DateTime? // contrôle du RPPS par un administrateur KolBase (validé ou refusé)
   rppsCheckNote String?   // motif d'un refus
-  // Coordonnées de facturation (notes d'honoraires) : société d'exercice éventuelle, adresse, SIRET, TVA, IBAN.
-  billingEntity  String?
+  // Coordonnées de facturation (conventions et notes d'honoraires) : adresse, SIRET, TVA, IBAN. La société
+  // d'exercice éventuelle est la structure de facturation (PractitionerStructure.isPayee), seule source.
   billingAddress String?
   siret          String?
   vatRegime      String   @default("franchise") // franchise (art. 293 B du CGI) ou assujetti

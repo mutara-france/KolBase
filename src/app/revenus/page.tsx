@@ -5,6 +5,7 @@ import { SiteHeader } from "@/components/SiteHeader";
 import { BillingForm, InterestForm, IssueNoteButton, ReportForm } from "@/components/RevenueForms";
 import { billingComplete } from "@/lib/fee-notes";
 import { requireUser } from "@/lib/auth";
+import { db } from "@/lib/db";
 import { INTEREST_YEARS, interestLines, practitionerLedger } from "@/lib/revenues";
 import { removeDeclaredInterest } from "@/lib/revenue-actions";
 import { STATUS_LABEL } from "@/lib/projects";
@@ -25,6 +26,8 @@ export default async function Page({ searchParams }: { searchParams: Promise<{ o
   const onglet = sp.onglet === "liens" ? "liens" : sp.onglet === "transparence" ? "transparence" : sp.onglet === "facturation" ? "facturation" : "revenus";
   const { t, locale } = await getT();
   const ledger = await practitionerLedger(user.id, p.id);
+  // Structure de facturation : seule source de la société d'exercice (conventions et notes d'honoraires).
+  const payee = onglet === "facturation" ? await db.practitionerStructure.findFirst({ where: { practitionerId: p.id, isPayee: true } }) : null;
   const years = [...new Set([...ledger.fees.map((f) => f.year), ...ledger.hospitality.map((h) => h.year), new Date().getFullYear()])].sort((a, b) => b - a);
   const year = years.includes(Number(sp.annee)) ? Number(sp.annee) : years[0];
   const fees = ledger.fees.filter((f) => f.year === year);
@@ -150,9 +153,9 @@ export default async function Page({ searchParams }: { searchParams: Promise<{ o
               )}
             </section>
             <section className="card stack-sm">
-              <h2>{t("Coordonnées de facturation")}</h2>
-              <p className="muted">{t("Imprimées sur vos notes d'honoraires. Vérifiez les mentions applicables à votre situation avec votre comptable.")}</p>
-              <BillingForm current={{ billingEntity: p.billingEntity ?? "", billingAddress: p.billingAddress ?? "", siret: p.siret ?? "", vatRegime: p.vatRegime, vatNumber: p.vatNumber ?? "", iban: p.iban ?? "" }} />
+              <h2 id="coordonnees">{t("Coordonnées de facturation")}</h2>
+              <p className="muted">{t("Reprises par vos conventions et vos notes d'honoraires. Vérifiez les mentions applicables à votre situation avec votre comptable.")}</p>
+              <BillingForm current={{ billingEntity: payee?.name ?? "", billingLegalForm: payee?.legalForm ?? "", billingAddress: p.billingAddress ?? "", siret: p.siret ?? "", vatRegime: p.vatRegime, vatNumber: p.vatNumber ?? "", iban: p.iban ?? "" }} />
             </section>
           </>
         )}

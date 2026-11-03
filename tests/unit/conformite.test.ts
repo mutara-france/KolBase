@@ -6,6 +6,8 @@ import { benefitLimit, complianceSettings, hospitalityRegime } from "@/lib/compl
 import { hospitalityRegimeClause } from "@/lib/convention-pdf";
 import { makeT } from "@/lib/i18n";
 import { cancelSignatureRequest, signatureOpen } from "@/lib/yousign";
+import { payeeEntity, sirenOf } from "@/lib/structures";
+import { PAYMENT_TERMS } from "@/lib/fee-notes";
 import { costHeadcount, expertSplit, feeTotals, isAbsent, speakerConfirmed, toDeclare } from "@/lib/indicators";
 
 describe("contrat de sous-traitance exigé avant d'engager un tiers", () => {
@@ -137,5 +139,21 @@ describe("signature électronique close quand la convention est signée autremen
       vi.unstubAllGlobals();
       vi.unstubAllEnvs();
     }
+  });
+});
+
+describe("une seule structure de facturation, un seul délai de paiement", () => {
+  it("SIREN déduit du SIRET ; nom de la société d'exercice sur la note", () => {
+    expect(sirenOf("73282932000074")).toBe("732829320");
+    expect(sirenOf("123")).toBeNull();
+    expect(sirenOf(null)).toBeNull();
+    expect(payeeEntity({ name: "SELARL Dr Dupont", legalForm: "SELARL" })).toBe("SELARL Dr Dupont");
+    expect(payeeEntity({ name: "Cabinet Dupont", legalForm: "SELAS" })).toBe("Cabinet Dupont (SELAS)");
+    expect(payeeEntity(null)).toBeNull();
+  });
+
+  it("note d'honoraires et convention : paiement à 30 jours (même texte, traduit dans la convention)", () => {
+    expect(PAYMENT_TERMS).toContain("à 30 jours");
+    expect(makeT("en")(PAYMENT_TERMS)).toBe("By bank transfer, 30 days after the service is performed and the invoice is received.");
   });
 });

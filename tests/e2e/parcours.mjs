@@ -2753,6 +2753,45 @@ async function submitNewOrg(page, siren) {
     check("Suppression : IBAN, adresse, SIRET, TVA et liens déclarés effacés ; nom et RPPS gardés pour la convention", after.iban === null && after.billingAddress === null && after.siret === null && after.vatNumber === null && after.interests === 0 && after.firstName === "Paul" && !!after.rpps, JSON.stringify(after));
   }
 
+  // 6. Une seule structure de facturation (conventions et notes d'honoraires), un seul formulaire ; 30 jours partout.
+  {
+    await pgc.query(`insert into "Project" (id, "organizationId", title, "typeId", status, "updatedAt") values ('e2e-lot2-prj-durand', 'demo-org-orthonova', 'Comité lot 2 signé', 'advisory', 'SIGNE', now())`);
+    await pgc.query(`insert into "ProjectExpert" (id, "projectId", "practitionerId", status, "feeCents", days) values ('e2e-lot2-pd-1', 'e2e-lot2-prj-durand', 'demo-p-durand', 'SIGNE', 180000, 1)`);
+    const mo = await session();
+    await login(mo.page, "vincent.moreau@demo.kolbase.local");
+    await mo.page.goto(`${BASE}/tableau-de-bord`);
+    const task = mo.page.locator('a:has-text("Compléter vos coordonnées de facturation")');
+    const noAddress = !(await q1(`select "billingAddress" from "PractitionerProfile" where id = 'demo-p-moreau'`)).billingAddress;
+    check("Accueil : tâche « Compléter vos coordonnées de facturation » vers Mes revenus", noAddress && (await task.count()) === 1 && (await task.first().getAttribute("href")) === "/revenus?onglet=facturation#coordonnees" && !(await text(mo.page)).includes("Déclarer votre structure de facturation"));
+    await mo.ctx.close();
+    const d = await session();
+    await login(d.page, "helene.durand@demo.kolbase.local");
+    await d.page.goto(`${BASE}/revenus?onglet=facturation`);
+    const bill = 'form:has(textarea[name="billingAddress"])';
+    check("Coordonnées de facturation : la structure de facturation déclarée y est reprise", (await d.page.inputValue(`${bill} input[name="billingEntity"]`)) === "SELARL Dr Durand" && (await d.page.inputValue(`${bill} select[name="billingLegalForm"]`)) === "SELARL");
+    await d.page.fill(`${bill} input[name="billingEntity"]`, "Durand Implantologie");
+    await d.page.selectOption(`${bill} select[name="billingLegalForm"]`, "SELAS");
+    await d.page.fill(`${bill} textarea[name="billingAddress"]`, "8 quai Claude Bernard\n69007 Lyon");
+    await d.page.fill(`${bill} input[name="siret"]`, "73282932000074");
+    await d.page.click(`${bill} button:has-text("Enregistrer")`);
+    await d.page.waitForTimeout(1200);
+    const payees = (await pgc.query(`select name, "legalForm", siren from "PractitionerStructure" where "practitionerId" = 'demo-p-durand' and "isPayee"`)).rows;
+    check("Un seul formulaire : la structure de facturation est mise à jour (une seule, SIREN repris du SIRET)", payees.length === 1 && payees[0].name === "Durand Implantologie" && payees[0].legalForm === "SELAS" && payees[0].siren === "732829320", JSON.stringify(payees));
+    await d.page.goto(`${BASE}/compte`);
+    const structs = await d.page.locator('section.card:has(h2:has-text("Structures juridiques"))').innerText();
+    check("Structures juridiques : plus de case « structure de facturation », lien vers les coordonnées", (await d.page.locator('input[name="isPayee"]').count()) === 0 && structs.includes("Durand Implantologie") && structs.includes("structure de facturation") && (await d.page.locator('a[href="/revenus?onglet=facturation#coordonnees"]').count()) >= 1);
+    await d.page.goto(`${BASE}/tableau-de-bord`);
+    check("Accueil : plus de tâche de facturation une fois les coordonnées complètes", (await d.page.locator('a:has-text("Compléter vos coordonnées de facturation")').count()) === 0);
+    await d.page.goto(`${BASE}/revenus?onglet=facturation`);
+    await d.page.locator('li:has-text("Comité lot 2 signé") button:has-text("Établir la note")').click();
+    await d.page.waitForTimeout(1500);
+    const note = await q1(`select data from "FeeNote" where "projectExpertId" = 'e2e-lot2-pd-1'`);
+    check("Note d'honoraires : même structure de facturation que la convention", note?.data?.issuer?.entity === "Durand Implantologie (SELAS)" && note?.data?.issuer?.siret === "73282932000074", JSON.stringify(note?.data?.issuer));
+    const conv = await d.page.request.get(`${BASE}/sollicitations/e2e-lot2-pd-1/convention`);
+    check("Convention : disponible avec la structure de facturation", conv.status() === 200);
+    await d.ctx.close();
+  }
+
   await pgc.end();
 }
 

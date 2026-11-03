@@ -8,6 +8,7 @@ import { db } from "@/lib/db";
 import { requireUser } from "@/lib/auth";
 import { collabType, recruitmentOpen } from "@/lib/projects";
 import { speakerConfirmed } from "@/lib/indicators";
+import { billingComplete } from "@/lib/fee-notes";
 import { drPrefix } from "@/lib/professions";
 import { fmtDate, fmtEur } from "@/lib/i18n";
 import { getT } from "@/lib/i18n/server";
@@ -29,7 +30,7 @@ export default async function Page() {
   const plural = (n: number, one: string, many: string) => t(n > 1 ? many : one, { n });
   const now = new Date();
 
-  const [links, regs, calls, pubCount, structCount, apps] = await Promise.all([
+  const [links, regs, calls, pubCount, apps] = await Promise.all([
     db.projectExpert.findMany({ where: { practitionerId: p.id }, include: { project: { include: { organization: { select: { name: true } } } } }, orderBy: { createdAt: "desc" } }),
     db.registration.findMany({ where: { userId: user.id, event: { startsAt: { gte: now } } }, include: { event: { include: { organization: { select: { name: true } } } } }, orderBy: { event: { startsAt: "asc" } } }),
     p.listed
@@ -41,7 +42,6 @@ export default async function Page() {
         })
       : Promise.resolve([]),
     db.publication.count({ where: { practitionerId: p.id } }),
-    db.practitionerStructure.count({ where: { practitionerId: p.id, isPayee: true } }),
     p.listed
       ? db.application.findMany({
           where: { practitionerId: p.id, status: { in: ["pending", "retained"] }, openCall: { event: { startsAt: { gte: now } } } },
@@ -73,7 +73,8 @@ export default async function Page() {
     ? [
         ...(!p.bio ? [{ href: "/compte", title: t("Ajouter une présentation"), detail: t("Les organisations la lisent en premier."), icon: "UserRound" as const }] : []),
         ...(!p.rpps ? [{ href: "/compte", title: t("Renseigner votre n° RPPS"), detail: t("Nécessaire aux conventions et au badge « Identité vérifiée »."), icon: "ShieldCheck" as const }] : []),
-        ...(structCount === 0 ? [{ href: "/compte", title: t("Déclarer votre structure de facturation"), detail: t("Elle figurera sur vos conventions."), icon: "FileSignature" as const }] : []),
+        // Coordonnées de facturation (structure éventuelle, adresse, TVA) : reprises par les conventions et les notes d'honoraires.
+        ...(!billingComplete(p) ? [{ href: "/revenus?onglet=facturation#coordonnees", title: t("Compléter vos coordonnées de facturation"), detail: t("Structure de facturation éventuelle, adresse et TVA : reprises sur vos conventions et vos notes d'honoraires."), icon: "FileSignature" as const }] : []),
         ...(pubCount === 0 ? [{ href: "/compte", title: t("Ajouter vos publications"), detail: t("Elles apparaissent sur votre fiche publique."), icon: "CircleDot" as const }] : []),
       ]
     : [];

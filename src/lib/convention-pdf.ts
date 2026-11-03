@@ -206,6 +206,7 @@ export async function buildCollaborationConventionForSignature(i: CollabConventi
     [t("Volume"), `${units} ${unit}${units > 1 ? "s" : ""}`],
     [t("Honoraires"), i.link.feeCents != null ? t("{montant} HT, forfaitaires et définitifs", { montant: eur(locale, i.link.feeCents) }) : t("À définir")],
     // Le repère indicatif de KolBase n'a pas sa place dans le contrat : la juste contrepartie est documentée par l'organisation.
+    // Même délai que la note d'honoraires (PAYMENT_TERMS, src/lib/fee-notes.ts).
     [t("Paiement"), t("Par virement, à 30 jours après réalisation de la prestation et réception de la facture.")],
   ]);
   w.text(t("Les frais de déplacement et d'hébergement éventuellement pris en charge par l'Organisation sont limités au strict nécessaire à la prestation et font l'objet d'une déclaration distincte."), { color: MUTED });

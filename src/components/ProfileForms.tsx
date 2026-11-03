@@ -5,6 +5,7 @@ import { addPublication, addStructure, importOrcid, updateKolVisibility, updateO
 import { Notice } from "@/components/AuthForms";
 import { COMPANY_VIS_FIELDS, KOL_VIS_FIELDS, KOL_VISIBILITY_LEVELS, PROJECT_VISIBILITY_LEVELS, VISIBILITY_LEVELS, type CompanyVisibility, type KolVisibility } from "@/lib/visibility";
 import { useLocale, useT } from "@/components/I18nProvider";
+import { LEGAL_FORMS, STRUCTURE_ROLES } from "@/lib/structures";
 
 function VisRow({ name, label, desc, value, levels }: { name: string; label: string; desc: string; value: string; levels: { id: string; label: string; hint: string }[] }) {
   return (
@@ -97,8 +98,7 @@ export function PublicationForm() {
   );
 }
 
-const LEGAL_FORMS = ["SELARL", "SELAS", "SASU", "SARL", "SCM", "SCP", "Société de conseil", "Association loi 1901", "Société savante", "Fondation", "Entreprise individuelle"];
-const ROLES = ["Gérant", "Président", "Associé", "Membre du bureau", "Trésorier", "Administrateur", "Membre simple"];
+const ROLES = STRUCTURE_ROLES;
 
 export function StructureForm() {
   const [state, action, pending] = useActionState(addStructure, undefined);
@@ -117,7 +117,6 @@ export function StructureForm() {
         <label>{t("Fonction")}<select name="role" defaultValue="Gérant">{ROLES.map((r) => <option key={r} value={r}>{t(r)}</option>)}</select></label>
         <label>{t("Parts (%)")}<input name="sharePercent" inputMode="numeric" /></label>
       </div>
-      <label className="check"><input type="checkbox" name="isPayee" value="1" /> {t("Structure de facturation (reçoit les honoraires)")}</label>
       <button className="btn secondary" disabled={pending}>{t("Ajouter la structure")}</button>
     </form>
   );
