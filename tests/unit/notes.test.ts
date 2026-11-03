@@ -37,3 +37,22 @@ describe("notes d'honoraires", () => {
     expect(Buffer.from(bytes).subarray(0, 5).toString()).toBe("%PDF-");
   });
 });
+
+describe("déclaration Transparence Santé", async () => {
+  const { parseSemester, recentSemesters, semesterKey, semesterOf, semesterRange, COLUMNS, CONVENTION_OBJECT } = await import("@/lib/transparence-shared");
+  it("découpe l'année en semestres", () => {
+    expect(semesterKey(semesterOf(new Date(2026, 10, 3)))).toBe("2026-S2");
+    expect(semesterKey(semesterOf(new Date(2026, 5, 30)))).toBe("2026-S1");
+    expect(parseSemester("2026-S3")).toBeNull();
+    const r = semesterRange({ year: 2026, half: 2 });
+    expect(r.gte.getMonth()).toBe(6);
+    expect(r.lt.getFullYear()).toBe(2027);
+    expect(recentSemesters(new Date(2026, 10, 3)).map(semesterKey)).toEqual(["2026-S2", "2026-S1", "2025-S2", "2025-S1"]);
+  });
+  it("utilise les libellés de la plateforme", () => {
+    expect(COLUMNS).toContain("Identifiant unique");
+    expect(COLUMNS).toContain("Convention liée");
+    expect(CONVENTION_OBJECT.dpc).toBe("Formation");
+    expect(CONVENTION_OBJECT.symposium).toBe("Contrat d'intervenant à une manifestation");
+  });
+});

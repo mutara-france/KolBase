@@ -11,8 +11,9 @@ import { collabType, STATUS_LABEL } from "@/lib/projects";
 import { complianceSettings, foreignRegime, legalBound, remunerationRegime, REGIME_LABEL, SETTING_FIELDS, type Regime } from "@/lib/compliance";
 import { country, practicesInFrance } from "@/lib/countries";
 import { registerRows } from "@/lib/compliance-data";
-import { markProjectPublished } from "@/lib/compliance-actions";
+import { markProjectPublished, markSemesterPublished } from "@/lib/compliance-actions";
 import { detectConflicts } from "@/lib/conflicts";
+import { declarationRows, parseSemester, recentSemesters, semesterKey, semesterLabel } from "@/lib/transparence";
 
 export const metadata = { title: "Conformité — KolBase" };
 
@@ -28,9 +29,9 @@ function RegimePill({ regime, reason }: { regime: Regime; reason?: string }) {
   return <span className={`pill ${regime === "autorisation" ? "wait" : regime === "hors_france" ? "" : "ok"}`} title={reason}>{REGIME_LABEL[regime]}</span>;
 }
 
-export default async function Page({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: Promise<{ onglet?: string; annee?: string }> }) {
+export default async function Page({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: Promise<{ onglet?: string; annee?: string; periode?: string }> }) {
   const { id } = await params;
-  const { onglet = "a-valider", annee } = await searchParams;
+  const { onglet = "a-valider", annee, periode } = await searchParams;
   const { org, isAdmin, roles } = await requireMembership(id, COMPLIANCE_ROLES);
   const s = complianceSettings(org.complianceSettings);
   const year = annee === "toutes" ? null : Number(annee) || new Date().getFullYear();
@@ -95,14 +96,15 @@ export default async function Page({ params, searchParams }: { params: Promise<{
           </section>
         )}
         {onglet === "registre" && <Register />}
+        {onglet === "transparence" && <Declaration />}
         {onglet === "transparence" && (
           <section className="card">
             <div className="actions spread">
-              <h2>Transparence Santé</h2>
+              <h2>Suivi des publications</h2>
               <a className="btn ghost" href={`/organisations/${id}/conformite/export?type=transparence&annee=${year ?? "toutes"}`}>Exporter (CSV)</a>
             </div>
             <p className="muted">
-              Conventions signées à publier sur la base Transparence Santé. Les hospitalités d&apos;événements se déclarent depuis la page{" "}
+              Conventions de collaboration signées et leur publication sur Transparence Santé. Les hospitalités se suivent une à une dans la page{" "}
               <Link href={`/organisations/${id}/hospitalites`}>Hospitalités</Link>.
             </p>
             {toPublish.length === 0 ? <p className="muted">Aucune convention signée.</p> : (
@@ -144,6 +146,45 @@ export default async function Page({ params, searchParams }: { params: Promise<{
       </main>
     </>
   );
+
+  async function Declaration() {
+    const sem = parseSemester(periode) ?? recentSemesters()[0];
+    const r = await declarationRows(id, sem);
+    const base = `/organisations/${id}/conformite`;
+    return (
+      <section className="card stack-sm">
+        <div className="card-head">
+          <div>
+            <h2>Préparer la déclaration</h2>
+            <p className="muted">Une ligne par convention, rémunération et avantage, avec les libellés de la plateforme Transparence Santé : rémunérations et avantages sont rattachés à leur convention.</p>
+          </div>
+          <a className="btn" href={`${base}/declaration?periode=${semesterKey(sem)}`}>Télécharger le fichier ({r.rows.length} ligne{r.rows.length > 1 ? "s" : ""})</a>
+        </div>
+        <nav className="chips" aria-label="Semestre">
+          {recentSemesters().map((x) => <Link key={semesterKey(x)} href={`?onglet=transparence&periode=${semesterKey(x)}`} className={`chip${semesterKey(x) === semesterKey(sem) ? " active" : ""}`}>{semesterLabel(x)}</Link>)}
+        </nav>
+        <dl className="hero-facts">
+          <div><dt>Conventions</dt><dd>{r.conventions}<small>collaborations et hospitalités</small></dd></div>
+          <div><dt>Rémunérations</dt><dd>{r.remunerations}<small>versées sur le semestre</small></dd></div>
+          <div><dt>Avantages</dt><dd>{r.advantages}<small>hospitalités consommées</small></dd></div>
+        </dl>
+        {r.excludedAbsent > 0 && <p className="notice warn">{r.excludedAbsent} avantage{r.excludedAbsent > 1 ? "s" : ""} d&apos;inscrits absents au pointage {r.excludedAbsent > 1 ? "sont exclus" : "est exclu"} du fichier : vérifiez-les dans <Link href={`/organisations/${id}/hospitalites`}>Hospitalités</Link>.</p>}
+        {r.rows.length > 0 && (
+          <form action={markSemesterPublished} className="inline wrap">
+            <input type="hidden" name="orgId" value={id} />
+            <input type="hidden" name="periode" value={semesterKey(sem)} />
+            <span className="text-sm">Fichier déposé sur la plateforme ?</span>
+            <input name="ref" placeholder="Réf. du dépôt (facultatif)" aria-label="Référence du dépôt" />
+            <button className="btn ghost small">Tout marquer publié</button>
+          </form>
+        )}
+        <p className="hint">
+          Seules les déclarations pas encore marquées publiées figurent dans le fichier ; montants arrondis à l&apos;euro, avantages et rémunérations de moins de 10 € écartés.
+          Ouvrez le fichier dans un tableur, relisez-le, puis collez les lignes dans l&apos;écran « Déclarer » de la plateforme et marquez les déclarations publiées ci-dessous.
+        </p>
+      </section>
+    );
+  }
 
   async function ToValidate() {
     const conflicts = await Promise.all(toValidate.map((p) => detectConflicts(p.id)));
