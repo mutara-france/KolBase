@@ -120,12 +120,34 @@ aux signataires.
 - Une signature électronique achevée vaut convention signée pour passer le dossier en « Signé ».
 - Sans ces variables, rien ne change (signature sur papier, puis dépôt du scan).
 
+## Tâches planifiées
+
+Le service cron Render `kolbase-taches` (voir `render.yaml`) appelle toutes les heures `POST /api/taches` avec
+l'en-tête `Authorization: Bearer $CRON_SECRET` (secret généré sur le service web et partagé). La tâche, idempotente :
+
+- envoie le rappel de la veille aux inscrits (date, lieu, programme, badge) ;
+- envoie, une heure après la fin d'un événement, le remerciement avec l'attestation de présence et le questionnaire ;
+- supprime les sessions et liens de connexion expirés depuis plus de 30 jours.
+
+Après la première synchronisation du Blueprint, renseigner `APP_URL` sur le service cron.
+
+## Surveillance
+
+Toute erreur serveur (page, action, route) est journalisée en JSON (Render › kolbase-web › Logs) et signalée par
+e-mail aux `PLATFORM_ADMIN_EMAILS` (`src/instrumentation.ts`), au plus une fois par erreur toutes les 30 minutes et
+dix fois par heure. `/api/health` vérifie l'application et la base (contrôle de santé Render).
+
 ## Données personnelles
 
 Depuis « Mon compte » : téléchargement des données du compte (JSON) et suppression du compte. La suppression
 anonymise le compte (connexion impossible, fiche retirée, coordonnées, publications, suivis et candidatures en
 attente effacés, inscriptions à venir annulées) ; le nom, la profession, le RPPS, la ville et la structure de
 facturation ne sont conservés que s'ils figurent sur des conventions ou des hospitalités passées ou déclarées.
+
+Chaque organisation accepte le **contrat de sous-traitance** (`/sous-traitance`, article 28 du RGPD) depuis
+« Membres et réglages › Organisation » ; la version en vigueur est `DPA_VERSION` (`src/lib/dpa.ts`) : la changer
+quand le texte change pour qu'il soit accepté à nouveau. Le registre des traitements de l'éditeur est dans
+`docs/rgpd/registre-des-traitements.md`.
 
 ## Avant l'ouverture au public
 

@@ -976,3 +976,20 @@ body:has(.sidebar) .site-footer { padding: 24px 32px; }
 .ai-review { border: 1px solid var(--line); border-radius: 12px; padding: 10px 12px; background: var(--bg-subtle); display: flex; flex-direction: column; gap: 6px; }
 .ai-review pre { margin: 0; white-space: pre-wrap; font-family: var(--font-ui); font-size: 13px; line-height: 1.55; color: var(--ink); }
 .ai-review .link { align-self: flex-start; display: inline-flex; gap: 4px; align-items: center; }
+
+/* ─── Prise en main ─────────────────────────────────────────── */
+.onboarding { display: flex; flex-direction: column; gap: 10px; }
+.onboarding-steps { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 8px 16px; }
+.onboarding-steps li { display: flex; gap: 10px; align-items: flex-start; font-size: 13.5px; }
+.onboarding-steps li > svg { flex: none; margin-top: 1px; color: var(--line-strong); }
+.onboarding-steps li.done > svg { color: var(--ok); }
+.onboarding-steps li.done strong { color: var(--ink-soft); font-weight: 500; text-decoration: line-through; text-decoration-color: var(--line-strong); }
+.onboarding-steps span { display: flex; flex-direction: column; gap: 2px; }
+.onboarding-steps small { color: var(--ink-soft); font-size: 12px; }
+
+/* Petits écrans : en-têtes de carte et grilles de statistiques sans débordement. */
+@media (max-width: 640px) {
+  .card-head { flex-wrap: wrap; }
+  .card-head > .btn { white-space: normal; text-align: center; max-width: 100%; }
+}
+.stats-grid { grid-template-columns: repeat(auto-fit, minmax(min(340px, 100%), 1fr)); }

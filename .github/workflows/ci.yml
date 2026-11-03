@@ -74,6 +74,9 @@ jobs:
       # La mise en production relance la démo sur une base déjà remplie : le chargement doit être rejouable.
       - name: Données de démo (second passage, idempotence)
         run: npm run db:seed
+      # Comme au déploiement : logos des organisations partenaires (deux passages, sans remplacement).
+      - name: Logos des partenaires
+        run: node scripts/partner-logos.mjs && node scripts/partner-logos.mjs
 
       - name: Build
         run: npm run build

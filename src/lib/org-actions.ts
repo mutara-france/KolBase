@@ -15,6 +15,7 @@ import { OrgKind, type OrgRole } from "@/generated/prisma/enums";
 import { eurToCents, MAX_NAME, str } from "@/lib/form";
 import { notifyInvitation, notifyPlatformAdmins } from "@/lib/notifications";
 import { getT } from "@/lib/i18n/server";
+import { DPA_VERSION } from "@/lib/dpa";
 
 const sha256 = (v: string) => createHash("sha256").update(v).digest("hex");
 const INVITE_DAYS = 14;
@@ -279,4 +280,15 @@ export async function setMemberRoles(_: FormState, form: FormData): Promise<Form
   revalidatePath(`/organisations/${orgId}`);
   revalidatePath(`/organisations/${orgId}/membres`);
   return { ok: wanted.length ? "Rôles enregistrés." : "Membre retiré de l'organisation." };
+}
+
+/** Contrat de sous-traitance (RGPD) accepté au nom de l'organisation, dans sa version en vigueur. */
+export async function acceptDpa(form: FormData) {
+  const orgId = str(form, "orgId");
+  const { user, isAdmin } = await requireMembership(orgId);
+  if (!isAdmin) return;
+  await db.organization.update({ where: { id: orgId }, data: { dpaVersion: DPA_VERSION, dpaAcceptedAt: new Date(), dpaAcceptedById: user.id } });
+  await audit(user.id, "org.dpa_accept", "Organization", orgId, { version: DPA_VERSION });
+  revalidatePath(`/organisations/${orgId}/membres`);
+  revalidatePath(`/organisations/${orgId}`);
 }

@@ -1071,6 +1071,9 @@ async function submitNewOrg(page, siren) {
   check("Événement : inscription réservée aux membres, création de compte proposée", (await text(anon.page)).includes("Inscription réservée aux membres KolBase") && (await anon.page.locator('a:has-text("Créer mon compte et m\'inscrire")').getAttribute("href")).startsWith("/inscription?next="));
   const pub = await anon.page.goto(`${BASE}/structures/straumann`);
   check("Partenaires : fiche publique de Straumann", pub?.status() === 200 && (await text(anon.page)).includes("Straumann Group"), String(pub?.status()));
+  const logo = await anon.page.locator('img[src^="/logos/straumann"]').first().getAttribute("src").catch(() => null);
+  const logoRes = logo ? await anon.ctx.request.get(`${BASE}${logo}`) : null;
+  check("Partenaires : logo affiché", !!logoRes?.ok() && logoRes.headers()["content-type"] === "image/png", logo ?? "aucun logo");
   const old = await anon.page.goto(`${BASE}/structures/apercu-straumann`);
   check("Partenaires : ancienne adresse d'aperçu retirée", old?.status() === 404);
   await anon.page.goto(`${BASE}/structures`);
@@ -1551,6 +1554,45 @@ async function submitNewOrg(page, siren) {
   const prompt = String(aiRequests.slice(before).at(-1)?.messages?.[0]?.content ?? "");
   check("Relecture assistée : contrôles KolBase transmis", prompt.includes("Points à vérifier") && prompt.includes("Antoine Martin") && prompt.includes("dans la fourchette") && prompt.includes("Régime calculé"));
   await comp.ctx.close();
+}
+
+// ── Prise en main, contrat de sous-traitance, purge et lancement ────────────
+{
+  const { ctx, page } = await session();
+  await login(page, "claire.morel@demo.kolbase.local");
+  await page.goto(`${BASE}/organisations/demo-org-dentalys`);
+  let t = await text(page);
+  check("Prise en main : étapes de l'administrateur", t.includes("Prise en main") && t.includes("Accepter le contrat de sous-traitance (RGPD)"));
+  await page.goto(`${BASE}/organisations/demo-org-dentalys/membres?onglet=organisation`);
+  await page.click('button:has-text("Accepter au nom de Dentalys Implants")');
+  await page.waitForTimeout(1000);
+  check("Sous-traitance : contrat accepté et tracé", (await text(page)).includes("Accepté le") && (await text(page)).includes("Claire Morel"));
+  await page.goto(`${BASE}/organisations/demo-org-dentalys`);
+  check("Prise en main : étape cochée", (await page.locator('.onboarding-steps li.done:has-text("contrat de sous-traitance")').count()) === 1 || !(await text(page)).includes("Prise en main"));
+  await ctx.close();
+  const pub = await session();
+  await pub.page.goto(`${BASE}/sous-traitance`);
+  t = await text(pub.page);
+  check("Sous-traitance : contrat public (article 28)", t.includes("Contrat de sous-traitance") && t.includes("Sous-traitants ultérieurs") && t.includes("MUTARA"));
+  await pub.ctx.close();
+  const pr = await session();
+  await login(pr.page, "julien.faure@demo.kolbase.local");
+  await pr.page.goto(`${BASE}/organisations/demo-org-dentalys`);
+  check("Prise en main : réservée aux administrateurs", !(await text(pr.page)).includes("Prise en main"));
+  await pr.ctx.close();
+  // Purge : sessions expirées depuis plus de 30 jours.
+  const pgc = new pg.Client({ connectionString: process.env.DATABASE_URL });
+  await pgc.connect();
+  await pgc.query(`insert into "Session" (id, "tokenHash", "userId", "expiresAt") values ('e2e-old-session', 'e2e-old-hash', 'demo-u-claire', now() - interval '40 days')`);
+  const r = await (await fetch(`${BASE}/api/taches`, { method: "POST", headers: { Authorization: `Bearer ${process.env.CRON_SECRET ?? "secret-des-taches-de-test"}` } })).json();
+  const left = (await pgc.query(`select count(*)::int n from "Session" where id = 'e2e-old-session'`)).rows[0].n;
+  check("Conservation : sessions expirées purgées", left === 0 && r.purged?.sessions >= 1, JSON.stringify(r));
+  await pgc.end();
+  const adm = await session();
+  await login(adm.page, "anne.chevalier@demo.kolbase.local");
+  await adm.page.goto(`${BASE}/admin?onglet=lancement`);
+  check("Lancement : tâches planifiées vérifiées", /OK\s+Tâches planifiées/.test(await text(adm.page)));
+  await adm.ctx.close();
 }
 
 // ── 4. Limitation des tentatives ───────────────────────────────────────────
