@@ -435,3 +435,27 @@ export async function sendEventFollowUps(eventId: string, now = new Date()) {
   }
   return targets.length;
 }
+
+// ─── Abonnement ──────────────────────────────────────────────────────────────
+
+/** Premier devis retenu d'un prestataire : l'abonnement (premier mois offert) est à activer pour continuer. */
+export function notifySupplierBilling(supplierId: string, client: string) {
+  later(async () => {
+    await send(await members(supplierId, ["ADMIN"]), {
+      subject: `Félicitations : ${client} a retenu votre devis`,
+      text: `Bonjour,\n\nVotre premier devis retenu via KolBase, bravo !\n\nLe référencement reste gratuit ; pour continuer à répondre à de nouvelles demandes, activez votre abonnement prestataire (249 € HT par mois, premier mois offert, sans engagement). La prestation retenue et vos échanges en cours ne sont pas concernés.`,
+      cta: { label: "Activer mon abonnement", href: `/organisations/${supplierId}/abonnement` },
+    });
+  });
+}
+
+/** Échec de paiement signalé par Stripe : les administrateurs mettent à jour leur moyen de paiement. */
+export function notifyPaymentFailed(orgId: string) {
+  later(async () => {
+    await send(await members(orgId, ["ADMIN"]), {
+      subject: "KolBase : le paiement de votre abonnement a échoué",
+      text: "Bonjour,\n\nLe dernier prélèvement de votre abonnement KolBase n'a pas abouti. Stripe va réessayer ; pour éviter toute interruption, vérifiez votre moyen de paiement.",
+      cta: { label: "Gérer mon abonnement", href: `/organisations/${orgId}/abonnement` },
+    });
+  });
+}

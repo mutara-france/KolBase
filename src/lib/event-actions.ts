@@ -9,6 +9,7 @@ import { BENEFIT_CATALOG, COMPLIANCE_ROLES, EVENT_MANAGER_ROLES, EVENT_ORGANIZER
 import { EventFormat } from "@/generated/prisma/enums";
 import { eurToCents, intOrNull, str } from "@/lib/form";
 import { getT } from "@/lib/i18n/server";
+import { engagementAllowed, gateMessage } from "@/lib/billing";
 import { notifyEventConfided } from "@/lib/notifications";
 
 export type ActionState = { error?: string; ok?: string } | undefined;
@@ -43,6 +44,7 @@ export async function createEvent(_: ActionState, form: FormData): Promise<Actio
   const internal = form.get("internal") === "1";
   const publish = !internal && form.get("publish") === "1";
   if (publish && !isVerifiedOrg(org)) return { error: `Publication impossible pour l'instant : ${ORG_NOT_VERIFIED} Enregistrez l'événement en brouillon.` };
+  if (publish && !(await engagementAllowed(orgId))) return { error: `${gateMessage("evenement")} Vous pouvez l'enregistrer en brouillon.` };
   const event = await db.event.create({
     data: {
       organizationId: orgId,
@@ -74,6 +76,7 @@ export async function setEventFlag(form: FormData) {
   const { user, roles, org } = await requireMembership(orgId, EVENT_MANAGER_ROLES);
   const flag = str(form, "flag");
   if (flag === "publish" && !isVerifiedOrg(org)) return;
+  if (flag === "publish" && !(await engagementAllowed(orgId))) redirect(`/organisations/${orgId}/abonnement?motif=evenement`);
   // Passer en réunion interne (ou l'ouvrir au public) relève de l'équipe organisatrice, pas d'une agence.
   if ((flag === "internal" || flag === "public") && !roles.some((r) => EVENT_ORGANIZER_ROLES.includes(r))) return;
   const data =

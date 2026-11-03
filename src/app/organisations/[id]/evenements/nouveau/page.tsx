@@ -3,6 +3,7 @@ import { SiteHeader } from "@/components/SiteHeader";
 import { NewEventForm } from "@/components/EventForms";
 import { requireMembership } from "@/lib/orgs";
 import { db } from "@/lib/db";
+import { BillingNotice } from "@/components/BillingNotice";
 import { BENEFIT_CATALOG, EVENT_ORGANIZER_ROLES, EVENT_TYPES, FORMAT_LABEL } from "@/lib/events";
 
 export const metadata = { title: "Nouvel événement — KolBase" };
@@ -16,6 +17,7 @@ export default async function Page({ params, searchParams }: { params: Promise<{
     <>
       <SiteHeader />
       <main className="narrow stack">
+        <BillingNotice orgId={id} motive="evenement" />
         <p className="muted"><Link href={`/organisations/${id}`}>{org.name}</Link> / <Link href={`/organisations/${id}/evenements`}>Événements</Link></p>
         <NewEventForm
           orgId={id}

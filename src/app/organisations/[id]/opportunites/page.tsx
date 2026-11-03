@@ -7,6 +7,7 @@ import { NewCallForm } from "@/components/OpportunityForms";
 import { db } from "@/lib/db";
 import { requireMembership } from "@/lib/orgs";
 import { formatDate } from "@/lib/events";
+import { BillingNotice } from "@/components/BillingNotice";
 import { COLLAB_TYPES, collabType, SOURCING_ROLES } from "@/lib/projects";
 
 export const metadata = { title: "Appels à candidatures — KolBase" };
@@ -32,6 +33,7 @@ export default async function Page({ params, searchParams }: { params: Promise<{
     <>
       <SiteHeader />
       <main className="stack">
+        <BillingNotice orgId={id} motive="appel" />
         <SectionNav tabs={sectionTabs} active="appels" label="Rubrique Praticiens" />
         <div className="actions spread">
           <h1>Appels à candidatures</h1>

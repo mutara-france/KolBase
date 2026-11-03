@@ -14,6 +14,7 @@ import { complianceSettings, projectRegime } from "@/lib/compliance";
 import { missingSignedConventions } from "@/lib/project-documents";
 import { eurToCents, str, unitsOrNull, UNITS_INVALID } from "@/lib/form";
 import { notifyCompliance, notifyExpertAnswer, notifyMessage, notifySolicitations } from "@/lib/notifications";
+import { engagementAllowed, gateMessage } from "@/lib/billing";
 import { getT } from "@/lib/i18n/server";
 
 export type ActionState = { error?: string; ok?: string } | undefined;
@@ -22,6 +23,7 @@ export async function createProject(_: ActionState, form: FormData): Promise<Act
   const orgId = str(form, "orgId");
   const { user, org } = await requireMembership(orgId, SOURCING_ROLES);
   if (!isVerifiedOrg(org)) return { error: ORG_NOT_VERIFIED };
+  if (!(await engagementAllowed(orgId))) return { error: gateMessage("sollicitation") };
   const title = str(form, "title");
   const typeId = str(form, "typeId");
   if (!title) return { error: "Le titre est obligatoire." };

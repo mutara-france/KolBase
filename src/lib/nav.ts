@@ -69,6 +69,7 @@ export function orgMenuLinks(orgId: string, roles: OrgRole[], kind: string): She
   const isSupplier = kind === "PRESTATAIRE";
   if (isSupplier ? roles.includes("ADMIN") : !roles.every((r) => r === "PRESTATAIRE"))
     links.push({ href: `${base}/membres`, label: "Membres et réglages", icon: "Users" });
+  if (roles.includes("ADMIN")) links.push({ href: `${base}/abonnement`, label: "Abonnement", icon: "Wallet" });
   if (!isSupplier && has(roles, ["ADMIN", "PROJETS", "CONFORMITE"])) links.push({ href: `${base}/integrations`, label: "Intégrations", icon: "Plug" });
   if (!isSupplier) links.push({ href: `/structures/${orgId}`, label: "Voir notre page publique", icon: "ExternalLink" });
   return links;

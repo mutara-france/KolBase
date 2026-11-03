@@ -10,7 +10,8 @@ import { SUPPLIER_CATEGORIES } from "@/lib/suppliers";
 import { eurToCents, intOrNull, str } from "@/lib/form";
 import { isVatBp, linesTotal, MAX_LINES, withVat, type QuoteLine } from "@/lib/quotes";
 import { MAX_UPLOAD_BYTES, putObject, safeFileName, storageEnabled } from "@/lib/storage";
-import { notifyAward, notifyQuote, notifyRfqCancelled, notifyRfqMessage, notifyRfqSent } from "@/lib/notifications";
+import { engagementAllowed, gateMessage, markSupplierTriggered, stripeEnabled, supplierCanQuote } from "@/lib/billing";
+import { notifyAward, notifyQuote, notifyRfqCancelled, notifyRfqMessage, notifyRfqSent, notifySupplierBilling } from "@/lib/notifications";
 
 export type ActionState = { error?: string; ok?: string } | undefined;
 
@@ -44,6 +45,7 @@ export async function createRfq(_: ActionState, form: FormData): Promise<ActionS
   const headcount = intOrNull(str(form, "headcount")) || event?.capacity || null;
   const send = str(form, "intent") === "send";
   if (send && !isVerifiedOrg(org)) return { error: `Envoi impossible pour l'instant : ${ORG_NOT_VERIFIED} Enregistrez la demande en brouillon.` };
+  if (send && !(await engagementAllowed(orgId))) return { error: `${gateMessage("devis")} Vous pouvez l'enregistrer en brouillon.` };
 
   const rfq = await db.rfq.create({
     data: {
@@ -61,6 +63,7 @@ export async function sendRfq(form: FormData) {
   const orgId = str(form, "orgId");
   const { user, roles, org } = await requireMembership(orgId, EVENT_MANAGER_ROLES);
   if (!isVerifiedOrg(org)) return;
+  if (!(await engagementAllowed(orgId))) redirect(`/organisations/${orgId}/abonnement?motif=devis`);
   const rfqId = str(form, "rfqId");
   const { count } = await db.rfq.updateMany({ where: { id: rfqId, organizationId: orgId, ...rfqScope(user, roles), status: "draft" }, data: { status: "sent", sentAt: new Date() } });
   if (!count) return;
@@ -101,6 +104,11 @@ export async function awardQuote(form: FormData) {
   if (!awarded) return;
   await audit(user.id, "rfq.award", "Rfq", quote.rfqId, { quoteId: quote.id, supplierId: quote.supplierId, amountCents: quote.amountCents });
   notifyAward(quote.rfqId);
+  // Premier devis retenu : l'abonnement prestataire devient à activer (le référencement reste gratuit).
+  if (stripeEnabled() && (await db.quote.count({ where: { supplierId: quote.supplierId, status: "retained" } })) === 1) {
+    const client = (await db.organization.findUnique({ where: { id: orgId }, select: { name: true } }))?.name ?? "Une organisation";
+    if (await markSupplierTriggered(quote.supplierId, `Premier devis retenu par ${client}`)) notifySupplierBilling(quote.supplierId, client);
+  }
   revalidatePath(`/organisations/${orgId}/prestataires`);
 }
 
@@ -163,6 +171,8 @@ export async function submitQuote(_: ActionState, form: FormData): Promise<Actio
   const rfqId = str(form, "rfqId");
   const invite = await db.rfqSupplier.findUnique({ where: { rfqId_supplierId: { rfqId, supplierId: orgId } }, include: { rfq: true } });
   if (!invite || invite.rfq.status !== "sent") return { error: "Cette demande n'accepte plus de devis." };
+  // Après un premier devis retenu, répondre à une nouvelle demande suppose l'abonnement (les révisions restent libres).
+  if (!(await db.quote.findFirst({ where: { rfqId, supplierId: orgId }, select: { id: true } })) && !(await supplierCanQuote(orgId))) return { error: gateMessage("reponse") };
 
   // Devis détaillé (lignes) ou montant global.
   const labels = form.getAll("line_label").map((v) => String(v).trim().slice(0, 200));

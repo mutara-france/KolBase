@@ -5,7 +5,7 @@ import { chromium } from "playwright";
 import pg from "pg";
 import { createHmac } from "node:crypto";
 import { PDFDocument } from "pdf-lib";
-import { aiRequests, mails, signatureRequests, startFakes } from "./faux-services.mjs";
+import { aiRequests, mails, signatureRequests, startFakes, stripeState, stripeWebhook } from "./faux-services.mjs";
 
 const BASE = process.env.BASE ?? "http://localhost:3000";
 const PW = process.env.DEMO_PASSWORD;
@@ -1633,6 +1633,91 @@ async function submitNewOrg(page, siren) {
   check("Actualités : rédaction réservée à l'équipe KolBase", r?.status() === 404);
   await other.ctx.close();
   await anon.ctx.close();
+}
+
+// ── Facturation : abonnement organisation (première action engageante) et prestataire ──
+{
+  const pgc = new pg.Client({ connectionString: process.env.DATABASE_URL });
+  await pgc.connect();
+  await pgc.query(`delete from "Subscription" where "organizationId" in ('demo-org-cdra', 'demo-sup-belleville')`);
+  const { ctx, page } = await session();
+  await login(page, "pierre.vidal@demo.kolbase.local");
+  const fillDossier = async (title) => {
+    await page.goto(`${BASE}/organisations/demo-org-cdra/dossiers/nouveau`);
+    await page.fill('input[name="title"]', title);
+    await page.locator(".expert-pick label.check input").first().check();
+    const fee = page.locator('input[name^="fee_"]').first();
+    if (!(await fee.inputValue())) await fee.fill("1500");
+    await page.click('button:has-text("Envoyer les sollicitations")');
+    await page.waitForTimeout(1500);
+  };
+  await page.goto(`${BASE}/organisations/demo-org-cdra/dossiers/nouveau`);
+  check("Abonnement : bandeau avant la première action engageante", (await text(page)).includes("l'abonnement de l'organisation doit être activé"));
+  await fillDossier("Conférence implantologie — facturation");
+  check("Abonnement : sollicitation refusée tant qu'il n'est pas activé", (await text(page)).includes("Membres et réglages › Abonnement") && page.url().endsWith("/dossiers/nouveau"));
+  await page.goto(`${BASE}/organisations/demo-org-cdra/abonnement`);
+  let t = await text(page);
+  check("Abonnement : page de l'organisation (tarif, déclencheur)", t.includes("599 € HT par mois") && t.includes("première action qui engage un tiers"));
+  await page.click('button:has-text("Activer l\'abonnement")');
+  await page.waitForURL(/\/abonnement\?session=cs_/, { timeout: 15000 });
+  t = await text(page);
+  const session1 = [...stripeState.sessions.values()].at(-1);
+  check("Stripe : paiement mensuel 599 € HT, 30 jours offerts, carte et SEPA", session1?.amount === 59900 && session1?.trialDays === "30" && session1?.methods.includes("sepa_debit") && session1?.mode === "subscription", JSON.stringify(session1));
+  check("Abonnement : mois offert en cours", t.includes("Premier mois offert") && /mois offert jusqu/i.test(t));
+  check("Stripe : notification signée acceptée", stripeState.webhooks.at(-1)?.status === 200);
+  await fillDossier("Conférence implantologie — abonnement actif");
+  check("Abonnement actif : sollicitation envoyée", /\/dossiers\/[^/]+$/.test(page.url()) && !page.url().endsWith("/nouveau"), page.url());
+  const sub = [...stripeState.subscriptions.values()].at(-1);
+  await stripeWebhook("customer.subscription.updated", { ...sub, status: "past_due" });
+  await page.goto(`${BASE}/organisations/demo-org-cdra/abonnement`);
+  check("Paiement en échec : signalé, sans blocage", (await text(page)).includes("Paiement en attente"));
+  await stripeWebhook("customer.subscription.deleted", { ...sub, status: "canceled" });
+  await page.goto(`${BASE}/organisations/demo-org-cdra/abonnement`);
+  check("Résiliation : réactivation proposée sans nouveau mois offert", (await text(page)).includes("Résilié") && (await page.locator('button:has-text("Réactiver l\'abonnement")').count()) === 1);
+  await page.goto(`${BASE}/organisations/demo-org-cdra/dossiers`);
+  check("Résiliation : dossiers toujours accessibles", (await text(page)).includes("abonnement actif"));
+  const forged = await fetch(`${BASE}/api/stripe/webhook`, { method: "POST", headers: { "Stripe-Signature": "t=1,v1=00" }, body: JSON.stringify({ type: "customer.subscription.updated", data: { object: { ...sub, status: "active" } } }) });
+  check("Stripe : notification non signée refusée", forged.status === 400);
+  await ctx.close();
+  // Prestataire : gratuit jusqu'au premier devis retenu, puis abonnement pour répondre à de nouvelles demandes.
+  await pgc.query(`insert into "Rfq" (id, "organizationId", category, needs, status, "sentAt", headcount, city) values ('e2e-rfq-billing', 'demo-org-dentalys', 'restauration', 'Plateau-repas pour 12 personnes, réunion de travail.', 'sent', now(), 12, 'Lyon')`);
+  await pgc.query(`insert into "RfqSupplier" ("rfqId", "supplierId") values ('e2e-rfq-billing', 'demo-sup-belleville')`);
+  const sup = await session();
+  await login(sup.page, "ludovic.perrin@demo.kolbase.local");
+  await sup.page.goto(`${BASE}/organisations/demo-sup-belleville/devis`);
+  const qf = sup.page.locator('section:has-text("Plateau-repas pour 12 personnes") form.quote-form');
+  await qf.locator('input[name="line_label"]').first().fill("Plateau-repas");
+  await qf.locator('input[name="line_qty"]').first().fill("12");
+  await qf.locator('input[name="line_unit"]').first().fill("24");
+  await qf.locator('button:has-text("Envoyer le devis")').click();
+  await sup.page.waitForTimeout(1200);
+  check("Prestataire : après un devis retenu, l'abonnement est demandé", (await qf.innerText().catch(() => "")).includes("répondre à de nouvelles demandes de devis") || (await text(sup.page)).includes("répondre à de nouvelles demandes de devis"));
+  await sup.page.goto(`${BASE}/organisations/demo-sup-belleville/abonnement`);
+  check("Prestataire : abonnement 249 € HT, référencement gratuit", (await text(sup.page)).includes("249 € HT par mois") && (await text(sup.page)).includes("référencement dans l'annuaire"));
+  await sup.ctx.close();
+  await pgc.query(`insert into "Rfq" (id, "organizationId", category, needs, status, "sentAt", headcount, city) values ('e2e-rfq-trigger', 'demo-org-dentalys', 'restauration', 'Pause café pour 20 personnes.', 'sent', now(), 20, 'Lyon')`);
+  await pgc.query(`insert into "RfqSupplier" ("rfqId", "supplierId") values ('e2e-rfq-trigger', 'demo-sup-tablesdusud')`);
+  await pgc.query(`insert into "Quote" (id, "rfqId", "supplierId", "amountCents", status, "updatedAt") values ('e2e-quote-trigger', 'e2e-rfq-trigger', 'demo-sup-tablesdusud', 24000, 'submitted', now())`);
+  const org = await session();
+  await login(org.page, "julien.faure@demo.kolbase.local");
+  await org.page.goto(`${BASE}/organisations/demo-org-dentalys/prestataires`);
+  await org.page.locator('section#rfq-e2e-rfq-trigger .quote:has-text("Les Tables du Sud") button:has-text("Retenir")').click();
+  await org.page.waitForTimeout(1200);
+  const trig = (await pgc.query(`select "triggeredBy" from "Subscription" where "organizationId" = 'demo-sup-tablesdusud'`)).rows[0]?.triggeredBy ?? "";
+  check("Prestataire : premier devis retenu, abonnement déclenché", trig.includes("Premier devis retenu par Dentalys"), trig);
+  await org.ctx.close();
+  // L'équipe KolBase offre l'abonnement (pilote, partenaire).
+  const adm = await session();
+  await login(adm.page, "anne.chevalier@demo.kolbase.local");
+  await adm.page.goto(`${BASE}/admin?onglet=abonnements`);
+  const row = adm.page.locator('tr:has-text("Collège Dentaire Rhône-Alpes")');
+  await row.locator('input[name="until"]').fill(`${new Date().getFullYear() + 1}-06-30`);
+  await row.locator('input[name="note"]').fill("Pilote");
+  await row.locator('button:has-text("offrir")').click();
+  await adm.page.waitForTimeout(1000);
+  check("Admin : gratuité accordée", (await adm.page.locator('tr:has-text("Collège Dentaire Rhône-Alpes")').innerText()).includes("Offert par KolBase"));
+  await adm.ctx.close();
+  await pgc.end();
 }
 
 // ── 4. Limitation des tentatives ───────────────────────────────────────────

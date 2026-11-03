@@ -694,6 +694,14 @@ async function main() {
       });
   }
 
+  // ─── Abonnements : les organisations de démonstration sont offertes (aucune facturation) ───
+  for (const o of ORGS)
+    await db.subscription.upsert({
+      where: { organizationId: o.id },
+      update: {},
+      create: { organizationId: o.id, plan: o.kind === "PRESTATAIRE" ? "prestataire" : "organisation", status: "a_activer", exemptUntil: new Date("2099-12-31T23:59:59Z"), exemptNote: "Démonstration" },
+    });
+
   // ─── Actualités : deux articles de présentation (modifiables ou supprimables dans /admin) ───
   const ARTICLES = [
     { slug: "attestations-de-presence-et-questionnaire", category: "Plateforme", days: 2,
