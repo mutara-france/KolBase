@@ -19,7 +19,8 @@ import { displayStatus, exempt, PLANS, planFor, STATUS_LABEL } from "@/lib/billi
 import { stripeEnabled } from "@/lib/billing";
 import { setExemption } from "@/lib/billing-actions";
 import { saveServiceOffer, updateServiceOrder } from "@/lib/service-actions";
-import { ORDER_STATUS } from "@/lib/services";
+import { ORDER_STATUS, orderStats, trackedPath } from "@/lib/services";
+import { reportLine } from "@/lib/service-report";
 import { country, licenseRule, practicesInFrance, registryLink } from "@/lib/countries";
 
 export const metadata = { title: "Administration — KolBase" };
@@ -232,6 +233,9 @@ async function ServicesAdmin() {
   const open = orders.filter((o) => ["demandee", "planifiee"].includes(o.status));
   const done = orders.filter((o) => !["demandee", "planifiee"].includes(o.status));
   const toInvoice = done.filter((o) => o.status === "realisee" && !o.invoicedAt && o.priceCents > 0);
+  const realized = orders.filter((o) => o.status === "realisee");
+  const stats = await orderStats(orders.filter((o) => o.status !== "refusee" && o.status !== "annulee"));
+  const app = process.env.APP_URL ?? "http://localhost:3000";
   const Row = ({ o }: { o: (typeof orders)[number] }) => (
     <li className="card stack-sm">
       <div className="actions spread">
@@ -241,6 +245,10 @@ async function ServicesAdmin() {
           {o.brief && <p className="text-sm">« {o.brief} »</p>}
           {o.adminNote && <p className="text-xs muted">{o.adminNote}</p>}
           {o.status === "realisee" && <p className="text-xs muted">{o.invoicedAt ? `Facturé (${o.invoiceRef})` : o.invoiceRef ?? "À facturer"}</p>}
+          {o.trackCode && o.offer.kind !== "newsletter" && ["demandee", "planifiee"].includes(o.status) && <p className="text-xs">Lien suivi à utiliser : <code>{app}{trackedPath(o.trackCode)}</code></p>}
+          {stats.get(o.id) && (o.status === "realisee" || stats.get(o.id)!.clicks > 0) && (
+            <p className="text-xs service-stats">Bilan : {reportLine(stats.get(o.id)!, o.offer.kind)}{o.reportSentAt ? ` · bilan envoyé le ${formatDate(o.reportSentAt)}` : ""}</p>
+          )}
         </div>
         {["newsletter", "social"].includes(o.offer.kind) && ["demandee", "planifiee"].includes(o.status) && <Link className="btn small" href={`/admin/services/${o.id}`}>{o.offer.kind === "newsletter" ? "Préparer l'e-mailing" : "Préparer le post"}</Link>}
       </div>
@@ -260,7 +268,10 @@ async function ServicesAdmin() {
     <>
       <section className="stack-sm">
         <div className="actions spread">
-          <h2>Commandes à traiter ({open.length})</h2>
+          <div>
+            <h2>Commandes à traiter ({open.length})</h2>
+            <p className="text-sm muted">{realized.length} service{realized.length > 1 ? "s" : ""} réalisé{realized.length > 1 ? "s" : ""} pour {formatEUR(realized.reduce((n, o) => n + o.priceCents, 0))} HT.</p>
+          </div>
           <Link className="btn ghost small" href="/admin/services/lettre">Lettre d&apos;information libre ({audience} abonné{audience > 1 ? "s" : ""})</Link>
         </div>
         {open.length === 0 ? <p className="muted">Aucune commande en attente.</p> : <ul className="plain stack-sm">{open.map((o) => <Row key={o.id} o={o} />)}</ul>}

@@ -7,6 +7,8 @@ import { drPrefix } from "@/lib/professions";
 import { COMPLIANCE_ROLES, EVENT_ORGANIZER_ROLES } from "@/lib/events";
 import { fmtEur, isLocale, makeT, type Locale, type T } from "@/lib/i18n";
 import { PROJECT_ROLES, SOURCING_ROLES, STATUS_LABEL } from "@/lib/projects";
+import { orderStats } from "@/lib/services";
+import { conversion, reportParts } from "@/lib/service-report";
 import type { OrgRole } from "@/generated/prisma/client";
 
 /**
@@ -478,4 +480,28 @@ export function notifyServiceOrder(orderId: string) {
     if (!text) return;
     await send([user], { subject: `Service KolBase : ${o.label}`, text: `Bonjour,\n\n${text}`, cta: { label: "Voir l'événement", href: `/organisations/${o.event.organizationId}/evenements/${o.event.id}` } });
   });
+}
+
+/** Bilan d'un service réalisé, envoyé à la personne qui l'a commandé (et aux organisateurs si elle n'est plus membre). */
+export async function sendServiceReport(orderId: string, now = new Date()) {
+  const o = await db.serviceOrder.findUnique({ where: { id: orderId }, include: { offer: { select: { kind: true } }, event: { select: { id: true, title: true, startsAt: true, organizationId: true } } } });
+  if (!o || o.status !== "realisee" || o.reportSentAt || !o.doneAt) return false;
+  const s = (await orderStats([o])).get(o.id)!;
+  const done = o.doneAt.toLocaleDateString("fr-FR", { timeZone: "Europe/Paris", day: "numeric", month: "long" });
+  const rate = conversion(s);
+  const lines = [
+    `Voici le bilan de « ${o.label} » pour « ${o.event.title} », réalisé le ${done}.`,
+    "",
+    ...reportParts(s, o.offer.kind).map((p) => `- ${p.key.replace("{n}", p.n.toLocaleString("fr-FR"))}`),
+    ...(rate != null ? [`- ${rate} % des visiteurs se sont inscrits`] : []),
+    ...(s.since != null ? [`- ${s.since} inscription${s.since > 1 ? "s" : ""} à l'événement au total depuis le ${done}`] : []),
+    "",
+    "Les visiteurs sont comptés une fois (robots et aperçus de liens exclus) ; une inscription est attribuée au service quand elle suit un clic sur son lien dans les 30 jours.",
+    ...(o.event.startsAt > now ? ["", "Pour relancer avant l'événement, vous pouvez commander un nouveau service depuis la fiche de l'événement."] : []),
+  ];
+  const orderer = await db.user.findUnique({ where: { id: o.orderedById }, select: { ...userSelect, memberships: { where: { organizationId: o.organizationId }, select: { id: true } } } });
+  const to = orderer && orderer.memberships.length > 0 ? [orderer] : await members(o.organizationId, EVENT_ORGANIZER_ROLES);
+  await send(to, { subject: `Bilan : ${o.label} — ${o.event.title}`, text: `Bonjour,\n\n${lines.join("\n")}`, cta: { label: "Voir l'événement", href: `/organisations/${o.event.organizationId}/evenements/${o.event.id}#services` } });
+  await db.serviceOrder.update({ where: { id: o.id }, data: { reportSentAt: now } });
+  return true;
 }

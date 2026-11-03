@@ -6,18 +6,20 @@ import { supplierCategoryLabel } from "@/lib/suppliers";
 import { canSee, companyVisibility, kolVisibility } from "@/lib/visibility";
 import { logoSrc } from "@/lib/logos";
 import { country } from "@/lib/countries";
-import { featuredEventIds } from "@/lib/services";
+import { featuredEvents, trackedPath } from "@/lib/services";
 import type { CallCardData, EventCardData, KolCardData, OrgCardData } from "@/components/PublicCards";
 
 export async function publicEvents(take?: number): Promise<EventCardData[]> {
   // Événements « à la une » (service KolBase) d'abord, puis les prochains par date.
-  const featured = await featuredEventIds();
+  const codes = await featuredEvents();
+  const featured = [...codes.keys()];
   const where = { publishedAt: { not: null }, startsAt: { gte: new Date() }, organization: { verification: "VERIFIED" as const } };
   const include = { organization: { select: { name: true } }, _count: { select: { registrations: true } } } as const;
   const top = featured.length ? await db.event.findMany({ where: { ...where, id: { in: featured } }, include, take }) : [];
   const rest = await db.event.findMany({ where: { ...where, id: { notIn: top.map((e) => e.id) } }, include, orderBy: { startsAt: "asc" }, take: take != null ? Math.max(take - top.length, 0) : undefined });
   const sorted = top.sort((a, b) => featured.indexOf(a.id) - featured.indexOf(b.id));
-  return [...sorted.map((e) => ({ ...e, featured: true })), ...rest].map((e) => ({ ...e, registrations: e._count.registrations }));
+  // Lien suivi de la mise à la une : visites et inscriptions comptées dans le bilan de l'organisateur.
+  return [...sorted.map((e) => ({ ...e, featured: true, trackedHref: codes.get(e.id) ? trackedPath(codes.get(e.id)!) : undefined })), ...rest].map((e) => ({ ...e, registrations: e._count.registrations }));
 }
 
 /** Experts référencés tels qu'un visiteur non connecté peut les voir (réglages de visibilité appliqués). */

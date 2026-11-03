@@ -1,5 +1,6 @@
 "use server";
 
+import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import { db } from "@/lib/db";
@@ -11,6 +12,7 @@ import { eurToCents, intOrNull, str } from "@/lib/form";
 import { getT } from "@/lib/i18n/server";
 import { engagementAllowed, gateMessage } from "@/lib/billing";
 import { notifyEventConfided } from "@/lib/notifications";
+import { SOURCE_COOKIE } from "@/lib/services";
 
 export type ActionState = { error?: string; ok?: string } | undefined;
 
@@ -142,6 +144,10 @@ export async function registerToEvent(_: ActionState, form: FormData): Promise<A
   if (await db.registration.findUnique({ where: { eventId_userId: { eventId, userId: user.id } } }))
     return { error: t("Vous êtes déjà inscrit.") };
 
+  // Arrivé par le lien suivi d'un service KolBase pour cet événement : inscription attribuée (bilan de l'organisateur).
+  const sourceId = (await cookies()).get(SOURCE_COOKIE)?.value;
+  const source = sourceId ? await db.serviceOrder.findFirst({ where: { id: sourceId, eventId, status: { in: ["planifiee", "realisee"] } }, select: { id: true } }) : null;
+
   const accepted = event.benefits.filter((b) => form.get(`accept_${b.id}`));
   if (accepted.length > 0 && user.practitioner && !form.get("ackHcp"))
     return { error: t("Merci de confirmer avoir pris connaissance de l'information sur les avantages.") };
@@ -157,6 +163,7 @@ export async function registerToEvent(_: ActionState, form: FormData): Promise<A
         userId: user.id,
         profession: user.practitioner?.profession ?? null,
         structure: str(form, "structure") || user.practitioner?.hospital || null,
+        sourceOrderId: source?.id ?? null,
         benefits: { create: accepted.map((b) => ({ benefitId: b.id, valueCents: b.valueCents })) },
       },
     });
@@ -166,6 +173,7 @@ export async function registerToEvent(_: ActionState, form: FormData): Promise<A
     eventId,
     benefits: accepted.map((b) => b.catalogId),
     totalCents: accepted.reduce((s, b) => s + b.valueCents, 0),
+    sourceOrderId: source?.id,
   });
   revalidatePath(`/evenements/${eventId}`);
   return { ok: t("Inscription confirmée.") };

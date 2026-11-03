@@ -8,7 +8,7 @@ import { requirePlatformAdmin } from "@/lib/platform";
 import { EVENT_ORGANIZER_ROLES, formatDate, formatTime } from "@/lib/events";
 import { eurToCents, str } from "@/lib/form";
 import { sendMail } from "@/lib/mail";
-import { invoiceOrder, newsletterAudience, OPEN_ORDER, unsubscribeToken } from "@/lib/services";
+import { invoiceOrder, newsletterAudience, newTrackCode, OPEN_ORDER, trackedPath, unsubscribeToken } from "@/lib/services";
 import { notifyPlatformAdmins, notifyServiceOrder } from "@/lib/notifications";
 import { aiComplete, aiEnabled } from "@/lib/ai";
 import { blockedFor, hit } from "@/lib/rate-limit";
@@ -38,7 +38,7 @@ export async function orderService(_: FormState, form: FormData): Promise<FormSt
   const wishedAt = /^\d{4}-\d{2}-\d{2}$/.test(wishedRaw) ? new Date(`${wishedRaw}T09:00:00Z`) : null;
   if (wishedAt && (wishedAt < new Date(Date.now() - 86400e3) || wishedAt > event.startsAt)) return { error: "Date souhaitée : entre aujourd'hui et l'événement." };
   const order = await db.serviceOrder.create({
-    data: { organizationId: orgId, eventId: event.id, offerId: offer.id, label: offer.label, priceCents: offer.priceCents, brief: str(form, "brief").slice(0, 2000) || null, wishedAt, orderedById: user.id },
+    data: { organizationId: orgId, eventId: event.id, offerId: offer.id, label: offer.label, priceCents: offer.priceCents, brief: str(form, "brief").slice(0, 2000) || null, wishedAt, orderedById: user.id, trackCode: newTrackCode() },
   });
   await audit(user.id, "service.order", "ServiceOrder", order.id, { offer: offer.code, priceCents: offer.priceCents });
   notifyPlatformAdmins(`Service commandé : ${offer.label}`, `${user.firstName} ${user.lastName} commande « ${offer.label} » (${(offer.priceCents / 100).toLocaleString("fr-FR")} € HT) pour l'événement « ${event.title} » du ${formatDate(event.startsAt)}.`, "/admin?onglet=services");
@@ -121,7 +121,8 @@ export async function sendNewsletter(_: FormState, form: FormData): Promise<Form
     const token = await unsubscribeToken(u.id, u.unsubscribeToken);
     const ok = await sendMail({
       to: u.email, subject, text, locale: u.locale === "en" ? "en" : "fr",
-      cta: order ? { label: "Voir l'événement et s'inscrire", href: `/evenements/${order.eventId}` } : { label: "Ouvrir KolBase", href: "/" },
+      // Lien suivi : visites et inscriptions comptées dans le bilan envoyé à l'organisateur.
+      cta: order ? { label: "Voir l'événement et s'inscrire", href: order.trackCode ? trackedPath(order.trackCode) : `/evenements/${order.eventId}` } : { label: "Ouvrir KolBase", href: "/" },
       unsubscribe: { page: `${app()}/desinscription/${token}`, oneClick: `${app()}/api/desinscription/${token}` },
     }).catch((e) => { console.error("[lettre d'information]", u.email, e); return false; });
     if (ok) sent++;
@@ -150,7 +151,8 @@ export async function draftServiceText(form: FormData): Promise<{ text?: string;
   const o = await db.serviceOrder.findUnique({ where: { id: str(form, "orderId") }, include: { offer: true, organization: { select: { name: true } }, event: true } });
   if (!o) return { error: "Commande introuvable." };
   const e = o.event;
-  const kind = o.offer.kind === "social" ? "un post LinkedIn (6 à 8 lignes, 3 hashtags sobres en fin de texte)" : "le texte d'un e-mail (8 à 12 lignes) adressé à des chirurgiens-dentistes";
+  const link = `${app()}${o.trackCode ? trackedPath(o.trackCode) : `/evenements/${o.eventId}`}`;
+  const kind = o.offer.kind === "social" ? `un post LinkedIn (6 à 8 lignes, 3 hashtags sobres en fin de texte) contenant le lien d'inscription ${link}` : "le texte d'un e-mail (8 à 12 lignes) adressé à des chirurgiens-dentistes";
   const prompt = `Événement scientifique organisé par ${o.organization.name} : « ${e.title} », le ${formatDate(e.startsAt)} à ${formatTime(e.startsAt)}${e.format === "DISTANCIEL" ? ", en ligne" : e.city ? `, à ${e.city}${e.venue ? ` (${e.venue})` : ""}` : ""}.${e.therapeuticArea ? ` Domaine : ${e.therapeuticArea}.` : ""}\n${e.description ? `Présentation : ${e.description.slice(0, 1200)}\n` : ""}${e.program ? `Programme : ${e.program.slice(0, 1200)}\n` : ""}${o.brief ? `Consignes de l'organisateur : ${o.brief.slice(0, 800)}\n` : ""}\nRédige ${kind} pour faire connaître cet événement et inviter à s'inscrire sur KolBase. Ton professionnel et sobre, aucune allégation sur des produits ; termine par l'invitation à s'inscrire.`;
   hit(key);
   try {

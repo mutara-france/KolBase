@@ -1852,6 +1852,60 @@ async function submitNewOrg(page, siren) {
   await pgc.end();
 }
 
+// ── Bilan des services : lien suivi, inscriptions attribuées, bilan envoyé ──
+{
+  const pgc = new pg.Client({ connectionString: process.env.DATABASE_URL });
+  await pgc.connect();
+  const ord = (await pgc.query(`select o.id, o."trackCode" from "ServiceOrder" o join "ServiceOffer" f on f.id = o."offerId" where o."eventId" = 'demo-ev-soiree-implanto' and f.kind = 'newsletter' and o.status = 'realisee'`)).rows[0];
+  check("E-mailing : lien d'inscription suivi", !!ord?.trackCode && mails.some((m) => m.to === "ines.lambert@demo.kolbase.local" && m.text.includes(`/r/${ord.trackCode}`)));
+  const bot = await fetch(`${BASE}/r/${ord.trackCode}`, { redirect: "manual", headers: { "user-agent": "LinkedInBot/1.0 (compatible; Mozilla/5.0)" } });
+  const UA = "Mozilla/5.0 (Macintosh; Intel Mac OS X 14_0) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36";
+  const ctx = await browser.newContext({ locale: "fr-FR", userAgent: UA });
+  const page = await ctx.newPage();
+  await page.goto(`${BASE}/r/${ord.trackCode}`);
+  check("Lien suivi : redirection vers la page de l'événement", page.url().endsWith("/evenements/demo-ev-soiree-implanto"), page.url());
+  await page.goto(`${BASE}/r/${ord.trackCode}`);
+  const c = (await pgc.query(`select count(*)::int n, count(distinct visitor)::int v from "ServiceClick" where "orderId" = $1`, [ord.id])).rows[0];
+  check("Lien suivi : robots exclus, visiteur compté une fois", bot.status === 302 && c.n === 2 && c.v === 1, JSON.stringify(c));
+  // Le visiteur se connecte puis s'inscrit : inscription attribuée à l'e-mailing.
+  const who = (await pgc.query(`select u.email from "User" u join "PractitionerProfile" p on p."userId" = u.id where u.email like '%@demo.kolbase.local' and u."passwordHash" is not null and not exists (select 1 from "Registration" r where r."userId" = u.id and r."eventId" = 'demo-ev-soiree-implanto') order by u.email limit 1`)).rows[0].email;
+  await login(page, who);
+  await page.goto(`${BASE}/evenements/demo-ev-soiree-implanto`);
+  if (await page.locator('input[name="ackHcp"]').count()) await page.check('input[name="ackHcp"]');
+  await page.click('button:has-text("M\'inscrire")');
+  await page.waitForTimeout(1200);
+  const reg = (await pgc.query(`select r."sourceOrderId" from "Registration" r join "User" u on u.id = r."userId" where u.email = $1 and r."eventId" = 'demo-ev-soiree-implanto'`, [who])).rows[0];
+  check("Inscription attribuée au service (cookie du lien suivi)", reg?.sourceOrderId === ord.id, `${who} ${JSON.stringify(reg)}`);
+  await ctx.close();
+  // L'organisateur voit le bilan sur la fiche de l'événement.
+  const org = await session();
+  await login(org.page, "julien.faure@demo.kolbase.local");
+  await org.page.goto(`${BASE}/organisations/demo-org-dentalys/evenements/demo-ev-soiree-implanto`);
+  const orgText = await text(org.page);
+  check("Fiche de l'événement : bilan du service", orgText.includes("1 visiteur du lien") && orgText.includes("1 inscription par ce lien") && orgText.includes("100 % des visiteurs inscrits"));
+  await org.ctx.close();
+  // Mise à la une : lien suivi depuis l'accueil (sans préchargement).
+  const anon = await session();
+  await anon.page.goto(`${BASE}/`);
+  const featuredHref = await anon.page.locator(".event-card").first().locator("a.btn").getAttribute("href");
+  check("Accueil : lien suivi sur l'événement à la une", /^\/r\/[A-Za-z0-9_-]+$/.test(featuredHref ?? ""), featuredHref ?? "");
+  await anon.ctx.close();
+  // Bilan envoyé par les tâches planifiées, une seule fois.
+  await pgc.query(`update "ServiceOrder" set "doneAt" = now() - interval '8 days' where id = $1`, [ord.id]);
+  const cron = () => fetch(`${BASE}/api/taches`, { method: "POST", headers: { Authorization: `Bearer ${process.env.CRON_SECRET ?? "secret-des-taches-de-test"}` } }).then((r) => r.json());
+  const r1 = await cron();
+  const report = await waitMail("julien.faure@demo.kolbase.local", "Bilan : E-mailing dédié");
+  const r2 = await cron();
+  check("Bilan envoyé à l'organisateur", r1.reports >= 1 && !!report && report.text.includes("1 inscription par ce lien") && report.text.includes("destinataire"), report?.text.slice(0, 160));
+  check("Bilan : envoyé une seule fois", r2.reports === 0 && mails.filter((m) => m.subject.startsWith("Bilan : E-mailing dédié")).length === 1);
+  const adm = await session();
+  await login(adm.page, "anne.chevalier@demo.kolbase.local");
+  await adm.page.goto(`${BASE}/admin?onglet=services`);
+  check("Admin : bilan des services réalisés", ((await adm.page.locator("main").textContent()) ?? "").includes("1 inscription par ce lien · bilan envoyé le"));
+  await adm.ctx.close();
+  await pgc.end();
+}
+
 // ── 4. Limitation des tentatives ───────────────────────────────────────────
 {
   const { ctx, page } = await session();
