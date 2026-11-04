@@ -195,4 +195,5 @@ export const COMMON: Record<string, string> = {
   "Adresse e-mail confirmée. Connectez-vous pour continuer.": "Email address confirmed. Sign in to continue.",
   "Votre adresse e-mail est déjà confirmée : ce lien a déjà servi. Connectez-vous pour continuer.": "Your email address is already confirmed: this link has already been used. Sign in to continue.",
   "Ce lien de confirmation n'est plus valable (déjà utilisé ou expiré). Connectez-vous : si votre adresse n'est pas confirmée, vous pourrez demander un nouveau lien depuis « Mon compte ».": "This confirmation link is no longer valid (already used or expired). Sign in: if your address is not confirmed, you can request a new link from “My account”.",
+  "Autres rubriques": "Other sections",
 };

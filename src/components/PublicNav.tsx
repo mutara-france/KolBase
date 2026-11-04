@@ -25,6 +25,8 @@ export function PublicNav({ loggedIn }: { loggedIn: boolean }) {
         {LINKS.map((l) => (
           <Link key={l.href} href={l.href} className={`nav-link${path === l.href || path.startsWith(l.href + "/") ? " on" : ""}`}>{t(l.label)}</Link>
         ))}
+        {/* Mobile : « Se connecter » rejoint la rangée défilante, « Se référencer » reste un bouton visible. */}
+        {!loggedIn && <Link href="/connexion" className="nav-link mobile-only">{t("Se connecter")}</Link>}
       </nav>
       <div className="nav-actions">
         <LocaleSwitch />
@@ -32,7 +34,7 @@ export function PublicNav({ loggedIn }: { loggedIn: boolean }) {
           <Link href="/tableau-de-bord" className="btn">{t("Mon espace")}</Link>
         ) : (
           <>
-            <Link href="/connexion" className="btn ghost">{t("Se connecter")}</Link>
+            <Link href="/connexion" className="btn ghost desktop-only">{t("Se connecter")}</Link>
             <Link href="/inscription" className="btn">{t("Se référencer")}</Link>
           </>
         )}

@@ -120,6 +120,14 @@ export function practitionerSectionTabs(section: PractitionerSectionKey): Sectio
       ];
 }
 
+/** Barre du bas (mobile) : cinq entrées au plus ; les secondaires d'abord écartées, le reste passe dans le menu du compte. */
+export const BOTTOM_BAR_MAX = 5;
+export function bottomBar<T extends Pick<ShellItem, "key" | "secondary">>(items: T[]) {
+  const primary = items.length <= BOTTOM_BAR_MAX ? items : items.filter((i) => !i.secondary);
+  const bar = primary.slice(0, BOTTOM_BAR_MAX);
+  return { bar, overflow: items.filter((i) => !bar.includes(i)) };
+}
+
 /** Nombre d'actions qui mènent à une page de cette entrée (pastilles). */
 export function countFor(item: Pick<ShellItem, "href" | "match" | "exact">, hrefs: string[]) {
   return hrefs.filter((h) => itemMatches(item, pathOf(h))).length;

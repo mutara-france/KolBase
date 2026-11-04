@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { eventIcsEntry, toIcs } from "@/lib/ics";
 import { eventEnd, eventEnded } from "@/lib/events";
-import { orgSectionTabs, tabCount } from "@/lib/nav";
+import { bottomBar, orgSectionTabs, tabCount } from "@/lib/nav";
 import { statusLabel } from "@/lib/projects";
 import { parseRna } from "@/lib/siren";
 import { rnaAccepted } from "@/lib/org-roles";
@@ -85,5 +85,20 @@ describe("identifiant d'une association : RNA", () => {
     expect(rnaAccepted("ASSOCIATION_PRO")).toBe(true);
     expect(rnaAccepted("INDUSTRIEL")).toBe(false);
     expect(rnaAccepted("ORGANISME_FORMATION")).toBe(false);
+  });
+});
+
+describe("barre du bas (mobile)", () => {
+  const it6 = ["accueil", "a", "b", "c", "d", "profil"].map((key) => ({ key, secondary: key === "profil" }));
+  it("cinq entrées au plus, le reste dans le menu du compte", () => {
+    const { bar, overflow } = bottomBar(it6);
+    expect(bar.map((i) => i.key)).toEqual(["accueil", "a", "b", "c", "d"]);
+    expect(overflow.map((i) => i.key)).toEqual(["profil"]);
+    const seven = [...it6, { key: "e", secondary: false }];
+    expect(bottomBar(seven).bar).toHaveLength(5);
+    expect(bottomBar(seven).overflow.map((i) => i.key)).toEqual(["profil", "e"]);
+  });
+  it("secondaires gardées quand tout tient", () => {
+    expect(bottomBar(it6.slice(2)).bar).toHaveLength(4);
   });
 });
