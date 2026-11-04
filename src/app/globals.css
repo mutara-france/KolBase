@@ -1125,3 +1125,6 @@ p.service-stats { color: var(--ink-soft); }
 main [id] { scroll-margin-top: 80px; }
 /* En-tête public, mobile : « Se connecter » en tête de la rangée défilante, distingué des rubriques. */
 .public-nav .nav-signin { color: var(--outremer); }
+/* Tableau plus large que l'écran (administration, Abonnements) : indice de défilement sur mobile seulement. */
+.scroll-hint { display: none; }
+@media (max-width: 860px) { .scroll-hint { display: block; } }

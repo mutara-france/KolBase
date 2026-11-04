@@ -4,7 +4,8 @@ import { SectionNav } from "@/components/SectionNav";
 import { orgTabs } from "@/lib/org-overview";
 import { db } from "@/lib/db";
 import { requireMembership } from "@/lib/orgs";
-import { EVENT_MANAGER_ROLES, EVENT_ORGANIZER_ROLES, eventScope, eventTypeLabel, formatDate, FORMAT_LABEL } from "@/lib/events";
+import { EVENT_MANAGER_ROLES, EVENT_ORGANIZER_ROLES, eventMoment, eventScope, eventTypeLabel, formatDate, FORMAT_LABEL, orgEventStatus } from "@/lib/events";
+import { isSuspendedOrg } from "@/lib/org-roles";
 
 export const metadata = { title: "Événements — KolBase" };
 
@@ -13,7 +14,7 @@ const MONTH = (d: Date) => d.toLocaleDateString("fr-FR", { timeZone: "Europe/Par
 
 export default async function Page({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
-  const { roles, user } = await requireMembership(id, EVENT_MANAGER_ROLES);
+  const { roles, user, org } = await requireMembership(id, EVENT_MANAGER_ROLES);
   const isOrganizer = roles.some((r) => EVENT_ORGANIZER_ROLES.includes(r));
   const events = await db.event.findMany({
     where: { organizationId: id, ...eventScope(user, roles) },
@@ -26,12 +27,14 @@ export default async function Page({ params }: { params: Promise<{ id: string }>
     orderBy: { startsAt: "asc" },
   });
   const now = new Date();
-  const upcoming = events.filter((e) => e.startsAt >= now);
-  const past = events.filter((e) => e.startsAt < now).reverse();
+  // Même découpage que l'accueil et les pages publiques : commencé n'est pas terminé (« En cours »).
+  const upcoming = events.filter((e) => eventMoment(e, now) === "a_venir");
+  const ongoing = events.filter((e) => eventMoment(e, now) === "en_cours");
+  const past = events.filter((e) => eventMoment(e, now) === "passe").reverse();
   const sectionTabs = await orgTabs("evenements", id);
 
   const Row = ({ e }: { e: (typeof events)[number] }) => {
-    const status = e.cancelledAt ? { label: "Annulé", tone: "bad" } : e.internal ? { label: "Réunion interne", tone: "electric" } : e.publishedAt ? { label: e.registrationOpen ? "Publié · inscriptions ouvertes" : "Publié · inscriptions closes", tone: e.registrationOpen ? "ok" : "done" } : { label: "Brouillon", tone: "wait" };
+    const status = orgEventStatus(e, e._count.registrations, { suspended: isSuspendedOrg(org) }, now);
     const toCompare = e.rfqs.filter((r) => r.status === "sent" && r._count.quotes > 0).length;
     const awarded = e.rfqs.filter((r) => r.status === "awarded").length;
     const logistics = e.rfqs.length === 0 ? null : toCompare ? `${toCompare} demande${toCompare > 1 ? "s" : ""} de devis à comparer` : `${awarded}/${e.rfqs.length} prestation${e.rfqs.length > 1 ? "s" : ""} attribuée${awarded > 1 ? "s" : ""}`;
@@ -71,6 +74,12 @@ export default async function Page({ params }: { params: Promise<{ id: string }>
           <div className="card empty"><p className="muted">Aucun événement pour l&apos;instant.</p></div>
         ) : (
           <>
+            {ongoing.length > 0 && (
+              <section className="card row-list" aria-label="Événements en cours">
+                <h2 className="section-title">En cours ({ongoing.length})</h2>
+                {ongoing.map((e) => <Row key={e.id} e={e} />)}
+              </section>
+            )}
             <section className="card row-list" aria-label="Événements à venir">
               <h2 className="section-title">À venir ({upcoming.length})</h2>
               {upcoming.length === 0 ? <p className="muted">Aucun événement à venir.</p> : upcoming.map((e) => <Row key={e.id} e={e} />)}

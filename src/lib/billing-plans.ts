@@ -34,6 +34,15 @@ export const STATUS_LABEL: Record<string, string> = {
 
 export type SubLike = { status: string; exemptUntil: Date | null } | null | undefined;
 export const exempt = (s: SubLike, now = new Date()) => !!s?.exemptUntil && s.exemptUntil > now;
+/**
+ * Facturation Stripe d'un abonnement en cours : en pause sans date de reprise pendant une suspension par KolBase ; en
+ * pause jusqu'à la fin d'une gratuité en cours (reprise automatique) ; sinon facturée normalement.
+ */
+export function stripePause(o: { suspended: boolean; exemptUntil: Date | null | undefined }, now = new Date()): { pause: false } | { pause: true; resumesAt: Date | null } {
+  if (o.suspended) return { pause: true, resumesAt: null };
+  if (o.exemptUntil && o.exemptUntil > now) return { pause: true, resumesAt: o.exemptUntil };
+  return { pause: false };
+}
 /** Statut affiché : la gratuité prime. */
 export const displayStatus = (s: SubLike, now = new Date()) => (exempt(s, now) ? "offerte" : s?.status ?? "aucun");
 /** Actions engageantes autorisées : gratuité, mois offert, abonnement actif, ou paiement en cours de relance. */

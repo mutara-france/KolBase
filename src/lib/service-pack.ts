@@ -40,13 +40,19 @@ export function groupOrders<T extends Groupable>(orders: T[]): { pack: string | 
   return groups;
 }
 
+/** Mise à la une réalisée et encore affichée sur l'accueil : réalisée pour l'avancement du pack, qui reste « en cours ». */
+export const FEATURED = "a_la_une";
+/** Statut d'une commande pour l'avancement d'un pack : FEATURED pour une mise à la une en cours. */
+export const packItemStatus = (o: { status: string; doneAt: Date | null; offer: { kind: string } }, now = new Date()) => (featuredUntil(o, now) ? FEATURED : o.status);
+
 /**
  * Statut d'ensemble d'un pack : celui de tous ses services s'il est commun, sinon « en cours » avec le nombre de
- * services réalisés (les services annulés ou refusés ne comptent pas).
+ * services réalisés (les services annulés ou refusés ne comptent pas). Une mise à la une en cours compte comme
+ * réalisée ; le pack reste « en cours » jusqu'à sa fin.
  */
 export function packStatus(statuses: string[]): { status: string; done: number; total: number } {
   const live = statuses.filter((s) => s !== "annulee" && s !== "refusee");
-  const done = live.filter((s) => s === "realisee").length;
-  if (new Set(statuses).size === 1) return { status: statuses[0], done, total: live.length };
-  return { status: live.length === 0 ? "annulee" : done === live.length ? "realisee" : "en_cours", done, total: live.length };
+  const done = live.filter((s) => s === "realisee" || s === FEATURED).length;
+  if (new Set(statuses).size === 1 && statuses[0] !== FEATURED) return { status: statuses[0], done, total: live.length };
+  return { status: live.length === 0 ? "annulee" : done === live.length && !live.includes(FEATURED) ? "realisee" : "en_cours", done, total: live.length };
 }

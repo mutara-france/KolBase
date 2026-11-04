@@ -10,7 +10,7 @@ import { eurToCents, str } from "@/lib/form";
 import { sendMail } from "@/lib/mail";
 import { allocate } from "@/lib/service-pack";
 import { invoiceOrder, newsletterAudience, newsletterAudienceCount, newsletterSendsThisMonth, newTrackCode, OPEN_ORDER, trackedPath, unsubscribeToken } from "@/lib/services";
-import { monthlyCapMessage, NEWSLETTER_MONTHLY_MAX } from "@/lib/newsletter";
+import { firstOfMonthLabel, mailingSlot, monthlyCapMessage, NEWSLETTER_MONTHLY_MAX } from "@/lib/newsletter";
 import { de } from "@/lib/elision";
 import { notifyPlatformAdmins, notifyServiceOrder } from "@/lib/notifications";
 import { aiComplete, aiEnabled } from "@/lib/ai";
@@ -47,6 +47,12 @@ export async function orderService(_: FormState, form: FormData): Promise<FormSt
   const wishedRaw = str(form, "wishedAt");
   const wishedAt = /^\d{4}-\d{2}-\d{2}$/.test(wishedRaw) ? new Date(`${wishedRaw}T09:00:00Z`) : null;
   if (wishedAt && (wishedAt < new Date(Date.now() - 86400e3) || wishedAt > event.startsAt)) return { error: "Date souhaitée : entre aujourd'hui et l'événement." };
+  // E-mailing : plafond mensuel de la lettre atteint, le prochain envoi est le 1er du mois suivant ; refusé si l'événement a lieu avant.
+  if (items.some((i) => i.kind === "newsletter")) {
+    const slot = mailingSlot(await newsletterSendsThisMonth(), event.startsAt);
+    if (slot.tooLate) return { error: slot.message! };
+    if (slot.capped && wishedAt && wishedAt < slot.nextAt!) return { error: `Date souhaitée : à partir du ${firstOfMonthLabel(slot.nextAt!)} (plafond de la lettre d'information atteint ce mois-ci).` };
+  }
   const prices = offer.kind === "pack" ? allocate(items.map((i) => i.priceCents), offer.priceCents) : [offer.priceCents];
   const brief = str(form, "brief").slice(0, 2000) || null;
   const orders = await db.$transaction(items.map((item, i) => db.serviceOrder.create({

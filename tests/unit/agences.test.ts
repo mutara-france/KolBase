@@ -55,6 +55,10 @@ describe("services commandés en pack", () => {
     expect(packStatus(["realisee", "planifiee", "demandee"])).toEqual({ status: "en_cours", done: 1, total: 3 });
     expect(packStatus(["realisee", "refusee"])).toEqual({ status: "realisee", done: 1, total: 1 });
     expect(packStatus(["annulee", "annulee"]).status).toBe("annulee");
+    // Mise à la une en cours : réalisée pour l'avancement, le pack reste « en cours » jusqu'à sa fin.
+    expect(packStatus(["realisee", "a_la_une", "planifiee"])).toEqual({ status: "en_cours", done: 2, total: 3 });
+    expect(packStatus(["realisee", "a_la_une", "realisee"])).toEqual({ status: "en_cours", done: 3, total: 3 });
+    expect(packStatus(["a_la_une"])).toEqual({ status: "en_cours", done: 1, total: 1 });
   });
 });
 

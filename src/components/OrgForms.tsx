@@ -1,5 +1,6 @@
 "use client";
 
+import { inSentence } from "@/lib/elision";
 import { useActionState, useState, useTransition } from "react";
 import { createInvitation, createOrganization, removeOrgLogo, setMemberRoles, submitSiren, updateOrganization, updateExpertProfile, updateOrgLogo, type InviteState } from "@/lib/org-actions";
 import { Avatar } from "@/components/Avatar";
@@ -139,7 +140,7 @@ export function VerificationCard({ orgId, v, canEdit }: { orgId: string; v: Veri
     return (
       <section className="card form">
         <h2>Validation de l&apos;organisation <span className={`pill ${tone}`}>{label}</span></h2>
-        <p className="notice error">Organisation suspendue{v.note ? ` : ${v.note}` : ""}.</p>
+        <p className="notice error">Organisation suspendue{v.note ? ` : ${inSentence(v.note)}` : ""}.</p>
         <p className="muted">
           Votre page publique, vos événements et vos appels à candidatures sont masqués, et aucune nouvelle action n&apos;est possible
           (sollicitation, publication, demande de devis). Rien n&apos;est supprimé : tout réapparaît à la réactivation par KolBase.
@@ -164,7 +165,7 @@ export function VerificationCard({ orgId, v, canEdit }: { orgId: string; v: Veri
           )}
           <p className="muted">
             Tant que KolBase n&apos;a pas validé l&apos;organisation, elle ne peut ni solliciter de praticiens, ni publier d&apos;événements ou d&apos;appels, ni apparaître sur le site public.
-            {v.status === "REJECTED" && v.note ? ` Motif du refus : ${v.note}.` : ""}
+            {v.status === "REJECTED" && v.note ? ` Motif du refus : ${inSentence(v.note)}.` : ""}
           </p>
         </>
       )}

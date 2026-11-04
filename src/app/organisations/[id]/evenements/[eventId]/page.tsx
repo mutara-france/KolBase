@@ -7,7 +7,8 @@ import { SiteHeader } from "@/components/SiteHeader";
 import { StatusPill } from "@/components/ProjectBits";
 import { db } from "@/lib/db";
 import { requireMembership } from "@/lib/orgs";
-import { BENEFIT_CATALOG, COMPLIANCE_ROLES, EVENT_MANAGER_ROLES, EVENT_ORGANIZER_ROLES, EVENT_TYPES, eventScope, eventTypeLabel, formatDate, formatEUR, formatTime, FORMAT_LABEL, needsOnlineLink, toParisInput } from "@/lib/events";
+import { BENEFIT_CATALOG, COMPLIANCE_ROLES, EVENT_MANAGER_ROLES, EVENT_ORGANIZER_ROLES, EVENT_TYPES, eventScope, eventTypeLabel, formatDate, formatEUR, formatTime, FORMAT_LABEL, needsOnlineLink, orgEventStatus, toParisInput } from "@/lib/events";
+import { isSuspendedOrg } from "@/lib/org-roles";
 import { cancelEvent, deleteEventDraft, setEventAgency, setEventFlag } from "@/lib/event-actions";
 import { deletableDraft, everPublished } from "@/lib/event-drafts";
 import { BillingNotice } from "@/components/BillingNotice";
@@ -22,10 +23,11 @@ import { checkinOpen } from "@/lib/checkin";
 import { eventEnd, eventEnded, fmtRating, surveySummary } from "@/lib/event-followup";
 import { ServiceOffers } from "@/components/ServiceForms";
 import { cancelServiceOrder } from "@/lib/service-actions";
-import { featuredUntil, newsletterAudienceCount, ORDER_STATUS, orderStats } from "@/lib/services";
+import { featuredUntil, newsletterAudienceCount, newsletterSendsThisMonth, ORDER_STATUS, orderStats } from "@/lib/services";
+import { mailingSlot } from "@/lib/newsletter";
 import { ConfirmButton } from "@/components/ConfirmButton";
 import { conversion, reportParts } from "@/lib/service-report";
-import { groupOrders, packSaving, packStatus } from "@/lib/service-pack";
+import { groupOrders, packItemStatus, packSaving, packStatus } from "@/lib/service-pack";
 import { SendNowButton } from "@/components/FollowupForms";
 
 export const metadata = { title: "Événement — KolBase" };
@@ -127,6 +129,8 @@ export default async function Page({ params, searchParams }: { params: Promise<{
   const openFor = (offerId: string) => event.serviceOrders.some((x) => x.offerId === offerId && ["demandee", "planifiee"].includes(x.status));
   // E-mailing (seul ou dans un pack) : l'audience actuelle est annoncée, et la commande impossible si elle est nulle.
   const audience = offers.some((o) => o.kind === "newsletter") ? await newsletterAudienceCount() : 0;
+  // Plafond mensuel de la lettre : prochain envoi le 1er du mois suivant ; e-mailing indisponible si l'événement a lieu avant.
+  const slot = offers.some((o) => o.kind === "newsletter") ? mailingSlot(await newsletterSendsThisMonth(), event.startsAt, now) : null;
   const offerCards = offers.map((o) => {
     const items = o.kind === "pack" ? offers.filter((x) => o.includes.includes(x.code)) : [];
     const mailing = o.kind === "newsletter" || items.some((x) => x.kind === "newsletter");
@@ -138,9 +142,15 @@ export default async function Page({ params, searchParams }: { params: Promise<{
       ordered: o.kind === "pack" ? items.length > 0 && items.every((x) => openFor(x.id)) : openFor(o.id),
       blocked: o.kind === "pack" && items.some((x) => openFor(x.id)),
       audience: mailing ? audience : undefined,
+      // Indisponible : e-mailing sans audience, ou plafond de la lettre atteint jusqu'après l'événement.
+      unavailable: mailing && audience === 0 ? "Indisponible : audience nulle." : mailing && slot?.tooLate ? "Indisponible avant l'événement : plafond de la lettre atteint." : undefined,
+      note: mailing && slot?.capped ? slot.message! : undefined,
+      minDate: mailing && slot?.capped && !slot.tooLate ? slot.nextAt!.toLocaleDateString("sv-SE", { timeZone: "Europe/Paris" }) : undefined,
     };
   }).filter((o) => !o.pack || o.compareAt != null || o.ordered);
-  const pack = offerCards.find((o) => o.pack && !o.blocked);
+  // Carte « Votre événement est en ligne » : seulement ce qui peut être commandé (ni pack ni e-mailing indisponible).
+  const orderable = offerCards.filter((o) => !o.ordered && !o.blocked && !o.unavailable);
+  const pack = orderable.find((o) => o.pack);
   const justPublished = publie === "1" && isOrganizer && !event.internal && !!event.publishedAt && !event.serviceOrders.some((x) => ["demandee", "planifiee"].includes(x.status));
   const serviceStats = isOrganizer ? await orderStats(event.serviceOrders.filter((o) => o.status === "realisee")) : new Map();
   /** Une commande de service : libellé, prix, dates, bilan ; « Annuler » tant qu'elle n'est pas planifiée (hors pack). */
@@ -177,15 +187,8 @@ export default async function Page({ params, searchParams }: { params: Promise<{
   const newRfq = (cat?: string) => `/organisations/${id}/prestataires?onglet=nouvelle&evenement=${eventId}${cat ? `&cat=${cat}` : ""}`;
   // Retiré de l'agenda après publication : ce n'est pas un brouillon.
   const withdrawn = !event.publishedAt && !event.internal && !event.cancelledAt && (await everPublished(event.id));
-  const status = event.cancelledAt
-    ? { label: "Annulé", tone: "bad" }
-    : event.internal
-      ? { label: "Réunion interne", tone: "electric" }
-      : event.publishedAt
-        ? { label: event.registrationOpen ? "Publié · inscriptions ouvertes" : "Publié · inscriptions closes", tone: event.registrationOpen ? "ok" : "done" }
-        : withdrawn
-          ? { label: "Retiré de l'agenda", tone: "done" }
-          : { label: "Brouillon", tone: "wait" };
+  // États communs (en cours, passé, complet…) ; masqué pendant la suspension de l'organisation.
+  const status = orgEventStatus(event, event._count.registrations, { suspended: isSuspendedOrg(org), withdrawn }, now);
   // Modification : les hospitalités déjà acceptées par un inscrit sont figées ; un brouillon jamais publié se supprime.
   const frozenBenefits = event.benefits.some((b) => b._count.accepted > 0);
   const canDelete = isOrganizer && (await deletableDraft(event));
@@ -241,13 +244,13 @@ export default async function Page({ params, searchParams }: { params: Promise<{
           </dl>
         </header>
 
-        {justPublished && offerCards.length > 0 && (
+        {justPublished && orderable.length > 0 && (
           <section className="card published-offer" aria-labelledby="publie">
             <Megaphone size={26} strokeWidth={1.6} aria-hidden />
             <div>
               <h2 id="publie">Votre événement est en ligne dans l&apos;agenda de KolBase</h2>
               <p className="muted">
-                Faites-le connaître auprès des praticiens membres : e-mailing dédié, post sur les réseaux sociaux de KolBase, mise à la une de la page d&apos;accueil.
+                Faites-le connaître auprès des praticiens membres : {orderable.filter((o) => !o.pack).map((o) => o.label.charAt(0).toLowerCase() + o.label.slice(1)).join(", ")}.
                 {pack ? <> {pack.label} : <strong>{pack.price}</strong> au lieu de {pack.compareAt}.</> : null}
               </p>
             </div>
@@ -482,7 +485,7 @@ export default async function Page({ params, searchParams }: { params: Promise<{
                     {groupOrders(event.serviceOrders).map((g) => {
                       if (!g.pack) return <ServiceOrderRow key={g.orders[0].id} o={g.orders[0]} />;
                       // Pack : une ligne « Pack visibilité — 990 € HT », le détail des services se déplie.
-                      const ps = packStatus(g.orders.map((o) => (featuredUntil(o, now) ? "en_cours" : o.status)));
+                      const ps = packStatus(g.orders.map((o) => packItemStatus(o, now)));
                       const total = g.orders.reduce((n, o) => n + o.priceCents, 0);
                       const cancellable = g.orders.every((o) => o.status === "demandee");
                       return (
@@ -583,7 +586,9 @@ export default async function Page({ params, searchParams }: { params: Promise<{
               ) : (
                 <>
                   <p className="next-hint">
-                    {event.publishedAt ? <>Publié dans <Link href={`/evenements/${event.id}`}>l&apos;agenda</Link>. Inscriptions {event.registrationOpen ? "ouvertes" : "fermées"}.</> : withdrawn ? "Retiré de l'agenda : l'événement n'est plus visible des praticiens." : "Brouillon : l'événement n'est pas encore visible des praticiens."}
+                    {event.publishedAt && isSuspendedOrg(org)
+                      ? "Masqué pendant la suspension de l'organisation : l'événement n'est plus visible des praticiens ; les inscrits gardent leur inscription."
+                      : event.publishedAt ? <>Publié dans <Link href={`/evenements/${event.id}`}>l&apos;agenda</Link>. {isPast ? "Inscriptions closes depuis le début de l'événement." : `Inscriptions ${event.registrationOpen ? "ouvertes" : "fermées"}.`}</> : withdrawn ? "Retiré de l'agenda : l'événement n'est plus visible des praticiens." : "Brouillon : l'événement n'est pas encore visible des praticiens."}
                   </p>
                   {!readOnly && <div className="transitions-stack">
                     {event.publishedAt ? (
@@ -604,7 +609,8 @@ export default async function Page({ params, searchParams }: { params: Promise<{
                         </form>
                       ) : <span className="hint">Événement avec des inscrits : son annulation relève de {org.name}.</span>
                     ) : org.verification === "VERIFIED" ? <Flag flag="publish" label={withdrawn ? "Republier dans l'agenda" : "Publier dans l'agenda"} disabled={!!publishBlocked} /> : <span className="hint">Publication possible une fois l&apos;organisation validée par KolBase.</span>}
-                    {event.registrationOpen ? <Flag flag="close" label="Fermer les inscriptions" ghost /> : <Flag flag="open" label="Rouvrir les inscriptions" ghost />}
+                    {/* Inscriptions : seulement pour un événement publié, avant son début (un brouillon n'en reçoit pas). */}
+                    {event.publishedAt && !isPast && (event.registrationOpen ? <Flag flag="close" label="Fermer les inscriptions" ghost /> : <Flag flag="open" label="Rouvrir les inscriptions" ghost />)}
                     {isOrganizer && !event.publishedAt && <Flag flag="internal" label="En faire une réunion interne" ghost />}
                   </div>}
                 </>

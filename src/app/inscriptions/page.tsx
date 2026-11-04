@@ -27,7 +27,7 @@ export default async function Page({ searchParams }: { searchParams: Promise<{ a
     d.toLocaleString(intlLocale(locale), { timeZone: TZ, weekday: "long", day: "numeric", month: "long", year: "numeric", hour: "2-digit", minute: "2-digit" });
   const regs = await db.registration.findMany({
     where: { userId: user.id },
-    include: { event: { include: { organization: { select: { name: true } } } }, benefits: { include: { benefit: true } }, survey: { select: { id: true } } },
+    include: { event: { include: { organization: { select: { name: true, verification: true } } } }, benefits: { include: { benefit: true } }, survey: { select: { id: true } } },
     orderBy: { event: { startsAt: "asc" } },
   });
   const now = new Date();
@@ -50,6 +50,17 @@ export default async function Page({ searchParams }: { searchParams: Promise<{ a
             <span className="muted">{formatDateTime(r.event.startsAt)} · {r.event.organization.name}</span>
             {r.event.cancelReason && <span className="muted">{t("Motif : {note}", { note: r.event.cancelReason })}</span>}
           </Link>
+        </div>
+      );
+    // Organisation suspendue par KolBase : la page de l'événement est masquée ; ni lien vers elle, ni badge.
+    if (r.event.organization.verification === "SUSPENDED")
+      return (
+        <div className="card tile reg-tile">
+          <div className="reg-tile-link">
+            <strong>{r.event.title}</strong> <span className="pill wait">{t("Événement momentanément indisponible")}</span>
+            <span className="muted">{formatDateTime(r.event.startsAt)} · {r.event.organization.name}</span>
+            <span className="muted">{t("La page de l'événement est momentanément masquée sur KolBase. Votre inscription est conservée ; l'organisateur vous écrira si l'événement change.")}</span>
+          </div>
         </div>
       );
     const badge = !eventEnded(r.event, now) && r.event.format !== "DISTANCIEL";

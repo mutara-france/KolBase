@@ -4,6 +4,57 @@ import type { OrgRole } from "@/generated/prisma/client";
 export const eventEnd = (e: { startsAt: Date; durationMinutes: number | null }) => new Date(e.startsAt.getTime() + (e.durationMinutes ?? 120) * 60000);
 export const eventEnded = (e: { startsAt: Date; durationMinutes: number | null }, now = new Date()) => eventEnd(e) <= now;
 
+/** Moment d'un événement : à venir, en cours (commencé, pas terminé), passé. */
+export type EventMoment = "a_venir" | "en_cours" | "passe";
+export const eventMoment = (e: { startsAt: Date; durationMinutes: number | null }, now = new Date()): EventMoment =>
+  e.startsAt > now ? "a_venir" : eventEnded(e, now) ? "passe" : "en_cours";
+
+type Stateful = { startsAt: Date; durationMinutes: number | null; cancelledAt?: Date | null; registrationOpen: boolean; capacity: number | null };
+/** État d'un événement publié, le même partout : annulé, passé, en cours, inscriptions closes, complet, inscriptions ouvertes. */
+export type EventState = "annule" | "passe" | "en_cours" | "closes" | "complet" | "ouvertes";
+/**
+ * États dans le temps communs au public, aux inscrits et à l'organisation : les inscriptions ferment dès le début
+ * (« en cours »), un événement terminé est « passé ». Places restantes et prix par personne n'ont de sens que tant que
+ * l'on peut encore s'inscrire (`upcoming`).
+ */
+export function eventState(e: Stateful, registrations: number, now = new Date()) {
+  const moment = eventMoment(e, now);
+  const full = e.capacity != null && registrations >= e.capacity;
+  const state: EventState = e.cancelledAt ? "annule" : moment === "passe" ? "passe" : moment === "en_cours" ? "en_cours" : !e.registrationOpen ? "closes" : full ? "complet" : "ouvertes";
+  return { moment, state, full, upcoming: moment === "a_venir" && !e.cancelledAt, canRegister: state === "ouvertes" };
+}
+/** Libellés publics (traduits par t() sur les pages publiques). */
+export const EVENT_STATE_LABEL: Record<EventState, { label: string; tone: string }> = {
+  annule: { label: "Événement annulé", tone: "bad" },
+  passe: { label: "Événement passé", tone: "done" },
+  en_cours: { label: "En cours · inscriptions closes", tone: "electric" },
+  closes: { label: "Inscriptions closes", tone: "done" },
+  complet: { label: "Complet", tone: "bad" },
+  ouvertes: { label: "Inscriptions ouvertes", tone: "ok" },
+};
+
+/**
+ * Statut d'un événement vu par l'organisation (liste, fiche) : annulé, réunion interne, brouillon ou retiré de
+ * l'agenda, masqué pendant la suspension de l'organisation, puis l'état commun (publié, en cours, passé, complet…).
+ */
+export function orgEventStatus(
+  e: Stateful & { internal: boolean; publishedAt: Date | null },
+  registrations: number,
+  o: { suspended: boolean; withdrawn?: boolean },
+  now = new Date(),
+): { label: string; tone: string } {
+  if (e.cancelledAt) return { label: "Annulé", tone: "bad" };
+  if (e.internal) return { label: "Réunion interne", tone: "electric" };
+  if (!e.publishedAt) return o.withdrawn ? { label: "Retiré de l'agenda", tone: "done" } : { label: "Brouillon", tone: "wait" };
+  if (o.suspended) return { label: "Masqué (organisation suspendue)", tone: "bad" };
+  const { state } = eventState(e, registrations, now);
+  if (state === "passe") return { label: "Passé", tone: "done" };
+  if (state === "en_cours") return { label: "En cours · inscriptions closes", tone: "electric" };
+  if (state === "closes") return { label: "Publié · inscriptions closes", tone: "done" };
+  if (state === "complet") return { label: "Publié · complet", tone: "wait" };
+  return { label: "Publié · inscriptions ouvertes", tone: "ok" };
+}
+
 /** Types d'événements publiables (repris du prototype). */
 export const EVENT_TYPES = [
   { id: "symposium", label: "Symposium de congrès" },

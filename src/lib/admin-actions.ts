@@ -7,6 +7,7 @@ import { str } from "@/lib/form";
 import { sirenFields } from "@/lib/orgs";
 import { requirePlatformAdmin } from "@/lib/platform";
 import { notifyIdentityDecision, notifyOrgDecision } from "@/lib/notifications";
+import { syncStripePause } from "@/lib/billing";
 
 const refresh = () => {
   revalidatePath("/admin");
@@ -16,7 +17,9 @@ const refresh = () => {
 /**
  * Valider, refuser, suspendre ou réactiver une organisation. La suspension est réversible : statut à part
  * (SUSPENDED), motif obligatoire ; la page publique, les événements et les appels sont masqués (requêtes publiques
- * limitées aux organisations validées) sans rien modifier, et « Réactiver » rend tout tel quel.
+ * limitées aux organisations validées) sans rien modifier, et « Réactiver » rend tout tel quel. La facturation Stripe
+ * est en pause pendant la suspension et reprend à la réactivation (sauf gratuité en cours). Une organisation
+ * suspendue ne peut pas être refusée (le refus ferme ses appels) : la réactiver ou la laisser suspendue.
  */
 export async function reviewOrganization(form: FormData) {
   const admin = await requirePlatformAdmin();
@@ -37,15 +40,25 @@ export async function reviewOrganization(form: FormData) {
     const listed = org.kind !== "PRESTATAIRE" || org.supplierCategories.length > 0;
     await db.organization.update({ where: { id: orgId }, data: { verification: "VERIFIED", verifiedAt: new Date(), verifiedById: admin.id, verificationNote: note, listed } });
   } else if (decision === "reject") {
-    if (!note) return; // un refus est toujours motivé
+    if (!note || org.verification === "SUSPENDED") return; // un refus est toujours motivé
     // Une organisation refusée cesse aussi de recevoir des candidatures.
     await db.$transaction([
       db.organization.update({ where: { id: orgId }, data: { verification: "REJECTED", verifiedAt: null, verifiedById: admin.id, verificationNote: note, listed: false } }),
       db.openCall.updateMany({ where: { organizationId: orgId, status: "open" }, data: { status: "closed" } }),
     ]);
   } else return;
-  await audit(admin.id, `platform.org_${decision}`, "Organization", orgId, { note: note ?? undefined });
-  notifyOrgDecision(orgId, decision, note);
+  // Suspension, réactivation : facturation Stripe en pause, puis reprise (ou pause jusqu'à la fin d'une gratuité).
+  let billing: Awaited<ReturnType<typeof syncStripePause>> = null;
+  if (decision === "suspend" || decision === "reactivate") {
+    try {
+      billing = await syncStripePause(orgId);
+    } catch (e) {
+      console.error("[suspension : pause Stripe]", e);
+      await audit(admin.id, "billing.stripe_pause_failed", "Organization", orgId, { decision });
+    }
+  }
+  await audit(admin.id, `platform.org_${decision}`, "Organization", orgId, { note: note ?? undefined, stripe: billing ?? undefined });
+  notifyOrgDecision(orgId, decision, note, billing);
   refresh();
 }
 

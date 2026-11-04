@@ -28,3 +28,30 @@ export const parisMonthLabel = (now = new Date()) => now.toLocaleDateString("fr-
 /** Message du plafond atteint. */
 export const monthlyCapMessage = (now = new Date()) =>
   `Plafond atteint : ${NEWSLETTER_MONTHLY_MAX} envois de la lettre d'information en ${parisMonthLabel(now)} (e-mailings commandés et lettres libres confondus). Le prochain envoi est possible le mois prochain.`;
+
+/** Premier jour du mois suivant (heure de Paris). */
+export function nextParisMonthStart(now = new Date()) {
+  const [y, m] = now.toLocaleDateString("sv-SE", { timeZone: TZ }).split("-").map(Number);
+  const [ny, nm] = m === 12 ? [y + 1, 1] : [y, m + 1];
+  return parseParisDateTime(`${ny}-${String(nm).padStart(2, "0")}-01T00:00`)!;
+}
+/** « 1er décembre 2026 ». */
+export const firstOfMonthLabel = (d: Date) => `1er ${d.toLocaleDateString("fr-FR", { timeZone: TZ, month: "long", year: "numeric" })}`;
+
+/**
+ * E-mailing commandé pour un événement, face au plafond mensuel de la lettre : plafond atteint, le prochain envoi
+ * possible est le 1er du mois suivant (`nextAt`) ; si l'événement a lieu avant (`tooLate`), la commande est refusée.
+ */
+export function mailingSlot(sendsThisMonth: number, eventStart: Date, now = new Date()): { capped: boolean; nextAt: Date | null; tooLate: boolean; message: string | null } {
+  if (sendsThisMonth < NEWSLETTER_MONTHLY_MAX) return { capped: false, nextAt: null, tooLate: false, message: null };
+  const nextAt = nextParisMonthStart(now);
+  const tooLate = eventStart <= nextAt;
+  return {
+    capped: true,
+    nextAt,
+    tooLate,
+    message: tooLate
+      ? `Plafond de la lettre d'information atteint ce mois-ci (${NEWSLETTER_MONTHLY_MAX} envois) : prochain envoi possible le ${firstOfMonthLabel(nextAt)}, après l'événement. L'e-mailing ne peut pas être commandé.`
+      : `Plafond de la lettre d'information atteint ce mois-ci (${NEWSLETTER_MONTHLY_MAX} envois) : prochain envoi possible le ${firstOfMonthLabel(nextAt)}.`,
+  };
+}

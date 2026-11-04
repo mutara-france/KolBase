@@ -1,5 +1,6 @@
 "use client";
 
+import { inSentence } from "@/lib/elision";
 import { useActionState, useState } from "react";
 import { changePassword, deleteAccount, resendVerification, setListed, updateNotifyPrefs, updateProfile } from "@/lib/auth-actions";
 import { Notice } from "@/components/AuthForms";
@@ -84,7 +85,7 @@ function IdStatus({ p, show }: { p: NonNullable<Props["practitioner"]>; show: bo
       {status === "pending" && t("En cours de vérification par KolBase.")}
       {status === "rejected" &&
         (p.rppsNote
-          ? t("Non validé : {note}. Corrigez le numéro pour une nouvelle vérification.", { note: p.rppsNote })
+          ? t("Non validé : {note}. Corrigez le numéro pour une nouvelle vérification.", { note: inSentence(p.rppsNote) })
           : t("Non validé. Corrigez le numéro pour une nouvelle vérification."))}
       {status === "none" && t("Nécessaire pour être référencé comme expert ; vérifié par KolBase.")}
     </span>
@@ -147,7 +148,7 @@ export function ListingForm({ listed, eligible, idMissing, rpps }: {
           {t("N° RPPS : {rpps}", { rpps: rpps.value })} ·{" "}
           {rpps.status === "verified" ? t("Vérifié par KolBase : badge « Identité vérifiée » affiché.")
             : rpps.status === "pending" ? t("En cours de vérification par KolBase.")
-            : rpps.note ? t("Non validé : {note}. Corrigez le numéro pour une nouvelle vérification.", { note: rpps.note }) : t("Non validé. Corrigez le numéro pour une nouvelle vérification.")}
+            : rpps.note ? t("Non validé : {note}. Corrigez le numéro pour une nouvelle vérification.", { note: inSentence(rpps.note) }) : t("Non validé. Corrigez le numéro pour une nouvelle vérification.")}
           {" "}<span className="hint">{t("(modifiable dans Informations personnelles)")}</span>
         </p>
       )}

@@ -3988,11 +3988,11 @@ async function submitNewOrg(page, siren) {
     await cl.page.goto(`${BASE}/organisations/demo-org-dentalys/evenements/demo-ev-passe`);
     const head = n(await cl.page.locator("header.page-hero").innerText());
     const bilan = n(await cl.page.locator("section.bilan").innerText());
-    const hHead = head.match(/Hospitalités ([\d  ,]+) € TTC/)?.[1];
-    const hBilan = bilan.match(/Hospitalités ([\d  ,]+) € TTC/)?.[1];
+    const hHead = head.match(/Hospitalités ([\d ,]+) € TTC/)?.[1];
+    const hBilan = bilan.match(/Hospitalités ([\d ,]+) € TTC/)?.[1];
     check("Événement passé : en-tête et bilan, mêmes hospitalités (absents exclus)", !!hHead && hHead === hBilan && /bénéficiaires? présents? · consommées/.test(head), `${head.match(/Hospitalités[^·]*·[^·]*/)?.[0]} / ${hBilan}`);
     const logi = n(await cl.page.locator('section:has(h2:has-text("Logistique et prestataires"))').innerText());
-    check("Événement passé : prix par couvert commandé, coût par présent pour information", logi.includes("par couvert commandé") && /Pour information : [\d  ,]+ € TTC par présent/.test(logi) && !/par présent[^·\n]*seuil/.test(logi), logi.slice(0, 300));
+    check("Événement passé : prix par couvert commandé, coût par présent pour information", logi.includes("par couvert commandé") && /Pour information : [\d ,]+ € TTC par présent/.test(logi), logi.slice(0, 300));
     const apply = cl.page.locator("form.apply-benefit");
     check("Report dans la valeur déclarée : le prix par couvert, plus le coût réel par présent", (await apply.count()) === 0 || ((await apply.innerText()).includes("prix par couvert") && !(await apply.innerText()).includes("coût réel")));
     // Statistiques : effectif = présents, hospitalités (TTC) et prestataires (HT) jamais additionnés ; « engagé » expliqué.
@@ -4029,7 +4029,7 @@ async function submitNewOrg(page, siren) {
     await cl.page.goto(`${BASE}/organisations/demo-org-dentalys/prestataires?onglet=demandes`);
     const rfq = cl.page.locator('section:has-text("Dîner 5b avec vins")').first();
     const best = n(await rfq.locator(".quote.best").innerText().catch(() => ""));
-    check("Comparaison : meilleure offre sur le TTC, taux par ligne affichés", best.includes("Traiteur Belleville") && best.includes("890,00 € TTC (TVA 10 % et 20 %)"), best.slice(0, 200));
+    check("Comparaison : meilleure offre sur le TTC, taux par ligne affichés", best.includes("Traiteur Belleville") && best.includes("890 € TTC (TVA 10 % et 20 %)"), best.slice(0, 200));
     // Cartes publiques : collaborations signées seulement (comme les fiches).
     const signedOrg = (await q1(`select count(*)::int n from "Project" where "organizationId" = 'demo-org-dentalys' and status in ('SIGNE', 'TERMINE')`)).n;
     const signedExpert = (await q1(`select count(*)::int n from "ProjectExpert" where "practitionerId" = 'demo-p-martin' and status in ('SIGNE', 'TERMINE')`)).n;
@@ -4059,6 +4059,120 @@ async function submitNewOrg(page, siren) {
     const csv = await (await ex.ctx.request.get(`${BASE}/revenus/export?annee=${new Date().getFullYear()}`)).text();
     check("Revenus : export CSV avec une colonne Statut", csv.split("\n")[0].includes("Statut") && /payé|convention signée|Accord|Signé/i.test(csv), csv.split("\n").slice(0, 2).join(" | "));
     await ex.ctx.close();
+  }
+
+  // 3. Administration : suspension (facturation en pause, inscrits, statut), gratuité, lancement, e-mailing, pack, motifs.
+  {
+    const adm = await session();
+    await login(adm.page, "anne.chevalier@demo.kolbase.local");
+    const subId = "sub_e2e5bsusp";
+    stripeState.subscriptions.set(subId, { id: subId, object: "subscription", customer: "cus_e2e5b", status: "active", trial_end: null, current_period_end: Math.floor(Date.now() / 1000) + 20 * 86400, cancel_at_period_end: false, metadata: { orgId: "demo-org-cdra" }, pause_collection: null });
+    await pgc.query(`insert into "Subscription" ("organizationId", plan, status, "stripeCustomerId", "stripeSubscriptionId", "updatedAt") values ('demo-org-cdra', 'organisation', 'active', 'cus_e2e5b', $1, now())
+      on conflict ("organizationId") do update set status = 'active', "stripeCustomerId" = 'cus_e2e5b', "stripeSubscriptionId" = $1, "exemptUntil" = null, "exemptNote" = null`, [subId]);
+    await adm.page.goto(`${BASE}/admin`);
+    const card = () => adm.page.locator('section.card:has-text("Collège Dentaire Rhône-Alpes")').first();
+    await card().locator('form:has(button:has-text("Suspendre")) input[name="note"]').fill("Vérification de l'identité.");
+    await card().locator('button:has-text("Suspendre")').click();
+    check("Suspension : la confirmation annonce la pause de la facturation", (await card().locator(".confirm-step").innerText()).includes("facturation de l'abonnement est mise en pause"));
+    await card().locator('button:has-text("Confirmer : suspendre")').click();
+    await until(async () => (await q1(`select verification from "Organization" where id = 'demo-org-cdra'`)).verification === "SUSPENDED");
+    await until(async () => !!stripeState.subscriptions.get(subId).pause_collection);
+    const paused = stripeState.subscriptions.get(subId).pause_collection;
+    check("Suspension : facturation Stripe en pause, sans date de reprise", paused?.behavior === "void" && !paused.resumes_at, JSON.stringify(paused));
+    const smail = await waitMail("pierre.vidal@demo.kolbase.local", "Collège Dentaire Rhône-Alpes est suspendue");
+    check("E-mail de suspension : facturation en pause", !!smail && smail.text.includes("La facturation de votre abonnement est mise en pause"), smail?.text.slice(0, 300));
+    await adm.page.goto(`${BASE}/admin`);
+    check("Organisation suspendue : pas de « Refuser »", (await card().locator('button:has-text("Refuser")').count()) === 0 && (await card().locator('button:has-text("Réactiver")').count()) === 1);
+    const jl = await session();
+    await login(jl.page, "julie.lemoine@demo.kolbase.local");
+    await jl.page.goto(`${BASE}/inscriptions`);
+    const tile = jl.page.locator('.reg-tile:has-text("Journée scientifique du Collège")');
+    check("Inscrit d'une organisation suspendue : « Événement momentanément indisponible », sans lien", (await tile.innerText()).includes("Événement momentanément indisponible") && (await tile.locator('a[href="/evenements/demo-ev-journee-cdra"]').count()) === 0);
+    await jl.ctx.close();
+    const pv = await session();
+    await login(pv.page, "pierre.vidal@demo.kolbase.local");
+    await pv.page.goto(`${BASE}/organisations/demo-org-cdra/evenements`);
+    check("Organisation suspendue : événement « Masqué (organisation suspendue) »", (await pv.page.locator('a.row-item:has-text("Journée scientifique du Collège")').innerText()).includes("Masqué (organisation suspendue)"));
+    await pv.page.goto(`${BASE}/organisations/demo-org-cdra`);
+    const home = await text(pv.page);
+    check("Motif de suspension : pas de double point", home.includes("Organisation suspendue : Vérification de l'identité. Votre page") && !home.includes(".."), home.match(/Organisation suspendue[^\n]{0,60}/)?.[0]);
+    await adm.page.goto(`${BASE}/admin`);
+    await card().locator('button:has-text("Réactiver")').click();
+    await until(async () => (await q1(`select verification from "Organization" where id = 'demo-org-cdra'`)).verification === "VERIFIED");
+    await until(async () => stripeState.subscriptions.get(subId).pause_collection === null);
+    check("Réactivation : la facturation reprend", stripeState.subscriptions.get(subId).pause_collection === null);
+    const rmail = await waitMail("pierre.vidal@demo.kolbase.local", "Collège Dentaire Rhône-Alpes est de nouveau active", 8000);
+    check("E-mail de réactivation : la facturation reprend", !!rmail && rmail.text.includes("La facturation de votre abonnement reprend"), rmail?.text.slice(-200));
+    await pgc.query(`delete from "Subscription" where "organizationId" = 'demo-org-cdra' and "stripeSubscriptionId" = $1`, [subId]);
+    await pv.ctx.close();
+    // Gratuité : date au plus tôt aujourd'hui ; date passée refusée avec un message.
+    await adm.page.goto(`${BASE}/admin?onglet=abonnements`);
+    const row = adm.page.locator('tr:has-text("Collège Dentaire Rhône-Alpes")');
+    const today = new Date().toLocaleDateString("sv-SE", { timeZone: "Europe/Paris" });
+    check("Gratuité : champ date avec un minimum (aujourd'hui)", (await row.locator('input[name="until"]').getAttribute("min")) === today);
+    await row.locator('input[name="until"]').evaluate((el) => el.removeAttribute("min"));
+    await row.locator('input[name="until"]').fill("2020-01-01");
+    await row.locator('button:has-text("offrir")').click();
+    await row.locator('[role="alert"]').waitFor({ timeout: 5000 }).catch(() => {});
+    check("Gratuité : date passée refusée avec un message", (await row.innerText()).includes("Date passée") && !(await q1(`select "exemptUntil" from "Subscription" where "organizationId" = 'demo-org-cdra'`))?.exemptUntil);
+    check("Abonnements : indice de défilement du tableau", (await adm.page.locator(".scroll-hint").count()) === 1);
+    // Lancement : TVA et double authentification des administrateurs signalées.
+    await adm.page.goto(`${BASE}/admin?onglet=lancement`);
+    const launch = (await text(adm.page)).replace(/\s+/g, " ");
+    check("Lancement : Facturation à faire tant que STRIPE_TAX_RATE n'est pas défini", /À faire Facturation \(STRIPE_SECRET_KEY, STRIPE_WEBHOOK_SECRET, STRIPE_TAX_RATE\)/.test(launch));
+    check("Lancement : PLATFORM_ADMIN_2FA=optional signalé", /À faire Double authentification des administrateurs KolBase/.test(launch) && launch.includes("PLATFORM_ADMIN_2FA=optional"));
+    // E-mailing : plafond de la lettre atteint jusqu'après l'événement, commande impossible ; la carte de publication n'en parle pas.
+    await pgc.query(`update "User" set "notifyPrefs" = "notifyPrefs" || '{"newsletter": true}', "emailVerifiedAt" = coalesce("emailVerifiedAt", now()) where email = 'antoine.martin@demo.kolbase.local'`);
+    await pgc.query(`insert into "Event" (id, "organizationId", title, "typeId", "startsAt", format, city, "publishedAt", "updatedAt") values ('e2e-5b-ev-mail', 'demo-org-dentalys', 'Atelier 5b imminent', 'travaux-pratiques', now() + interval '3 hours', 'PRESENTIEL', 'Lyon', now(), now())`);
+    await pgc.query(`insert into "NewsletterCampaign" (id, subject, body, recipients, "sentAt", "createdById") select x, 'Lettre 5b', 'Texte', 1, now(), id from "User", (values ('e2e-5b-nl1'), ('e2e-5b-nl2')) v(x) where email = 'anne.chevalier@demo.kolbase.local'`);
+    const cl = await session();
+    await login(cl.page, CLAIRE);
+    await cl.page.goto(`${BASE}/organisations/demo-org-dentalys/evenements/e2e-5b-ev-mail?publie=1`);
+    const mailing = cl.page.locator('.service-list li:has-text("E-mailing dédié aux membres KolBase")').first();
+    const mt = (await mailing.innerText()).replace(/\s+/g, " ");
+    check("E-mailing : plafond atteint, prochain envoi le 1er, indisponible avant l'événement", mt.includes("prochain envoi possible le 1er") && mt.includes("Indisponible avant l'événement") && (await mailing.locator('button:has-text("Commander")').count()) === 0, mt.slice(0, 250));
+    const pub = await cl.page.locator("section.published-offer").innerText().catch(() => "");
+    check("Carte « Votre événement est en ligne » : ni pack ni e-mailing indisponibles", !pub || (!pub.includes("Pack visibilité") && !/e-mailing/i.test(pub)), pub.slice(0, 200));
+    await pgc.query(`delete from "NewsletterCampaign" where id in ('e2e-5b-nl1', 'e2e-5b-nl2')`);
+    // Pack : une mise à la une en cours compte comme réalisée ; « Commandes traitées (N) » compte ce qui est affiché.
+    await pgc.query(`insert into "ServiceOrder" (id, "organizationId", "eventId", "offerId", label, "priceCents", "orderedById", status, "doneAt", "packLabel", "trackCode", "createdAt", "updatedAt")
+      select x.id, 'demo-org-dentalys', 'e2e-5b-ev-mail', x.offer, x.label, x.price, u.id, 'realisee', now(), 'Pack visibilité', x.code, now(), now()
+      from "User" u, (values ('e2e-5b-p1', 'svc-newsletter', 'E-mailing dédié aux membres KolBase', 58477, '5bpack1'), ('e2e-5b-p2', 'svc-reseaux', 'Publication sur les réseaux sociaux de KolBase', 24577, '5bpack2'), ('e2e-5b-p3', 'svc-une', 'À la une de la page d''accueil (7 jours)', 15946, '5bpack3')) as x(id, offer, label, price, code)
+      where u.email = 'claire.morel@demo.kolbase.local'`);
+    await adm.page.goto(`${BASE}/admin?onglet=services`);
+    const treated = adm.page.locator('details.older:has(> summary:has-text("Commandes traitées"))');
+    await treated.locator("> summary").click();
+    const grp = (await treated.locator('li.service-pack-group:has-text("Atelier 5b imminent")').innerText()).replace(/\s+/g, " ");
+    check("Pack : mise à la une en cours comptée comme réalisée", grp.includes("Réalisé · mise à la une en cours") && !grp.includes("0 sur 3"), grp.slice(0, 200));
+    const shown = await treated.locator("> ul > li").count();
+    const label = await treated.locator("> summary").innerText();
+    check("« Commandes traitées (N) » : N = commandes affichées", label === `Commandes traitées (${shown})`, `${label} / ${shown}`);
+    await pgc.query(`delete from "ServiceOrder" where id in ('e2e-5b-p1', 'e2e-5b-p2', 'e2e-5b-p3')`);
+    await pgc.query(`delete from "Event" where id = 'e2e-5b-ev-mail'`).catch(() => {});
+    // Société savante sans SIREN : refus avec « SIREN ou RNA », pas de double point ; validation annonçant contrat et abonnement.
+    await pgc.query(`insert into "Organization" (id, name, kind, rna, verification, listed, areas, "updatedAt") values ('e2e-5b-ss', 'Société Savante Cinq B', 'SOCIETE_SAVANTE', 'W123456789', 'PENDING', false, '{}', now())`);
+    await pgc.query(`insert into "Membership" (id, "userId", "organizationId", role) select 'e2e-5b-ss-m', id, 'e2e-5b-ss', 'ADMIN' from "User" where email = 'claire.morel@demo.kolbase.local'`);
+    await adm.page.goto(`${BASE}/admin`);
+    const ss = () => adm.page.locator('section.card:has-text("Société Savante Cinq B")').first();
+    check("Validation : l'admin sait que la note est envoyée à l'organisation", (await ss().innerText()).includes("La note figure telle quelle dans l'e-mail de validation"));
+    await ss().locator('input[name="note"][placeholder^="Motif du refus"]').fill("Numéro RNA introuvable au Journal officiel.");
+    await ss().locator('button:has-text("Refuser")').click();
+    await until(async () => (await q1(`select verification from "Organization" where id = 'e2e-5b-ss'`)).verification === "REJECTED");
+    const refus = await waitMail(CLAIRE, "Société Savante Cinq B n'a pas été validée");
+    check("E-mail de refus d'une société savante : « SIREN ou RNA »", !!refus && refus.text.includes("(SIREN ou RNA, nom)"), refus?.text.slice(0, 300));
+    await cl.page.goto(`${BASE}/organisations/e2e-5b-ss`);
+    const ssh = await text(cl.page);
+    check("Société savante refusée : « Corriger l'identité (SIREN ou RNA) », motif sans double point", ssh.includes("Corriger l'identité (SIREN ou RNA)") && ssh.includes("Journal officiel.") && !ssh.includes("officiel.."), ssh.match(/KolBase n'a pas validé[^\n]*/)?.[0]);
+    await adm.page.goto(`${BASE}/admin`);
+    await ss().locator('input[name="note"][placeholder^="Note"]').fill("RNA vérifié");
+    await ss().locator('button:has-text("Valider")').click();
+    await until(async () => (await q1(`select verification from "Organization" where id = 'e2e-5b-ss'`)).verification === "VERIFIED");
+    const ok = await waitMail(CLAIRE, "Société Savante Cinq B est validée");
+    check("E-mail de validation : contrat de sous-traitance et abonnement annoncés", !!ok && ok.text.includes("contrat de sous-traitance") && /599\s€ HT par mois/.test(ok.text), ok?.text.slice(-300));
+    await pgc.query(`delete from "Membership" where id = 'e2e-5b-ss-m'`).catch(() => {});
+    await pgc.query(`delete from "Organization" where id = 'e2e-5b-ss'`).catch(() => {});
+    await cl.ctx.close();
+    await adm.ctx.close();
   }
 
   await pgc.end();

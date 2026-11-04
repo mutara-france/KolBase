@@ -8,6 +8,8 @@ import { COMPLIANCE_ROLES, EVENT_ORGANIZER_ROLES, FORMAT_LABEL, formatEUR, type 
 import { de } from "@/lib/elision";
 import { appUrl, eventIcsEntry, toIcs } from "@/lib/ics";
 import { quoteTtc } from "@/lib/quotes";
+import { PLANS } from "@/lib/billing-plans";
+import { rnaAccepted } from "@/lib/org-roles";
 import { supplierCategoryLabel } from "@/lib/suppliers";
 import { fmtEur, isLocale, makeT, type Locale, type T } from "@/lib/i18n";
 import { collabType, PROJECT_ROLES, SOURCING_ROLES, STATUS_LABEL, type ExpertNotice } from "@/lib/projects";
@@ -718,13 +720,23 @@ async function sendService(recipients: Recipient[], mail: Omit<Mail, "to"> | Com
   }
 }
 
-/** Validation, refus, suspension ou réactivation d'une organisation : ses administrateurs sont prévenus (motif compris). */
-export function notifyOrgDecision(orgId: string, decision: "verify" | "reject" | "suspend" | "reactivate", note: string | null) {
+/**
+ * Validation, refus, suspension ou réactivation d'une organisation : ses administrateurs sont prévenus (motif compris).
+ * `billing` : ce qui a été fait de la facturation Stripe (mise en pause à la suspension, reprise à la réactivation).
+ */
+export function notifyOrgDecision(orgId: string, decision: "verify" | "reject" | "suspend" | "reactivate", note: string | null, billing: "paused" | "resumed" | null = null) {
   later(async () => {
     const org = await db.organization.findUnique({ where: { id: orgId }, select: { name: true, kind: true, listed: true } });
     if (!org) return;
     const supplier = org.kind === "PRESTATAIRE";
     const motif = note ? `\n\nMotif : ${note}` : "";
+    // Prochaines étapes annoncées à la validation : contrat de sous-traitance et abonnement (organisation), abonnement
+    // après le premier devis retenu (prestataire).
+    const next = supplier
+      ? `Le référencement est gratuit ; l'abonnement prestataire (${formatEUR(PLANS.prestataire.cents)} HT par mois) n'est demandé qu'après votre premier devis retenu.`
+      : `Avant votre première action qui engage un tiers (sollicitation, publication, demande de devis), un administrateur accepte le contrat de sous-traitance (données personnelles), puis active l'abonnement (${formatEUR(PLANS.organisation.cents)} HT par mois, premier mois offert) : KolBase vous y guide au moment voulu.`;
+    // Identité à corriger : SIREN, ou RNA pour une association ou une société savante (SIREN facultatif).
+    const identity = rnaAccepted(org.kind) ? "SIREN ou RNA, nom" : "SIREN, nom";
     const mail =
       decision === "verify"
         ? {
@@ -733,24 +745,24 @@ export function notifyOrgDecision(orgId: string, decision: "verify" | "reject" |
               supplier
                 ? `Vous pouvez répondre aux demandes de devis des organisations${org.listed ? " ; votre fiche figure dans l'annuaire des prestataires" : " et vous référencer dans l'annuaire des prestataires (catégories de prestation) depuis la page Devis"}.`
                 : "Vous pouvez désormais solliciter des experts, publier vos événements et vos appels à candidatures, et consulter des prestataires. Votre page publique est en ligne ; vous pouvez la retirer de l'annuaire dans Membres et réglages."
-            }`,
+            }\n\n${next}`,
             cta: { label: supplier ? "Ouvrir mes demandes de devis" : "Ouvrir l'espace de l'organisation", href: supplier ? `/organisations/${orgId}/devis` : `/organisations/${orgId}` },
           }
         : decision === "reject"
           ? {
               subject: `${org.name} n'a pas été validée sur KolBase`,
-              text: `Bonjour,\n\nL'équipe KolBase n'a pas pu valider ${org.name}.${motif}\n\nCorrigez l'identité de l'organisation (SIREN, nom) dans Membres et réglages : la demande sera examinée de nouveau. Pour toute question, répondez à cet e-mail.`,
+              text: `Bonjour,\n\nL'équipe KolBase n'a pas pu valider ${org.name}.${motif}\n\nCorrigez l'identité de l'organisation (${identity}) dans Membres et réglages : la demande sera examinée de nouveau. Pour toute question, répondez à cet e-mail.`,
               cta: { label: "Corriger l'identité de l'organisation", href: `/organisations/${orgId}/membres?onglet=organisation` },
             }
           : decision === "suspend"
             ? {
                 subject: `${org.name} est suspendue sur KolBase`,
-                text: `Bonjour,\n\nL'équipe KolBase a suspendu ${org.name}.${motif}\n\nPendant la suspension, votre page publique, vos événements et vos appels à candidatures sont masqués, et l'organisation ne peut plus solliciter d'experts, publier ni envoyer de demandes de devis. Rien n'est supprimé : tout réapparaît tel quel à la réactivation. Pour en discuter, répondez à cet e-mail.`,
+                text: `Bonjour,\n\nL'équipe KolBase a suspendu ${org.name}.${motif}\n\nPendant la suspension, votre page publique, vos événements et vos appels à candidatures sont masqués, et l'organisation ne peut plus solliciter d'experts, publier ni envoyer de demandes de devis. Rien n'est supprimé : tout réapparaît tel quel à la réactivation.${billing === "paused" ? " La facturation de votre abonnement est mise en pause : rien n'est facturé pendant la suspension." : ""} Pour en discuter, répondez à cet e-mail.`,
                 cta: { label: "Voir l'organisation", href: `/organisations/${orgId}` },
               }
             : {
                 subject: `${org.name} est de nouveau active sur KolBase`,
-                text: `Bonjour,\n\nL'équipe KolBase a levé la suspension ${de(org.name)}. ${supplier ? "Votre fiche prestataire est de nouveau visible et vous pouvez répondre aux demandes de devis." : "Votre page publique, vos événements et vos appels à candidatures sont de nouveau visibles ; vous pouvez de nouveau solliciter des experts, publier et consulter des prestataires."}`,
+                text: `Bonjour,\n\nL'équipe KolBase a levé la suspension ${de(org.name)}. ${supplier ? "Votre fiche prestataire est de nouveau visible et vous pouvez répondre aux demandes de devis." : "Votre page publique, vos événements et vos appels à candidatures sont de nouveau visibles ; vous pouvez de nouveau solliciter des experts, publier et consulter des prestataires."}${billing === "resumed" ? " La facturation de votre abonnement reprend." : billing === "paused" ? " Votre abonnement reste offert jusqu'à la fin de la gratuité en cours ; la facturation reprendra ensuite." : ""}`,
                 cta: { label: "Ouvrir l'espace de l'organisation", href: `/organisations/${orgId}` },
               };
     await sendService(await members(orgId, ["ADMIN"]), mail);

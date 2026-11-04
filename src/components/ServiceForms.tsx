@@ -8,7 +8,13 @@ import { ActionForm } from "@/components/ActionForm";
 import { ConfirmButton } from "@/components/ConfirmButton";
 import { de } from "@/lib/elision";
 
-type Offer = { id: string; label: string; description: string; price: string; ordered: boolean; pack?: boolean; compareAt?: string; saving?: string; blocked?: boolean; /** E-mailing (seul ou dans le pack) : praticiens abonnés aujourd'hui. */ audience?: number };
+type Offer = {
+  id: string; label: string; description: string; price: string; ordered: boolean; pack?: boolean; compareAt?: string; saving?: string; blocked?: boolean;
+  /** E-mailing (seul ou dans le pack) : praticiens abonnés aujourd'hui. */ audience?: number;
+  /** Raison pour laquelle la commande n'est pas possible (audience nulle, plafond de la lettre jusqu'après l'événement). */ unavailable?: string;
+  /** Plafond mensuel de la lettre atteint : prochain envoi possible. */ note?: string;
+  /** Date souhaitée au plus tôt (prochain envoi possible de la lettre). */ minDate?: string;
+};
 
 /** Catalogue des services KolBase sur un événement : commande avec consignes et date souhaitée. */
 export function ServiceOffers({ orgId, eventId, offers, maxDate }: { orgId: string; eventId: string; offers: Offer[]; maxDate: string }) {
@@ -31,10 +37,11 @@ export function ServiceOffers({ orgId, eventId, offers, maxDate }: { orgId: stri
                     : "E-mailing : aucun praticien n'est abonné à la lettre d'information pour l'instant, la commande n'est pas possible."}
                 </p>
               )}
+              {o.note && !o.ordered && <p className="text-xs warn-text">{o.note}</p>}
             </div>
             {o.ordered ? <span className="pill electric">Commandé</span>
               : o.blocked ? <span className="text-xs muted">Un des services du pack est déjà commandé.</span>
-              : o.audience === 0 ? <span className="text-xs muted">Indisponible : audience nulle.</span>
+              : o.unavailable ? <span className="text-xs muted">{o.unavailable}</span>
               : open === o.id ? null : <button type="button" className={`btn small${o.pack ? "" : " secondary"}`} onClick={() => setOpen(o.id)}><Megaphone size={13} /> Commander</button>}
             {open === o.id && !o.ordered && (
               <form action={action} className="form service-order-form" onSubmit={() => setOpen(null)}>
@@ -42,7 +49,7 @@ export function ServiceOffers({ orgId, eventId, offers, maxDate }: { orgId: stri
                 <input type="hidden" name="eventId" value={eventId} />
                 <input type="hidden" name="offerId" value={o.id} />
                 <label>Consignes (facultatif)<textarea name="brief" rows={3} maxLength={2000} placeholder="Public visé, points à mettre en avant, visuels fournis…" /></label>
-                <label>Date souhaitée (facultatif)<input type="date" name="wishedAt" max={maxDate} /></label>
+                <label>Date souhaitée (facultatif)<input type="date" name="wishedAt" min={o.minDate} max={maxDate} /></label>
                 <p className="hint">Facturé une fois réalisé ; annulable sans frais tant que la commande n&apos;est pas planifiée. <a href="/conditions-de-vente#art-8" target="_blank" rel="noopener">Conditions de vente</a></p>
                 <div className="actions">
                   <button className="btn small" disabled={pending}>{pending ? "Envoi…" : `Commander — ${o.price}`}</button>
