@@ -13,7 +13,7 @@ import { deletableDraft, everPublished } from "@/lib/event-drafts";
 import { BillingNotice } from "@/components/BillingNotice";
 import { engagementBlock } from "@/lib/billing";
 import { applyQuoteToBenefit } from "@/lib/rfq-actions";
-import { RFQ_STATUS, rfqDisplayStatus, SUPPLIER_CATEGORIES, supplierCategoryLabel } from "@/lib/suppliers";
+import { RFQ_STATUS, rfqDisplayStatus, rfqView, SUPPLIER_CATEGORIES, supplierCategoryLabel } from "@/lib/suppliers";
 import { perParticipant, withVat } from "@/lib/quotes";
 import { costHeadcount } from "@/lib/indicators";
 import { complianceSettings, hospitalityRegime, REGIME_LABEL } from "@/lib/compliance";
@@ -68,8 +68,12 @@ export default async function Page({ params, searchParams }: { params: Promise<{
   const [rfqs, agencies] = await Promise.all([
     db.rfq.findMany({
       where: { organizationId: id, eventId },
-      include: { _count: { select: { suppliers: true } }, quotes: { select: { id: true, amountCents: true, vatBp: true, status: true, supplier: { select: { name: true } } }, orderBy: { amountCents: "asc" } } },
+      include: { _count: { select: { suppliers: true } }, suppliers: { select: { supplierId: true } }, quotes: { select: { id: true, amountCents: true, vatBp: true, status: true, supplierId: true, supplier: { select: { name: true } } }, orderBy: { amountCents: "asc" } } },
       orderBy: { createdAt: "asc" },
+    }).then((rs) => {
+      // Agence consultée sur une demande de son événement : seulement son propre devis (confidentialité des offres).
+      const own = user.memberships.filter((m) => m.organization.kind === "PRESTATAIRE").map((m) => m.organizationId);
+      return rs.map((r) => rfqView({ ...r, messages: [] as { supplierId: string }[] }, own));
     }),
     // Agences proposées : les agences événementielles référencées, et celles déjà mandatées.
     isOrganizer
@@ -371,8 +375,12 @@ export default async function Page({ params, searchParams }: { params: Promise<{
                           <div>
                             <strong>{supplierCategoryLabel(r.category)}</strong>
                             <div className="muted text-sm">
-                              {r.quotes.length} devis sur {r._count.suppliers} prestataire{r._count.suppliers > 1 ? "s" : ""} consulté{r._count.suppliers > 1 ? "s" : ""}
-                              {ref ? ` · ${kept ? `retenu : ${kept.supplier.name}` : "meilleure offre"} ${formatEUR(ttc)} TTC` : ""}
+                              {r.conflicted
+                                ? `Votre organisation est consultée : l'organisation conduit cette demande${ref ? ` · votre devis ${formatEUR(ttc)} TTC` : ""}`
+                                : <>
+                                    {r.quotes.length} devis sur {r._count.suppliers} prestataire{r._count.suppliers > 1 ? "s" : ""} consulté{r._count.suppliers > 1 ? "s" : ""}
+                                    {ref ? ` · ${kept ? `retenu : ${kept.supplier.name}` : "meilleure offre"} ${formatEUR(ttc)} TTC` : ""}
+                                  </>}
                             </div>
                             {pp && <div className={`text-xs ${pp.over ? "warn-text" : "muted"}`}>≈ {pp.each.toLocaleString("fr-FR", { maximumFractionDigits: 2 })} € TTC par {basis.per}{pp.limit ? (pp.over ? ` · au-dessus du seuil d'un ${pp.limit.what} (${pp.limit.max} € TTC)` : ` · sous le seuil d'un ${pp.limit.what}`) : ""}</div>}
                           </div>

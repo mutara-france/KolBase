@@ -605,7 +605,8 @@ export function notifyRfqCancelled(rfqId: string, actorId: string) {
   later(async () => {
     const r = await db.rfq.findUnique({ where: { id: rfqId }, include: { organization: { select: { name: true } }, event: { select: { title: true } }, suppliers: true } });
     if (!r) return;
-    for (const s of r.suppliers) {
+    // Brouillon jamais envoyé : les prestataires n'en ont pas eu connaissance.
+    for (const s of r.sentAt ? r.suppliers : []) {
       if (s.declined) continue;
       await send(await supplierTeam(s.supplierId), {
         subject: `Demande de devis annulée par ${r.organization.name}`,

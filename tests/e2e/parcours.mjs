@@ -1992,8 +1992,9 @@ async function submitNewOrg(page, siren) {
   const evUrl = `${BASE}/organisations/demo-org-academie/evenements/demo-ev-tp-endo`;
   await page.goto(evUrl);
   check("Fiche publiée : pas de proposition sans publication récente", !(await text(page)).includes("Votre événement est en ligne"));
-  await page.click('button:has-text("Retirer de l\'agenda")');
-  await page.waitForTimeout(800);
+  // L'événement a des inscrits : il ne se retire plus de l'agenda d'un clic (lot 5a, « Annuler l'événement ») ; retrait direct en base.
+  await pgc.query(`update "Event" set "publishedAt" = null where id = 'demo-ev-tp-endo'`);
+  await page.reload();
   await Promise.all([page.waitForURL(/\?publie=1/), page.click('button:has-text("Publier dans l\'agenda")')]);
   const t = (await text(page)).replace(/\s/g, " ");
   check("Publication : services proposés aussitôt", t.includes("Votre événement est en ligne dans l'agenda de KolBase") && t.includes("Pack visibilité : 990 € HT au lieu de 1 170 € HT"), t.slice(0, 120));
@@ -3522,6 +3523,9 @@ async function submitNewOrg(page, siren) {
       !at.includes("Traiteur Belleville") && !/3\s333/.test(at) && !at.includes("Conditions réservées") && !at.includes("Question réservée") && !at.includes("Meilleure offre") && !at.includes("dès "), at.slice(0, 400));
     check("Confidentialité : ni « Proposer », ni « Retenir », ni « Annuler » pour l'agence",
       (await card.locator('button:has-text("Proposer")').count()) === 0 && (await card.locator('button:has-text("Retenir")').count()) === 0 && (await card.locator('button:has-text("Annuler la demande")').count()) === 0 && (await card.locator("textarea").count()) === 0);
+    await ag.page.goto(`${BASE}/organisations/demo-org-dentalys/evenements/e2e-5a-ev`);
+    const lg = await ag.page.locator(".logistics-list").innerText().catch(() => "");
+    check("Confidentialité : fiche de l'événement sans « meilleure offre » du concurrent", lg.includes("Votre organisation est consultée") && !/3\s999,60/.test(lg) && !lg.includes("meilleure offre"), lg.slice(0, 300));
     await ag.page.goto(`${BASE}/organisations/demo-org-mediane`);
     const agTodo = await ag.page.locator('a.todo-row:has-text("Soirée des partenaires")').count();
     await ag.page.goto(`${BASE}/organisations/demo-org-dentalys`);
