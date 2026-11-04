@@ -24,8 +24,8 @@ export function NewOrgForm({ kinds }: { kinds: Opt[] }) {
         <label>Secteur<input name="sector" placeholder="Dispositifs médicaux…" /></label>
         <label>Siège<input name="headquarters" placeholder="Lyon, France" /></label>
       </div>
-      <label>SIREN ou SIRET<input name="siren" inputMode="numeric" placeholder="9 ou 14 chiffres" />
-        <span className="hint">Obligatoire pour un industriel, un organisme de formation ou un prestataire. KolBase le contrôle dans le répertoire des entreprises, puis valide l&apos;organisation avant qu&apos;elle puisse solliciter des praticiens ou publier.</span>
+      <label>SIREN, SIRET ou RNA<input name="siren" placeholder="9 ou 14 chiffres, ou W suivi de 9 chiffres" />
+        <span className="hint">SIREN obligatoire pour un industriel, un organisme de formation ou un prestataire. Facultatif pour une société savante ou une association, qui peut aussi indiquer son numéro RNA. KolBase le contrôle, puis valide l&apos;organisation avant qu&apos;elle puisse solliciter des praticiens ou publier.</span>
       </label>
       <label>E-mail de contact<input name="contactEmail" type="email" /></label>
       <button className="btn" disabled={pending}>{pending ? "Création…" : "Créer l'organisation"}</button>
@@ -121,7 +121,11 @@ export function ExpertProfileForm({ p, types }: { p: Expert; types: string[] }) 
   );
 }
 
-type Verification = { status: "PENDING" | "VERIFIED" | "REJECTED" | "SUSPENDED"; siren: string | null; legalName: string | null; note: string | null };
+type Verification = {
+  status: "PENDING" | "VERIFIED" | "REJECTED" | "SUSPENDED"; siren: string | null; legalName: string | null; note: string | null;
+  /** Association ou société savante : RNA accepté, SIREN facultatif. */ rnaAccepted?: boolean; rna?: string | null;
+  /** Date de la demande transmise à KolBase (« 4 nov. 2026 »), en attente seulement. */ requestedAt?: string | null;
+};
 
 /** Validation de l'organisation par KolBase : statut et saisie du SIREN (administrateurs). */
 export function VerificationCard({ orgId, v, canEdit }: { orgId: string; v: Verification; canEdit: boolean }) {
@@ -149,19 +153,33 @@ export function VerificationCard({ orgId, v, canEdit }: { orgId: string; v: Veri
           {v.legalName ? `Raison sociale : ${v.legalName}` : "Organisation validée"}{v.siren ? ` · SIREN ${v.siren}` : ""}. Modifier le nom ou le SIREN relance la validation.
         </p>
       ) : (
-        <p className="muted">
-          Tant que KolBase n&apos;a pas validé l&apos;organisation, elle ne peut ni solliciter de praticiens, ni publier d&apos;événements ou d&apos;appels, ni apparaître sur le site public.
-          {v.status === "REJECTED" && v.note ? ` Motif du refus : ${v.note}.` : ""}
-        </p>
+        <>
+          {/* Demande déjà transmise : la date, et non un nouvel « Envoyer pour validation ». */}
+          {v.status === "PENDING" && v.requestedAt && (
+            <p className="notice ok" role="status">
+              Demande transmise le {v.requestedAt}{v.siren ? ` (SIREN ${v.siren})` : v.rna ? ` (RNA ${v.rna})` : ""} : l&apos;équipe KolBase l&apos;examine et vous prévient par e-mail de sa décision.
+            </p>
+          )}
+          <p className="muted">
+            Tant que KolBase n&apos;a pas validé l&apos;organisation, elle ne peut ni solliciter de praticiens, ni publier d&apos;événements ou d&apos;appels, ni apparaître sur le site public.
+            {v.status === "REJECTED" && v.note ? ` Motif du refus : ${v.note}.` : ""}
+          </p>
+        </>
       )}
       {canEdit && (
         <form action={action} className="stack-sm">
           <Notice state={state} />
           <input type="hidden" name="orgId" value={orgId} />
           <div className="row">
-            <label>SIREN ou SIRET<input name="siren" inputMode="numeric" defaultValue={v.siren ?? ""} placeholder="9 ou 14 chiffres" required /></label>
-            <button className="btn secondary" disabled={pending} style={{ alignSelf: "end" }}>{pending ? "Contrôle…" : v.status === "VERIFIED" ? "Mettre à jour" : "Envoyer pour validation"}</button>
+            <label>
+              {v.rnaAccepted ? "SIREN, SIRET ou RNA" : "SIREN ou SIRET"}
+              <input name="siren" defaultValue={v.siren ?? v.rna ?? ""} placeholder={v.rnaAccepted ? "9 ou 14 chiffres, ou W suivi de 9 chiffres" : "9 ou 14 chiffres"} required />
+            </label>
+            <button className="btn secondary" disabled={pending} style={{ alignSelf: "end" }}>
+              {pending ? "Contrôle…" : v.status === "VERIFIED" || (v.status === "PENDING" && v.requestedAt) ? "Mettre à jour" : "Envoyer pour validation"}
+            </button>
           </div>
+          {v.status === "PENDING" && v.requestedAt && <span className="hint">Corrigez l&apos;identifiant seulement s&apos;il est faux : la demande en cours suffit.</span>}
         </form>
       )}
     </section>

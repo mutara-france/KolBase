@@ -233,7 +233,11 @@ model Organization {
   legalName          String?          // dénomination officielle (API Recherche d'entreprises)
   sirenActive        Boolean?         // entreprise active selon l'API (null : contrôle impossible)
   sirenCheckedAt     DateTime?
+  // Association ou société savante sans SIREN : numéro RNA (W suivi de 9 chiffres), vérifié par KolBase.
+  rna                String?
   verification       OrgVerification  @default(PENDING)
+  // Dernière demande de validation transmise à KolBase (création, SIREN ou RNA, nouveau nom).
+  verificationRequestedAt DateTime?
   verifiedAt         DateTime?
   verifiedById       String?
   verificationNote   String?

@@ -3,6 +3,8 @@ import { eventIcsEntry, toIcs } from "@/lib/ics";
 import { eventEnd, eventEnded } from "@/lib/events";
 import { orgSectionTabs, tabCount } from "@/lib/nav";
 import { statusLabel } from "@/lib/projects";
+import { parseRna } from "@/lib/siren";
+import { rnaAccepted } from "@/lib/org-roles";
 
 const t = (fr: string, vars?: Record<string, string>) => (vars ? fr.replace(/\{(\w+)\}/g, (_, k: string) => vars[k] ?? "") : fr);
 const base = { id: "ev1", title: "Webinaire", startsAt: new Date("2026-12-01T19:00:00Z"), durationMinutes: 60, venue: null, city: null };
@@ -68,5 +70,20 @@ describe("statut d'un dossier vu par l'expert", () => {
     expect(statusLabel("ATT_EXPERTS", "expert")).toBe("Votre réponse est attendue");
     expect(statusLabel("ATT_EXPERTS")).toBe("En attente des experts");
     expect(statusLabel("SIGNE", "expert")).toBe("Signé");
+  });
+});
+
+describe("identifiant d'une association : RNA", () => {
+  it("W suivi de 9 chiffres, espaces tolérés", () => {
+    expect(parseRna("W751234567")).toBe("W751234567");
+    expect(parseRna("w 751 234 567")).toBe("W751234567");
+    expect(parseRna("751234567")).toBeNull();
+    expect(parseRna("W75123456")).toBeNull();
+  });
+  it("RNA accepté pour les sociétés savantes et associations seulement", () => {
+    expect(rnaAccepted("SOCIETE_SAVANTE")).toBe(true);
+    expect(rnaAccepted("ASSOCIATION_PRO")).toBe(true);
+    expect(rnaAccepted("INDUSTRIEL")).toBe(false);
+    expect(rnaAccepted("ORGANISME_FORMATION")).toBe(false);
   });
 });
