@@ -8,6 +8,9 @@ import { requireUser } from "@/lib/auth";
 import { followFeed, seenSince } from "@/lib/follows";
 import { toggleFollow } from "@/lib/follow-actions";
 import { ORG_KIND_LABEL } from "@/lib/orgs";
+import { expertPhotoSrc } from "@/lib/expert-photo";
+import { logoSrc } from "@/lib/logos";
+import { kolViewer } from "@/lib/visibility";
 import { fmtDate } from "@/lib/i18n";
 import { getT } from "@/lib/i18n/server";
 
@@ -72,7 +75,7 @@ export default async function Page() {
               return (
                 <div key={f.id} className="card stack-sm">
                   <div className="actions">
-                    <Avatar name={name} size={42} ring={!!p} square={!p} />
+                    <Avatar name={name} size={42} ring={!!p} square={!p} photo={p ? expertPhotoSrc(p, kolViewer(user, p.id)) : null} src={o ? logoSrc(o) : null} />
                     <div>
                       <div className="eyebrow-sm">{p ? p.specialty ?? t(p.profession) : o ? t(ORG_KIND_LABEL[o.kind]) : ""}</div>
                       <h3 style={{ margin: 0 }}>{name}</h3>

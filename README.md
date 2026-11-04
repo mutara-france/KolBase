@@ -94,6 +94,29 @@ Variables Render : `SEED_DEMO` (1 = actif, 0 = désactivé), `DEMO_PASSWORD` (mo
 - **Administration** : page `/admin`, réservée aux comptes listés dans `PLATFORM_ADMIN_EMAILS` (adresse confirmée
   exigée dès que l'envoi d'e-mails est configuré).
 
+## Photos des praticiens
+
+Un expert référencé ajoute sa photo depuis « Mon compte › Photo » (JPEG, PNG ou WebP, 10 Mo au plus). Elle n'est
+jamais conservée telle quelle : `src/lib/photos.ts` (bibliothèque `sharp`) la redresse, la recadre au carré sur le visage
+probable et la réencode sans métadonnées (position GPS, appareil, date), en deux tailles stockées en base
+(`PractitionerPhoto` : JPEG 800 px, vignette WebP 192 px). Elle remplace le monogramme partout où l'expert apparaît,
+selon le réglage « Photo » de la visibilité du profil (public par défaut, organisations, masquée), servie par
+`/experts/<id>/photo`. Une case d'accord, révocable, autorise les organisations avec qui il collabore et KolBase à
+l'utiliser pour annoncer ses interventions : le dossier propose alors la photo grand format. L'équipe KolBase contrôle
+les dernières photos dans `/admin › Identités` et retire une photo inadaptée (le praticien est prévenu). La photo est
+incluse dans l'export des données et effacée à la suppression du compte.
+
+## Projets proposés par les experts
+
+Un expert référencé propose un projet (formation, étude, webinaire, comité…) depuis « Sollicitations › Mes
+propositions » ou la page d'une organisation : objectif, public, calendrier, honoraires souhaités face aux repères de
+marché, pièce jointe si le stockage est configuré. Il choisit jusqu'à cinq organisations validées et référencées (hors
+prestataires) ; chacune reçoit sa propre copie, un dossier « Proposition de l'expert », sans savoir qui d'autre l'a reçue.
+Garde-fous : cinq propositions par période de 30 jours, une seule proposition en attente par organisation, engagement à
+proposer une prestation réelle rémunérée à sa juste valeur. L'organisation accepte (contrat de sous-traitance et
+abonnement exigés, comme pour une sollicitation) ou décline avec un motif transmis à l'expert ; l'expert peut retirer
+sa proposition tant qu'elle n'a pas répondu. Les deux sont prévenus par e-mail.
+
 ## E-mails
 
 Envoi par SMTP (`SMTP_URL`, `MAIL_FROM`), après la réponse au navigateur : une panne d'envoi ne bloque jamais

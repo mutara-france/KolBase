@@ -7,6 +7,7 @@ import { collabType, SIGNED_STATUSES } from "@/lib/projects";
 import { drPrefix } from "@/lib/professions";
 import { canSee, kolVisibility, type Viewer, type VisLevel } from "@/lib/visibility";
 import { country } from "@/lib/countries";
+import { expertPhotoSrc } from "@/lib/expert-photo";
 import { intlLocale, type T } from "@/lib/i18n";
 import { getT } from "@/lib/i18n/server";
 
@@ -49,7 +50,7 @@ export async function ExpertProfile({ id, viewer, solicitHref, userId = null }: 
   return (
     <div className="stack">
       <section className="card profile-hero">
-        <Avatar name={name} size={76} ring />
+        <Avatar name={name} size={76} ring photo={expertPhotoSrc(p, viewer)} />
         <div className="grow">
           <div className="eyebrow">KB-{p.id.slice(-4).toUpperCase()} · {t(country(p.country).name)}</div>
           <h1 className="profile-name">{name} {p.rppsVerified && <span className="verif ok"><BadgeCheck size={13} /> {t("Identité vérifiée")}</span>}</h1>

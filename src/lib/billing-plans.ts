@@ -61,6 +61,7 @@ export const ENGAGING = {
   evenement: "publier un événement dans l'agenda",
   devis: "envoyer une demande de devis",
   reponse: "répondre à de nouvelles demandes de devis",
+  proposition: "accepter le projet proposé par un expert",
 } as const;
 export type Motive = keyof typeof ENGAGING;
 
@@ -101,6 +102,7 @@ export function resumeAction(orgId: string, motive: Motive | null, objet?: strin
     case "appel": return { href: `${base}/opportunites#nouvel-appel`, label: "Publier l'appel" };
     case "devis": return { href: id ? `${base}/prestataires#rfq-${id}` : `${base}/prestataires?onglet=nouvelle`, label: "Envoyer la demande de devis" };
     case "reponse": return { href: `${base}/devis`, label: "Répondre aux demandes de devis" };
+    case "proposition": return { href: id ? `${base}/dossiers/${id}` : `${base}/dossiers`, label: "Revenir à la proposition" };
     default: return null;
   }
 }

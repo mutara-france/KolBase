@@ -18,6 +18,8 @@ export type ShellSpace = {
   chip: string;
   initials: string;
   color: string;
+  /** Photo du praticien (espace praticien), à la place des initiales. */
+  photo?: string | null;
   square: boolean;
   home: string;
   items: ShellItem[];
@@ -25,7 +27,7 @@ export type ShellSpace = {
 };
 export type SectionTab = { key: string; href: string; label: string; count?: number };
 export type OrgSectionKey = "praticiens" | "dossiers" | "evenements" | "conformite";
-export type PractitionerSectionKey = "opportunites" | "agenda";
+export type PractitionerSectionKey = "opportunites" | "agenda" | "sollicitations";
 
 const has = (roles: OrgRole[], list: OrgRole[]) => roles.some((r) => list.includes(r));
 const pathOf = (href: string) => href.split(/[?#]/)[0];
@@ -109,6 +111,11 @@ export function orgSectionTabs(section: OrgSectionKey, orgId: string, roles: Org
 
 /** Onglets des rubriques du praticien référencé. */
 export function practitionerSectionTabs(section: PractitionerSectionKey): SectionTab[] {
+  if (section === "sollicitations")
+    return [
+      { key: "recues", href: "/sollicitations", label: "Sollicitations reçues" },
+      { key: "propositions", href: "/propositions", label: "Mes propositions" },
+    ];
   return section === "opportunites"
     ? [
         { key: "appels", href: "/opportunites", label: "Appels à candidatures" },

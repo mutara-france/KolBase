@@ -23,7 +23,7 @@ function resolveSpace(spaces: ShellSpace[], path: string, preferred?: string) {
   return spaces.find((s) => spaceMatches(s, path)) ?? pref ?? spaces[0];
 }
 
-export type ShellUser = { name: string; initials: string; color: string };
+export type ShellUser = { name: string; initials: string; color: string; photo?: string | null };
 
 export function AppShell({
   user,
@@ -108,8 +108,8 @@ export function AppShell({
 
 function SpaceMark({ space, size = 40 }: { space: ShellSpace; size?: number }) {
   return (
-    <span className="space-mark" style={{ width: size, height: size, background: space.color, borderRadius: space.square ? 12 : 999 }} aria-hidden>
-      {space.initials}
+    <span className={`space-mark${space.photo ? " photo" : ""}`} style={{ width: size, height: size, background: space.color, borderRadius: space.square ? 12 : 999 }} aria-hidden>
+      {space.photo ? <img src={space.photo} alt="" width={size} height={size} /> : space.initials}
     </span>
   );
 }
@@ -172,7 +172,7 @@ function AccountMenu({ user, space, spaces, admin }: { user: ShellUser; space?: 
   return (
     <div className="account" ref={ref}>
       <button type="button" className="session-chip" aria-haspopup="menu" aria-expanded={open} onClick={() => setOpen((o) => !o)}>
-        <span className="avatar" style={{ width: 36, height: 36, fontSize: 13, background: user.color }} aria-hidden>{user.initials}</span>
+        <span className={`avatar${user.photo ? " photo" : ""}`} style={{ width: 36, height: 36, fontSize: 13, background: user.color }} aria-hidden>{user.photo ? <img src={user.photo} alt="" width={36} height={36} /> : user.initials}</span>
         <span className="session-text">
           <span className="session-name">{user.name}</span>
           <span className="session-role">{space?.chip ?? t("Mon compte")}</span>

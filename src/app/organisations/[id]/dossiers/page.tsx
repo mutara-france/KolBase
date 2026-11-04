@@ -6,7 +6,7 @@ import { StatusPill } from "@/components/ProjectBits";
 import { db } from "@/lib/db";
 import { requireMembership } from "@/lib/orgs";
 import { formatDate, formatEUR } from "@/lib/events";
-import { collabType, NEXT_ACTOR, PROJECT_VIEW_ROLES, SOURCING_ROLES } from "@/lib/projects";
+import { PROPOSAL_ORIGIN, collabType, NEXT_ACTOR, PROJECT_VIEW_ROLES, SOURCING_ROLES } from "@/lib/projects";
 import { drPrefix } from "@/lib/professions";
 import type { ProjectStatus } from "@/generated/prisma/client";
 
@@ -65,7 +65,7 @@ export default async function Page({ params, searchParams }: { params: Promise<{
                 <Link key={p.id} href={`${base}/${p.id}`} className="row-item">
                   <span className="row-main">
                     <strong>{p.title}</strong>
-                    <span className="muted text-sm">{collabType(p.typeId)?.label ?? p.typeId}{names.length ? ` · ${names.slice(0, 3).join(", ")}${names.length > 3 ? ` +${names.length - 3}` : ""}` : ""}</span>
+                    <span className="muted text-sm">{p.origin === PROPOSAL_ORIGIN ? "Projet proposé par l'expert · " : ""}{collabType(p.typeId)?.label ?? p.typeId}{names.length ? ` · ${names.slice(0, 3).join(", ")}${names.length > 3 ? ` +${names.length - 3}` : ""}` : ""}</span>
                   </span>
                   <span className="row-status">
                     <StatusPill status={p.status} />

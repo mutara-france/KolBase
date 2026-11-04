@@ -7,7 +7,9 @@ import { ExpertLinkPill, Pipeline, Thread } from "@/components/ProjectBits";
 import { MessageForm, RespondForm } from "@/components/ProjectForms";
 import { db } from "@/lib/db";
 import { requireUser } from "@/lib/auth";
-import { collabType, expertLinkState } from "@/lib/projects";
+import { collabType, expertLinkState, PROPOSAL_ORIGIN } from "@/lib/projects";
+import { withdrawProposal } from "@/lib/proposal-actions";
+import { ConfirmButton } from "@/components/ConfirmButton";
 import { orgIsPublic } from "@/lib/org-roles";
 import { DocumentsPanel, ExpertSignatureBlock, MaterialsPanel } from "@/components/DossierSections";
 import { fmtEur, intlLocale } from "@/lib/i18n";
@@ -35,8 +37,11 @@ export default async function Page({ params }: { params: Promise<{ linkId: strin
   const p = link.project;
   const type = collabType(p.typeId);
   const state = expertLinkState(link, p);
-  // Dossier abandonné par l'organisation (ou proposition spontanée déclinée) : plus rien à faire.
-  const abandoned = state === "abandonne" || state === "refuse";
+  // Projet proposé par l'expert lui-même, en attente de la réponse de l'organisation (il peut le retirer).
+  const proposal = p.origin === PROPOSAL_ORIGIN;
+  const awaitingOrg = proposal && p.status === "ATT_IND";
+  // Dossier abandonné par l'organisation (ou proposition déclinée, ou retirée) : plus rien à faire.
+  const abandoned = state === "abandonne" || state === "refuse" || state === "retire";
   // Sollicitation restée sans réponse alors que le dossier a avancé : le recrutement est clos.
   const closed = state === "clos";
   const { t, locale } = await getT();
@@ -54,6 +59,8 @@ export default async function Page({ params }: { params: Promise<{ linkId: strin
   const next =
     state === "abandonne" ? t("Ce dossier a été abandonné par l'organisation.")
     : state === "refuse" ? t("L'organisation a décliné votre proposition.")
+    : state === "retire" ? t("Vous avez retiré cette proposition.")
+    : awaitingOrg ? t("Votre proposition attend la réponse de l'organisation : vous êtes prévenu par e-mail. Vous pouvez la retirer tant qu'elle n'a pas répondu.")
     : closed ? t("Le recrutement de ce dossier est clos : l'organisation doit vous solliciter de nouveau.")
     : state === "contre" ? t("Vous avez proposé d'autres honoraires : l'organisation peut les accepter ou vous renvoyer une proposition. Vous pouvez encore modifier votre réponse.")
     : link.status === "ATT_EXPERTS" ? t("Donnez votre réponse : accord de principe, autres honoraires ou refus.")
@@ -69,7 +76,7 @@ export default async function Page({ params }: { params: Promise<{ linkId: strin
     <>
       <SiteHeader />
       <main className="stack">
-        <p className="muted"><Link href="/sollicitations">{t("Mes sollicitations")}</Link></p>
+        <p className="muted">{proposal ? <Link href="/propositions">{t("Mes propositions")}</Link> : <Link href="/sollicitations">{t("Mes sollicitations")}</Link>}</p>
         <PageHero
           eyebrow={`${p.organization.name} · ${type ? t(type.label) : p.typeId}${p.therapeuticArea ? ` · ${t(p.therapeuticArea)}` : ""}`}
           status={<ExpertLinkPill state={state} status={p.status === "ATT_IND" ? "ATT_IND" : link.status} />}
@@ -78,7 +85,7 @@ export default async function Page({ params }: { params: Promise<{ linkId: strin
           facts={[
             { icon: <CalendarDays size={13} />, label: t("Prestation"), value: `${link.days ?? "—"} ${units}` },
             // Montant précédent rappelé (« 1 500 € → 1 800 € HT ») ; contre-proposition en attente de l'organisation.
-            { icon: <Euro size={13} />, label: t("Honoraires proposés"), value: link.feeCents != null ? t("{amount} HT", { amount: link.previousFeeCents != null ? `${fmtEur(locale, link.previousFeeCents)} → ${fmtEur(locale, link.feeCents)}` : fmtEur(locale, link.feeCents) }) : "—", sub: state === "contre" && link.desiredFeeCents != null ? t("votre proposition : {amount} HT", { amount: fmtEur(locale, link.desiredFeeCents) }) : undefined },
+            { icon: <Euro size={13} />, label: proposal ? t("Honoraires souhaités") : t("Honoraires proposés"), value: link.feeCents != null ? t("{amount} HT", { amount: link.previousFeeCents != null ? `${fmtEur(locale, link.previousFeeCents)} → ${fmtEur(locale, link.feeCents)}` : fmtEur(locale, link.feeCents) }) : "—", sub: state === "contre" && link.desiredFeeCents != null ? t("votre proposition : {amount} HT", { amount: fmtEur(locale, link.desiredFeeCents) }) : undefined },
             ...(type ? [{ icon: <Scale size={13} />, label: t("Référence de marché"), value: t("{min} à {max} € HT", { min: num(type.fmv[0]), max: num(type.fmv[1]) }), sub: t("par {unit}", { unit: t(type.unit) }) }] : []),
             { icon: <Building2 size={13} />, label: t("Organisation"), value: p.organization.name, sub: p.organization.sector ?? undefined },
           ]}
@@ -108,7 +115,15 @@ export default async function Page({ params }: { params: Promise<{ linkId: strin
               <span className="eyebrow-sm">{t("Prochaine étape")}</span>
               <p className="next-hint">{next}</p>
               {state === "abandonne" && p.abandonNote && <p className="text-sm">{t("Motif : {note}", { note: p.abandonNote })}</p>}
-              {engaged && (
+              {awaitingOrg && (
+                <form action={withdrawProposal}>
+                  <input type="hidden" name="linkId" value={link.id} />
+                  <ConfirmButton className="btn ghost small" confirm={t("retirer la proposition")} summary={t("{org} est prévenue, le dossier est clos.", { org: p.organization.name })} localized>
+                    {t("Retirer ma proposition")}
+                  </ConfirmButton>
+                </form>
+              )}
+              {engaged && !awaitingOrg && (
                 <div className="transitions-stack">
                   {signedHref && <a className="btn secondary" href={signedHref}>{t("Convention signée (PDF)")}</a>}
                   <a className="btn ghost" href={`/sollicitations/${link.id}/convention`} target="_blank" rel="noreferrer">{t("Projet de convention (PDF)")}</a>

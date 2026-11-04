@@ -20,8 +20,8 @@ export default function Page() {
         ]}</P>],
         ["Données traitées", <L key="2" items={[
           "Compte : nom, prénom, adresse e-mail, téléphone (facultatif), langue, mot de passe (stocké sous forme irréversible), réglages de notifications, et, si elle est activée, la clé de double authentification et les codes de secours (hachés).",
-          "Profil professionnel : profession, pays d'exercice, numéro RPPS ou identifiant professionnel étranger, lieu d'exercice, spécialité, présentation, publications, structures juridiques et coordonnées de facturation des experts, tarifs indicatifs, réglages de visibilité.",
-          "Activité : inscriptions et présence aux événements, avantages acceptés, sollicitations, candidatures, messages, conventions, honoraires et notes d'honoraires, documents déposés, avis laissés aux prestataires.",
+          "Profil professionnel : profession, pays d'exercice, numéro RPPS ou identifiant professionnel étranger, lieu d'exercice, spécialité, présentation, photo (facultative, recadrée et débarrassée de ses métadonnées : lieu de prise de vue, appareil, date), publications, structures juridiques et coordonnées de facturation des experts, tarifs indicatifs, réglages de visibilité.",
+          "Activité : inscriptions et présence aux événements, avantages acceptés, sollicitations, candidatures, projets proposés aux organisations, messages, conventions, honoraires et notes d'honoraires, documents déposés, avis laissés aux prestataires.",
           "Organisations et prestataires : rôle dans l'organisation, coordonnées professionnelles, données de facturation et d'abonnement (le moyen de paiement reste chez le prestataire de paiement).",
           "Données techniques : journal des actions sensibles (connexions, validations, décisions, exports), adresse IP utilisée pour limiter les tentatives de connexion, cookies décrits plus bas.",
           "Aucune donnée de santé de patients n'est traitée ; il est interdit d'en déposer.",
@@ -33,6 +33,7 @@ export default function Page() {
           ["Mettre en relation, gérer les dossiers, événements, devis et messages", "Exécution du contrat", "Tant que le compte existe ; ce qui relève d'une organisation suit le contrat de sous-traitance"],
           ["Conventions, avantages, hospitalités et déclarations Transparence Santé (pour le compte des organisations)", "Obligation légale des organisations (articles L.1453-1 et suivants du Code de la santé publique)", "Durée des obligations déclaratives des organisations ; les éléments déclarés sont conservés même après suppression du compte"],
           ["Notifications par e-mail liées à votre activité", "Intérêt légitime ; désactivables dans « Mon compte »", "Le temps de l'envoi"],
+          ["Utiliser la photo d'un expert pour annoncer ses interventions (programme, affiches, réseaux sociaux, e-mailing), par les organisations avec qui il collabore et par KolBase", "Consentement (case à cocher, retirable à tout moment dans « Mon compte »)", "Jusqu'au retrait de l'accord ou de la photo"],
           ["Lettre d'information de KolBase", "Consentement (case à cocher, retirable en un clic)", "Jusqu'à la désinscription"],
           ["Mesure des services de communication (visites et inscriptions obtenues par un lien suivi)", "Intérêt légitime ; statistiques agrégées, sans nom", "13 mois"],
           ["Facturation des abonnements et des services", "Obligation légale (Code de commerce)", "10 ans pour les factures et pièces comptables"],

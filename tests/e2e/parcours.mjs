@@ -4338,6 +4338,157 @@ async function submitNewOrg(page, siren) {
   await pgc.end();
 }
 
+// ── Photo des experts et projets proposés aux organisations ────────────────
+{
+  const pgc = new pg.Client({ connectionString: process.env.DATABASE_URL });
+  await pgc.connect();
+  const q1 = async (sql, params = []) => (await pgc.query(sql, params)).rows[0];
+  const sharp = (await import("sharp")).default;
+  const ROUX = "mathieu.roux@demo.kolbase.local";
+  // Rejouable : l'expert repart sans photo ni proposition.
+  await pgc.query(`delete from "PractitionerPhoto" where "practitionerId" = 'demo-p-roux'`);
+  await pgc.query(`update "PractitionerProfile" set "photoUpdatedAt" = null, "photoConsentAt" = null where id = 'demo-p-roux'`);
+  await pgc.query(`delete from "Project" where title = 'Étude e2e : retraitement endodontique en une séance'`);
+  // Photo de téléphone, en portrait : position GPS, marque et modèle dans les métadonnées EXIF.
+  const jpeg = await sharp({ create: { width: 1200, height: 1600, channels: 3, background: { r: 30, g: 90, b: 160 } } })
+    .jpeg()
+    .withExif({ IFD0: { Make: "Phone", Model: "ModeleSecret" }, IFD3: { GPSLatitudeRef: "N", GPSLatitude: "48/1 51/1 0/1", GPSLongitudeRef: "E", GPSLongitude: "2/1 21/1 0/1" } })
+    .toBuffer();
+  const exp = await session();
+  await login(exp.page, ROUX);
+  await exp.page.goto(`${BASE}/compte`);
+  check("Photo : encart « Photo » dans Mon compte, initiales en attendant", (await exp.page.locator("#photo").innerText()).includes("Sans photo, vos initiales s'affichent."));
+  await exp.page.setInputFiles('#photo input[name="photo"]', { name: "portrait.jpg", mimeType: "image/jpeg", buffer: jpeg });
+  await exp.page.click('#photo button:has-text("Ajouter ma photo")');
+  await exp.page.locator("#photo .notice.ok").waitFor({ timeout: 15000 }).catch(() => {});
+  check("Photo : enregistrée depuis Mon compte", (await exp.page.locator("#photo").innerText()).includes("Photo enregistrée."));
+  const thumbRes = await fetch(`${BASE}/experts/demo-p-roux/photo`);
+  const tm = await sharp(Buffer.from(await thumbRes.arrayBuffer())).metadata();
+  check("Photo publique : vignette WebP carrée servie sans connexion", thumbRes.status === 200 && thumbRes.headers.get("content-type") === "image/webp" && tm.width === 192 && tm.height === 192, `${thumbRes.status} ${tm.width}×${tm.height}`);
+  const bigBuf = Buffer.from(await (await fetch(`${BASE}/experts/demo-p-roux/photo?taille=grande`)).arrayBuffer());
+  const bm = await sharp(bigBuf).metadata();
+  check("Photo grand format : JPEG 800 × 800 sans métadonnées (GPS, appareil)", bm.format === "jpeg" && bm.width === 800 && bm.height === 800 && !bm.exif && !bigBuf.includes("ModeleSecret"));
+  const anon = await session();
+  await anon.page.goto(`${BASE}/experts`);
+  check("Liste publique des experts : la photo remplace les initiales", (await anon.page.locator('a[href="/experts/demo-p-roux"] .avatar.photo img').count()) === 1);
+  await exp.page.goto(`${BASE}/tableau-de-bord`);
+  check("Barre de l'espace praticien : sa photo", (await exp.page.locator(".session-chip .avatar.photo img").count()) === 1);
+  // Réglage « Organisations » : les visiteurs ne la voient plus, un membre d'organisation validée si.
+  await pgc.query(`update "PractitionerProfile" set visibility = visibility || '{"photo":"industriels"}' where id = 'demo-p-roux'`);
+  check("Photo réservée aux organisations : refusée sans connexion", (await fetch(`${BASE}/experts/demo-p-roux/photo`)).status === 404);
+  await anon.page.goto(`${BASE}/experts/demo-p-roux`);
+  check("Photo réservée : fiche publique avec les initiales", (await anon.page.locator(".profile-hero .avatar.photo").count()) === 0 && (await anon.page.locator(".profile-hero .avatar").count()) === 1);
+  const jul = await session();
+  await login(jul.page, "julien.faure@demo.kolbase.local");
+  check("Photo réservée : visible d'un membre d'organisation validée", (await jul.page.request.get(`${BASE}/experts/demo-p-roux/photo`)).status() === 200);
+  await pgc.query(`update "PractitionerProfile" set visibility = visibility || '{"photo":"public"}' where id = 'demo-p-roux'`);
+  // Accord pour la communication des interventions, puis export des données.
+  await exp.page.goto(`${BASE}/compte`);
+  await exp.page.check('#photo input[name="consent"]');
+  await exp.page.click('#photo button:has-text("Enregistrer")');
+  await exp.page.locator('#photo .notice.ok:has-text("Accord enregistré")').waitFor({ timeout: 10000 }).catch(() => {});
+  check("Photo : accord pour la communication enregistré", !!(await q1(`select "photoConsentAt" from "PractitionerProfile" where id = 'demo-p-roux'`))?.photoConsentAt);
+  const dump = await (await exp.page.request.get(`${BASE}/compte/export`)).json().catch(() => null);
+  check("Export des données : la photo est jointe", !!dump?.compte?.practitioner?.photo?.image?.startsWith("data:image/jpeg;base64,"));
+
+  // Projet proposé à trois organisations : une copie chacune, sans les autres destinataires.
+  await pgc.query(`delete from "ExpertProposal" where "practitionerId" = 'demo-p-roux'`);
+  await exp.page.goto(`${BASE}/sollicitations`);
+  check("Sollicitations : onglet « Mes propositions » et bouton « Proposer un projet »", (await exp.page.locator('.section-nav a:has-text("Mes propositions")').count()) === 1 && (await exp.page.locator('a[href="/propositions/nouvelle"]').count()) >= 1);
+  await exp.page.goto(`${BASE}/structures/demo-org-dentalys`);
+  await exp.page.click('a:has-text("Proposer un projet")');
+  await exp.page.waitForURL(/\/propositions\/nouvelle/);
+  check("Page d'une organisation : « Proposer un projet » la présélectionne", await exp.page.locator('label.org-option:has-text("Dentalys Implants") input').isChecked());
+  check("Prestataires exclus des destinataires", (await exp.page.locator('label.org-option:has-text("Traiteur Belleville")').count()) === 0);
+  await exp.page.fill('input[name="title"]', "Étude e2e : retraitement endodontique en une séance");
+  await exp.page.selectOption('select[name="typeId"]', "webinaire");
+  await exp.page.fill('textarea[name="description"]', "Webinaire sur le retraitement endodontique en une séance, à partir de vingt cas cliniques suivis à deux ans.");
+  await exp.page.fill('textarea[name="audience"]', "Omnipraticiens, 60 minutes");
+  await exp.page.fill('input[name="schedule"]', "Premier trimestre 2027");
+  await exp.page.fill('input[name="fee"]', "2500");
+  check("Honoraires au-dessus du repère : signalés à la saisie", (await exp.page.locator(".proposal-form").innerText()).includes("Votre demande dépasse ce repère"));
+  await exp.page.fill('input[name="fee"]', "1500");
+  await exp.page.check('label.org-option:has-text("OrthoNova") input');
+  await exp.page.check('label.org-option:has-text("Collège Dentaire Rhône-Alpes") input');
+  await exp.page.check('input[name="attest"]');
+  await Promise.all([exp.page.waitForURL(/\/propositions\?envoyee=/, { timeout: 15000 }).catch(() => {}), exp.page.click('button:has-text("Envoyer à 3 organisations")')]);
+  const copies = (await pgc.query(`select p.id, p."organizationId" org, p.status, p.description, p."proposalId", x.id link from "Project" p join "ProjectExpert" x on x."projectId" = p.id where p.title = 'Étude e2e : retraitement endodontique en une séance' order by p."organizationId"`)).rows;
+  const copyOf = (org) => copies.find((c) => c.org === org);
+  check("Proposition : une copie par organisation, en attente de leur réponse", copies.length === 3 && copies.every((c) => c.status === "ATT_IND" && c.proposalId === copies[0].proposalId), JSON.stringify(copies.map((c) => [c.org, c.status])));
+  check("Copie : objectif, public et calendrier", !!copyOf("demo-org-dentalys")?.description?.includes("Calendrier envisagé : Premier trimestre 2027"));
+  check("Mes propositions : envoi confirmé, trois réponses attendues", (await text(exp.page)).includes("Proposition envoyée à 3 organisations") && (await exp.page.locator('.proposal-recipients li:has-text("En attente de réponse")').count()) === 3);
+  const pm = await waitMail("julien.faure@demo.kolbase.local", "Projet proposé par Dr Mathieu Roux");
+  check("E-mail à l'équipe Projets, sans les autres destinataires", !!pm && /1\s500\s€/.test(pm.text) && !pm.text.includes("OrthoNova") && !pm.text.includes("Collège"), pm?.subject ?? "aucun e-mail");
+  check("E-mail aussi à OrthoNova et au Collège", !!(await waitMail("thomas.garnier@demo.kolbase.local", "Projet proposé par")) && !!(await waitMail("pierre.vidal@demo.kolbase.local", "Projet proposé par")));
+  await exp.page.goto(`${BASE}/propositions/nouvelle`);
+  check("Une proposition à la fois par organisation : Dentalys indisponible", await exp.page.locator('label.org-option:has-text("Dentalys Implants") input').isDisabled());
+  await exp.page.goto(`${BASE}/sollicitations`);
+  check("Propositions en attente : hors des sollicitations reçues", !(await text(exp.page)).includes("Étude e2e : retraitement"));
+
+  // Dentalys accepte : l'expert est prévenu, la photo grand format est proposée (accord donné).
+  await jul.page.goto(`${BASE}/organisations/demo-org-dentalys/dossiers`);
+  check("Dossiers de l'organisation : « Projet proposé par l'expert »", (await text(jul.page)).includes("Projet proposé par l'expert"));
+  await jul.page.goto(`${BASE}/organisations/demo-org-dentalys/dossiers/${copyOf("demo-org-dentalys").id}`);
+  const dj = await text(jul.page);
+  check("Dossier reçu : aucun autre destinataire nommé", !dj.includes("OrthoNova") && !dj.includes("Collège Dentaire"));
+  await jul.page.click('button:has-text("Accepter la proposition")');
+  await jul.page.waitForTimeout(800);
+  check("Proposition acceptée : dossier en accord de principe", (await q1(`select status from "Project" where id = $1`, [copyOf("demo-org-dentalys").id]))?.status === "ACCORD");
+  check("E-mail à l'expert : proposition acceptée", !!(await waitMail(ROUX, "Proposition acceptée")));
+  await jul.page.goto(`${BASE}/organisations/demo-org-dentalys/dossiers/${copyOf("demo-org-dentalys").id}`);
+  check("Expert engagé, accord donné : photo grand format pour les supports", (await jul.page.locator('a[download]:has-text("Photo pour vos supports")').count()) === 1 && (await jul.page.locator(".expert-card .avatar.photo img").count()) === 1);
+  // Collège : abonnement non actif, « Accepter » remplacé par la consigne ; puis il décline, avec un motif transmis à l'expert.
+  await pgc.query(`update "Subscription" set "exemptUntil" = null where "organizationId" = 'demo-org-cdra'`);
+  const pie = await session();
+  await login(pie.page, "pierre.vidal@demo.kolbase.local");
+  const cdraDossier = `${BASE}/organisations/demo-org-cdra/dossiers/${copyOf("demo-org-cdra").id}`;
+  await pie.page.goto(cdraDossier);
+  check("Accepter exige l'abonnement : consigne affichée, pas de bouton « Accepter »", (await text(pie.page)).includes("accepter le projet proposé par un expert") && (await pie.page.locator('button:has-text("Accepter la proposition")').count()) === 0);
+  await pgc.query(`update "Subscription" set "exemptUntil" = '2099-12-31T23:59:59Z' where "organizationId" = 'demo-org-cdra'`);
+  await pie.page.goto(cdraDossier);
+  await pie.page.fill('form.transition:has(input[value="decline_proposal"]) input[name="note"]', "Hors de notre programme cette année");
+  await pie.page.click('button:has-text("Décliner la proposition")');
+  await pie.page.waitForTimeout(800);
+  const dm = await waitMail(ROUX, "Proposition déclinée");
+  check("Proposition déclinée : e-mail à l'expert avec le motif", !!dm && dm.text.includes("Hors de notre programme cette année"), dm?.text);
+  check("Motif dans les échanges de l'expert", !!(await q1(`select id from "Message" where "projectExpertId" = $1 and body = 'Hors de notre programme cette année'`, [copyOf("demo-org-cdra").link])));
+  // OrthoNova n'a pas répondu : l'expert retire sa proposition, OrthoNova est prévenue.
+  await exp.page.goto(`${BASE}/propositions`);
+  const li = exp.page.locator('.proposal-recipients li:has-text("OrthoNova")');
+  await li.locator('button:has-text("Retirer")').click();
+  await li.locator('button:has-text("Confirmer : retirer la proposition")').click();
+  await exp.page.waitForTimeout(800);
+  const w = await q1(`select p.status, x."responseNote" from "Project" p join "ProjectExpert" x on x."projectId" = p.id where p.id = $1`, [copyOf("demo-org-orthonova").id]);
+  check("Proposition retirée par l'expert : dossier clos", w?.status === "DECLINE" && w?.responseNote === "Proposition retirée par l'expert", JSON.stringify(w));
+  check("E-mail à OrthoNova : proposition retirée", !!(await waitMail("thomas.garnier@demo.kolbase.local", "Proposition retirée")));
+  await exp.page.goto(`${BASE}/propositions`);
+  const mine = await text(exp.page);
+  check("Mes propositions : acceptée, déclinée, retirée", mine.includes("Acceptée") && mine.includes("Déclinée") && mine.includes("Retirée"), mine.slice(0, 400));
+  await exp.page.goto(`${BASE}/sollicitations`);
+  check("Proposition acceptée : suivie dans les sollicitations", (await text(exp.page)).includes("Votre proposition, acceptée"));
+  // Limite contre le démarchage : cinq propositions sur 30 jours.
+  await pgc.query(`insert into "ExpertProposal" (id, "practitionerId", title, "typeId", description) select 'e2e-quota-' || g, 'demo-p-roux', 'Quota', 'webinaire', 'Quota' from generate_series(1, 4) g`);
+  await exp.page.goto(`${BASE}/propositions/nouvelle`);
+  check("Cinq propositions en 30 jours : formulaire remplacé par la consigne", (await text(exp.page)).includes("le maximum") && (await exp.page.locator(".proposal-form").count()) === 0);
+  await pgc.query(`delete from "ExpertProposal" where id like 'e2e-quota-%'`);
+
+  // Photo inadaptée : retirée par l'équipe KolBase, l'expert est prévenu avec le motif.
+  const adm = await session();
+  await login(adm.page, "anne.chevalier@demo.kolbase.local");
+  await adm.page.goto(`${BASE}/admin?onglet=praticiens`);
+  const ph = adm.page.locator('.photo-review li:has-text("Mathieu Roux")');
+  await ph.locator('input[name="note"]').fill("Ce n'est pas un portrait");
+  await ph.locator('button:has-text("Retirer")').click();
+  await ph.locator('button:has-text("Confirmer : retirer cette photo")').click();
+  await adm.page.waitForTimeout(800);
+  const after = await q1(`select "photoUpdatedAt", "photoConsentAt" from "PractitionerProfile" where id = 'demo-p-roux'`);
+  check("Admin : photo retirée (et l'accord avec)", !after?.photoUpdatedAt && !after?.photoConsentAt && (await fetch(`${BASE}/experts/demo-p-roux/photo`)).status === 404);
+  const rm = await waitMail(ROUX, "Votre photo a été retirée");
+  check("E-mail à l'expert : photo retirée, avec le motif", !!rm && rm.text.includes("Ce n'est pas un portrait"));
+  for (const s of [exp, anon, jul, pie, adm]) await s.ctx.close();
+  await pgc.end();
+}
+
 // ── 4. Limitation des tentatives ───────────────────────────────────────────
 {
   const { ctx, page } = await session();

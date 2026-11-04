@@ -77,6 +77,7 @@ export default async function Page({ searchParams }: { searchParams: Promise<{ a
   const profileTodos: TodoItem[] = p.listed
     ? [
         ...(!p.bio ? [{ href: "/compte", title: t("Ajouter une présentation"), detail: t("Les organisations la lisent en premier."), icon: "UserRound" as const }] : []),
+        ...(!p.photoUpdatedAt ? [{ href: "/compte#photo", title: t("Ajouter votre photo"), detail: t("Un organisateur choisit plus volontiers un intervenant qu'il reconnaît."), icon: "UserRound" as const }] : []),
         // Hors de France : l'identifiant du pays d'exercice (INAMI, NPI…), pas le RPPS.
         ...(!pid.value ? [{ href: "/compte", title: t("Renseigner votre {id}", { id: t(pid.short) }), detail: t("Nécessaire aux conventions et au badge « Identité vérifiée »."), icon: "ShieldCheck" as const }] : []),
         // Coordonnées de facturation (structure éventuelle, adresse, TVA) : reprises par les conventions et les notes d'honoraires.
@@ -206,6 +207,14 @@ export default async function Page({ searchParams }: { searchParams: Promise<{ a
                   ))
                 )}
                 <MoreLink href="/opportunites">{t("Tous les appels à candidatures")}</MoreLink>
+              </section>
+            )}
+            {p.listed && (
+              <section className="card dash-card stack-sm" aria-labelledby="proposer">
+                <h2 id="proposer" className="dash-title">{t("Un projet à proposer ?")}</h2>
+                <p className="muted text-sm" style={{ margin: 0 }}>{t("Formation, étude, webinaire, comité… Soumettez-le à cinq organisations au plus : chacune peut l'accepter et ouvrir un dossier avec vous.")}</p>
+                <div><Link className="btn secondary small" href="/propositions/nouvelle">{t("Proposer un projet")}</Link></div>
+                <MoreLink href="/propositions">{t("Mes propositions")}</MoreLink>
               </section>
             )}
             <section className="card dash-card" aria-labelledby="mon-agenda">

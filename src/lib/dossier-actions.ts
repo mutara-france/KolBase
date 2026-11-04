@@ -1,14 +1,12 @@
 "use server";
 
 import { fourEyes } from "@/lib/four-eyes";
-import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import { db } from "@/lib/db";
 import { audit, requireUser } from "@/lib/auth";
 import { requireMembership } from "@/lib/orgs";
-import { collabType, MATERIAL_KINDS, PROJECT_ROLES, PROPOSAL_ORIGIN, REVIEW_ROLES } from "@/lib/projects";
-import { eurToCents, str, unitsOrNull, UNITS_INVALID } from "@/lib/form";
-import { notifyProposal } from "@/lib/notifications";
+import { MATERIAL_KINDS, PROJECT_ROLES, REVIEW_ROLES } from "@/lib/projects";
+import { eurToCents, str } from "@/lib/form";
 import { getT } from "@/lib/i18n/server";
 
 export type ActionState = { error?: string; ok?: string } | undefined;
@@ -142,33 +140,3 @@ export async function reviewMaterial(form: FormData) {
   revalidatePath("/sollicitations", "layout");
 }
 
-// ─── Proposition de collaboration par l'expert ─────────────────────────────
-
-export async function proposeCollaboration(_: ActionState, form: FormData): Promise<ActionState> {
-  const user = await requireUser();
-  const { t } = await getT();
-  if (!user.practitioner?.listed) return { error: t("Référencez-vous comme expert pour proposer une collaboration.") };
-  const orgId = str(form, "orgId");
-  const org = await db.organization.findFirst({ where: { id: orgId, listed: true, verification: "VERIFIED", kind: { not: "PRESTATAIRE" } } });
-  if (!org) return { error: t("Organisation introuvable.") };
-  const title = str(form, "title"); const typeId = str(form, "typeId"); const message = str(form, "message");
-  if (!title) return { error: t("Donnez un titre à votre proposition.") };
-  if (!collabType(typeId)) return { error: t("Type de collaboration invalide.") };
-  if (message.length < 30) return { error: t("Décrivez votre proposition en quelques lignes (30 caractères minimum).") };
-  const fee = eurToCents(str(form, "fee"));
-  const parsedUnits = unitsOrNull(str(form, "units"));
-  if (parsedUnits === undefined) return { error: t(UNITS_INVALID) };
-  const units = parsedUnits ?? 1;
-  const project = await db.project.create({
-    data: {
-      organizationId: orgId, title, typeId, therapeuticArea: str(form, "therapeuticArea") || user.practitioner.specialty, description: message,
-      origin: PROPOSAL_ORIGIN, status: "ATT_IND", createdById: user.id,
-      experts: { create: { practitionerId: user.practitioner.id, status: "ACCORD", feeCents: fee, days: units, respondedAt: new Date() } },
-    },
-    include: { experts: true },
-  });
-  await db.message.create({ data: { projectId: project.id, projectExpertId: project.experts[0].id, authorId: user.id, body: message } });
-  await audit(user.id, "project.propose", "Project", project.id, { orgId });
-  notifyProposal(project.id);
-  redirect(`/sollicitations/${project.experts[0].id}`);
-}

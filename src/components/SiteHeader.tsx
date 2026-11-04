@@ -2,6 +2,7 @@ import { cookies } from "next/headers";
 import { getCurrentUser } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { avatarColor, initialsOf } from "@/components/Avatar";
+import { photoPath } from "@/lib/expert-photo";
 import { AppShell } from "@/components/AppShell";
 import { PublicNav } from "@/components/PublicNav";
 import { ORG_KIND_LABEL, roleLabel } from "@/lib/orgs";
@@ -52,7 +53,7 @@ export async function SiteHeader({ variant = "app", section }: { variant?: "app"
       { key: "accueil", href: "/tableau-de-bord", label: t("Accueil"), icon: "House" },
       ...(p.listed
         ? ([
-            { key: "sollicitations", href: "/sollicitations", label: t("Sollicitations"), icon: "Send", badge: pending },
+            { key: "sollicitations", href: "/sollicitations", label: t("Sollicitations"), icon: "Send", badge: pending, match: ["/propositions"] },
             { key: "opportunites", href: "/opportunites", label: t("Opportunités"), icon: "Megaphone", match: ["/interventions"] },
           ] satisfies ShellItem[])
         : []),
@@ -69,6 +70,7 @@ export async function SiteHeader({ variant = "app", section }: { variant?: "app"
       chip: t(p.listed ? "Expert référencé" : "Praticien"),
       initials: initialsOf(fullName),
       color: avatarColor(fullName),
+      photo: p.photoUpdatedAt ? photoPath(p.id, p.photoUpdatedAt) : null,
       square: false,
       home: "/tableau-de-bord",
       items,
@@ -101,7 +103,7 @@ export async function SiteHeader({ variant = "app", section }: { variant?: "app"
 
   return (
     <AppShell
-      user={{ name: `${drPrefix(p?.profession)}${fullName}`, initials: initialsOf(fullName), color: avatarColor(fullName) }}
+      user={{ name: `${drPrefix(p?.profession)}${fullName}`, initials: initialsOf(fullName), color: avatarColor(fullName), photo: p?.photoUpdatedAt ? photoPath(p.id, p.photoUpdatedAt) : null }}
       spaces={spaces}
       initialSpace={initialSpace ? decodeURIComponent(initialSpace) : undefined}
       activeKey={section}
