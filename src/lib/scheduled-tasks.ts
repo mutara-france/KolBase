@@ -7,14 +7,14 @@ import { REPORT_DELAY_DAYS } from "@/lib/services";
 /** Tâches dues : rappels de la veille, puis remerciements (attestation, questionnaire) après les événements. Idempotent. */
 export async function runDueTasks(now = new Date()) {
   const soon = await db.event.findMany({
-    where: { internal: false, startsAt: { gt: now, lte: new Date(now.getTime() + REMINDER_WINDOW_MS) }, registrations: { some: { reminderSentAt: null } } },
+    where: { internal: false, cancelledAt: null, startsAt: { gt: now, lte: new Date(now.getTime() + REMINDER_WINDOW_MS) }, registrations: { some: { reminderSentAt: null } } },
     select: { id: true },
   });
   let reminders = 0;
   for (const e of soon) reminders += await sendEventReminders(e.id, now);
 
   const recent = await db.event.findMany({
-    where: { internal: false, startsAt: { gte: new Date(now.getTime() - FOLLOWUP_MAX_AGE_MS), lt: now }, registrations: { some: { followUpSentAt: null } } },
+    where: { internal: false, cancelledAt: null, startsAt: { gte: new Date(now.getTime() - FOLLOWUP_MAX_AGE_MS), lt: now }, registrations: { some: { followUpSentAt: null } } },
     select: { id: true, startsAt: true, durationMinutes: true },
   });
   let followUps = 0;

@@ -261,6 +261,8 @@ const linkIn = (mail) => mail?.text.match(/https?:\/\/\S+/g)?.find((u) => !u.end
   check("Expert : voit sa convention signée", (await text(expert.page)).includes("convention-roux-signée.pdf"));
   const own = await expert.page.request.get(`${BASE}${href}`);
   check("Expert : peut la télécharger", own.ok());
+  // En signature, « Convention signée » est présélectionnée (lot 5a) : une pièce se choisit.
+  await expert.page.selectOption('form:has(input[name="file"]) select[name="kind"]', "PIECE");
   await expert.page.setInputFiles('form:has(input[name="file"]) input[name="file"]', { name: "programme-tp.pdf", mimeType: "application/pdf", buffer: pdf });
   await expert.page.click('form:has(input[name="file"]) button:has-text("Déposer")');
   await expert.page.waitForTimeout(1500);
@@ -1990,8 +1992,9 @@ async function submitNewOrg(page, siren) {
   const evUrl = `${BASE}/organisations/demo-org-academie/evenements/demo-ev-tp-endo`;
   await page.goto(evUrl);
   check("Fiche publiée : pas de proposition sans publication récente", !(await text(page)).includes("Votre événement est en ligne"));
-  await page.click('button:has-text("Retirer de l\'agenda")');
-  await page.waitForTimeout(800);
+  // L'événement a des inscrits : il ne se retire plus de l'agenda d'un clic (lot 5a, « Annuler l'événement ») ; retrait direct en base.
+  await pgc.query(`update "Event" set "publishedAt" = null where id = 'demo-ev-tp-endo'`);
+  await page.reload();
   await Promise.all([page.waitForURL(/\?publie=1/), page.click('button:has-text("Publier dans l\'agenda")')]);
   const t = (await text(page)).replace(/\s/g, " ");
   check("Publication : services proposés aussitôt", t.includes("Votre événement est en ligne dans l'agenda de KolBase") && t.includes("Pack visibilité : 990 € HT au lieu de 1 170 € HT"), t.slice(0, 120));
@@ -2321,12 +2324,14 @@ async function submitNewOrg(page, siren) {
     await exp.page.goto(`${BASE}/sollicitations/${link.id}`);
     const sol = await text(exp.page);
     check("Expert : plus de promesse de « contre-proposition », champ « Honoraires souhaités »", !sol.includes("contre-proposition") && (await exp.page.locator('input[name="desiredFee"]').count()) === 1);
+    // Lot 5a : d'autres honoraires se proposent par une réponse distincte, qui laisse la sollicitation ouverte.
     await exp.page.fill('input[name="desiredFee"]', "1800");
-    await exp.page.click('button:has-text("Donner mon accord de principe")');
+    await exp.page.click('button:has-text("Proposer d\'autres honoraires")');
     await exp.page.waitForTimeout(1200);
-    check("Expert : honoraires souhaités enregistrés avec l'accord", (await q1(`select "desiredFeeCents", status from "ProjectExpert" where id = $1`, [link.id])).desiredFeeCents === 180000);
-    const answer = await waitMail("claire.morel@demo.kolbase.local", "a donné son accord de principe — Board Lot 1");
-    check("E-mail à l'organisation : honoraires souhaités", !!answer && /Honoraires souhaités : 1\s800\s€/.test(answer.text), answer?.text.slice(0, 200) ?? "aucun e-mail");
+    const counter = await q1(`select "desiredFeeCents", status from "ProjectExpert" where id = $1`, [link.id]);
+    check("Expert : autres honoraires proposés, sollicitation ouverte", counter.desiredFeeCents === 180000 && counter.status === "ATT_EXPERTS", JSON.stringify(counter));
+    const answer = await waitMail("claire.morel@demo.kolbase.local", "propose d'autres honoraires — Board Lot 1");
+    check("E-mail à l'organisation : honoraires proposés par l'expert (ancien et nouveau montant)", !!answer && /1\s500\s€ → 1\s800\s€ HT/.test(answer.text), answer?.text.slice(0, 200) ?? "aucun e-mail");
     await org.page.goto(dossierUrl);
     check("Fiche du dossier : honoraires souhaités par l'expert", /Souhaités par l'expert : 1\s800\s€ HT/.test(await text(org.page)));
     // Nouvelle proposition : les honoraires changent, la réponse de l'expert est de nouveau attendue.
@@ -3445,6 +3450,401 @@ async function submitNewOrg(page, siren) {
     check("Anglais : création d'organisation traduite", (await text(en.page)).includes("Organisation name") && !(await text(en.page)).includes("Nom de l'organisation"));
     await en.ctx.close();
   }
+  await pgc.end();
+}
+
+// ── Lot 5a : confidentialité des devis, tiers prévenus, négociation des honoraires ──
+{
+  const pgc = new pg.Client({ connectionString: process.env.DATABASE_URL });
+  await pgc.connect();
+  const q1 = async (sql, args = []) => (await pgc.query(sql, args)).rows[0];
+  const until = async (fn, ms = 6000) => {
+    for (const end = Date.now() + ms; Date.now() < end; await new Promise((r) => setTimeout(r, 150))) if (await fn()) return true;
+    return false;
+  };
+  /** Geste irréversible en deux temps : le bouton, puis « Confirmer : … ». */
+  const confirmClick = async (scope, label) => {
+    await scope.locator(`button:has-text("${label}")`).first().click();
+    const ok = scope.locator('button:has-text("Confirmer")').first();
+    await ok.waitFor({ timeout: 3000 });
+    await ok.click();
+  };
+  /** E-mails reçus depuis un repère (pour vérifier qu'un e-mail n'est pas parti). */
+  const mailsSince = (from, to, subject) => mails.slice(from).filter((m) => m.to === to && m.subject.includes(subject));
+  const KARIM = "karim.benali@demo.kolbase.local";
+  const CLAIRE = "claire.morel@demo.kolbase.local";
+
+  // 1. Agence consultée sur une demande de l'événement qu'elle pilote : ni devis concurrents, ni décision, ni e-mails.
+  {
+    await pgc.query(`insert into "Mandate" (id, "mandatorId", "agencyId", scope) select 'e2e-5a-mandat', 'demo-org-dentalys', 'demo-org-mediane', 'Événements confiés'
+      where not exists (select 1 from "Mandate" where "mandatorId" = 'demo-org-dentalys' and "agencyId" = 'demo-org-mediane' and ("endsAt" is null or "endsAt" > now()))`);
+    await pgc.query(`update "Mandate" set "canAward" = false where "mandatorId" = 'demo-org-dentalys' and "agencyId" = 'demo-org-mediane'`);
+    await pgc.query(`insert into "Event" (id, "organizationId", title, "typeId", "startsAt", city, venue, capacity, "publishedAt", "agencyId", "updatedAt")
+      values ('e2e-5a-ev', 'demo-org-dentalys', 'Soirée des partenaires', 'symposium', now() + interval '30 days', 'Lyon', 'Salle des Célestins (fictive)', 80, now(), 'demo-org-mediane', now())`);
+    await pgc.query(`insert into "Subscription" ("organizationId", plan, status, "exemptUntil", "updatedAt") values ('demo-sup-belleville', 'prestataire', 'a_activer', '2099-12-31', now()) on conflict ("organizationId") do update set "exemptUntil" = '2099-12-31'`);
+    const claireId = (await q1(`select id from "User" where email = $1`, [CLAIRE])).id;
+    const karimId = (await q1(`select id from "User" where email = $1`, [KARIM])).id;
+    // Demande de Claire : l'agence de l'événement et Traiteur Belleville consultés ; l'agence a déjà répondu.
+    await pgc.query(`insert into "Rfq" (id, "organizationId", "eventId", category, needs, status, "sentAt", "createdById", headcount)
+      values ('e2e-5a-rfq', 'demo-org-dentalys', 'e2e-5a-ev', 'evenementiel', 'Coordination générale de la soirée, accueil et vestiaire des 80 invités.', 'sent', now(), $1, 80)`, [claireId]);
+    await pgc.query(`insert into "RfqSupplier" ("rfqId", "supplierId") values ('e2e-5a-rfq', 'demo-org-mediane'), ('e2e-5a-rfq', 'demo-sup-belleville')`);
+    await pgc.query(`insert into "Quote" (id, "rfqId", "supplierId", "amountCents", "vatBp", "updatedAt") values ('e2e-5a-qa', 'e2e-5a-rfq', 'demo-org-mediane', 500000, 2000, now())`);
+
+    // Le concurrent répond (premier devis, détaillé) puis pose une question : l'agence n'en est pas prévenue.
+    const mark = mails.length;
+    const sup = await session();
+    await login(sup.page, "ludovic.perrin@demo.kolbase.local");
+    await sup.page.goto(`${BASE}/organisations/demo-sup-belleville/devis`);
+    const sc = sup.page.locator('section.card:has-text("Coordination générale de la soirée")');
+    const qf = sc.locator('form:has(input[name="line_label"])');
+    await qf.locator('input[name="line_label"]').first().fill("Accueil et vestiaire Belleville");
+    await qf.locator('input[name="line_unit"]').first().fill("3333");
+    await qf.locator('input[name="conditions"]').fill("Conditions réservées au client");
+    await qf.locator('button:has-text("Envoyer le devis")').click();
+    await until(async () => !!(await q1(`select id from "Quote" where "rfqId" = 'e2e-5a-rfq' and "supplierId" = 'demo-sup-belleville'`)));
+    await sc.locator('summary:has-text("Questions et échanges")').click();
+    await sc.locator('textarea[name="body"]').fill("Question réservée au client : combien de portants ?");
+    await sc.locator('button:has-text("Envoyer")').last().click();
+    const recu = await waitMail(CLAIRE, "Devis reçu de Traiteur Belleville");
+    const quest = await waitMail(CLAIRE, "Question de Traiteur Belleville");
+    check("Confidentialité : l'organisatrice reçoit le devis et la question du concurrent", !!recu && !!quest);
+    check("Confidentialité : l'agence consultée ne reçoit ni « Devis reçu » ni « Question de » du concurrent",
+      mailsSince(mark, KARIM, "Devis reçu de Traiteur Belleville").length === 0 && mailsSince(mark, KARIM, "Question de Traiteur Belleville").length === 0,
+      mails.slice(mark).filter((m) => m.to === KARIM).map((m) => m.subject).join(" | "));
+
+    // Ce que voit l'agence sur la demande : son devis seulement, aucune décision possible.
+    const ag = await session();
+    await login(ag.page, KARIM);
+    await ag.page.goto(`${BASE}/organisations/demo-org-dentalys/prestataires`);
+    const card = ag.page.locator("section#rfq-e2e-5a-rfq");
+    const at = await card.innerText();
+    check("Confidentialité : l'agence voit son propre devis et l'explication", at.includes("Votre organisation est consultée sur cette demande") && at.includes("Agence Médiane") && /5\s000/.test(at), at.slice(0, 300));
+    check("Confidentialité : ni devis, ni montant, ni conditions, ni question du concurrent",
+      !at.includes("Traiteur Belleville") && !/3\s333/.test(at) && !at.includes("Conditions réservées") && !at.includes("Question réservée") && !at.includes("Meilleure offre") && !at.includes("dès "), at.slice(0, 400));
+    check("Confidentialité : ni « Proposer », ni « Retenir », ni « Annuler » pour l'agence",
+      (await card.locator('button:has-text("Proposer")').count()) === 0 && (await card.locator('button:has-text("Retenir")').count()) === 0 && (await card.locator('button:has-text("Annuler la demande")').count()) === 0 && (await card.locator("textarea").count()) === 0);
+    await ag.page.goto(`${BASE}/organisations/demo-org-dentalys/evenements/e2e-5a-ev`);
+    const lg = await ag.page.locator(".logistics-list").innerText().catch(() => "");
+    check("Confidentialité : fiche de l'événement sans « meilleure offre » du concurrent", lg.includes("Votre organisation est consultée") && !/3\s999,60/.test(lg) && !lg.includes("meilleure offre"), lg.slice(0, 300));
+    await ag.page.goto(`${BASE}/organisations/demo-org-mediane`);
+    const agTodo = await ag.page.locator('a.todo-row:has-text("Soirée des partenaires")').count();
+    await ag.page.goto(`${BASE}/organisations/demo-org-dentalys`);
+    check("Confidentialité : pas de tâche « Devis à comparer » ni « Question de » sur cette demande pour l'agence",
+      agTodo === 0 && (await ag.page.locator('a.todo-row:has-text("Soirée des partenaires")').count()) === 0);
+
+    // L'organisatrice : tout, avec l'agence signalée ; à la consultation, « Agence de cet événement ».
+    const org = await session();
+    await login(org.page, CLAIRE);
+    await org.page.goto(`${BASE}/organisations/demo-org-dentalys/prestataires`);
+    const oc = await org.page.locator("section#rfq-e2e-5a-rfq").innerText();
+    check("Organisatrice : les deux devis, l'agence signalée sur son événement", oc.includes("Traiteur Belleville") && /3\s333/.test(oc) && oc.includes("Agence mandatée sur cet événement"), oc.slice(0, 300));
+    await org.page.goto(`${BASE}/organisations/demo-org-dentalys/prestataires?onglet=nouvelle&evenement=e2e-5a-ev&cat=evenementiel`);
+    const line = await org.page.locator('.supplier:has-text("Agence Médiane")').innerText().catch(() => "");
+    check("Consultation : « Agence de cet événement » signalée, consultation possible", line.includes("Agence de cet événement") && line.includes("Consulter"), line.slice(0, 200));
+    // Décision de l'organisatrice : l'agence apprend que son devis n'est pas retenu, sans le montant du concurrent.
+    const mark2 = mails.length;
+    await org.page.goto(`${BASE}/organisations/demo-org-dentalys/prestataires`);
+    await confirmClick(org.page.locator('section#rfq-e2e-5a-rfq .quote:has-text("Traiteur Belleville")'), "Retenir");
+    await until(async () => (await q1(`select status from "Rfq" where id = 'e2e-5a-rfq'`))?.status === "awarded");
+    const lost = await waitMail(KARIM, "Votre devis n'est pas retenu par Dentalys Implants");
+    check("Décision : l'agence reçoit « non retenu », pas l'annonce du devis retenu et de son montant",
+      !!lost && mailsSince(mark2, KARIM, "a retenu un devis").length === 0, mails.slice(mark2).filter((m) => m.to === KARIM).map((m) => m.subject).join(" | "));
+    await ag.page.goto(`${BASE}/organisations/demo-org-dentalys/prestataires`);
+    const after = await ag.page.locator("section#rfq-e2e-5a-rfq").innerText();
+    check("Décision vue par l'agence : prestataire retenu sans son montant", after.includes("Attribuée à Traiteur Belleville") && !/3\s333/.test(after) && !/3\s999/.test(after), after.slice(0, 300));
+
+    // Annuler : l'auteur de la demande (ici l'agence) peut ; pas une agence qui n'en est pas l'auteur.
+    await pgc.query(`insert into "Rfq" (id, "organizationId", "eventId", category, needs, status, "sentAt", "createdById", headcount)
+      values ('e2e-5a-rfq2', 'demo-org-dentalys', 'e2e-5a-ev', 'impression', 'Signalétique de la soirée : kakémonos et plan de table.', 'sent', now(), $1, 80),
+             ('e2e-5a-rfq3', 'demo-org-dentalys', 'e2e-5a-ev', 'restauration', 'Cocktail des partenaires, 80 personnes.', 'sent', now(), $2, 80)`, [karimId, claireId]);
+    await pgc.query(`insert into "RfqSupplier" ("rfqId", "supplierId") values ('e2e-5a-rfq2', 'demo-sup-tablesdusud'), ('e2e-5a-rfq3', 'demo-sup-belleville')`);
+    await pgc.query(`insert into "Quote" (id, "rfqId", "supplierId", "amountCents", "vatBp", "updatedAt") values ('e2e-5a-q3', 'e2e-5a-rfq3', 'demo-sup-belleville', 210000, 1000, now())`);
+    await ag.page.goto(`${BASE}/organisations/demo-org-dentalys/prestataires`);
+    check("Annuler : pas proposé à l'agence sur une demande de l'organisation", (await ag.page.locator('section#rfq-e2e-5a-rfq3 button:has-text("Annuler la demande")').count()) === 0);
+    const c2 = ag.page.locator("section#rfq-e2e-5a-rfq2");
+    await c2.locator('button:has-text("Annuler la demande")').click();
+    check("Annuler : confirmation en deux temps qui annonce les e-mails", (await c2.innerText()).includes("Les organisateurs sont prévenus") && (await c2.locator('button:has-text("Confirmer : annuler la demande")').count()) === 1);
+    await c2.locator('button:has-text("Confirmer : annuler la demande")').click();
+    await until(async () => (await q1(`select status from "Rfq" where id = 'e2e-5a-rfq2'`))?.status === "cancelled");
+    const cancelled = await q1(`select "cancelledById", "cancelledAt" from "Rfq" where id = 'e2e-5a-rfq2'`);
+    check("Annuler : par l'auteur de la demande, qui et quand enregistrés", cancelled?.cancelledById === karimId && !!cancelled.cancelledAt);
+    const cm = await waitMail(CLAIRE, "Demande de devis annulée : Soirée des partenaires");
+    check("Annuler : e-mail aux organisateurs quand l'agence annule", !!cm && cm.text.includes("Karim Benali (Agence Médiane Événements)"), cm?.text);
+    await org.page.goto(`${BASE}/organisations/demo-org-dentalys/prestataires`);
+    const c2t = await org.page.locator("section#rfq-e2e-5a-rfq2").innerText();
+    check("Carte : « Annulée par … le … »", /Annulée par Karim Benali \(Agence Médiane Événements, agence mandatée\) le \d/.test(c2t), c2t.slice(0, 300));
+
+    // Proposition de l'agence puis révision du devis : la proposition tombe, l'agence est prévenue.
+    await ag.page.goto(`${BASE}/organisations/demo-org-dentalys/prestataires`);
+    await ag.page.locator('section#rfq-e2e-5a-rfq3 button:has-text("Proposer à l")').click();
+    await until(async () => (await q1(`select "proposedQuoteId" from "Rfq" where id = 'e2e-5a-rfq3'`))?.proposedQuoteId === "e2e-5a-q3");
+    await org.page.goto(`${BASE}/organisations/demo-org-dentalys/prestataires`);
+    const proposed = (await org.page.locator("section#rfq-e2e-5a-rfq3").innerText()).includes("Proposé par l'agence mandatée");
+    await sup.page.goto(`${BASE}/organisations/demo-sup-belleville/devis`);
+    const c3 = sup.page.locator('section.card:has-text("Cocktail des partenaires")');
+    await c3.locator('button:has-text("Réviser mon devis")').click();
+    await c3.locator('input[name="line_unit"]').first().fill("2300");
+    await c3.locator('button:has-text("Envoyer la version 2")').click();
+    await until(async () => (await q1(`select revision from "Quote" where id = 'e2e-5a-q3'`))?.revision === 2);
+    await until(async () => !(await q1(`select "proposedQuoteId" from "Rfq" where id = 'e2e-5a-rfq3'`))?.proposedQuoteId);
+    check("Révision : la proposition de l'agence est retirée", !(await q1(`select "proposedQuoteId" from "Rfq" where id = 'e2e-5a-rfq3'`))?.proposedQuoteId);
+    check("Révision : e-mail à l'agence « devis proposé révisé »", !!(await waitMail(KARIM, "Devis proposé révisé : Traiteur Belleville")));
+    await org.page.goto(`${BASE}/organisations/demo-org-dentalys/prestataires`);
+    const r3 = await org.page.locator("section#rfq-e2e-5a-rfq3").innerText();
+    await org.page.goto(`${BASE}/organisations/demo-org-dentalys`);
+    check("Révision : proposition et tâche « Devis à retenir » retirées", proposed && !r3.includes("Proposé par l'agence mandatée") && !(await text(org.page)).includes("Devis à retenir : Soirée des partenaires"), r3.slice(0, 300));
+    await sup.ctx.close();
+    await org.ctx.close();
+    await ag.ctx.close();
+  }
+
+  // 2. Tiers prévenus : experts (étapes du dossier, recrutement clos), équipe Projets, client d'une demande de devis.
+  {
+    const pdf = Buffer.from("%PDF-1.4\n1 0 obj << /Type /Catalog >> endobj\ntrailer << /Root 1 0 R >>\n%%EOF\n");
+    const MOREAU = "vincent.moreau@demo.kolbase.local";
+    const LEMOINE = "julie.lemoine@demo.kolbase.local";
+    const claireId = (await q1(`select id from "User" where email = $1`, [CLAIRE])).id;
+    await pgc.query(`update "User" set "notifyPrefs" = '{}' where email in ($1, $2)`, [MOREAU, LEMOINE]);
+    // Dossier en accord de principe : Moreau engagé, Lemoine sollicitée sans réponse.
+    await pgc.query(`insert into "Project" (id, "organizationId", title, "typeId", status, "createdById", "updatedAt") values ('e2e-5a-prj', 'demo-org-dentalys', 'Board 5a maintenance implantaire', 'advisory', 'ACCORD', $1, now())`, [claireId]);
+    await pgc.query(`insert into "ProjectExpert" (id, "projectId", "practitionerId", status, "feeCents", days, "respondedAt") values
+      ('e2e-5a-l-moreau', 'e2e-5a-prj', 'demo-p-moreau', 'ACCORD', 150000, 1, now()), ('e2e-5a-l-lemoine', 'e2e-5a-prj', 'demo-p-lemoine', 'ATT_EXPERTS', 150000, 1, null)`);
+    const org = await session();
+    await login(org.page, CLAIRE);
+    const dossier = `${BASE}/organisations/demo-org-dentalys/dossiers/e2e-5a-prj`;
+    await org.page.goto(dossier);
+    // Soumission : la réponse attendue de Lemoine est close, elle en est prévenue.
+    await confirmClick(org.page.locator('form:has(input[value="submit"])'), "Soumettre à la conformité");
+    await until(async () => (await q1(`select status from "Project" where id = 'e2e-5a-prj'`))?.status === "EN_VALID");
+    const clos = await waitMail(LEMOINE, "Recrutement clos : Board 5a maintenance implantaire");
+    check("Recrutement clos : e-mail à l'experte restée sans réponse", !!clos && clos.text.includes("sans votre réponse"), clos?.text);
+    const lem = await session();
+    await login(lem.page, LEMOINE);
+    await lem.page.goto(`${BASE}/sollicitations`);
+    const tile = await lem.page.locator('a.tile:has-text("Board 5a maintenance implantaire")').innerText();
+    check("Recrutement clos : « Recrutement clos » dans la liste, pas « Décliné / abandonné »", tile.includes("Recrutement clos") && !tile.includes("Décliné"), tile);
+    const expected = Number((await q1(`select count(*) as n from "ProjectExpert" pe join "Project" p on p.id = pe."projectId" where pe."practitionerId" = 'demo-p-lemoine' and pe.status = 'ATT_EXPERTS' and pe."desiredFeeCents" is null and p.status in ('ATT_EXPERTS', 'ACCORD')`)).n);
+    const badge = await lem.page.locator('a.side-link[href="/sollicitations"] .side-badge').innerText().catch(() => "0");
+    check("Menu « Sollicitations » : seulement les réponses attendues d'un recrutement ouvert", Number(badge) === expected, `${badge} affiché, ${expected} attendu`);
+    await lem.page.goto(`${BASE}/sollicitations/e2e-5a-l-lemoine`);
+    const lt = await text(lem.page);
+    check("Recrutement clos : la fiche le dit, sans « À vous de répondre »", lt.includes("Recrutement clos") && !lt.includes("Décliné / abandonné") && !lt.includes("À vous de répondre"));
+
+    // Signature : l'expert dépose sa convention (type présélectionné), l'équipe Projets est prévenue ; signé, l'expert l'est.
+    await pgc.query(`update "Project" set status = 'SIGNATURE' where id = 'e2e-5a-prj'`);
+    await pgc.query(`update "ProjectExpert" set status = 'SIGNATURE' where id = 'e2e-5a-l-moreau'`);
+    const mor = await session();
+    await login(mor.page, MOREAU);
+    await mor.page.goto(`${BASE}/sollicitations/e2e-5a-l-moreau`);
+    const tl = await mor.page.locator(".pipeline").innerText();
+    check("Frise de l'expert : « Sollicitation reçue » sur l'étape franchie", tl.includes("Sollicitation reçue") && !tl.includes("Votre réponse est attendue"), tl.replace(/\s+/g, " "));
+    const up = mor.page.locator('form:has(input[name="file"])');
+    check("En signature : « Convention signée » présélectionnée au dépôt", (await up.locator('select[name="kind"]').inputValue()) === "CONVENTION_SIGNEE");
+    await up.locator('input[name="file"]').setInputFiles({ name: "convention-moreau-signee.pdf", mimeType: "application/pdf", buffer: pdf });
+    await up.locator('button:has-text("Déposer")').click();
+    const dep = await waitMail(CLAIRE, "Convention signée déposée par Dr Vincent Moreau — Board 5a maintenance implantaire");
+    check("Convention déposée par l'expert : e-mail à l'équipe Projets", !!dep);
+    await org.page.goto(dossier);
+    await org.page.locator('form:has(input[value="signed"]) button').click();
+    await until(async () => (await q1(`select status from "Project" where id = 'e2e-5a-prj'`))?.status === "SIGNE");
+    check("Dossier signé : e-mail à l'expert", !!(await waitMail(MOREAU, "Dossier signé : Board 5a maintenance implantaire")));
+
+    // Retour en accord de principe puis abandon (motif) : l'expert est prévenu ; le motif figure sur sa sollicitation.
+    await pgc.query(`insert into "Project" (id, "organizationId", title, "typeId", status, "createdById", "updatedAt") values ('e2e-5a-prj2', 'demo-org-dentalys', 'Comité 5a occlusion', 'advisory', 'VALIDE', $1, now())`, [claireId]);
+    await pgc.query(`insert into "ProjectExpert" (id, "projectId", "practitionerId", status, "feeCents", days, "respondedAt") values ('e2e-5a-l2-moreau', 'e2e-5a-prj2', 'demo-p-moreau', 'VALIDE', 120000, 1, now())`);
+    await org.page.goto(`${BASE}/organisations/demo-org-dentalys/dossiers/e2e-5a-prj2`);
+    await Promise.all([org.page.waitForURL(/modifier=1/), org.page.locator('form:has(input[value="back_to_accord"]) button').click()]);
+    check("Retour en accord de principe : e-mail à l'expert engagé", !!(await waitMail(MOREAU, "Conditions à revoir : Comité 5a occlusion")));
+    await org.page.goto(`${BASE}/organisations/demo-org-dentalys/dossiers/e2e-5a-prj2`);
+    const ab = org.page.locator('form:has(input[value="abandon"])');
+    await ab.locator('input[name="note"]').fill("Budget reporté à l'an prochain");
+    await ab.locator("button").click();
+    await until(async () => (await q1(`select status from "Project" where id = 'e2e-5a-prj2'`))?.status === "DECLINE");
+    const abm = await waitMail(MOREAU, "Dossier abandonné : Comité 5a occlusion");
+    check("Abandon : e-mail à l'expert avec le motif", !!abm && abm.text.includes("Motif : Budget reporté à l'an prochain"), abm?.text);
+    await mor.page.goto(`${BASE}/sollicitations/e2e-5a-l2-moreau`);
+    const mt = await text(mor.page);
+    check("Abandon : motif affiché sur la sollicitation de l'expert", mt.includes("Abandonné par l'organisation") && mt.includes("Motif : Budget reporté à l'an prochain"), mt.slice(0, 300));
+    await mor.ctx.close();
+    await lem.ctx.close();
+
+    // Demande de devis déclinée (motif) : le client est prévenu, la carte le dit.
+    await pgc.query(`insert into "Rfq" (id, "organizationId", "eventId", category, needs, status, "sentAt", "createdById", headcount)
+      values ('e2e-5a-rfq4', 'demo-org-dentalys', 'e2e-5a-ev', 'salle', 'Salle de réception pour la remise des prix, 80 personnes.', 'sent', now(), $1, 80)`, [claireId]);
+    await pgc.query(`insert into "RfqSupplier" ("rfqId", "supplierId") values ('e2e-5a-rfq4', 'demo-sup-belleville'), ('e2e-5a-rfq4', 'demo-sup-tablesdusud')`);
+    const sup = await session();
+    await login(sup.page, "ludovic.perrin@demo.kolbase.local");
+    await sup.page.goto(`${BASE}/organisations/demo-sup-belleville/devis`);
+    const dc = sup.page.locator('section.card:has-text("Salle de réception pour la remise des prix")');
+    await dc.locator('summary:has-text("Décliner la demande")').click();
+    await dc.locator('input[name="note"]').fill("Pas de salle disponible à cette date");
+    await dc.locator('button:has-text("Décliner")').last().click();
+    check("Décliner : confirmation en deux temps", (await dc.locator('button:has-text("Confirmer : décliner la demande")').count()) === 1);
+    await dc.locator('button:has-text("Confirmer : décliner la demande")').click();
+    await until(async () => (await q1(`select declined from "RfqSupplier" where "rfqId" = 'e2e-5a-rfq4' and "supplierId" = 'demo-sup-belleville'`))?.declined === true);
+    const dm = await waitMail(CLAIRE, "Traiteur Belleville décline votre demande de devis");
+    check("Décliner : e-mail au client avec le motif", !!dm && dm.text.includes("Motif : Pas de salle disponible à cette date"), dm?.text);
+    await org.page.goto(`${BASE}/organisations/demo-org-dentalys/prestataires`);
+    const c4 = await org.page.locator("section#rfq-e2e-5a-rfq4").innerText();
+    check("Carte : « Traiteur Belleville a décliné : motif », plus « (a décliné) » dans l'attente",
+      c4.includes("Traiteur Belleville a décliné : Pas de salle disponible à cette date") && c4.includes("En attente de réponse : Les Tables du Sud") && !c4.includes("(a décliné)"), c4.slice(0, 400));
+    await sup.ctx.close();
+
+    // Annuler un événement qui a des inscrits : motif, e-mail, page lisible « Événement annulé », hors de l'agenda.
+    const EMMA = "emma.simon@demo.kolbase.local";
+    await pgc.query(`insert into "Event" (id, "organizationId", title, "typeId", "startsAt", city, venue, capacity, "publishedAt", "updatedAt")
+      values ('e2e-5a-ev2', 'demo-org-dentalys', 'Atelier occlusion 5a', 'symposium', now() + interval '20 days', 'Lyon', 'Salle B (fictive)', 30, now(), now()),
+             ('e2e-5a-ev3', 'demo-org-dentalys', 'Soirée retirée 5a', 'symposium', now() + interval '25 days', 'Lyon', 'Salle C (fictive)', 30, now(), now())`);
+    await pgc.query(`insert into "AuditLog" (id, "actorId", action, "entityType", "entityId") values ('e2e-5a-pub3', $1, 'event.publish', 'Event', 'e2e-5a-ev3')`, [claireId]);
+    await pgc.query(`insert into "EventBenefit" (id, "eventId", "catalogId", label, "valueCents") values ('e2e-5a-b2', 'e2e-5a-ev2', 'cafe', 'Pause café', 600)`);
+    await pgc.query(`insert into "Registration" (id, "eventId", "userId", profession) select 'e2e-5a-reg2', 'e2e-5a-ev2', id, 'Chirurgien-dentiste' from "User" where email = $1`, [EMMA]);
+    await pgc.query(`insert into "RegistrationBenefit" ("registrationId", "benefitId", "valueCents") values ('e2e-5a-reg2', 'e2e-5a-b2', 600)`);
+    const evUrl = `${BASE}/organisations/demo-org-dentalys/evenements/e2e-5a-ev2`;
+    await org.page.goto(evUrl);
+    check("Événement avec inscrits : « Annuler l'événement » au lieu de « Retirer de l'agenda »",
+      (await org.page.locator('button:has-text("Retirer de l")').count()) === 0 && (await org.page.locator('button:has-text("Annuler l\'événement")').count()) === 1);
+    const cf = org.page.locator('form:has(input[name="reason"])');
+    await cf.locator('input[name="reason"]').fill("Intervenant indisponible");
+    await cf.locator('button:has-text("Annuler l\'événement")').click();
+    check("Annuler l'événement : confirmation qui annonce l'e-mail aux inscrits", (await cf.innerText()).includes("L'inscrit reçoit un e-mail avec le motif"));
+    await cf.locator('button:has-text("Confirmer : annuler l\'événement")').click();
+    await until(async () => !!(await q1(`select "cancelledAt" from "Event" where id = 'e2e-5a-ev2'`))?.cancelledAt);
+    const ev = await q1(`select e."publishedAt", e."cancelReason", r."cancelledAt" as reg, (select count(*) from "RegistrationBenefit" where "registrationId" = 'e2e-5a-reg2') as benefits from "Event" e join "Registration" r on r."eventId" = e.id where e.id = 'e2e-5a-ev2'`);
+    check("Annuler l'événement : inscriptions annulées, hospitalités retirées, hors de l'agenda", !ev.publishedAt && ev.cancelReason === "Intervenant indisponible" && !!ev.reg && Number(ev.benefits) === 0, JSON.stringify(ev));
+    const em = await waitMail(EMMA, "Événement annulé : « Atelier occlusion 5a »");
+    check("Annuler l'événement : e-mail aux inscrits avec le motif", !!em && em.text.includes("Motif : Intervenant indisponible"), em?.text);
+    const anon = await session();
+    const pg5 = await anon.page.goto(`${BASE}/evenements/e2e-5a-ev2`);
+    const pt = await text(anon.page);
+    check("Événement annulé : lisible à son adresse avec la mention, sans inscription", pg5?.status() === 200 && pt.includes("Événement annulé") && pt.includes("Intervenant indisponible") && (await anon.page.locator('a:has-text("m\'inscrire"), button:has-text("M\'inscrire")').count()) === 0, pt.slice(0, 200));
+    await anon.page.goto(`${BASE}/evenements`);
+    check("Événement annulé : absent de l'agenda", !(await text(anon.page)).includes("Atelier occlusion 5a"));
+    await anon.ctx.close();
+    const emma = await session();
+    await login(emma.page, EMMA);
+    await emma.page.goto(`${BASE}/inscriptions`);
+    const it = await text(emma.page);
+    check("Mes inscriptions : rangée « Annulés par l'organisateur », avec le motif", /Annulés par l'organisateur[\s\S]*Atelier occlusion 5a[\s\S]*Événement annulé/.test(it) && it.includes("Intervenant indisponible"), it.slice(-400));
+    await emma.ctx.close();
+    await org.page.goto(evUrl);
+    check("Fiche de l'organisation : « Annulé », motif, plus d'action de diffusion", (await text(org.page)).includes("Événement annulé le") && (await org.page.locator('.page-hero .pill:has-text("Annulé")').count()) === 1 && (await org.page.locator('button:has-text("Publier dans l"), button:has-text("Annuler l\'événement")').count()) === 0);
+    // Sans inscrit : « Retirer de l'agenda » reste possible ; la fiche dit « Retiré de l'agenda », pas « Brouillon ».
+    await org.page.goto(`${BASE}/organisations/demo-org-dentalys/evenements/e2e-5a-ev3`);
+    await org.page.locator('button:has-text("Retirer de l")').click();
+    await until(async () => !(await q1(`select "publishedAt" from "Event" where id = 'e2e-5a-ev3'`))?.publishedAt);
+    await org.page.reload();
+    const wt = await org.page.locator(".page-hero .pill").first().innerText();
+    check("Retiré de l'agenda (sans inscrit) : « Retiré de l'agenda », pas « Brouillon »", wt.includes("Retiré de l'agenda") && !(await text(org.page)).includes("Brouillon :"), wt);
+
+    // Suppression du compte d'un expert : retiré du dossier non signé, équipe Projets prévenue, dossier non soumettable.
+    await pgc.query(`insert into "Project" (id, "organizationId", title, "typeId", status, "createdById", "updatedAt") values ('e2e-5a-prj3', 'demo-org-dentalys', 'Board 5a esthétique', 'advisory', 'ACCORD', $1, now())`, [claireId]);
+    await pgc.query(`insert into "ProjectExpert" (id, "projectId", "practitionerId", status, "feeCents", days, "respondedAt") values
+      ('e2e-5a-l3-blanc', 'e2e-5a-prj3', 'demo-p-blanc', 'ACCORD', 150000, 1, now()), ('e2e-5a-l3-moreau', 'e2e-5a-prj3', 'demo-p-moreau', 'ATT_EXPERTS', 150000, 1, null)`);
+    const bl = await session();
+    await login(bl.page, "nicolas.blanc@demo.kolbase.local");
+    await bl.page.goto(`${BASE}/compte`);
+    await bl.page.click('summary:has-text("Supprimer mon compte")');
+    const del = 'form:has(button:has-text("Supprimer définitivement"))';
+    await bl.page.fill(`${del} input[name="password"]`, PW);
+    await bl.page.check(`${del} input[name="confirm"]`);
+    await Promise.all([bl.page.waitForURL(/compte=supprime/), bl.page.click(`${del} button`)]);
+    await bl.ctx.close();
+    const gone = await q1(`select pe.status, pe."responseNote", p.status as project from "ProjectExpert" pe join "Project" p on p.id = pe."projectId" where pe.id = 'e2e-5a-l3-blanc'`);
+    check("Compte supprimé : expert retiré du dossier non signé, dossier en attente des experts", gone?.status === "DECLINE" && gone.responseNote === "Compte supprimé" && gone.project === "ATT_EXPERTS", JSON.stringify(gone));
+    const rm = await waitMail(CLAIRE, /Nicolas Blanc a supprimé son compte — Board 5a esthétique/);
+    check("Compte supprimé : e-mail à l'équipe Projets", !!rm && rm.text.includes("revient en attente des experts"), rm?.text);
+    await org.page.goto(`${BASE}/organisations/demo-org-dentalys/dossiers/e2e-5a-prj3`);
+    check("Compte supprimé : dossier plus soumettable, expert signalé", (await org.page.locator('form:has(input[value="submit"])').count()) === 0 && (await text(org.page)).includes("Retiré : compte supprimé"));
+    await org.ctx.close();
+  }
+
+  // 3. Négociation des honoraires : l'expert propose d'autres honoraires, l'organisation les accepte ou renvoie une offre.
+  {
+    const MOREAU = "vincent.moreau@demo.kolbase.local";
+    const LEMOINE = "julie.lemoine@demo.kolbase.local";
+    const claireId = (await q1(`select id from "User" where email = $1`, [CLAIRE])).id;
+    await pgc.query(`insert into "Project" (id, "organizationId", title, "typeId", status, "createdById", "updatedAt") values ('e2e-5a-prj4', 'demo-org-dentalys', 'Board 5a négociation', 'advisory', 'ATT_EXPERTS', $1, now())`, [claireId]);
+    await pgc.query(`insert into "ProjectExpert" (id, "projectId", "practitionerId", status, "feeCents", days) values ('e2e-5a-l4', 'e2e-5a-prj4', 'demo-p-moreau', 'ATT_EXPERTS', 150000, 1)`);
+    const dossier = `${BASE}/organisations/demo-org-dentalys/dossiers/e2e-5a-prj4`;
+    const org = await session();
+    await login(org.page, CLAIRE);
+    // Premier e-mail de sollicitation : le nombre d'unités.
+    await org.page.goto(`${dossier}?modifier=1`);
+    await org.page.selectOption('#modifier select[name="expertId"]', "demo-p-lemoine");
+    await org.page.fill('#modifier form:has(select[name="expertId"]) input[name="units"]', "2");
+    await org.page.fill('#modifier form:has(select[name="expertId"]) input[name="fee"]', "1500");
+    await org.page.click('button:has-text("Ajouter et solliciter l\'expert")');
+    await until(async () => !!(await q1(`select id from "ProjectExpert" where "projectId" = 'e2e-5a-prj4' and "practitionerId" = 'demo-p-lemoine'`)));
+    const solMail = await waitMail(LEMOINE, /Nouvelle sollicitation de Dentalys Implants/);
+    const fresh = mails.filter((m) => m.to === LEMOINE && m.subject.includes("Nouvelle sollicitation de Dentalys Implants")).at(-1);
+    check("Première sollicitation : nombre d'unités et honoraires dans l'e-mail", !!solMail && fresh.text.includes("Prestation : 2 journées.") && /Honoraires proposés : 1\s500\s€ HT/.test(fresh.text), fresh?.text);
+
+    // L'expert : un montant avec « Accepter » est refusé ; « Proposer d'autres honoraires » laisse la sollicitation ouverte.
+    const mor = await session();
+    await login(mor.page, MOREAU);
+    await mor.page.goto(`${BASE}/sollicitations/e2e-5a-l4`);
+    const form = mor.page.locator('section.highlight form');
+    check("Expert : trois réponses (accord, autres honoraires, déclin) et ce qu'elles font",
+      (await form.locator('button:has-text("Donner mon accord de principe")').count()) === 1 && (await form.locator('button:has-text("Proposer d\'autres honoraires")').count()) === 1 && (await form.locator('button:has-text("Décliner")').count()) === 1
+      && (await form.innerText()).includes("la sollicitation reste ouverte"));
+    await form.locator('input[name="desiredFee"]').fill("1800");
+    await form.locator('button:has-text("Donner mon accord de principe")').click();
+    await form.locator(".notice.error").waitFor({ timeout: 4000 }).catch(() => {});
+    check("Expert : un montant avec « Accepter » est refusé (pas d'accord au montant refusé)", (await form.innerText()).includes("choisissez « Proposer d'autres honoraires »") && (await q1(`select status from "ProjectExpert" where id = 'e2e-5a-l4'`)).status === "ATT_EXPERTS");
+    await form.locator('textarea[name="note"]').fill("Deux demi-journées de préparation sont à prévoir.");
+    await form.locator('button:has-text("Proposer d\'autres honoraires")').click();
+    await until(async () => (await q1(`select "desiredFeeCents" from "ProjectExpert" where id = 'e2e-5a-l4'`))?.desiredFeeCents === 180000);
+    const cp = await q1(`select pe.status, pe."desiredFeeCents", p.status as project from "ProjectExpert" pe join "Project" p on p.id = pe."projectId" where pe.id = 'e2e-5a-l4'`);
+    check("Contre-proposition : sollicitation ouverte, dossier pas « Décliné »", cp.status === "ATT_EXPERTS" && cp.desiredFeeCents === 180000 && cp.project === "ATT_EXPERTS", JSON.stringify(cp));
+    const cpm = await waitMail(CLAIRE, "Dr Vincent Moreau propose d'autres honoraires — Board 5a négociation");
+    check("Contre-proposition : e-mail à l'équipe Projets (ancien et nouveau montant, message)", !!cpm && /1\s500\s€ → 1\s800\s€ HT/.test(cpm.text) && cpm.text.includes("Deux demi-journées"), cpm?.text);
+    await mor.page.goto(`${BASE}/sollicitations`);
+    check("Contre-proposition : « Contre-proposition envoyée » dans la liste de l'expert", (await mor.page.locator('a.tile:has-text("Board 5a négociation")').innerText()).includes("Contre-proposition envoyée"));
+
+    // L'organisation : tâche, carte, « Accepter ces honoraires » ; l'expert est engagé et prévenu.
+    await org.page.goto(`${BASE}/organisations/demo-org-dentalys`);
+    check("Accueil de l'organisation : honoraires proposés par un expert à traiter", (await text(org.page)).includes("Honoraires proposés par un expert : Board 5a négociation"));
+    await org.page.goto(dossier);
+    const card = org.page.locator('section.expert-card:has-text("Vincent Moreau")');
+    const ct = await card.innerText();
+    check("Dossier : contre-proposition visible avec les deux montants", ct.includes("Contre-proposition") && /1\s500\s€ → 1\s800\s€ HT/.test(ct), ct.slice(0, 300));
+    await confirmClick(card, "Accepter ces honoraires");
+    await until(async () => (await q1(`select status from "ProjectExpert" where id = 'e2e-5a-l4'`))?.status === "ACCORD");
+    const acc = await q1(`select pe.status, pe."feeCents", pe."previousFeeCents", pe."desiredFeeCents", p.status as project from "ProjectExpert" pe join "Project" p on p.id = pe."projectId" where pe.id = 'e2e-5a-l4'`);
+    check("Accepter ces honoraires : montant de l'expert, expert engagé", acc.status === "ACCORD" && acc.feeCents === 180000 && acc.previousFeeCents === 150000 && acc.desiredFeeCents === null && acc.project === "ACCORD", JSON.stringify(acc));
+    const am = await waitMail(MOREAU, "Honoraires acceptés : Board 5a négociation");
+    check("Accepter ces honoraires : e-mail à l'expert (1 500 € → 1 800 € HT)", !!am && /1\s500\s€ → 1\s800\s€ HT/.test(am.text), am?.text);
+    await mor.page.goto(`${BASE}/sollicitations/e2e-5a-l4`);
+    check("Page de l'expert : ancien montant rappelé", /1\s500\s€ → 1\s800\s€ HT/.test(await text(mor.page)));
+    await mor.ctx.close();
+
+    // « Proposer ces conditions » : confirmation visible ; l'e-mail et la page de l'expert rappellent l'ancien montant.
+    await org.page.goto(`${dossier}?modifier=1`);
+    const tf = org.page.locator('#modifier form.terms-form:has-text("Julie Lemoine")');
+    await tf.locator('input[name="fee"]').fill("1700");
+    await tf.locator('button:has-text("Proposer ces conditions")').click();
+    await tf.locator(".notice.ok").waitFor({ timeout: 5000 }).catch(() => {});
+    check("« Proposer ces conditions » : message de confirmation visible", (await tf.innerText()).includes("Nouvelle proposition envoyée à l'expert"), await tf.innerText());
+    const np = await waitMail(LEMOINE, "Nouvelle proposition de Dentalys Implants");
+    check("Nouvelle proposition : l'e-mail rappelle l'ancien montant", !!np && /1\s500\s€ → 1\s700\s€ HT/.test(np.text), np?.text);
+    const lem = await session();
+    await login(lem.page, LEMOINE);
+    const lid = (await q1(`select id from "ProjectExpert" where "projectId" = 'e2e-5a-prj4' and "practitionerId" = 'demo-p-lemoine'`)).id;
+    await lem.page.goto(`${BASE}/sollicitations/${lid}`);
+    check("Nouvelle proposition : la page de l'expert rappelle l'ancien montant", /1\s500\s€ → 1\s700\s€ HT/.test(await text(lem.page)));
+    await lem.ctx.close();
+
+    // Soumettre avec une réponse attendue : confirmation qui l'annonce, l'expert reçoit « Recrutement clos ».
+    await org.page.goto(dossier);
+    const sub = org.page.locator('form:has(input[value="submit"])');
+    await sub.locator('button:has-text("Soumettre à la conformité")').click();
+    check("Soumettre : « 1 réponse attendue sera close » annoncé", (await sub.innerText()).includes("1 réponse attendue sera close") && (await sub.innerText()).includes("Julie Lemoine"), await sub.innerText());
+    await sub.locator('button:has-text("Confirmer")').click();
+    await until(async () => (await q1(`select status from "Project" where id = 'e2e-5a-prj4'`))?.status === "EN_VALID");
+    check("Soumettre : l'offre renvoyée est close, l'experte prévenue", !!(await waitMail(LEMOINE, "Recrutement clos : Board 5a négociation")));
+    await org.ctx.close();
+  }
+
   await pgc.end();
 }
 

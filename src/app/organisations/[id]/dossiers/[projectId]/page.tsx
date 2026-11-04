@@ -11,9 +11,10 @@ import { canSee, kolVisibility } from "@/lib/visibility";
 import { db } from "@/lib/db";
 import { requireMembership } from "@/lib/orgs";
 import { COMPLIANCE_ROLES, formatDate, formatDateTime, formatEUR, parisToday } from "@/lib/events";
-import { collabType, needsMeeting, PROJECT_ROLES, PROJECT_VIEW_ROLES, projectEditable, recruitmentOpen, REVIEW_ROLES, STATUS_LABEL, TRANSITIONS, type TransitionKey } from "@/lib/projects";
+import { ACCOUNT_DELETED, collabType, needsMeeting, PROJECT_ROLES, PROJECT_VIEW_ROLES, projectEditable, recruitmentOpen, REVIEW_ROLES, STATUS_LABEL, TRANSITIONS, type TransitionKey } from "@/lib/projects";
 import { storageEnabled } from "@/lib/storage";
-import { advanceProject } from "@/lib/project-actions";
+import { acceptCounterOffer, advanceProject } from "@/lib/project-actions";
+import { ConfirmButton } from "@/components/ConfirmButton";
 import { markExpertPaid } from "@/lib/revenue-actions";
 import { expertSplit } from "@/lib/indicators";
 import { BudgetPanel, ConflictsPanel, ConventionSignatureBlock, DocumentsPanel, MaterialsPanel } from "@/components/DossierSections";
@@ -34,6 +35,8 @@ const ACTION_LABEL: Record<string, string> = {
   "project.create": "Dossier créé",
   "solicitation.accept": "Accord de principe d'un expert",
   "solicitation.decline": "Un expert a décliné",
+  "solicitation.counter": "Un expert propose d'autres honoraires",
+  "project.accept_counter": "Honoraires proposés par l'expert acceptés",
   "project.propose": "Proposition reçue de l'expert",
   "project.budget": "Budget modifié",
   "expense.add": "Dépense ajoutée",
@@ -52,6 +55,7 @@ const ACTION_LABEL: Record<string, string> = {
   "project.revise": "Dossier repris après blocage",
   "project.back_to_accord": "Retour en accord de principe",
   "project.abandon": "Dossier abandonné",
+  "project.expert_removed": "Expert retiré du dossier (compte supprimé)",
   "project.edit": "Objet du dossier modifié",
   "project.terms": "Nouvelle proposition envoyée à un expert",
   "project.add_expert": "Expert ajouté au dossier",
@@ -263,6 +267,8 @@ export default async function Page({ params, searchParams }: { params: Promise<{
               {project.experts.map((e) => {
                 const name = `${drPrefix(e.practitioner.profession)}${e.practitioner.user.firstName} ${e.practitioner.user.lastName}`;
                 const active = e.status !== "ATT_EXPERTS" && e.status !== "DECLINE";
+                // Contre-proposition de l'expert : la sollicitation reste ouverte, l'organisation répond.
+                const counter = e.status === "ATT_EXPERTS" && e.desiredFeeCents != null && !closed;
                 const last = e.messages.at(-1);
                 const toAnswer = last && last.authorId === e.practitioner.userId;
                 const earlier = e.messages.slice(0, -2);
@@ -277,15 +283,36 @@ export default async function Page({ params, searchParams }: { params: Promise<{
                         </div>
                       </div>
                       <span className={`pill ${e.status === "DECLINE" ? "done" : e.status === "ATT_EXPERTS" ? "wait" : "ok"}`}>
-                        {e.status === "ATT_EXPERTS" ? (closed ? "Sans réponse, recrutement clos" : "Réponse attendue") : e.status === "DECLINE" ? "A décliné" : STATUS_LABEL[e.status]}
+                        {e.status === "ATT_EXPERTS" ? (closed ? "Sans réponse, recrutement clos" : counter ? "Contre-proposition" : "Réponse attendue") : e.status === "DECLINE" ? (e.responseNote === ACCOUNT_DELETED ? "Retiré : compte supprimé" : "A décliné") : STATUS_LABEL[e.status]}
                       </span>
                     </div>
                     <div className="terms">
                       <span className="term"><CalendarDays size={13} /> {e.days ?? "—"} {type?.unit ?? "unité"}{(e.days ?? 0) > 1 ? "s" : ""}</span>
                       <span className="term"><Euro size={13} /> {e.feeCents != null ? formatEUR(e.feeCents) : "—"} HT</span>
                       <FmvBadge typeId={project.typeId} feeCents={e.feeCents} units={e.days} />
-                      {e.desiredFeeCents != null && <span className="term desired"><Euro size={13} /> Souhaités par l&apos;expert : {formatEUR(e.desiredFeeCents)} HT</span>}
+                      {e.desiredFeeCents != null && e.status === "ATT_EXPERTS" && <span className="term desired"><Euro size={13} /> Souhaités par l&apos;expert : {formatEUR(e.desiredFeeCents)} HT</span>}
                     </div>
+                    {counter && (
+                      <div className="notice warn stack-sm">
+                        <span>
+                          {name} propose d&apos;autres honoraires : {e.feeCents != null ? `${formatEUR(e.feeCents)} → ` : ""}{formatEUR(e.desiredFeeCents!)} HT.
+                          {e.responseNote ? ` « ${e.responseNote} »` : ""}
+                        </span>
+                        {isProject && editable && (
+                          <span className="actions" style={{ marginTop: 0 }}>
+                            <form action={acceptCounterOffer}>
+                              <input type="hidden" name="orgId" value={id} />
+                              <input type="hidden" name="projectId" value={projectId} />
+                              <input type="hidden" name="linkId" value={e.id} />
+                              <ConfirmButton className="btn small" confirm="accepter ces honoraires" summary={<>Les honoraires de {name} passent à {formatEUR(e.desiredFeeCents!)} HT et l&apos;expert est engagé (accord de principe) ; il en est prévenu par e-mail.</>}>
+                                Accepter ces honoraires
+                              </ConfirmButton>
+                            </form>
+                            <a className="btn ghost small" href="?modifier=1#modifier">Proposer d&apos;autres conditions</a>
+                          </span>
+                        )}
+                      </div>
+                    )}
                     {active && (
                       <div className="expert-docs">
                         <span className="actions">
@@ -360,7 +387,7 @@ export default async function Page({ params, searchParams }: { params: Promise<{
                       <h3>Conditions proposées</h3>
                       {project.experts.map((e) => (
                         <ExpertTermsForm
-                          key={`${e.id}-${e.feeCents}-${e.days}`}
+                          key={e.id}
                           orgId={id} projectId={projectId} linkId={e.id}
                           name={`${drPrefix(e.practitioner.profession)}${e.practitioner.user.firstName} ${e.practitioner.user.lastName}${e.status === "DECLINE" ? " (a décliné)" : ""}`}
                           unit={type?.unit ?? "unité"}
@@ -431,7 +458,17 @@ export default async function Page({ params, searchParams }: { params: Promise<{
                           <input type="checkbox" name="attest" value="1" required /> J&apos;atteste que la convention de {unsigned.join(", ")} est signée par les deux parties et conservée par l&apos;organisation.
                         </label>
                       )}
-                      <button className={DANGER.includes(k) ? "btn ghost" : "btn"}>{TRANSITIONS[k].label}</button>
+                      {k === "submit" && waiting.length > 0 ? (
+                        <ConfirmButton
+                          className="btn"
+                          confirm="soumettre à la conformité"
+                          summary={<>{waiting.length > 1 ? `${waiting.length} réponses attendues seront closes` : "1 réponse attendue sera close"} ({waiting.map((w) => `${drPrefix(w.practitioner.profession)}${w.practitioner.user.firstName} ${w.practitioner.user.lastName}${w.desiredFeeCents != null ? ", qui propose d'autres honoraires" : ""}`).join(" ; ")}) : {waiting.length > 1 ? "ces experts sont prévenus" : "l'expert est prévenu"} par e-mail que le recrutement est clos.</>}
+                        >
+                          {TRANSITIONS[k].label}
+                        </ConfirmButton>
+                      ) : (
+                        <button className={DANGER.includes(k) ? "btn ghost" : "btn"}>{TRANSITIONS[k].label}</button>
+                      )}
                     </form>
                   ))}
                 </div>

@@ -8,8 +8,9 @@ import { COMPLIANCE_ROLES, EVENT_ORGANIZER_ROLES, FORMAT_LABEL, formatEUR, type 
 import { de } from "@/lib/elision";
 import { appUrl, eventIcsEntry, toIcs } from "@/lib/ics";
 import { withVat } from "@/lib/quotes";
+import { supplierCategoryLabel } from "@/lib/suppliers";
 import { fmtEur, isLocale, makeT, type Locale, type T } from "@/lib/i18n";
-import { collabType, PROJECT_ROLES, SOURCING_ROLES, STATUS_LABEL } from "@/lib/projects";
+import { collabType, PROJECT_ROLES, SOURCING_ROLES, STATUS_LABEL, type ExpertNotice } from "@/lib/projects";
 import { featuredUntil, orderStats } from "@/lib/services";
 import { conversion, reportParts } from "@/lib/service-report";
 import type { OrgRole } from "@/generated/prisma/client";
@@ -88,13 +89,14 @@ export function notifySolicitations(projectId: string, kind: "sollicitation" | "
       const org = l.project.organization.name;
       const title = l.project.title;
       await send([l.practitioner.user], (t, locale) => {
-        const fee = l.feeCents != null ? ` ${t("Honoraires proposés : {montant} HT.", { montant: fmtEur(locale, l.feeCents) })}` : "";
+        const units = l.days != null ? ` ${t("Prestation : {n} {unit}.", { n: l.days.toLocaleString(locale === "en" ? "en-GB" : "fr-FR"), unit: unitLabel(t, l.project.typeId, l.days) })}` : "";
+        const fee = `${units}${l.feeCents != null ? ` ${t("Honoraires proposés : {montant} HT.", { montant: fmtEur(locale, l.feeCents) })}` : ""}`;
         return {
           subject: kind === "honoraires" ? t("Candidature retenue : {org} vous propose des honoraires", { org }) : t("Nouvelle sollicitation {de_org}", { org, de_org: de(org) }),
           text:
             kind === "honoraires"
-              ? `${t("Bonjour,")}\n\n${t("{org} a retenu votre candidature « {titre} ».", { org, titre: title })}${fee}\n\n${t("Acceptez ou déclinez la proposition sur KolBase : le dossier n'avance qu'après votre réponse.")}`
-              : `${t("Bonjour,")}\n\n${t("{org} vous sollicite pour « {titre} ».", { org, titre: title })}${fee}\n\n${t("Vous pouvez donner votre accord de principe, décliner ou poser vos questions sur KolBase.")}`,
+              ? `${t("Bonjour,")}\n\n${t("{org} a retenu votre candidature « {titre} ».", { org, titre: title })}${fee}\n\n${t("Acceptez, proposez d'autres honoraires ou déclinez sur KolBase : le dossier n'avance qu'après votre réponse.")}`
+              : `${t("Bonjour,")}\n\n${t("{org} vous sollicite pour « {titre} ».", { org, titre: title })}${fee}\n\n${t("Vous pouvez accepter, proposer d'autres honoraires, décliner ou poser vos questions sur KolBase.")}`,
           cta: { label: t("Répondre"), href: `/sollicitations/${l.id}` },
         };
       });
@@ -113,8 +115,12 @@ export function notifyNewProposal(linkId: string) {
       text: [
         t("Bonjour,"),
         t("{org} a modifié sa proposition pour « {titre} ».", { org, titre: l.project.title }),
-        [l.days != null ? t("Prestation : {n} {unit}.", { n: l.days.toLocaleString(locale === "en" ? "en-GB" : "fr-FR"), unit: unitLabel(t, l.project.typeId, l.days) }) : null, l.feeCents != null ? t("Honoraires proposés : {montant} HT.", { montant: fmtEur(locale, l.feeCents) }) : null].filter(Boolean).join(" "),
-        t("Votre réponse précédente ne vaut plus pour ces nouvelles conditions : acceptez ou déclinez la proposition sur KolBase."),
+        [
+          l.days != null ? t("Prestation : {n} {unit}.", { n: l.days.toLocaleString(locale === "en" ? "en-GB" : "fr-FR"), unit: unitLabel(t, l.project.typeId, l.days) }) : null,
+          // Ancien montant rappelé : « 1 500 € → 1 800 € HT ».
+          l.feeCents != null ? t("Honoraires proposés : {montant} HT.", { montant: l.previousFeeCents != null ? `${fmtEur(locale, l.previousFeeCents)} → ${fmtEur(locale, l.feeCents)}` : fmtEur(locale, l.feeCents) }) : null,
+        ].filter(Boolean).join(" "),
+        t("Votre réponse précédente ne vaut plus pour ces nouvelles conditions : acceptez, proposez d'autres honoraires ou déclinez sur KolBase."),
       ].filter(Boolean).join("\n\n"),
       cta: { label: t("Répondre"), href: `/sollicitations/${l.id}` },
     }));
@@ -143,6 +149,51 @@ export function notifyMessage(linkId: string, authorId: string) {
   });
 }
 
+/**
+ * Étape du dossier qui concerne l'expert engagé ou sollicité : abandon (avec le motif), retour en accord de principe,
+ * passage en signature (convention à déposer à la main), dossier signé, recrutement clos sans sa réponse.
+ */
+export function notifyExpertNotice(linkIds: string[], notice: ExpertNotice, note?: string | null) {
+  later(async () => {
+    const links = await db.projectExpert.findMany({ where: { id: { in: linkIds } }, include: linkInclude });
+    for (const l of links) {
+      const org = l.project.organization.name;
+      const titre = l.project.title;
+      await send([l.practitioner.user], (t) => {
+        const body: Record<ExpertNotice, { subject: string; lines: (string | null)[] }> = {
+          abandon: {
+            subject: t("Dossier abandonné : {titre}", { titre }),
+            lines: [t("{org} a abandonné le dossier « {titre} ».", { org, titre }), note ? t("Motif : {note}", { note }) : null, t("La sollicitation est close : aucune suite n'est attendue de votre part.")],
+          },
+          retour_accord: {
+            subject: t("Conditions à revoir : {titre}", { titre }),
+            lines: [t("{org} remet le dossier « {titre} » en accord de principe pour en revoir les conditions. Il repassera par la conformité avant la signature ; vous serez prévenu de la suite.", { org, titre })],
+          },
+          signature: {
+            subject: t("Convention à signer : {titre}", { titre }),
+            lines: [t("Le dossier « {titre} » ({org}) passe en signature. Signez la convention, puis déposez-la signée dans KolBase (Documents de votre sollicitation) : l'organisation confirme ensuite la signature.", { org, titre })],
+          },
+          signe: {
+            subject: t("Dossier signé : {titre}", { titre }),
+            lines: [t("{org} confirme la signature de la convention pour « {titre} » : la prestation peut avoir lieu.", { org, titre })],
+          },
+          recrutement_clos: {
+            subject: t("Recrutement clos : {titre}", { titre }),
+            lines: [
+              l.desiredFeeCents != null
+                ? t("{org} a clos le recrutement du dossier « {titre} » sans donner suite à votre proposition d'honoraires.", { org, titre })
+                : t("{org} a clos le recrutement du dossier « {titre} » sans votre réponse : la sollicitation n'est plus ouverte.", { org, titre }),
+              t("Si l'organisation souhaite toujours travailler avec vous, elle vous sollicitera de nouveau."),
+            ],
+          },
+        };
+        const b = body[notice];
+        return { subject: b.subject, text: [t("Bonjour,"), ...b.lines].filter(Boolean).join("\n\n"), cta: { label: t("Voir la sollicitation"), href: `/sollicitations/${l.id}` } };
+      });
+    }
+  });
+}
+
 /** Candidature (opportunité ou intervention) non retenue. */
 export function notifyNotRetained(userId: string, title: string, orgName: string) {
   later(async () => {
@@ -167,10 +218,82 @@ export function notifyExpertAnswer(linkId: string, accepted: boolean) {
       subject: `${expertName(l.practitioner)} ${accepted ? "a donné son accord de principe" : "a décliné"} — ${l.project.title}`,
       text: (accepted
         ? `Bonjour,\n\n${expertName(l.practitioner)} a donné son accord de principe pour « ${l.project.title} ». Vous pouvez soumettre le dossier à la conformité.`
-        : `Bonjour,\n\n${expertName(l.practitioner)} a décliné « ${l.project.title} ».${l.responseNote ? `\n\nSon message : ${l.responseNote}` : ""}`)
-        + (l.desiredFeeCents != null ? `\n\nHonoraires souhaités : ${fmtEur("fr", l.desiredFeeCents)} HT (proposés : ${l.feeCents != null ? `${fmtEur("fr", l.feeCents)} HT` : "non indiqués"}). Vous pouvez modifier la proposition depuis le dossier.` : ""),
+        : `Bonjour,\n\n${expertName(l.practitioner)} a décliné « ${l.project.title} ».${l.responseNote ? `\n\nSon message : ${l.responseNote}` : ""}`),
       cta: { label: "Ouvrir le dossier", href: `/organisations/${l.project.organizationId}/dossiers/${l.projectId}` },
     });
+  });
+}
+
+/** Convention signée déposée par l'expert lui-même : l'équipe Projets vérifie et confirme la signature du dossier. */
+export function notifyConventionDeposited(linkId: string) {
+  later(async () => {
+    const l = await db.projectExpert.findUnique({ where: { id: linkId }, include: linkInclude });
+    if (!l) return;
+    await send(await projectTeam(l.project), {
+      subject: `Convention signée déposée par ${expertName(l.practitioner)} — ${l.project.title}`,
+      text: `Bonjour,\n\n${expertName(l.practitioner)} a déposé sa convention signée pour « ${l.project.title} ». Vérifiez-la dans les documents du dossier, puis passez le dossier en « Signé » une fois toutes les conventions réunies.`,
+      cta: { label: "Ouvrir le dossier", href: `/organisations/${l.project.organizationId}/dossiers/${l.projectId}` },
+    });
+  });
+}
+
+/**
+ * Compte d'un expert supprimé : il est retiré des dossiers non signés où il était engagé ou sollicité, et de ses
+ * candidatures. L'équipe Projets de chaque organisation concernée est prévenue (nom figé avant l'anonymisation).
+ */
+export function notifyExpertRemoved(expert: string, projects: { id: string; organizationId: string; createdById: string | null; title: string; outcome: "reopened" | "closed" | null }[], calls: { id: string; organizationId: string; createdById: string | null; title: string }[]) {
+  later(async () => {
+    for (const p of projects) {
+      await send(await projectTeam(p), {
+        subject: `${expert} a supprimé son compte — ${p.title}`,
+        text: `Bonjour,\n\n${expert} a supprimé son compte KolBase : il est retiré du dossier « ${p.title} ».${
+          p.outcome === "reopened" ? " Plus aucun expert n'y est engagé : le dossier revient en attente des experts. Sollicitez un autre expert ou abandonnez le dossier."
+          : p.outcome === "closed" ? " Plus aucun expert n'y reste sollicité : le dossier est clos (décliné)."
+          : ""}`,
+        cta: { label: "Ouvrir le dossier", href: `/organisations/${p.organizationId}/dossiers/${p.id}` },
+      });
+    }
+    for (const c of calls) {
+      const team = await members(c.organizationId, SOURCING_ROLES);
+      const creator = team.find((u) => u.id === c.createdById);
+      await send(creator ? [creator] : team, {
+        subject: `${expert} a supprimé son compte — ${c.title}`,
+        text: `Bonjour,\n\n${expert} a supprimé son compte KolBase : sa candidature à « ${c.title} » est retirée.`,
+        cta: { label: "Voir l'appel", href: `/organisations/${c.organizationId}/opportunites/${c.id}` },
+      });
+    }
+  });
+}
+
+/** Contre-proposition d'un expert : l'équipe Projets accepte ces honoraires ou renvoie une proposition. */
+export function notifyExpertCounter(linkId: string) {
+  later(async () => {
+    const l = await db.projectExpert.findUnique({ where: { id: linkId }, include: linkInclude });
+    if (!l?.desiredFeeCents) return;
+    const before = l.feeCents != null ? `${fmtEur("fr", l.feeCents)} → ` : "";
+    await send(await projectTeam(l.project), {
+      subject: `${expertName(l.practitioner)} propose d'autres honoraires — ${l.project.title}`,
+      text: `Bonjour,\n\n${expertName(l.practitioner)} propose d'autres honoraires pour « ${l.project.title} » : ${before}${fmtEur("fr", l.desiredFeeCents)} HT.${l.responseNote ? `\n\nSon message : ${l.responseNote}` : ""}\n\nLa sollicitation reste ouverte : acceptez ces honoraires, ou proposez d'autres conditions depuis le dossier.`,
+      cta: { label: "Ouvrir le dossier", href: `/organisations/${l.project.organizationId}/dossiers/${l.projectId}` },
+    });
+  });
+}
+
+/** Honoraires de l'expert acceptés par l'organisation : il est engagé. */
+export function notifyCounterAccepted(linkId: string) {
+  later(async () => {
+    const l = await db.projectExpert.findUnique({ where: { id: linkId }, include: linkInclude });
+    if (!l || l.feeCents == null) return;
+    const org = l.project.organization.name;
+    await send([l.practitioner.user], (t, locale) => ({
+      subject: t("Honoraires acceptés : {titre}", { titre: l.project.title }),
+      text: [
+        t("Bonjour,"),
+        t("{org} accepte vos honoraires pour « {titre} » : {montant} HT.", { org, titre: l.project.title, montant: l.previousFeeCents != null ? `${fmtEur(locale, l.previousFeeCents)} → ${fmtEur(locale, l.feeCents!)}` : fmtEur(locale, l.feeCents!) }),
+        t("Vous êtes engagé sur ce dossier : l'organisation le soumet à la conformité, puis la convention vous sera soumise."),
+      ].join("\n\n"),
+      cta: { label: t("Voir la sollicitation"), href: `/sollicitations/${l.id}` },
+    }));
   });
 }
 
@@ -327,7 +450,7 @@ export function notifyQuote(rfqId: string, supplierId: string, revised = false) 
       db.organization.findUnique({ where: { id: supplierId }, select: { name: true } }),
     ]);
     if (!r || !supplier) return;
-    await send(await rfqContacts(r, supplierId), {
+    await send(await rfqContacts(r), {
       subject: revised ? `Devis révisé par ${supplier.name}` : `Devis reçu ${de(supplier.name)}`,
       text: revised ? `Bonjour,\n\n${supplier.name} a révisé son devis.` : `Bonjour,\n\n${supplier.name} a répondu à votre demande de devis.`,
       cta: { label: "Comparer les devis", href: `/organisations/${r.organizationId}/prestataires#rfq-${r.id}` },
@@ -351,18 +474,23 @@ async function eventAgency(event: { organizationId: string; agencyId: string | n
   return { id: event.agencyId, name: mandate.agency.name, canAward: mandate.canAward, team: await supplierTeam(event.agencyId) };
 }
 
+/** L'agence de l'événement est-elle elle-même consultée sur la demande (conflit d'intérêts) ? */
+const agencyConsulted = async (rfqId: string, agencyId: string) => (await db.rfqSupplier.count({ where: { rfqId, supplierId: agencyId } })) > 0;
+
 /**
  * Interlocuteurs d'une demande de devis côté client. L'appartenance d'une agence vient de son mandat (pas d'une
- * adhésion) : son équipe est prévenue pour les événements qui lui sont confiés, sauf quand c'est elle qui répond.
+ * adhésion) : son équipe est prévenue pour les événements qui lui sont confiés, sauf quand elle est elle-même
+ * consultée sur la demande (elle ne voit ni les devis ni les questions de ses concurrents).
  * Côté organisation : l'auteur de la demande s'il en est membre ; sinon les organisateurs, sauf si l'agence qui l'a
  * créée peut retenir les devis (sans ce droit, ce sont eux qui décident).
  */
-async function rfqContacts(rfq: { organizationId: string; createdById: string | null; event: { organizationId: string; agencyId: string | null } | null }, supplierId?: string) {
+async function rfqContacts(rfq: { id: string; organizationId: string; createdById: string | null; event: { organizationId: string; agencyId: string | null } | null }) {
   const [organizers, agency] = await Promise.all([members(rfq.organizationId, EVENT_ORGANIZER_ROLES), eventAgency(rfq.event)]);
-  const agencyTeam = agency && agency.id !== supplierId ? agency.team : [];
+  const conflicted = !!agency && (await agencyConsulted(rfq.id, agency.id));
+  const agencyTeam = agency && !conflicted ? agency.team : [];
   const internal = organizers.find((u) => u.id === rfq.createdById);
   const byAgency = !!agency?.team.some((u) => u.id === rfq.createdById);
-  return [...agencyTeam, ...(internal ? [internal] : byAgency && agency!.canAward ? [] : organizers)];
+  return [...agencyTeam, ...(internal ? [internal] : byAgency && agency!.canAward && !conflicted ? [] : organizers)];
 }
 
 /** Événement confié à une agence : son équipe est prévenue et y accède aussitôt. */
@@ -443,7 +571,8 @@ export function notifyAward(rfqId: string, actorId?: string) {
         text: `Bonjour,\n\n${agency.name}, agence mandatée, a retenu en votre nom le devis ${de(quoteSummary(kept))}.${rest}\n\nVous pouvez retirer ce droit à l'agence dans Prestataires › Agences mandatées.`,
         cta: { label: "Voir la demande", href },
       }, actorId);
-    } else if (agency.id !== kept.supplierId) {
+    } else if (!(await agencyConsulted(r.id, agency.id))) {
+      // Agence consultée sur la demande : elle a reçu, comme prestataire, la décision sur son devis, sans le montant retenu.
       await send(agency.team, {
         subject: `${r.organization.name} a retenu un devis ${what}`.trim(),
         text: `Bonjour,\n\n${r.organization.name} a retenu le devis ${de(quoteSummary(kept))}.${rest}`,
@@ -468,19 +597,66 @@ export function notifyQuoteProposed(rfqId: string, actorId: string) {
   });
 }
 
-/** Demande annulée : les prestataires consultés ne travaillent plus dessus. */
-export function notifyRfqCancelled(rfqId: string) {
+/**
+ * Demande annulée : les prestataires consultés ne travaillent plus dessus. Annulée par l'auteur de la demande
+ * (une agence mandatée, par exemple) : les organisateurs sont prévenus, avec le nom de qui a annulé.
+ */
+export function notifyRfqCancelled(rfqId: string, actorId: string) {
   later(async () => {
-    const r = await db.rfq.findUnique({ where: { id: rfqId }, include: { organization: { select: { name: true } }, suppliers: true } });
+    const r = await db.rfq.findUnique({ where: { id: rfqId }, include: { organization: { select: { name: true } }, event: { select: { title: true } }, suppliers: true } });
     if (!r) return;
-    for (const s of r.suppliers) {
+    // Brouillon jamais envoyé : les prestataires n'en ont pas eu connaissance.
+    for (const s of r.sentAt ? r.suppliers : []) {
       if (s.declined) continue;
       await send(await supplierTeam(s.supplierId), {
         subject: `Demande de devis annulée par ${r.organization.name}`,
-        text: `Bonjour,\n\n${r.organization.name} a annulé sa demande de devis. Aucune réponse n'est plus attendue.`,
+        text: `Bonjour,\n\n${r.organization.name} a annulé sa demande de devis${r.event ? ` pour « ${r.event.title} »` : ""}. Aucune réponse n'est plus attendue.`,
         cta: { label: "Voir mes demandes", href: `/organisations/${s.supplierId}/devis?onglet=toutes` },
       });
     }
+    const organizers = await members(r.organizationId, EVENT_ORGANIZER_ROLES);
+    if (organizers.some((u) => u.id === actorId)) return;
+    const actor = await db.user.findUnique({ where: { id: actorId }, select: { firstName: true, lastName: true, memberships: { where: { organization: { kind: "PRESTATAIRE" } }, select: { organization: { select: { name: true } } } } } });
+    const who = actor ? `${actor.firstName} ${actor.lastName}${actor.memberships[0] ? ` (${actor.memberships[0].organization.name})` : ""}` : "L'auteur de la demande";
+    await send(organizers, {
+      subject: `Demande de devis annulée${r.event ? ` : ${r.event.title}` : ""}`,
+      text: `Bonjour,\n\n${who} a annulé la demande de devis${r.event ? ` pour « ${r.event.title} »` : ""} (${supplierCategoryLabel(r.category)}). Les prestataires consultés sont prévenus.`,
+      cta: { label: "Voir la demande", href: `/organisations/${r.organizationId}/prestataires#rfq-${r.id}` },
+    }, actorId);
+  });
+}
+
+/** Devis révisé par le prestataire alors que l'agence l'avait proposé : la proposition tombe, l'agence est prévenue. */
+export function notifyProposalWithdrawn(rfqId: string, supplierId: string, proposerId: string) {
+  later(async () => {
+    const [r, supplier, proposer] = await Promise.all([
+      db.rfq.findUnique({ where: { id: rfqId }, include: { event: { select: { title: true } } } }),
+      db.organization.findUnique({ where: { id: supplierId }, select: { name: true } }),
+      db.user.findUnique({ where: { id: proposerId }, select: userSelect }),
+    ]);
+    if (!r || !supplier || !proposer) return;
+    await send([proposer], {
+      subject: `Devis proposé révisé : ${supplier.name}${r.event ? ` (${r.event.title})` : ""}`,
+      text: `Bonjour,\n\n${supplier.name} a révisé le devis que vous aviez proposé à l'organisation${r.event ? ` pour « ${r.event.title} »` : ""}. Votre proposition portait sur l'ancienne version : elle est retirée. Relisez la nouvelle version et proposez-la de nouveau si elle vous convient.`,
+      cta: { label: "Voir la demande", href: `/organisations/${r.organizationId}/prestataires#rfq-${r.id}` },
+    });
+  });
+}
+
+/** Un prestataire décline une demande : les interlocuteurs de la demande sont prévenus, avec le motif s'il en donne un. */
+export function notifyRfqDeclined(rfqId: string, supplierId: string, actorId: string) {
+  later(async () => {
+    const [r, invite] = await Promise.all([
+      db.rfq.findUnique({ where: { id: rfqId }, include: { event: { select: { title: true, organizationId: true, agencyId: true } } } }),
+      db.rfqSupplier.findUnique({ where: { rfqId_supplierId: { rfqId, supplierId } }, include: { supplier: { select: { name: true } } } }),
+    ]);
+    if (!r || !invite) return;
+    const name = invite.supplier.name;
+    await send(await rfqContacts(r), {
+      subject: `${name} décline votre demande de devis${r.event ? ` (${r.event.title})` : ""}`,
+      text: `Bonjour,\n\n${name} ne répondra pas à votre demande de devis${r.event ? ` pour « ${r.event.title} »` : ""} (${supplierCategoryLabel(r.category)}).${invite.declineNote ? `\n\nMotif : ${invite.declineNote}` : ""}`,
+      cta: { label: "Voir la demande", href: `/organisations/${r.organizationId}/prestataires#rfq-${r.id}` },
+    }, actorId);
   });
 }
 
@@ -493,7 +669,7 @@ export function notifyRfqMessage(rfqId: string, supplierId: string, fromSupplier
     ]);
     if (!r || !supplier) return;
     if (fromSupplier) {
-      await send(await rfqContacts(r, supplierId), {
+      await send(await rfqContacts(r), {
         subject: `Question ${de(supplier.name)} sur votre demande de devis`,
         text: `Bonjour,\n\n${supplier.name} vous a écrit au sujet de votre demande de devis.`,
         cta: { label: "Répondre", href: `/organisations/${r.organizationId}/prestataires#rfq-${r.id}` },
@@ -638,7 +814,7 @@ export async function sendEventReminders(eventId: string, now = new Date()) {
     where: { id: eventId },
     include: { organization: { select: { name: true } }, registrations: { where: { reminderSentAt: null }, include: { user: { select: { ...userSelect, firstName: true } } } } },
   });
-  if (!ev || ev.internal || ev.startsAt <= now) return 0;
+  if (!ev || ev.internal || ev.cancelledAt || ev.startsAt <= now) return 0;
   const inPerson = ev.format !== "DISTANCIEL";
   const program = ev.program ? (ev.program.length > 700 ? `${ev.program.slice(0, 700).trimEnd()}…` : ev.program) : null;
   for (const r of ev.registrations) {
@@ -730,6 +906,29 @@ export function notifyRegistrationCancelled(userId: string, eventId: string, ben
   });
 }
 
+/** Événement annulé par l'organisation (e-mail de service) : chaque inscrit est prévenu, avec le motif. */
+export function notifyEventCancelled(eventId: string) {
+  later(async () => {
+    const ev = await db.event.findUnique({
+      where: { id: eventId },
+      include: { organization: { select: { name: true } }, registrations: { where: { cancelledAt: { not: null } }, include: { user: { select: { ...userSelect, firstName: true } } } } },
+    });
+    if (!ev?.cancelledAt) return;
+    for (const r of ev.registrations) {
+      await sendService([r.user], (t, locale) => ({
+        subject: t("Événement annulé : « {title} »", { title: ev.title }),
+        text: [
+          t("Bonjour {name},", { name: r.user.firstName }),
+          t("{org} annule « {title} », prévu {when}, auquel vous étiez inscrit.", { org: ev.organization.name, title: ev.title, when: eventWhen(ev.startsAt, locale) }),
+          ev.cancelReason ? t("Motif : {note}", { note: ev.cancelReason }) : null,
+          t("Votre inscription est annulée, ainsi que les prestations d'hospitalité prévues. Vous n'avez rien à faire."),
+        ].filter(Boolean).join("\n\n"),
+        cta: { label: t("Voir l'événement"), href: `/evenements/${ev.id}` },
+      }));
+    }
+  });
+}
+
 /** Événement modifié (date, heure, lieu, format ou lien de connexion) : chaque inscrit reçoit les nouvelles informations. */
 export function notifyEventChanged(eventId: string, changes: EventChange[]) {
   later(async () => {
@@ -774,7 +973,7 @@ export async function sendEventFollowUps(eventId: string, now = new Date()) {
     where: { id: eventId },
     include: { organization: { select: { name: true } }, registrations: { include: { user: { select: { ...userSelect, firstName: true } } } } },
   });
-  if (!ev || ev.internal) return 0;
+  if (!ev || ev.internal || ev.cancelledAt) return 0;
   const pointed = ev.registrations.some((r) => r.checkedInAt);
   const targets = ev.registrations.filter((r) => !r.followUpSentAt && (!pointed || r.checkedInAt));
   for (const r of targets) {

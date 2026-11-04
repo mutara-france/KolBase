@@ -112,6 +112,10 @@ export function MessageForm({ linkId }: { linkId: string }) {
   );
 }
 
+/**
+ * Réponse de l'expert : accord de principe, autres honoraires (montant obligatoire, la sollicitation reste ouverte)
+ * ou déclin. Le message est facultatif ; l'indice dit ce qui se passe pour chaque réponse.
+ */
 export function RespondForm({ linkId }: { linkId: string }) {
   const [state, action, pending] = useActionState(respondToSolicitation, undefined);
   const t = useT();
@@ -120,15 +124,18 @@ export function RespondForm({ linkId }: { linkId: string }) {
     <ActionForm action={action} className="form">
       <Notice state={state} />
       <input type="hidden" name="linkId" value={linkId} />
-      <label>{t("Commentaire (facultatif)")}<textarea name="note" rows={2} placeholder={t("Disponibilités, conditions, questions…")} /></label>
-      <label>{t("Honoraires souhaités (€ HT, facultatif)")}<input name="desiredFee" inputMode="decimal" placeholder={t("Total pour la prestation")} />
-        <span className="hint">{t("Si les honoraires proposés ne vous conviennent pas : l'organisation voit ce montant et peut vous faire une nouvelle proposition.")}</span>
-      </label>
+      <label>{t("Message (facultatif)")}<textarea name="note" rows={2} placeholder={t("Disponibilités, conditions, questions…")} /></label>
+      <label>{t("Autres honoraires (€ HT, total pour la prestation)")}<input name="desiredFee" inputMode="decimal" placeholder={t("Seulement pour « Proposer d'autres honoraires »")} /></label>
       <div className="actions">
         <button className="btn" name="answer" value="accept" disabled={pending}>{t("Donner mon accord de principe")}</button>
+        <button className="btn secondary" name="answer" value="counter" disabled={pending}>{t("Proposer d'autres honoraires")}</button>
         <button className="btn ghost" name="answer" value="decline" disabled={pending}>{t("Décliner")}</button>
       </div>
-      <p className="hint">{t("L'accord de principe n'engage pas encore : la convention vous sera soumise après validation par la conformité.")}</p>
+      <ul className="hint stack-sm">
+        <li>{t("Accord de principe : il n'engage pas encore ; la convention vous sera soumise après validation par la conformité.")}</li>
+        <li>{t("Proposer d'autres honoraires : la sollicitation reste ouverte ; l'organisation peut accepter votre montant ou vous renvoyer une proposition.")}</li>
+        <li>{t("Décliner : la sollicitation est close et l'organisation est prévenue.")}</li>
+      </ul>
     </ActionForm>
   );
 }

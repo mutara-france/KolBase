@@ -64,6 +64,46 @@ export const STATUS_LABEL: Record<ProjectStatus, string> = {
 export const EXPERT_STATUS_LABEL: Partial<Record<ProjectStatus, string>> = { ATT_EXPERTS: "Votre réponse est attendue" };
 export const statusLabel = (status: ProjectStatus, viewer: "organisation" | "expert" = "organisation") =>
   (viewer === "expert" ? EXPERT_STATUS_LABEL[status] : undefined) ?? STATUS_LABEL[status];
+/** Frise vue par l'expert : l'étape de la sollicitation, toujours franchie quand la frise s'affiche (il est engagé). */
+export const pipelineLabel = (status: ProjectStatus, viewer: "organisation" | "expert" = "organisation") =>
+  viewer === "expert" && status === "ATT_EXPERTS" ? "Sollicitation reçue" : statusLabel(status, viewer);
+
+/**
+ * État d'une sollicitation vu par l'expert :
+ * - attente : sa réponse est attendue (recrutement ouvert) ;
+ * - contre : il a proposé d'autres honoraires, l'organisation doit répondre (la sollicitation reste ouverte) ;
+ * - clos : restée sans réponse, le dossier a été soumis à la conformité (recrutement clos) ;
+ * - abandonne : dossier abandonné par l'organisation (motif) ; refuse : sa proposition spontanée déclinée ;
+ * - decline : il a décliné ; engage : il a accepté, le dossier suit son cours.
+ */
+export type ExpertLinkState = "attente" | "contre" | "clos" | "abandonne" | "refuse" | "decline" | "engage";
+export function expertLinkState(
+  link: { status: ProjectStatus | string; desiredFeeCents: number | null; respondedAt: Date | null },
+  project: { status: ProjectStatus | string; abandonNote: string | null; origin: string | null },
+): ExpertLinkState {
+  const proposal = project.origin === PROPOSAL_ORIGIN;
+  if (project.status === "DECLINE" && project.abandonNote) return "abandonne";
+  if (link.status === "DECLINE" && link.respondedAt && !proposal) return "decline";
+  if (project.status === "DECLINE") return proposal ? "refuse" : "abandonne";
+  if (link.status === "DECLINE") return "decline";
+  if (link.status === "ATT_EXPERTS") return !recruitmentOpen(project.status) ? "clos" : link.desiredFeeCents != null ? "contre" : "attente";
+  return "engage";
+}
+export const EXPERT_LINK_LABEL: Record<Exclude<ExpertLinkState, "engage">, string> = {
+  attente: "Votre réponse est attendue",
+  contre: "Contre-proposition envoyée",
+  clos: "Recrutement clos",
+  abandonne: "Abandonné par l'organisation",
+  refuse: "Proposition déclinée",
+  decline: "Décliné",
+};
+/** Sollicitation qui attend la réponse de l'expert (compteurs du menu, de l'accueil et de la liste). */
+export const awaitingExpert = (link: { status: ProjectStatus | string; desiredFeeCents: number | null }, projectStatus: ProjectStatus | string) =>
+  link.status === "ATT_EXPERTS" && link.desiredFeeCents == null && recruitmentOpen(projectStatus);
+/** Mention portée sur la réponse d'un expert retiré des dossiers à la suppression de son compte. */
+export const ACCOUNT_DELETED = "Compte supprimé";
+/** Origine d'un dossier ouvert par la proposition spontanée d'un expert. */
+export const PROPOSAL_ORIGIN = "Proposition de l'expert";
 
 export const STATUS_TONE: Record<ProjectStatus, "wait" | "ok" | "bad" | "done"> = {
   ATT_EXPERTS: "wait", ATT_IND: "wait", ACCORD: "ok", EN_VALID: "wait", BLOQUE: "bad", VALIDE: "ok",
@@ -158,3 +198,21 @@ export function fmvCheck(typeId: string, feeCents: number | null, units: number 
 export const MATERIAL_KINDS = { diaporama: "Diaporama", article: "Article / texte", video: "Vidéo", programme: "Programme", autre: "Autre" } as const;
 export const MATERIAL_STATUS = { submitted: "En relecture", approved: "Approuvé", changes: "Modifications demandées" } as const;
 export const REVIEW_ROLES: OrgRole[] = ["ADMIN", "CONFORMITE"];
+
+/** E-mails à l'expert lors des étapes du dossier qui le concernent (voir notifyExpertNotice). */
+export type ExpertNotice = "abandon" | "retour_accord" | "signature" | "signe" | "recrutement_clos";
+/**
+ * Qui prévenir, et de quoi, quand le dossier change d'étape : experts engagés (accord donné), sollicités restés sans
+ * réponse (dont une contre-proposition ou une offre renvoyée), ou tous. Passage en signature : seulement quand la
+ * convention se dépose à la main (la signature électronique écrit déjà à l'expert).
+ */
+export function expertNotices(key: TransitionKey, eSignature: boolean): { notice: ExpertNotice; who: "engages" | "sollicites" | "tous" }[] {
+  switch (key) {
+    case "abandon": return [{ notice: "abandon", who: "tous" }];
+    case "back_to_accord": return [{ notice: "retour_accord", who: "engages" }];
+    case "declaration": case "hors_france": case "ordre_ok": return eSignature ? [] : [{ notice: "signature", who: "engages" }];
+    case "signed": return [{ notice: "signe", who: "engages" }];
+    case "submit": return [{ notice: "recrutement_clos", who: "sollicites" }];
+    default: return [];
+  }
+}

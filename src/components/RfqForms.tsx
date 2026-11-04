@@ -12,19 +12,29 @@ import { AiDraft } from "@/components/AiDraft";
 
 type Cat = { id: string; label: string };
 type Supplier = { id: string; name: string; categories: string[]; city: string | null; coverage: string | null; about: string | null; since: number; rating?: number | null; reviews?: number };
-type EventOpt = { id: string; label: string; city: string | null; capacity: number | null };
+type EventOpt = { id: string; label: string; city: string | null; capacity: number | null; agencyId?: string | null };
 
-export function SupplierLine({ s, catLabel, selected, onToggle }: { s: Supplier; catLabel: string; selected?: boolean; onToggle?: () => void }) {
+/**
+ * Prestataire de l'annuaire. `eventAgency` : l'agence à qui l'événement choisi est confié. La consulter reste
+ * possible (choix conscient du client) ; elle ne verra alors sur la demande que son propre devis.
+ */
+export function SupplierLine({ s, catLabel, selected, onToggle, eventAgency = false }: { s: Supplier; catLabel: string; selected?: boolean; onToggle?: () => void; eventAgency?: boolean }) {
   return (
     <div className={`supplier${selected ? " selected" : ""}`}>
       <Avatar name={s.name} size={38} square />
       <div className="supplier-body">
         <div>
           <strong>{s.name}</strong> <span className="pill electric">Référencé</span>
+          {eventAgency && <span className="pill wait"> Agence de cet événement</span>}
           {s.rating != null && <span className="rating"> ★ {s.rating.toFixed(1).replace(".", ",")} <span className="muted text-xs">({s.reviews} avis)</span></span>}
         </div>
         <div className="muted">{catLabel}{s.coverage ? ` · ${s.coverage}` : s.city ? ` · ${s.city}` : ""} · référencé depuis {s.since} · <a href={`/structures/${s.id}`} target="_blank" rel="noreferrer">voir le book</a></div>
         {!onToggle && s.about && <p>{s.about}</p>}
+        {eventAgency && (
+          <p className="text-xs warn-text">
+            L&apos;événement lui est confié : si vous la consultez, elle répond comme les autres prestataires, ne voit sur cette demande que son propre devis, et la décision revient à votre équipe.
+          </p>
+        )}
       </div>
       {onToggle && (
         <button type="button" className={selected ? "btn small" : "btn ghost small"} onClick={onToggle}>
@@ -68,7 +78,7 @@ export function NewRfqForm({ orgId, categories, suppliers, events, defaultEventI
         <SelectAll count={matching.length} all={matching.length > 0 && matching.every((m) => picked.includes(m.id))} onAll={() => setPicked(matching.every((m) => picked.includes(m.id)) ? [] : matching.map((m) => m.id))} />
       </span>
       <div className="stack-sm">
-        {matching.map((s) => <SupplierLine key={s.id} s={s} catLabel={categories.find((c) => c.id === category)!.label} selected={picked.includes(s.id)} onToggle={() => toggle(s.id)} />)}
+        {matching.map((s) => <SupplierLine key={s.id} s={s} catLabel={categories.find((c) => c.id === category)!.label} selected={picked.includes(s.id)} onToggle={() => toggle(s.id)} eventAgency={!!ev?.agencyId && ev.agencyId === s.id} />)}
         {matching.length === 0 && <p className="muted">Aucun prestataire référencé dans cette catégorie pour l&apos;instant.</p>}
       </div>
       <label>Besoin<textarea name="needs" rows={ai ? 6 : 3} required placeholder="Prestations attendues, contraintes horaires, niveau de service…" /></label>

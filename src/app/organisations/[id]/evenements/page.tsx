@@ -31,7 +31,7 @@ export default async function Page({ params }: { params: Promise<{ id: string }>
   const sectionTabs = await orgTabs("evenements", id);
 
   const Row = ({ e }: { e: (typeof events)[number] }) => {
-    const status = e.internal ? { label: "Réunion interne", tone: "electric" } : e.publishedAt ? { label: e.registrationOpen ? "Publié · inscriptions ouvertes" : "Publié · inscriptions closes", tone: e.registrationOpen ? "ok" : "done" } : { label: "Brouillon", tone: "wait" };
+    const status = e.cancelledAt ? { label: "Annulé", tone: "bad" } : e.internal ? { label: "Réunion interne", tone: "electric" } : e.publishedAt ? { label: e.registrationOpen ? "Publié · inscriptions ouvertes" : "Publié · inscriptions closes", tone: e.registrationOpen ? "ok" : "done" } : { label: "Brouillon", tone: "wait" };
     const toCompare = e.rfqs.filter((r) => r.status === "sent" && r._count.quotes > 0).length;
     const awarded = e.rfqs.filter((r) => r.status === "awarded").length;
     const logistics = e.rfqs.length === 0 ? null : toCompare ? `${toCompare} demande${toCompare > 1 ? "s" : ""} de devis à comparer` : `${awarded}/${e.rfqs.length} prestation${e.rfqs.length > 1 ? "s" : ""} attribuée${awarded > 1 ? "s" : ""}`;

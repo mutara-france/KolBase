@@ -24,7 +24,7 @@ export default async function Page({ params }: { params: Promise<{ code: string 
       benefits: { include: { benefit: { select: { label: true } } } },
     },
   });
-  if (!reg) notFound();
+  if (!reg || reg.cancelledAt) notFound();
   if (reg.userId === user.id) redirect(`/inscriptions/${reg.id}/badge`);
   if (!canCheckIn(user, reg.event)) notFound();
   const open = checkinOpen(reg.event.startsAt);

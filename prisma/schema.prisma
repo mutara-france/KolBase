@@ -362,6 +362,8 @@ model Project {
   // Signature attestée sans convention déposée (stockage de documents non configuré) : qui et quand.
   signatureAttestedAt   DateTime?
   signatureAttestedById String?
+  // Motif de l'abandon du dossier : affiché à l'expert sur sa sollicitation.
+  abandonNote     String?
   createdAt       DateTime      @default(now())
   updatedAt       DateTime      @updatedAt
 
@@ -413,7 +415,10 @@ model ProjectExpert {
   days           Float?              // nombre d'unités (journées, interventions…)
   responseNote   String?
   respondedAt    DateTime?
-  desiredFeeCents Int?               // honoraires souhaités par l'expert dans sa réponse (€ HT, en centimes), facultatif
+  // Contre-proposition de l'expert (€ HT, en centimes) : la sollicitation reste ouverte, l'organisation répond.
+  desiredFeeCents Int?
+  // Honoraires précédents, quand l'organisation en a proposé d'autres ou a accepté ceux de l'expert.
+  previousFeeCents Int?
   // Paiement des honoraires, indiqué par l'organisation (visible de l'expert dans « Mes revenus »).
   paidAt         DateTime?
   paidCents      Int?
@@ -534,6 +539,9 @@ model Event {
   // Agence prestataire mandatée : ses membres (rôle Prestataire) ne voient que les événements confiés.
   agencyId         String?
   agency           Organization? @relation("agencyEvents", fields: [agencyId], references: [id])
+  // Événement annulé (avec des inscrits) : lisible à son adresse avec la mention, hors de l'agenda, sans inscription.
+  cancelledAt      DateTime?
+  cancelReason     String?
   createdAt        DateTime     @default(now())
   updatedAt        DateTime     @updatedAt
 
@@ -564,6 +572,9 @@ model Rfq {
   proposedQuoteId String?
   proposedById    String?
   proposedAt      DateTime?
+  // Annulation : par qui et quand (l'organisation cliente ou l'auteur de la demande).
+  cancelledAt     DateTime?
+  cancelledById   String?
   createdAt      DateTime     @default(now())
 
   suppliers RfqSupplier[]
@@ -594,6 +605,9 @@ model RfqSupplier {
   supplierId String
   supplier   Organization @relation(fields: [supplierId], references: [id])
   declined   Boolean      @default(false)
+  // Déclin : motif facultatif (montré au client) et date.
+  declineNote String?
+  declinedAt  DateTime?
 
   @@id([rfqId, supplierId])
 }
@@ -659,6 +673,8 @@ model Registration {
   // Inscription arrivée par un lien suivi d'un service KolBase (e-mailing, post, à la une).
   sourceOrderId   String?
   sourceOrder     ServiceOrder? @relation(fields: [sourceOrderId], references: [id], onDelete: SetNull)
+  // Inscription annulée par l'annulation de l'événement (l'annulation par la personne inscrite la supprime).
+  cancelledAt     DateTime?
 
   benefits RegistrationBenefit[]
   survey   SurveyResponse?

@@ -1,8 +1,12 @@
 import "server-only";
 import { db } from "@/lib/db";
-import { SIGNED_STATUSES } from "@/lib/projects";
+import { ACCOUNT_DELETED, RECRUITING_STATUSES, SIGNED_STATUSES } from "@/lib/projects";
 import { pointedPastEvents } from "@/lib/checkin";
 import { isAbsent } from "@/lib/indicators";
+import { drPrefix } from "@/lib/professions";
+import { closeOpenSignatures } from "@/lib/signature";
+import { notifyExpertRemoved } from "@/lib/notifications";
+import type { ProjectStatus } from "@/generated/prisma/client";
 
 /** Données personnelles d'un compte, au format JSON (droit d'accès et de portabilité, art. 15 et 20 RGPD). */
 export async function exportAccount(userId: string) {
@@ -70,8 +74,19 @@ export async function soleAdminOrgs(userId: string) {
  */
 export async function anonymizeAccount(userId: string) {
   const { keep } = await retentionReasons(userId);
-  const p = await db.practitionerProfile.findUnique({ where: { userId } });
+  const p = await db.practitionerProfile.findUnique({ where: { userId }, include: { user: { select: { firstName: true, lastName: true } } } });
   const now = new Date();
+  // Expert : retiré des dossiers non signés où il est engagé ou sollicité, et de ses candidatures en cours ou retenues.
+  const removedLinks = p
+    ? await db.projectExpert.findMany({
+        where: { practitionerId: p.id, status: { not: "DECLINE" }, project: { status: { notIn: [...SIGNED_STATUSES, "DECLINE"] } } },
+        select: { id: true, project: { select: { id: true, organizationId: true, createdById: true, title: true } } },
+      })
+    : [];
+  const removedApps = p
+    ? await db.application.findMany({ where: { practitionerId: p.id, status: { in: ["pending", "retained"] }, projectId: null }, select: { openCall: { select: { id: true, organizationId: true, createdById: true, title: true } } } })
+    : [];
+  const expert = p ? `${drPrefix(p.profession)}${p.user.firstName} ${p.user.lastName}` : null;
   await db.$transaction([
     db.session.deleteMany({ where: { userId } }),
     db.authToken.deleteMany({ where: { userId } }),
@@ -85,7 +100,9 @@ export async function anonymizeAccount(userId: string) {
           db.declaredInterest.deleteMany({ where: { practitionerId: p.id } }),
           db.practitionerStructure.deleteMany({ where: { practitionerId: p.id, ...(keep ? { isPayee: false } : {}) } }),
           db.application.deleteMany({ where: { practitionerId: p.id, status: "pending" } }),
-          db.projectExpert.updateMany({ where: { practitionerId: p.id, status: "ATT_EXPERTS" }, data: { status: "DECLINE", respondedAt: now, responseNote: "Compte supprimé" } }),
+          db.application.updateMany({ where: { practitionerId: p.id, status: "retained" }, data: { status: "declined" } }),
+          db.projectExpert.updateMany({ where: { practitionerId: p.id, status: "ATT_EXPERTS" }, data: { status: "DECLINE", respondedAt: now, responseNote: ACCOUNT_DELETED } }),
+          db.projectExpert.updateMany({ where: { id: { in: removedLinks.map((l) => l.id) } }, data: { status: "DECLINE", respondedAt: now, responseNote: ACCOUNT_DELETED } }),
           db.practitionerProfile.update({
             where: { id: p.id },
             data: {
@@ -107,5 +124,32 @@ export async function anonymizeAccount(userId: string) {
       },
     }),
   ]);
+  if (expert && (removedLinks.length || removedApps.length)) {
+    const projects = [];
+    for (const l of removedLinks) {
+      await closeOpenSignatures({ projectExpertId: l.id }, "compte de l'expert supprimé");
+      projects.push({ ...l.project, outcome: await afterExpertRemoved(l.project.id) });
+    }
+    notifyExpertRemoved(expert, projects, removedApps.map((a) => a.openCall));
+  }
   return { kept: keep };
+}
+
+/**
+ * Dossier dont un expert vient d'être retiré : il ne reste pas soumettable (ni signable) sans expert engagé.
+ * Recrutement en cours : le statut suit les réponses des autres experts. Au-delà, sans plus aucun expert engagé, le
+ * dossier revient en attente des experts (on peut en solliciter un autre ou l'abandonner).
+ */
+async function afterExpertRemoved(projectId: string): Promise<"reopened" | "closed" | null> {
+  const project = await db.project.findUnique({ where: { id: projectId }, include: { experts: { select: { status: true } } } });
+  if (!project) return null;
+  const statuses = project.experts.map((e) => e.status);
+  const engaged = statuses.some((s) => s !== "DECLINE" && s !== "ATT_EXPERTS");
+  let next: ProjectStatus = project.status;
+  if ((RECRUITING_STATUSES as string[]).includes(project.status)) next = statuses.every((s) => s === "DECLINE") ? "DECLINE" : engaged ? "ACCORD" : "ATT_EXPERTS";
+  else if (!engaged) next = "ATT_EXPERTS";
+  if (next === project.status) return null;
+  await db.project.update({ where: { id: projectId }, data: { status: next } });
+  await db.auditLog.create({ data: { actorId: null, action: "project.expert_removed", entityType: "Project", entityId: projectId, data: { from: project.status, to: next } } });
+  return next === "DECLINE" ? "closed" : next === "ATT_EXPERTS" ? "reopened" : null;
 }

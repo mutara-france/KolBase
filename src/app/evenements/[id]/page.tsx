@@ -23,8 +23,9 @@ const dateTime = (locale: Locale, d: Date) => fmtDate(locale, d, { weekday: "lon
 export async function generateMetadata({ params }: { params: Promise<{ id: string }> }): Promise<Metadata> {
   const { id } = await params;
   const { t, locale } = await getT();
-  const e = await db.event.findFirst({ where: { id, publishedAt: { not: null }, organization: { verification: "VERIFIED" } }, include: { organization: { select: { name: true } } } });
+  const e = await db.event.findFirst({ where: { id, OR: [{ publishedAt: { not: null } }, { cancelledAt: { not: null } }], organization: { verification: "VERIFIED" } }, include: { organization: { select: { name: true } } } });
   if (!e) return { title: t("Événement — KolBase"), robots: { index: false } };
+  if (e.cancelledAt) return { title: `${t("Événement annulé")} : ${e.title} — KolBase`, robots: { index: false } };
   const description = `${t(eventTypeLabel(e.typeId))} · ${dateTime(locale, e.startsAt)}${e.city ? ` · ${e.city}` : ""}. ${e.description ?? ""}`.trim().slice(0, 160);
   return {
     title: `${e.title} — ${e.organization.name} — KolBase`,
@@ -40,7 +41,8 @@ export default async function Page({ params, searchParams }: { params: Promise<{
   const { annulee } = await searchParams;
   const [event, user] = await Promise.all([
     db.event.findFirst({
-      where: { id, publishedAt: { not: null }, organization: { verification: "VERIFIED" } },
+      // Un événement annulé reste lisible à son adresse (mention « Événement annulé »), hors de l'agenda.
+      where: { id, OR: [{ publishedAt: { not: null } }, { cancelledAt: { not: null } }], organization: { verification: "VERIFIED" } },
       // Le lien de connexion n'est lu que pour une personne inscrite (plus bas).
       omit: { onlineUrl: true },
       include: {
@@ -64,7 +66,10 @@ export default async function Page({ params, searchParams }: { params: Promise<{
   const back = encodeURIComponent(`/evenements/${id}`);
 
   const left = event.capacity != null ? Math.max(0, event.capacity - event._count.registrations) : null;
-  const status = ended
+  const cancelled = !!event.cancelledAt;
+  const status = cancelled
+    ? { label: t("Événement annulé"), tone: "bad" }
+    : ended
     ? { label: t("Événement passé"), tone: "done" }
     : past
       ? { label: t("En cours"), tone: "done" }
@@ -75,7 +80,7 @@ export default async function Page({ params, searchParams }: { params: Promise<{
         : { label: t("Inscriptions ouvertes"), tone: "ok" };
   const benefitsTotal = event.benefits.reduce((s, b) => s + b.valueCents, 0);
   // Appels à candidatures rattachés à l'événement, encore ouverts (date limite, places).
-  const openCalls = past ? [] : event.calls.filter((c) => (!c.deadline || c.deadline >= new Date()) && (!c.slots || c._count.applications < c.slots));
+  const openCalls = past || cancelled ? [] : event.calls.filter((c) => (!c.deadline || c.deadline >= new Date()) && (!c.slots || c._count.applications < c.slots));
 
   // Données structurées schema.org (résultats enrichis des moteurs de recherche).
   const base = appUrl();
@@ -87,7 +92,7 @@ export default async function Page({ params, searchParams }: { params: Promise<{
     description: event.description ?? undefined,
     startDate: event.startsAt.toISOString(),
     endDate: end?.toISOString(),
-    eventStatus: "https://schema.org/EventScheduled",
+    eventStatus: `https://schema.org/${cancelled ? "EventCancelled" : "EventScheduled"}`,
     eventAttendanceMode: `https://schema.org/${event.format === "DISTANCIEL" ? "Online" : event.format === "HYBRIDE" ? "Mixed" : "Offline"}EventAttendanceMode`,
     location: event.format === "DISTANCIEL"
       ? { "@type": "VirtualLocation", url: `${base}/evenements/${id}` }
@@ -111,10 +116,15 @@ export default async function Page({ params, searchParams }: { params: Promise<{
           facts={[
             { icon: <CalendarDays size={13} />, label: t("Date"), value: fmtDate(locale, event.startsAt, { day: "numeric", month: "long", year: "numeric" }), sub: `${event.startsAt.toLocaleTimeString(intlLocale(locale), { timeZone: "Europe/Paris", hour: "2-digit", minute: "2-digit" })}${event.durationMinutes ? ` · ${t("{h} h {m}", { h: Math.floor(event.durationMinutes / 60), m: String(event.durationMinutes % 60).padStart(2, "0") })}` : ""}` },
             { icon: <MapPin size={13} />, label: t("Lieu"), value: event.format === "DISTANCIEL" ? t("En ligne") : event.city ?? t("À préciser"), sub: event.venue ?? undefined },
-            ...(left != null ? [{ icon: <Users size={13} />, label: t("Places"), value: t("{n} restantes", { n: left }), sub: t("sur {capacity}", { capacity: event.capacity! }) }] : []),
+            ...(left != null && !cancelled ? [{ icon: <Users size={13} />, label: t("Places"), value: t("{n} restantes", { n: left }), sub: t("sur {capacity}", { capacity: event.capacity! }) }] : []),
             { icon: <Gift size={13} />, label: t("Prise en charge"), value: event.benefits.length ? t("{amount} par personne", { amount: fmtEur(locale, benefitsTotal) }) : t("Aucune"), sub: event.benefits.length ? t("au plus, selon vos choix") : t("à vos frais") },
           ]}
         />
+        {cancelled && (
+          <p className="notice error" role="status">
+            {t("Événement annulé par {org}.", { org: event.organization.name })}{event.cancelReason ? ` ${t("Motif : {note}", { note: event.cancelReason })}` : ""}
+          </p>
+        )}
         <div className="page-grid">
           <div className="page-main">
             {event.description && <section className="card"><h2>{t("Présentation")}</h2><p className="pre-line">{event.description}</p></section>}
@@ -151,7 +161,9 @@ export default async function Page({ params, searchParams }: { params: Promise<{
             <section className="card next-step">
               <span className="eyebrow-sm">{t("Inscription")}</span>
               {annulee && !reg && <p className="notice ok">{t("Inscription annulée. Un e-mail vous le confirme.")}</p>}
-              {reg ? (
+              {cancelled ? (
+                <p className="muted">{reg ? t("Vous étiez inscrit : votre inscription est annulée, ainsi que les prestations prévues.") : t("Cet événement est annulé : les inscriptions sont fermées.")}</p>
+              ) : reg ? (
                 <>
                   <p className="notice ok">{t("Vous êtes inscrit à cet événement.")}</p>
                   {/* Lien de connexion : affiché aux seuls inscrits, jusqu'à la fin de l'événement. */}
@@ -199,7 +211,7 @@ export default async function Page({ params, searchParams }: { params: Promise<{
                   benefits={event.benefits.map((b) => ({ id: b.id, label: t(b.label), valueCents: b.valueCents }))}
                 />
               )}
-              {!past && <a className="link" href={`/evenements/${id}/calendrier`}><CalendarPlus size={14} /> {t("Ajouter à mon agenda")}</a>}
+              {!past && !cancelled && <a className="link" href={`/evenements/${id}/calendrier`}><CalendarPlus size={14} /> {t("Ajouter à mon agenda")}</a>}
             </section>
             <section className="card stack-sm">
               <h2 className="section-title">{event.organization.name}</h2>

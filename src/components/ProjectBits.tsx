@@ -1,6 +1,6 @@
 import { Check } from "lucide-react";
 import type { ProjectStatus } from "@/generated/prisma/client";
-import { PIPELINE, STATUS_TONE, fmvCheck, statusLabel } from "@/lib/projects";
+import { EXPERT_LINK_LABEL, PIPELINE, STATUS_TONE, fmvCheck, pipelineLabel, statusLabel, type ExpertLinkState } from "@/lib/projects";
 import { intlLocale } from "@/lib/i18n";
 import { getT } from "@/lib/i18n/server";
 
@@ -8,6 +8,13 @@ import { getT } from "@/lib/i18n/server";
 export async function StatusPill({ status, viewer }: { status: ProjectStatus; viewer?: "expert" }) {
   const { t } = await getT();
   return <span className={`pill ${STATUS_TONE[status]}`}>{t(statusLabel(status, viewer))}</span>;
+}
+
+/** État d'une sollicitation vu par l'expert (attente, contre-proposition, recrutement clos…), sinon le statut de son lien. */
+export async function ExpertLinkPill({ state, status }: { state: ExpertLinkState; status: ProjectStatus }) {
+  if (state === "engage") return <StatusPill viewer="expert" status={status} />;
+  const { t } = await getT();
+  return <span className={`pill ${state === "attente" || state === "contre" ? "wait" : "done"}`}>{t(EXPERT_LINK_LABEL[state])}</span>;
 }
 
 export async function Pipeline({ status, viewer }: { status: ProjectStatus; viewer?: "expert" }) {
@@ -24,7 +31,7 @@ export async function Pipeline({ status, viewer }: { status: ProjectStatus; view
         return (
           <li key={s} className={done ? "done" : current ? `current${blocked ? " bad" : ""}` : ""} aria-current={current ? "step" : undefined}>
             <span className="dot" aria-hidden>{done ? <Check size={13} strokeWidth={3} /> : i + 1}</span>
-            <span className="lbl">{t(statusLabel(s, viewer))}</span>
+            <span className="lbl">{t(pipelineLabel(s, viewer))}</span>
           </li>
         );
       })}

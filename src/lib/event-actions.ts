@@ -6,13 +6,13 @@ import { revalidatePath } from "next/cache";
 import { db } from "@/lib/db";
 import { audit, requireUser } from "@/lib/auth";
 import { isVerifiedOrg, notVerified, requireMembership } from "@/lib/orgs";
-import { BENEFIT_CATALOG, COMPLIANCE_ROLES, EVENT_MANAGER_ROLES, EVENT_ORGANIZER_ROLES, eventChanges, eventScope, EVENT_TYPES, ONLINE_URL_INVALID, parseOnlineUrl, parseParisDateTime } from "@/lib/events";
+import { BENEFIT_CATALOG, COMPLIANCE_ROLES, EVENT_MANAGER_ROLES, EVENT_ORGANIZER_ROLES, eventChanges, eventEnded, eventScope, EVENT_TYPES, ONLINE_URL_INVALID, parseOnlineUrl, parseParisDateTime } from "@/lib/events";
 import { EventFormat } from "@/generated/prisma/enums";
 import { eurToCents, intOrNull, str } from "@/lib/form";
 import { getT } from "@/lib/i18n/server";
 import { engagementGate } from "@/lib/billing";
 import type { GateLink } from "@/lib/billing-plans";
-import { notifyEventChanged, notifyEventConfided, notifyEventWithdrawn, notifyMandateEnded, notifyRegistration, notifyRegistrationCancelled } from "@/lib/notifications";
+import { notifyEventCancelled, notifyEventChanged, notifyEventConfided, notifyEventWithdrawn, notifyMandateEnded, notifyRegistration, notifyRegistrationCancelled } from "@/lib/notifications";
 import { activeMandate } from "@/lib/mandates";
 import { SOURCE_COOKIE } from "@/lib/services";
 import { deletableDraft, DRAFT_COUNTS } from "@/lib/event-drafts";
@@ -102,6 +102,7 @@ export async function updateEvent(_: ActionState, form: FormData): Promise<Actio
     include: { benefits: { include: { _count: { select: { accepted: true } } } }, _count: { select: { registrations: true } } },
   });
   if (!event) return { error: "Événement introuvable." };
+  if (event.cancelledAt) return { error: "Cet événement est annulé : il ne se modifie plus." };
   const read = readEventFields(form);
   if ("error" in read) return { error: read.error };
   const { fields, benefits } = read;
@@ -174,12 +175,43 @@ export async function setEventFlag(form: FormData) {
   if (!data) return;
   // Une réunion interne n'est ni publiée ni ouverte aux inscriptions.
   const onlyPublic = flag === "publish" || flag === "open" ? { internal: false } : {};
-  const { count } = await db.event.updateMany({ where: { id: eventId, organizationId: orgId, ...eventScope(user, roles), ...onlyPublic }, data });
+  // Avec des inscrits, on ne retire pas l'événement de l'agenda en silence : on l'annule (motif, e-mail aux inscrits).
+  const noRegistrant = flag === "unpublish" ? { registrations: { none: {} } } : {};
+  const { count } = await db.event.updateMany({ where: { id: eventId, organizationId: orgId, cancelledAt: null, ...eventScope(user, roles), ...onlyPublic, ...noRegistrant }, data });
   if (!count) return;
   await audit(user.id, `event.${flag}`, "Event", eventId);
   revalidatePath(`/organisations/${orgId}/evenements/${eventId}`);
   revalidatePath("/evenements");
   if (flag === "publish" && roles.some((r) => EVENT_ORGANIZER_ROLES.includes(r))) redirect(`/organisations/${orgId}/evenements/${eventId}?publie=1`);
+}
+
+/**
+ * Annuler un événement publié qui a des inscrits (organisateurs, motif obligatoire) : il quitte l'agenda mais reste
+ * lisible à son adresse avec la mention « Événement annulé », sans inscription possible. Les inscriptions sont
+ * marquées annulées et chaque inscrit est prévenu ; les hospitalités prévues, non fournies, n'ont plus à être déclarées.
+ */
+export async function cancelEvent(form: FormData) {
+  const orgId = str(form, "orgId");
+  const eventId = str(form, "eventId");
+  const { user } = await requireMembership(orgId, EVENT_ORGANIZER_ROLES);
+  const reason = str(form, "reason", 500);
+  if (!reason) return;
+  const event = await db.event.findFirst({ where: { id: eventId, organizationId: orgId, cancelledAt: null, internal: false, publishedAt: { not: null } }, include: { _count: { select: { registrations: true } } } });
+  if (!event || event._count.registrations === 0 || eventEnded(event)) return;
+  const now = new Date();
+  const removed = await db.$transaction(async (tx) => {
+    const { count } = await tx.event.updateMany({ where: { id: eventId, cancelledAt: null }, data: { cancelledAt: now, cancelReason: reason, publishedAt: null, registrationOpen: false } });
+    if (!count) return null;
+    await tx.registration.updateMany({ where: { eventId, cancelledAt: null }, data: { cancelledAt: now } });
+    // Hospitalités non fournies : retirées des inscriptions non déclarées (rien à déclarer à Transparence Santé).
+    return (await tx.registrationBenefit.deleteMany({ where: { registration: { eventId, declared: false } } })).count;
+  });
+  if (removed === null) return;
+  await audit(user.id, "event.cancel", "Event", eventId, { note: reason, registrations: event._count.registrations, benefitsRemoved: removed });
+  notifyEventCancelled(eventId);
+  revalidatePath(`/organisations/${orgId}/evenements/${eventId}`);
+  revalidatePath(`/evenements/${eventId}`);
+  revalidatePath("/evenements");
 }
 
 /** Confier l'événement à une agence mandatée (ses membres « Prestataire » n'accèdent qu'aux événements confiés). */
@@ -274,7 +306,7 @@ export async function cancelRegistration(form: FormData) {
   // Une inscription déjà déclarée, ou dont l'événement a commencé, ne peut plus être annulée en ligne :
   // les avantages éventuellement reçus doivent rester traçables (correction par l'organisateur).
   let cancelled = false;
-  if (reg && !reg.declared && reg.event.startsAt > new Date()) {
+  if (reg && !reg.declared && !reg.cancelledAt && reg.event.startsAt > new Date()) {
     await db.registration.delete({ where: { id: reg.id } });
     await audit(user.id, "registration.cancel", "Registration", reg.id, { eventId });
     notifyRegistrationCancelled(user.id, eventId, reg._count.benefits);

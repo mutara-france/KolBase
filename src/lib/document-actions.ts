@@ -10,6 +10,7 @@ import { COMPLIANCE_ROLES } from "@/lib/events";
 import { ALLOWED_TYPES, deleteObject, MAX_UPLOAD_BYTES, putObject, safeFileName, storageEnabled } from "@/lib/storage";
 import { getT } from "@/lib/i18n/server";
 import { closeOpenSignatures } from "@/lib/signature";
+import { notifyConventionDeposited } from "@/lib/notifications";
 
 export type ActionState = { error?: string; ok?: string } | undefined;
 const ENGAGED = (s: string) => s !== "ATT_EXPERTS" && s !== "DECLINE";
@@ -58,6 +59,8 @@ export async function uploadDocument(_: ActionState, form: FormData): Promise<Ac
   await audit(a.user.id, kind === "CONVENTION_SIGNEE" ? "document.signed_convention" : "document.upload", "Project", a.project.id, { documentId: doc.id, name: doc.name, linkId: link?.id });
   // Convention signée déposée à la main : la demande de signature électronique encore en cours est close.
   if (kind === "CONVENTION_SIGNEE" && link) await closeOpenSignatures({ projectExpertId: link.id }, "convention signée déposée dans KolBase");
+  // Déposée par l'expert lui-même : l'équipe Projets est prévenue (elle confirme ensuite la signature du dossier).
+  if (kind === "CONVENTION_SIGNEE" && link && a.ownLink?.id === link.id && !a.team) notifyConventionDeposited(link.id);
   refresh(a.project.organizationId, a.project.id, link?.id);
   return { ok: kind === "CONVENTION_SIGNEE" ? t("Convention signée déposée.") : t("Document déposé.") };
 }

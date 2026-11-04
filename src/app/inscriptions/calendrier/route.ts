@@ -9,7 +9,7 @@ export async function GET() {
   const { t } = await getT();
   const now = new Date();
   const [regs, talks] = await Promise.all([
-    db.registration.findMany({ where: { userId: user.id, event: { startsAt: { gte: now } } }, include: { event: { include: { organization: { select: { name: true } } } } } }),
+    db.registration.findMany({ where: { userId: user.id, cancelledAt: null, event: { startsAt: { gte: now } } }, include: { event: { include: { organization: { select: { name: true } } } } } }),
     user.practitioner
       ? db.application.findMany({ where: { practitionerId: user.practitioner.id, status: "retained", openCall: { event: { startsAt: { gte: now } } } }, include: { openCall: { include: { event: { include: { organization: { select: { name: true } } } } } } } })
       : Promise.resolve([]),

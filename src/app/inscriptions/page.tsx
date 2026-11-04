@@ -35,11 +35,23 @@ export default async function Page({ searchParams }: { searchParams: Promise<{ a
   const pointed = await pointedPastEvents(regs.map((r) => r.eventId), now);
   const absent = new Set(regs.filter((r) => r.benefits.length > 0 && !r.declared && isAbsent(r, pointed.has(r.eventId))).map((r) => r.id));
   // Un événement en cours reste « à venir » jusqu'à sa fin : badge et lien de connexion encore utiles.
-  const upcoming = regs.filter((r) => !eventEnded(r.event, now));
-  const past = regs.filter((r) => eventEnded(r.event, now));
+  // Un événement annulé par l'organisation est rangé à part, avec son motif.
+  const upcoming = regs.filter((r) => !r.cancelledAt && !eventEnded(r.event, now));
+  const past = regs.filter((r) => !r.cancelledAt && eventEnded(r.event, now));
+  const cancelled = regs.filter((r) => r.cancelledAt);
 
   const Row = ({ r }: { r: (typeof regs)[number] }) => {
     const total = r.benefits.reduce((s, b) => s + b.valueCents, 0);
+    if (r.cancelledAt)
+      return (
+        <div className="card tile reg-tile">
+          <Link href={`/evenements/${r.eventId}`} className="reg-tile-link">
+            <strong>{r.event.title}</strong> <span className="pill bad">{t("Événement annulé")}</span>
+            <span className="muted">{formatDateTime(r.event.startsAt)} · {r.event.organization.name}</span>
+            {r.event.cancelReason && <span className="muted">{t("Motif : {note}", { note: r.event.cancelReason })}</span>}
+          </Link>
+        </div>
+      );
     const badge = !eventEnded(r.event, now) && r.event.format !== "DISTANCIEL";
     return (
       <div className="card tile reg-tile">
@@ -96,6 +108,8 @@ export default async function Page({ searchParams }: { searchParams: Promise<{ a
         {upcoming.map((r) => <Row key={r.id} r={r} />)}
         {past.length > 0 && <h2>{t("Passés")}</h2>}
         {past.map((r) => <Row key={r.id} r={r} />)}
+        {cancelled.length > 0 && <h2>{t("Annulés par l'organisateur")}</h2>}
+        {cancelled.map((r) => <Row key={r.id} r={r} />)}
       </main>
     </>
   );

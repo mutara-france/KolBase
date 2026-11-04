@@ -6,14 +6,14 @@ import { db } from "@/lib/db";
 import { audit } from "@/lib/auth";
 import { isSuspendedOrg, isVerifiedOrg, notVerified, ORG_SUSPENDED, requireMembership } from "@/lib/orgs";
 import { EVENT_MANAGER_ROLES, EVENT_ORGANIZER_ROLES, eventScope, parseParisDateTime } from "@/lib/events";
-import { SUPPLIER_CATEGORIES } from "@/lib/suppliers";
+import { canCancelRfq, SUPPLIER_CATEGORIES } from "@/lib/suppliers";
 import { eurToCents, intOrNull, str } from "@/lib/form";
 import { isVatBp, linesTotal, MAX_LINES, withVat, type QuoteLine } from "@/lib/quotes";
 import { MAX_UPLOAD_BYTES, putObject, safeFileName, storageEnabled } from "@/lib/storage";
 import { engagementGate, gateMessage, markSupplierTriggered, stripeEnabled, supplierCanQuote } from "@/lib/billing";
 import type { GateLink } from "@/lib/billing-plans";
 import { awardRight } from "@/lib/mandates";
-import { notifyAward, notifyQuote, notifyQuoteProposed, notifyRfqCancelled, notifyRfqMessage, notifyRfqSent, notifySupplierBilling } from "@/lib/notifications";
+import { notifyAward, notifyProposalWithdrawn, notifyQuote, notifyRfqDeclined, notifyQuoteProposed, notifyRfqCancelled, notifyRfqMessage, notifyRfqSent, notifySupplierBilling } from "@/lib/notifications";
 
 export type ActionState = { error?: string; ok?: string; fix?: GateLink } | undefined;
 
@@ -23,6 +23,18 @@ export type ActionState = { error?: string; ok?: string; fix?: GateLink } | unde
 function rfqScope(user: Parameters<typeof eventScope>[0], roles: Parameters<typeof eventScope>[1]) {
   const scope = eventScope(user, roles);
   return Object.keys(scope).length ? { event: scope } : {};
+}
+
+/** Organisations prestataires dont l'utilisateur est membre (une agence, par exemple). */
+const ownSuppliers = (user: Parameters<typeof eventScope>[0]) => user.memberships.filter((m) => m.organization.kind === "PRESTATAIRE").map((m) => m.organizationId);
+
+/**
+ * Conflit d'intérêts : l'organisation de l'utilisateur (agence de l'événement) est consultée sur la demande.
+ * Elle y répond comme prestataire, depuis son espace ; elle n'agit pas pour le client sur cette demande.
+ */
+async function rfqConflicted(rfqId: string, user: Parameters<typeof eventScope>[0]) {
+  const own = ownSuppliers(user);
+  return own.length > 0 && (await db.rfqSupplier.count({ where: { rfqId, supplierId: { in: own } } })) > 0;
 }
 
 export async function createRfq(_: ActionState, form: FormData): Promise<ActionState> {
@@ -70,6 +82,7 @@ export async function sendRfq(form: FormData) {
   const { user, roles, org } = await requireMembership(orgId, EVENT_MANAGER_ROLES);
   if (!isVerifiedOrg(org)) return;
   const rfqId = str(form, "rfqId");
+  if (await rfqConflicted(rfqId, user)) return;
   const gate = await engagementGate(orgId, "devis", rfqId);
   if (gate) redirect(gate.fix.href);
   const { count } = await db.rfq.updateMany({ where: { id: rfqId, organizationId: orgId, ...rfqScope(user, roles), status: "draft" }, data: { status: "sent", sentAt: new Date() } });
@@ -79,14 +92,22 @@ export async function sendRfq(form: FormData) {
   revalidatePath(`/organisations/${orgId}/prestataires`);
 }
 
+/**
+ * Annuler une demande : réservé à l'organisation cliente (organisateurs) et à l'auteur de la demande ; jamais à
+ * une agence consultée sur la demande. Les organisateurs sont prévenus quand ce n'est pas l'un d'eux qui annule.
+ */
 export async function cancelRfq(form: FormData) {
   const orgId = str(form, "orgId");
   const { user, roles } = await requireMembership(orgId, EVENT_MANAGER_ROLES);
   const rfqId = str(form, "rfqId");
-  const { count } = await db.rfq.updateMany({ where: { id: rfqId, organizationId: orgId, ...rfqScope(user, roles), status: { in: ["draft", "sent"] } }, data: { status: "cancelled" } });
+  const rfq = await db.rfq.findFirst({ where: { id: rfqId, organizationId: orgId, ...rfqScope(user, roles), status: { in: ["draft", "sent"] } }, select: { createdById: true } });
+  if (!rfq) return;
+  const organizer = roles.some((r) => EVENT_ORGANIZER_ROLES.includes(r));
+  if (!canCancelRfq({ organizer, author: rfq.createdById === user.id, conflicted: await rfqConflicted(rfqId, user) })) return;
+  const { count } = await db.rfq.updateMany({ where: { id: rfqId, status: { in: ["draft", "sent"] } }, data: { status: "cancelled", cancelledAt: new Date(), cancelledById: user.id } });
   if (!count) return;
   await audit(user.id, "rfq.cancel", "Rfq", rfqId);
-  notifyRfqCancelled(rfqId);
+  notifyRfqCancelled(rfqId, user.id);
   revalidatePath(`/organisations/${orgId}/prestataires`);
 }
 
@@ -98,8 +119,9 @@ export async function awardQuote(form: FormData) {
   if (!quote) return;
   // Une offre expirée n'engage plus le prestataire : il faut d'abord lui demander une version à jour.
   if (quote.validUntil && quote.validUntil < new Date()) return;
-  // Conflit d'intérêts : un membre du prestataire (agence mandatée, par exemple) ne retient pas son propre devis.
-  if (user.memberships.some((m) => m.organizationId === quote.supplierId)) return;
+  // Conflit d'intérêts : un membre d'un prestataire consulté (agence mandatée, par exemple) ne retient aucun devis
+  // de la demande, ni le sien ni celui d'un concurrent.
+  if (await rfqConflicted(quote.rfqId, user)) return;
   // Agence mandatée sans le droit de retenir : elle propose, l'organisateur décide.
   if ((await awardRight(orgId, roles, quote.rfq.event?.agencyId)) !== "award") return;
   // La demande n'est attribuée qu'une fois : deux décisions simultanées ne retiennent pas deux devis.
@@ -127,7 +149,7 @@ export async function proposeQuote(form: FormData) {
   const { user, roles } = await requireMembership(orgId, EVENT_MANAGER_ROLES);
   const quote = await db.quote.findFirst({ where: { id: str(form, "quoteId"), rfq: { organizationId: orgId, ...rfqScope(user, roles), status: "sent" } }, include: { rfq: { select: { event: { select: { agencyId: true } } } } } });
   if (!quote || (quote.validUntil && quote.validUntil < new Date())) return;
-  if (user.memberships.some((m) => m.organizationId === quote.supplierId)) return;
+  if (await rfqConflicted(quote.rfqId, user)) return;
   if ((await awardRight(orgId, roles, quote.rfq.event?.agencyId)) !== "propose") return;
   await db.rfq.update({ where: { id: quote.rfqId }, data: { proposedQuoteId: quote.id, proposedById: user.id, proposedAt: new Date() } });
   await audit(user.id, "rfq.propose", "Rfq", quote.rfqId, { quoteId: quote.id, supplierId: quote.supplierId, amountCents: quote.amountCents });
@@ -173,6 +195,8 @@ export async function postRfqMessage(_: ActionState, form: FormData): Promise<Ac
     where: { rfqId, supplierId, rfq: { status: { in: ["sent", "awarded"] }, ...(fromSupplier ? {} : { organizationId: orgId, ...rfqScope(user, roles) }) } },
   });
   if (!invite) return { error: "Cette demande n'accepte plus de messages." };
+  // Agence consultée sur la demande : elle n'écrit pas aux prestataires au nom du client.
+  if (!fromSupplier && (await rfqConflicted(rfqId, user))) return { error: "Votre organisation est consultée sur cette demande : vous y répondez comme prestataire, depuis vos demandes de devis." };
   await db.rfqMessage.create({ data: { rfqId, supplierId, authorId: user.id, body, fromSupplier } });
   await audit(user.id, "rfq.message", "Rfq", rfqId, { supplierId, fromSupplier });
   notifyRfqMessage(rfqId, supplierId, fromSupplier, user.id);
@@ -238,25 +262,33 @@ export async function submitQuote(_: ActionState, form: FormData): Promise<Actio
   const q = existing
     ? await db.quote.update({ where: { id: existing.id }, data: { ...data, revision: existing.revision + 1 } })
     : await db.quote.create({ data: { rfqId, supplierId: orgId, ...data } });
+  // Devis révisé alors que l'agence l'avait proposé : la proposition portait sur l'ancienne version, elle tombe.
+  if (existing && invite.rfq.proposedQuoteId === existing.id) {
+    const { count } = await db.rfq.updateMany({ where: { id: rfqId, proposedQuoteId: existing.id }, data: { proposedQuoteId: null, proposedById: null, proposedAt: null } });
+    if (count && invite.rfq.proposedById) notifyProposalWithdrawn(rfqId, orgId, invite.rfq.proposedById);
+  }
   if (upload) {
     const key = `devis/${q.id}/${Date.now()}-${upload.name}`;
     await putObject(key, upload.bytes, "application/pdf");
     await db.quote.update({ where: { id: q.id }, data: { fileKey: key, fileName: upload.name } });
   }
-  if (invite.declined) await db.rfqSupplier.update({ where: { rfqId_supplierId: { rfqId, supplierId: orgId } }, data: { declined: false } });
+  if (invite.declined) await db.rfqSupplier.update({ where: { rfqId_supplierId: { rfqId, supplierId: orgId } }, data: { declined: false, declineNote: null, declinedAt: null } });
   await audit(user.id, existing ? "quote.revise" : "quote.submit", "Quote", q.id, { rfqId, amountCents, revision: existing ? existing.revision + 1 : 1 });
   notifyQuote(rfqId, orgId, !!existing);
   revalidatePath(`/organisations/${orgId}/devis`);
   return { ok: existing ? `Devis révisé (version ${existing.revision + 1}).` : "Devis transmis." };
 }
 
+/** Le prestataire décline une demande (motif facultatif, montré au client) : les interlocuteurs de la demande sont prévenus. */
 export async function declineRfq(form: FormData) {
   const orgId = str(form, "orgId");
   const { user } = await requireSupplier(orgId);
   const rfqId = str(form, "rfqId");
-  const { count } = await db.rfqSupplier.updateMany({ where: { rfqId, supplierId: orgId }, data: { declined: true } });
+  const declineNote = str(form, "note").slice(0, 500) || null;
+  const { count } = await db.rfqSupplier.updateMany({ where: { rfqId, supplierId: orgId, declined: false, rfq: { status: "sent" } }, data: { declined: true, declineNote, declinedAt: new Date() } });
   if (!count) return;
-  await audit(user.id, "rfq.decline", "Rfq", rfqId, { supplierId: orgId });
+  await audit(user.id, "rfq.decline", "Rfq", rfqId, { supplierId: orgId, note: declineNote ?? undefined });
+  notifyRfqDeclined(rfqId, orgId, user.id);
   revalidatePath(`/organisations/${orgId}/devis`);
 }
 
