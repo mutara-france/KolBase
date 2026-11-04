@@ -68,9 +68,11 @@ export const asObjectId = (v: unknown): string | null => (typeof v === "string" 
 /** Lien joint au refus d'une action engageante : la page qui lève le blocage. */
 export type GateLink = { href: string; label: string };
 /** Ce qui bloque une action engageante sur une page (bouton désactivé) : contrat de sous-traitance, puis abonnement. */
-export type Blocked = "contrat" | "abonnement" | null;
+/** Ce qui bloque une action engageante, dans l'ordre : validation de l'organisation, contrat, abonnement. */
+export type Blocked = "validation" | "contrat" | "abonnement" | null;
 /** Fin de la consigne affichée sous un bouton désactivé (« Envoi possible … »). */
 export const BLOCKED_UNTIL = {
+  validation: "une fois l'organisation validée par KolBase",
   contrat: "une fois le contrat de sous-traitance accepté par un administrateur",
   abonnement: "une fois l'abonnement activé",
 } as const;

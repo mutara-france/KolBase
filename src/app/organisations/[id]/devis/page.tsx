@@ -157,8 +157,9 @@ export default async function Page({ params, searchParams }: { params: Promise<{
                         {r.city ? ` · ${r.city}` : ""}{r.headcount ? ` · ${r.headcount} participants` : ""}
                       </div>
                     </div>
-                    <span className={`pill ${q ? (q.status === "retained" ? "ok" : q.status === "rejected" ? "done" : "electric") : r.status === "cancelled" ? "bad" : declined ? "done" : "wait"}`}>
-                      {q ? QUOTE_STATUS[q.status] : r.status === "cancelled" ? "Annulée" : r.status === "awarded" ? "Attribuée à un autre prestataire" : declined ? "Déclinée" : "Devis attendu"}
+                    {/* Demande annulée par le client : « Annulée », même si un devis avait été envoyé. */}
+                    <span className={`pill ${r.status === "cancelled" ? "bad" : q ? (q.status === "retained" ? "ok" : q.status === "rejected" ? "done" : "electric") : declined ? "done" : "wait"}`}>
+                      {r.status === "cancelled" ? "Annulée" : q ? QUOTE_STATUS[q.status] : r.status === "awarded" ? "Attribuée à un autre prestataire" : declined ? "Déclinée" : "Devis attendu"}
                     </span>
                   </div>
                   <p>{r.needs}</p>

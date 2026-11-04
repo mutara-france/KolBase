@@ -50,7 +50,7 @@ export function SignUpForm({ next, organisation = false, email }: { next?: strin
       <h1>{organisation ? t("Créer le compte de votre organisation") : t("Créer un compte")}</h1>
       <p className="muted">
         {organisation
-          ? t("Commencez par votre compte personnel : vous créerez ensuite l'espace de votre organisation, ou rejoindrez celle qui vous invite. Gratuit jusqu'à votre première action qui engage un tiers.")
+          ? t("Commencez par votre compte personnel : vous créerez ensuite l'espace de votre organisation, ou rejoindrez celle qui vous invite. Gratuit jusqu'à votre première action qui engage un tiers (prestataire : jusqu'à votre premier devis retenu).")
           : t("Un seul compte pour vous inscrire aux événements et, si vous le souhaitez, vous référencer comme expert.")}
       </p>
       <Notice state={state} />

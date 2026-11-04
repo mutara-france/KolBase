@@ -14,7 +14,7 @@ import { canCancelRfq, QUOTE_STATUS, RFQ_STATUS, rfqDisplayStatus, rfqView, SUPP
 import { awardQuote, cancelRfq, proposeQuote, sendRfq } from "@/lib/rfq-actions";
 import { endMandate, setMandateAward } from "@/lib/event-actions";
 import { activeMandate, type AwardRight } from "@/lib/mandates";
-import { lineTotal, lineVat, perParticipant, quoteTtc, quoteVatLabel, readLines, vatLabel } from "@/lib/quotes";
+import { lineTotal, lineVat, perHeadLabel, perParticipant, quoteTtc, quoteVatLabel, readLines, vatLabel } from "@/lib/quotes";
 import { costPerHead } from "@/lib/indicators";
 import { complianceSettings } from "@/lib/compliance";
 import { logoSrc } from "@/lib/logos";
@@ -175,7 +175,7 @@ export default async function Page({ params, searchParams }: { params: Promise<{
                         return (
                         <div key={q.id} className={`quote${q.id === best ? " best" : ""}`}>
                           <Avatar name={q.supplier.name} size={30} square src={logoSrc(q.supplier)} />
-                          <div style={{ flex: 1, minWidth: 0 }}>
+                          <div className="quote-main">
                             <div>
                               <strong>{q.supplier.name}</strong>
                               {agencyName.has(q.supplierId) && <span className="pill wait"> {q.supplierId === r.event?.agencyId ? "Agence mandatée sur cet événement" : "Agence mandatée"}</span>}
@@ -193,8 +193,8 @@ export default async function Page({ params, searchParams }: { params: Promise<{
                             </div>
                             {pp && (
                               <div className={`text-xs ${pp.over ? "warn-text" : "muted"}`}>
-                                ≈ {pp.each.toLocaleString("fr-FR", { maximumFractionDigits: 2 })} € TTC par couvert commandé
-                                {pp.limit && (pp.over ? ` · au-dessus du seuil d'un ${pp.limit.what} (${pp.limit.max} € TTC) : autorisation de l'Ordre à prévoir pour les professionnels de santé` : ` · sous le seuil d'un ${pp.limit.what} (${pp.limit.max} € TTC)`)}
+                                ≈ {pp.each.toLocaleString("fr-FR", { maximumFractionDigits: 2 })} € TTC {perHeadLabel(r.category)}
+                                {pp.limit && (pp.over ? ` · au-dessus du seuil ${pp.limit.of} (${pp.limit.max} € TTC) : autorisation de l'Ordre à prévoir pour les professionnels de santé` : ` · sous le seuil ${pp.limit.of} (${pp.limit.max} € TTC)`)}
                               </div>
                             )}
                             {head.perPresent != null && (

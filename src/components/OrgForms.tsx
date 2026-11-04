@@ -38,7 +38,8 @@ export function NewOrgForm({ kinds }: { kinds: Opt[] }) {
 
 type Org = { id: string; name: string; sector: string | null; headquarters: string | null; contactEmail: string | null; about: string | null; policy: string | null; areas: string[] };
 
-export function EditOrgForm({ org }: { org: Org }) {
+/** Fiche de l'organisation ; prestataire (`supplier`) : ni domaines thérapeutiques ni politique de collaboration. */
+export function EditOrgForm({ org, supplier = false }: { org: Org; supplier?: boolean }) {
   const [state, action, pending] = useActionState(updateOrganization, undefined);
   return (
     <form action={action} className="card form">
@@ -51,11 +52,15 @@ export function EditOrgForm({ org }: { org: Org }) {
         <label>Siège<input name="headquarters" defaultValue={org.headquarters ?? ""} /></label>
       </div>
       <label>E-mail de contact<input name="contactEmail" type="email" defaultValue={org.contactEmail ?? ""} /></label>
-      <label>Domaines thérapeutiques<input name="areas" defaultValue={org.areas.join(", ")} placeholder="Implantologie, Parodontologie…" />
-        <span className="hint">Séparés par des virgules.</span>
-      </label>
-      <label>Présentation<textarea name="about" rows={3} defaultValue={org.about ?? ""} /></label>
-      <label>Politique de collaboration<textarea name="policy" rows={3} defaultValue={org.policy ?? ""} /></label>
+      {supplier ? (
+        <input type="hidden" name="areas" value={org.areas.join(", ")} />
+      ) : (
+        <label>Domaines thérapeutiques<input name="areas" defaultValue={org.areas.join(", ")} placeholder="Implantologie, Parodontologie…" />
+          <span className="hint">Séparés par des virgules.</span>
+        </label>
+      )}
+      <label>Présentation<textarea name="about" rows={3} defaultValue={org.about ?? ""} placeholder={supplier ? "Vos prestations, votre savoir-faire, vos références…" : undefined} /></label>
+      {supplier ? <input type="hidden" name="policy" value={org.policy ?? ""} /> : <label>Politique de collaboration<textarea name="policy" rows={3} defaultValue={org.policy ?? ""} /></label>}
       <button className="btn" disabled={pending}>{pending ? "Enregistrement…" : "Enregistrer"}</button>
     </form>
   );
@@ -126,6 +131,7 @@ export function ExpertProfileForm({ p, types }: { p: Expert; types: string[] }) 
 
 type Verification = {
   status: "PENDING" | "VERIFIED" | "REJECTED" | "SUSPENDED"; siren: string | null; legalName: string | null; note: string | null;
+  /** Prestataire : la validation ouvre les réponses aux devis et l'annuaire des prestataires. */ supplier?: boolean;
   /** Association ou société savante : RNA accepté, SIREN facultatif. */ rnaAccepted?: boolean; rna?: string | null;
   /** Date de la demande transmise à KolBase (« 4 nov. 2026 »), en attente seulement. */ requestedAt?: string | null;
 };
@@ -164,7 +170,9 @@ export function VerificationCard({ orgId, v, canEdit }: { orgId: string; v: Veri
             </p>
           )}
           <p className="muted">
-            Tant que KolBase n&apos;a pas validé l&apos;organisation, elle ne peut ni solliciter de praticiens, ni publier d&apos;événements ou d&apos;appels, ni apparaître sur le site public.
+            {v.supplier
+              ? "Tant que KolBase n'a pas validé l'organisation, elle ne peut ni répondre aux demandes de devis, ni figurer dans l'annuaire des prestataires."
+              : "Tant que KolBase n'a pas validé l'organisation, elle ne peut ni solliciter de praticiens, ni publier d'événements ou d'appels, ni apparaître sur le site public."}
             {v.status === "REJECTED" && v.note ? ` Motif du refus : ${inSentence(v.note)}.` : ""}
           </p>
         </>
@@ -190,7 +198,7 @@ export function VerificationCard({ orgId, v, canEdit }: { orgId: string; v: Veri
 }
 
 /** Logo de l'organisation : aperçu, envoi d'une nouvelle image, suppression. */
-export function LogoForm({ orgId, name, src, verified }: { orgId: string; name: string; src: string | null; verified: boolean }) {
+export function LogoForm({ orgId, name, src, verified, supplier = false }: { orgId: string; name: string; src: string | null; verified: boolean; supplier?: boolean }) {
   const [state, action, pending] = useActionState(updateOrgLogo, undefined);
   return (
     <section className="card form">
@@ -199,7 +207,7 @@ export function LogoForm({ orgId, name, src, verified }: { orgId: string; name: 
       <div className="actions" style={{ alignItems: "center" }}>
         <Avatar name={name} size={64} square src={src} />
         <p className="muted text-sm" style={{ margin: 0 }}>
-          PNG, JPEG ou WebP, 500 Ko au plus, de préférence carré sur fond clair. Il remplace le monogramme sur votre fiche, l&apos;annuaire des organisations et les appels publiés.
+          PNG, JPEG ou WebP, 500 Ko au plus, de préférence carré sur fond clair. Il remplace le monogramme {supplier ? "sur votre page prestataire, dans l'annuaire des prestataires et sur vos devis." : "sur votre fiche, l'annuaire des organisations et les appels publiés."}
           {!verified && " Il ne sera visible publiquement qu'après la validation de l'organisation."} Ne publiez que le logo de votre propre organisation.
         </p>
       </div>

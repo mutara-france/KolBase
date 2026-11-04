@@ -1128,3 +1128,14 @@ main [id] { scroll-margin-top: 80px; }
 /* Tableau plus large que l'écran (administration, Abonnements) : indice de défilement sur mobile seulement. */
 .scroll-hint { display: none; }
 @media (max-width: 860px) { .scroll-hint { display: block; } }
+/* Comparaison des devis sur mobile : le texte sur toute la largeur, puis le montant et le bouton dessous ; la
+   confirmation de « Retenir » revient à la ligne (pas de débordement à 390 px). */
+.confirm-step { max-width: 100%; box-sizing: border-box; }
+.confirm-step .btn { white-space: normal; text-align: left; max-width: 100%; }
+.quote-main { flex: 1; min-width: 0; }
+@media (max-width: 600px) {
+  .quote { align-items: flex-start; }
+  .quote > .quote-main { flex: 1 1 calc(100% - 42px); }
+  .quote > .amount { margin-left: 42px; }
+  .quote > form, .quote > span.text-xs { flex-basis: 100%; }
+}

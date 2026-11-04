@@ -4,6 +4,7 @@ import { ENGAGING, subscribeHref, type Motive } from "@/lib/billing-plans";
 import { dpaHref } from "@/lib/dpa";
 import { db } from "@/lib/db";
 import { formatDate } from "@/lib/events";
+import { inSentence } from "@/lib/elision";
 
 /**
  * Bandeaux des pages d'actions engageantes (le bouton d'envoi est désactivé à côté) : le contrat de sous-traitance
@@ -17,10 +18,13 @@ export async function BillingNotice({ orgId, motive, objet }: { orgId: string; m
     return (
       <p className="notice warn" role="status">
         {org.verification === "SUSPENDED"
-          ? `Organisation suspendue${org.verificationNote ? ` : ${org.verificationNote}` : ""} : aucune nouvelle action n'est possible jusqu'à la réactivation par KolBase.`
+          ? `Organisation suspendue${org.verificationNote ? ` (${inSentence(org.verificationNote)})` : ""} : aucune nouvelle action n'est possible jusqu'à la réactivation par KolBase.`
           : org.verification === "REJECTED"
-            ? `KolBase n'a pas validé votre organisation${org.verificationNote ? ` : ${org.verificationNote}` : ""}. Pour ${ENGAGING[motive]}, corrigez d'abord son identité.`
-            : `Votre organisation est en attente de validation par KolBase${org.verificationRequestedAt ? ` (demande transmise le ${formatDate(org.verificationRequestedAt)})` : ""}. Pour ${ENGAGING[motive]}, cette validation vient d'abord ; l'abonnement se règle ensuite.`}{" "}
+            ? `KolBase n'a pas validé votre organisation${org.verificationNote ? ` : ${inSentence(org.verificationNote)}` : ""}. Pour ${ENGAGING[motive]}, corrigez d'abord son identité.`
+            : `Votre organisation est en attente de validation par KolBase${org.verificationRequestedAt ? ` (demande transmise le ${formatDate(org.verificationRequestedAt)})` : ""}. Pour ${ENGAGING[motive]}, cette validation vient d'abord ; ${
+                // Prestataire : le référencement est gratuit, l'abonnement ne vient qu'après un premier devis retenu.
+                motive === "reponse" ? "répondre aux demandes reste gratuit jusqu'à votre premier devis retenu." : "l'abonnement se règle ensuite."
+              }`}{" "}
         {org.verification !== "SUSPENDED" && <Link href={`/organisations/${orgId}/membres?onglet=organisation`}>Suivre la validation</Link>}
       </p>
     );

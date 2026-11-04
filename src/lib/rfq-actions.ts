@@ -303,12 +303,15 @@ export async function updateSupplierProfile(_: ActionState, form: FormData): Pro
   const { user, isAdmin, org: ctxOrg } = await requireSupplier(orgId);
   if (!isAdmin) return { error: "Réservé aux administrateurs." };
   const categories = form.getAll("categories").map(String).filter((c) => SUPPLIER_CATEGORIES.some((x) => x.id === c));
-  const listed = form.get("listed") === "on";
-  if (listed && categories.length === 0) return { error: "Choisissez au moins une catégorie pour être référencé." };
-  if (listed && !isVerifiedOrg(ctxOrg)) return { error: `Référencement impossible pour l'instant : ${notVerified(ctxOrg)}` };
+  const asked = form.get("listed") === "on";
+  if (asked && categories.length === 0) return { error: "Choisissez au moins une catégorie pour être référencé." };
+  // En attente de validation : catégories et zone sont enregistrées ; le référencement suivra la validation.
+  const listed = asked && isVerifiedOrg(ctxOrg);
   await db.organization.update({ where: { id: orgId }, data: { supplierCategories: categories, coverage: str(form, "coverage") || null, listed } });
   await audit(user.id, "supplier.profile", "Organization", orgId, { categories, listed });
   revalidatePath(`/organisations/${orgId}/devis`);
+  if (asked && !listed)
+    return { ok: isSuspendedOrg(ctxOrg) ? `Catégories et zone enregistrées. ${ORG_SUSPENDED}` : "Catégories et zone enregistrées. Le référencement dans l'annuaire suivra la validation de l'organisation par KolBase." };
   return { ok: "Fiche prestataire enregistrée." };
 }
 

@@ -237,7 +237,7 @@ export function AddExpertForm({ orgId, projectId, unit, experts, blocked = null 
       {blocked && (
         <p className="hint">
           Sollicitation possible {BLOCKED_UNTIL[blocked]} :{" "}
-          {blocked === "contrat" ? <a href={dpaHref(orgId, "sollicitation", projectId)}>accepter le contrat de sous-traitance</a> : <a href={subscribeHref(orgId, "sollicitation", projectId)}>activer l&apos;abonnement</a>}.
+          {blocked === "validation" ? <a href={`/organisations/${orgId}/membres?onglet=organisation`}>suivre la validation</a> : blocked === "contrat" ? <a href={dpaHref(orgId, "sollicitation", projectId)}>accepter le contrat de sous-traitance</a> : <a href={subscribeHref(orgId, "sollicitation", projectId)}>activer l&apos;abonnement</a>}.
         </p>
       )}
     </ActionForm>

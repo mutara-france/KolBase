@@ -4,7 +4,7 @@ import { PDFDocument, rgb, type PDFImage } from "pdf-lib";
 import { db } from "@/lib/db";
 import { embedPdfFonts } from "@/lib/convention-pdf";
 import { certificateUrl, ensureCertificateCode, eventEnd } from "@/lib/event-followup";
-import { eventTypeLabel, formatTime, FORMAT_LABEL, TZ } from "@/lib/events";
+import { eventTypeLabel, formatDuration, formatTime, FORMAT_LABEL, TZ } from "@/lib/events";
 import { drPrefix } from "@/lib/professions";
 
 const W = 595.28, H = 841.89, M = 60;
@@ -24,7 +24,7 @@ export async function attestableRegistrations(where: { eventId: string; id?: str
 type Reg = Awaited<ReturnType<typeof attestableRegistrations>>[number];
 
 const longDate = (d: Date) => d.toLocaleDateString("fr-FR", { timeZone: TZ, weekday: "long", day: "numeric", month: "long", year: "numeric" });
-const duration = (min: number | null) => (min == null ? null : min >= 60 ? `${Math.floor(min / 60)} h${min % 60 ? ` ${String(min % 60).padStart(2, "0")}` : ""}` : `${min} min`);
+const duration = (min: number | null) => (min == null ? null : formatDuration(min));
 
 /** Attestations de présence (une page par participant), vérifiables par QR code. */
 export async function attestationPdf(regs: Reg[]) {

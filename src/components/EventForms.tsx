@@ -10,6 +10,7 @@ import { useLocale, useT } from "@/components/I18nProvider";
 import { intlLocale, type Locale } from "@/lib/i18n";
 import { benefitLimit, hospitalityRegime, type HospitalityLimits } from "@/lib/compliance";
 import { eurToCents } from "@/lib/form";
+import { parseParisDateTime } from "@/lib/events";
 
 type Opt = { value: string; label: string };
 type CatalogItem = { id: string; label: string; typical: number };
@@ -26,12 +27,16 @@ const euros = (c: number) => (c / 100).toLocaleString("fr-FR", { style: "currenc
  * Régime des hospitalités saisies, en direct : chaque prestation au-delà de son seuil et la convention d'un
  * participant qui accepterait tout (déclaration ou autorisation), avec les seuils de l'organisation.
  */
-function HospitalityAlert({ limits, benefits }: { limits: HospitalityLimits; benefits: { catalogId: string; valueCents: number }[] }) {
+function HospitalityAlert({ limits, benefits, startsAt }: { limits: HospitalityLimits; benefits: { catalogId: string; valueCents: number }[]; startsAt?: string }) {
   if (benefits.length === 0) return null;
   const r = hospitalityRegime(limits, benefits);
+  // Date saisie (heure de Paris) déjà dans le délai d'autorisation : la demande ne pourrait plus aboutir à temps.
+  const start = startsAt ? parseParisDateTime(startsAt) : null;
+  const late = !!start && start.getTime() - Date.now() < limits.authorizationDays * 864e5;
   return r.regime === "autorisation" ? (
-    <p className="notice warn" role="status">
+    <p className={`notice ${late ? "error" : "warn"}`} role="status">
       Au-delà des seuils ({r.reason}) : la convention d&apos;hospitalité d&apos;un participant qui accepte ces prestations est soumise à autorisation de l&apos;Ordre, à demander au moins {limits.authorizationDays} jours avant l&apos;événement.
+      {late && <> <strong>Délai d&apos;autorisation déjà dépassé pour cette date</strong> : l&apos;autorisation ne pourra pas être obtenue à temps. Ramenez les valeurs sous les seuils, ou décalez l&apos;événement.</>}
     </p>
   ) : (
     <p className="hint" role="status">Sous les seuils d&apos;autorisation de votre organisation : convention d&apos;hospitalité déclarée à l&apos;Ordre ({limits.declarationDays} jours ouvrables avant l&apos;événement).</p>
@@ -41,6 +46,8 @@ function HospitalityAlert({ limits, benefits }: { limits: HospitalityLimits; ben
 /** Champs communs à la création et à la modification d'un événement. */
 function EventFields({ types, formats, catalog, initial, frozen, project, limits }: { types: Opt[]; formats: Opt[]; catalog: readonly CatalogItem[]; initial?: EventInitial; frozen?: Frozen; project?: { title: string; area: string | null }; limits?: HospitalityLimits }) {
   const [format, setFormat] = useState(initial?.format ?? "PRESENTIEL");
+  // Date suivie pour l'alerte de délai d'autorisation (le champ reste non contrôlé).
+  const [start, setStart] = useState(initial?.startsAt ?? "");
   const [picked, setPicked] = useState<Record<string, boolean>>(Object.fromEntries((initial?.benefits ?? []).map((b) => [b.catalogId, true])));
   const value = (id: string, typical: number) => {
     const b = initial?.benefits.find((x) => x.catalogId === id);
@@ -63,7 +70,7 @@ function EventFields({ types, formats, catalog, initial, frozen, project, limits
       </div>
       <label>Description<textarea name="description" rows={4} defaultValue={initial?.description} /></label>
       <div className="row">
-        <label>Date et heure (Paris)<input name="startsAt" type="datetime-local" required defaultValue={initial?.startsAt} /></label>
+        <label>Date et heure (Paris)<input name="startsAt" type="datetime-local" required defaultValue={initial?.startsAt} onChange={(e) => setStart(e.target.value)} /></label>
         <label>Durée (minutes)<input name="durationMinutes" type="number" min={0} step={15} defaultValue={initial?.durationMinutes} /></label>
       </div>
       <div className="row">
@@ -90,7 +97,7 @@ function EventFields({ types, formats, catalog, initial, frozen, project, limits
         {frozen ? (
           <>
             {frozen.length === 0 ? <p className="muted">Aucune.</p> : <ul className="plain stack-sm">{frozen.map((b) => <li key={b.label} className="flex-between"><span>{b.label}</span><span className="muted">{euros(b.valueCents)} TTC par personne</span></li>)}</ul>}
-            {limits && <HospitalityAlert limits={limits} benefits={frozen} />}
+            {limits && <HospitalityAlert limits={limits} benefits={frozen} startsAt={start} />}
             <p className="hint">Hospitalités figées : des inscrits les ont déjà acceptées, leur valeur est rattachée à leur nom. Pour reporter le coût réel d&apos;un devis retenu, utilisez la rubrique Logistique.</p>
           </>
         ) : (
@@ -111,7 +118,7 @@ function EventFields({ types, formats, catalog, initial, frozen, project, limits
                 );
               })}
             </div>
-            {limits && <HospitalityAlert limits={limits} benefits={chosen} />}
+            {limits && <HospitalityAlert limits={limits} benefits={chosen} startsAt={start} />}
           </>
         )}
       </fieldset>

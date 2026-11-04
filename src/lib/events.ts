@@ -55,6 +55,14 @@ export function orgEventStatus(
   return { label: "Publié · inscriptions ouvertes", tone: "ok" };
 }
 
+/** Durée lisible, la même partout : « 15 min », « 1 h », « 1 h 30 » (en anglais : « 1h30 »). */
+export const formatDuration = (min: number, locale: string = "fr") => {
+  if (min < 60) return `${min} min`;
+  const h = Math.floor(min / 60);
+  const m = min % 60 ? String(min % 60).padStart(2, "0") : "";
+  return locale === "en" ? `${h}h${m}` : `${h} h${m ? ` ${m}` : ""}`;
+};
+
 /** Types d'événements publiables (repris du prototype). */
 export const EVENT_TYPES = [
   { id: "symposium", label: "Symposium de congrès" },

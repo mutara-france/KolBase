@@ -4,7 +4,7 @@ import { SiteHeader } from "@/components/SiteHeader";
 import { CreateMenu, DashHead, DashStats, Timeline, TodoGroups, type TimelineItem } from "@/components/Dashboard";
 import { requireMembership } from "@/lib/orgs";
 import { orgOverview } from "@/lib/org-overview";
-import { formatEUR } from "@/lib/events";
+import { eventMoment, formatEUR } from "@/lib/events";
 import { supplierCategoryLabel } from "@/lib/suppliers";
 import { orgBillingLine, orgOnboarding } from "@/lib/onboarding";
 import { CheckCircle2, Circle } from "lucide-react";
@@ -38,7 +38,8 @@ export default async function Page({ params, searchParams }: { params: Promise<{
 
   const active = projects.filter((p) => !["TERMINE", "DECLINE"].includes(p.status));
   const engaged = active.flatMap((p) => p.experts.filter((e) => !["ATT_EXPERTS", "DECLINE"].includes(e.status)));
-  const upcoming = events.filter((e) => e.startsAt >= now);
+  // À venir et en cours (commencé n'est pas terminé : visible le jour même) ; un événement annulé n'y figure plus.
+  const upcoming = events.filter((e) => !e.cancelledAt && eventMoment(e, now) !== "passe");
   const pendingApps = calls.reduce((s, c) => s + c.applications.length, 0);
   const hospValue = hosp.reduce((s, r) => s + r.benefits.reduce((x, b) => x + b.valueCents, 0), 0);
 
@@ -58,7 +59,7 @@ export default async function Page({ params, searchParams }: { params: Promise<{
     ...upcoming.map((e) => ({
       date: e.startsAt,
       title: e.title,
-      detail: [e.city ?? (e.format === "DISTANCIEL" ? "En ligne" : null), e.internal ? "réunion interne" : `${plural(e._count.registrations, "inscrit", "inscrits")}${e.capacity ? ` sur ${e.capacity}` : ""}`, e.publishedAt || e.internal ? null : "brouillon"]
+      detail: [eventMoment(e, now) === "en_cours" ? "en cours · inscriptions closes" : null, e.city ?? (e.format === "DISTANCIEL" ? "En ligne" : null), e.internal ? "réunion interne" : `${plural(e._count.registrations, "inscrit", "inscrits")}${e.capacity ? ` sur ${e.capacity}` : ""}`, e.publishedAt || e.internal ? null : "brouillon"]
         .filter(Boolean)
         .join(" · "),
       // La conformité lit la fiche de l'événement (hospitalités, inscrits) sans la modifier.
@@ -115,7 +116,9 @@ export default async function Page({ params, searchParams }: { params: Promise<{
           <p className={`notice ${org.verification === "REJECTED" ? "error" : "warn"}`}>
             {org.verification === "REJECTED"
               ? `KolBase n'a pas validé votre organisation${org.verificationNote ? ` : ${inSentence(org.verificationNote)}` : ""}.`
-              : "Votre organisation est en attente de validation par KolBase. D'ici là, elle ne peut ni solliciter de praticiens, ni publier."}{" "}
+              : org.kind === "PRESTATAIRE"
+                ? "Votre organisation est en attente de validation par KolBase. D'ici là, elle ne peut ni répondre aux demandes de devis, ni figurer dans l'annuaire des prestataires."
+                : "Votre organisation est en attente de validation par KolBase. D'ici là, elle ne peut ni solliciter de praticiens, ni publier."}{" "}
             {isAdmin ? <Link href={`${base}/membres?onglet=organisation`}>{identityLink(org)}</Link> : "Un administrateur de l'organisation peut compléter la demande."}
           </p>
         )}

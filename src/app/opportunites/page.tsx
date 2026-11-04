@@ -5,7 +5,7 @@ import { SectionNav } from "@/components/SectionNav";
 import { practitionerSectionTabs } from "@/lib/nav";
 import { db } from "@/lib/db";
 import { requireUser } from "@/lib/auth";
-import { COLLAB_TYPES, collabType } from "@/lib/projects";
+import { callFull, COLLAB_TYPES, collabType } from "@/lib/projects";
 import { fmtDate, fmtEur } from "@/lib/i18n";
 import { getT } from "@/lib/i18n/server";
 
@@ -37,6 +37,8 @@ export default async function Page({ searchParams }: { searchParams: Promise<{ t
       organization: { select: { name: true } },
       event: { select: { title: true, startsAt: true, city: true, format: true } },
       applications: { where: { practitionerId: user.practitioner.id }, select: { status: true } },
+      // Places pourvues : l'appel est affiché « Complet ».
+      _count: { select: { applications: { where: { status: "retained" } } } },
     },
     orderBy: [{ deadline: "asc" }, { createdAt: "desc" }],
     take: 100,
@@ -82,7 +84,7 @@ export default async function Page({ searchParams }: { searchParams: Promise<{ t
                 <span className="muted">{t("Budget {amount} HT", { amount: [c.budgetMinCents, c.budgetMaxCents].filter((x) => x != null).map((x) => fmtEur(locale, x!)).join(" – ") })}</span>
               )}
               <span className="muted">{c.deadline ? t("Jusqu'au {date}", { date: fmtDate(locale, c.deadline) }) : t("Sans date limite")}</span>
-              {c.applications.length > 0 && <span className="pill ok">{t("Candidature envoyée")}</span>}
+              {c.applications.length > 0 ? <span className="pill ok">{t("Candidature envoyée")}</span> : callFull(c) && <span className="pill bad">{t("Complet")}</span>}
             </Link>
           ))}
         </div>

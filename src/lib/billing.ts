@@ -39,8 +39,13 @@ export async function engagementGate(orgId: string, motive: Motive, objet?: stri
   return null;
 }
 
-/** Ce qui bloque l'action sur la page (bouton désactivé, bandeau) : le contrat, puis l'abonnement. */
+/**
+ * Ce qui bloque l'action sur la page (bouton désactivé, consigne, bandeau), dans l'ordre réel : la validation de
+ * l'organisation par KolBase, puis le contrat, puis l'abonnement.
+ */
 export async function engagementBlock(orgId: string, motive: Motive): Promise<Blocked> {
+  const org = await db.organization.findUnique({ where: { id: orgId }, select: { verification: true } });
+  if (org && org.verification !== "VERIFIED") return "validation";
   if (motive !== "reponse" && !(await dpaAccepted(orgId))) return "contrat";
   return (await billingBlocked(orgId, motive)) ? "abonnement" : null;
 }

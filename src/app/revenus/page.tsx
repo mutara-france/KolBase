@@ -10,6 +10,7 @@ import { INTEREST_YEARS, interestLines, practitionerLedger } from "@/lib/revenue
 import { removeDeclaredInterest } from "@/lib/revenue-actions";
 import { statusLabel } from "@/lib/projects";
 import { feeTotals } from "@/lib/indicators";
+import { canBeExpert } from "@/lib/professions";
 import { fmtDate, fmtEur } from "@/lib/i18n";
 import { getT } from "@/lib/i18n/server";
 
@@ -22,6 +23,8 @@ export default async function Page({ searchParams }: { searchParams: Promise<{ o
   const user = await requireUser();
   const p = user.practitioner;
   if (!p) redirect("/tableau-de-bord");
+  // Réservé aux professions qui peuvent être expertes (comme le menu) : sinon, retour à l'accueil avec un message.
+  if (!canBeExpert(p.profession) && !p.listed) redirect("/tableau-de-bord?acces=revenus");
   const sp = await searchParams;
   const onglet = sp.onglet === "liens" ? "liens" : sp.onglet === "transparence" ? "transparence" : sp.onglet === "facturation" ? "facturation" : "revenus";
   const { t, locale } = await getT();

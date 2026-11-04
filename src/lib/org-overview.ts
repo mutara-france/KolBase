@@ -15,6 +15,8 @@ import { activeMandate } from "@/lib/mandates";
 import { de } from "@/lib/elision";
 import { rfqConflict } from "@/lib/suppliers";
 import { getT } from "@/lib/i18n/server";
+import { complianceSettings, hospitalityRegime } from "@/lib/compliance";
+import { practicesInFrance } from "@/lib/countries";
 
 
 const DAY = 864e5;
@@ -77,6 +79,24 @@ export const orgOverview = cache(async (orgId: string) => {
       : Promise.resolve([]),
   ]);
 
+  // Hospitalités soumises à autorisation de l'Ordre (praticiens exerçant en France) pour un événement à venir : la
+  // demande est à faire avant le délai (paramètres de conformité). Même règle que Conformité › Autorisations.
+  const authRegs = can.compliance
+    ? await db.registration.findMany({
+        where: { event: { organizationId: orgId, startsAt: { gte: now }, cancelledAt: null }, profession: { not: null }, cancelledAt: null, benefits: { some: {} } },
+        include: { event: { select: { id: true, title: true, startsAt: true } }, user: { select: { practitioner: { select: { country: true } } } }, benefits: { include: { benefit: { select: { catalogId: true } } } } },
+      })
+    : [];
+  const limits = complianceSettings(org.complianceSettings);
+  const authByEvent = new Map<string, { title: string; startsAt: Date; n: number }>();
+  for (const r of authRegs) {
+    if (!practicesInFrance(r.user.practitioner?.country ?? "FR")) continue;
+    if (hospitalityRegime(limits, r.benefits.map((b) => ({ catalogId: b.benefit.catalogId, valueCents: b.valueCents }))).regime !== "autorisation") continue;
+    const e = authByEvent.get(r.event.id) ?? { title: r.event.title, startsAt: r.event.startsAt, n: 0 };
+    e.n++;
+    authByEvent.set(r.event.id, e);
+  }
+
   // Hospitalités à déclarer : pas celles des absents au pointage (avantage non consommé).
   const pointed = await pointedPastEvents(undeclared.map((r) => r.eventId));
   const hosp = undeclared.filter((r) => toDeclare(r, pointed.has(r.eventId)));
@@ -116,6 +136,14 @@ export const orgOverview = cache(async (orgId: string) => {
     }
     for (const [, e] of byEvent)
       if (e.past) todos.push({ href: `${base}/hospitalites`, title: `Déclarer les hospitalités : ${e.title}`, detail: `${e.n} bénéficiaire${e.n > 1 ? "s" : ""} · événement passé`, icon: "FileSignature", tone: "danger" });
+    for (const [, e] of authByEvent) {
+      const by = new Date(e.startsAt.getTime() - limits.authorizationDays * DAY);
+      todos.push({
+        href: `${base}/conformite?onglet=autorisations`, title: `Autorisation d'hospitalité à demander : ${e.title}`,
+        detail: `${e.n} bénéficiaire${e.n > 1 ? "s" : ""} · ${by < now ? "délai d'autorisation dépassé" : `avant le ${formatDate(by)}`}`,
+        icon: "ShieldCheck", tone: by < now ? "danger" : "warn", tab: "autorisations",
+      });
+    }
   }
   for (const v of reviewQueue)
     todos.push({ href: `${base}/relecture`, title: `Support à relire : ${v.material.title} (v${v.version})`, detail: v.material.project.title, icon: "CircleDot" });

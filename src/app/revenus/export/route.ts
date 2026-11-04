@@ -2,11 +2,13 @@ import { requireUser } from "@/lib/auth";
 import { toCSV } from "@/lib/events";
 import { practitionerLedger } from "@/lib/revenues";
 import { statusLabel } from "@/lib/projects";
+import { canBeExpert } from "@/lib/professions";
 
 /** Export CSV d'une année de revenus (honoraires et hospitalités), pour la comptabilité du praticien. */
 export async function GET(req: Request) {
   const user = await requireUser();
-  if (!user.practitioner) return new Response("Réservé aux praticiens.", { status: 404 });
+  // Comme la page « Mes revenus » : réservé aux professions qui peuvent être expertes.
+  if (!user.practitioner || (!canBeExpert(user.practitioner.profession) && !user.practitioner.listed)) return new Response("Réservé aux praticiens.", { status: 404 });
   const year = Number(new URL(req.url).searchParams.get("annee")) || new Date().getFullYear();
   const ledger = await practitionerLedger(user.id, user.practitioner.id);
   const eur = (c: number | null | undefined) => (c != null ? (c / 100).toFixed(2).replace(".", ",") : "");

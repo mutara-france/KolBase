@@ -22,7 +22,8 @@ export async function generateMetadata() {
 }
 
 /** Accueil du praticien : les sollicitations à traiter d'abord, puis le profil, les opportunités et l'agenda. */
-export default async function Page() {
+export default async function Page({ searchParams }: { searchParams: Promise<{ acces?: string }> }) {
+  const { acces } = await searchParams;
   const user = await requireUser();
   const p = user.practitioner;
   if (!p) redirect(user.memberships[0] ? `/organisations/${user.memberships[0].organizationId}` : "/compte");
@@ -30,6 +31,8 @@ export default async function Page() {
   /** « 1 étape restante » / « 2 étapes restantes » : une clé par forme. */
   const plural = (n: number, one: string, many: string) => t(n > 1 ? many : one, { n });
   const now = new Date();
+  // Identifiant professionnel contrôlé et refusé par KolBase : le référencement attend sa correction.
+  const identityRefused = !!p.rppsCheckedAt && !p.rppsVerified;
 
   const [links, regs, calls, pubCount, apps] = await Promise.all([
     db.projectExpert.findMany({ where: { practitionerId: p.id }, include: { project: { include: { organization: { select: { name: true } } } } }, orderBy: { createdAt: "desc" } }),
@@ -115,8 +118,19 @@ export default async function Page() {
       <main className="stack dash">
         <DashHead title={t("Bonjour {name}.", { name: `${drPrefix(p.profession) || `${user.firstName} `}${user.lastName}` })} lede={lede} />
 
-        {/* Référencement proposé aux seules professions qui peuvent être expertes. */}
-        {!p.listed && canBeExpert(p.profession) && (
+        {/* Page réservée aux experts (Mes revenus…) ouverte par une profession non éligible. */}
+        {acces === "revenus" && <p className="notice warn" role="status">{t("« Mes revenus » est réservé aux professions qui peuvent se référencer comme expert. Les hospitalités reçues figurent dans « Mes inscriptions ».")}</p>}
+
+        {/* Référencement proposé aux seules professions qui peuvent être expertes ; identifiant refusé : le corriger d'abord. */}
+        {!p.listed && canBeExpert(p.profession) && (identityRefused ? (
+          <section className="card highlight flex-between">
+            <div>
+              <h2>{t("Identifiant non vérifié : corrigez-le")}</h2>
+              <p className="muted">{p.rppsCheckNote ? t("Motif : {note}", { note: p.rppsCheckNote }) : t("KolBase n'a pas pu vérifier votre identifiant professionnel.")} {t("Corrigez-le dans « Mon compte » : il sera contrôlé à nouveau, puis vous pourrez vous référencer.")}</p>
+            </div>
+            <Link className="btn" href="/compte#informations">{t("Corriger mon identifiant")}</Link>
+          </section>
+        ) : (
           <section className="card highlight flex-between">
             <div>
               <h2>{t("Devenir expert référencé")}</h2>
@@ -124,7 +138,7 @@ export default async function Page() {
             </div>
             <Link className="btn" href="/compte">{t("Me référencer")}</Link>
           </section>
-        )}
+        ))}
 
         {newsletterPending(user) && (
           <section className="card newsletter-ask" aria-labelledby="lettre">

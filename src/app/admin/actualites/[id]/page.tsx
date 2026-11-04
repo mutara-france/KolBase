@@ -27,7 +27,8 @@ export default async function Page({ params, searchParams }: { params: Promise<{
           <h1>{a.title}</h1>
           <span className={`pill ${a.publishedAt ? "ok" : "wait"}`}>{a.publishedAt ? `Publiée le ${formatDate(a.publishedAt)}` : "Brouillon"}</span>
         </div>
-        {cree && <p className="notice ok">Brouillon créé. Relisez-le avec l&apos;aperçu, puis publiez-le.</p>}
+        {/* Message de création, tant que l'article est un brouillon (plus après « Enregistrer et publier »). */}
+        {cree && !a.publishedAt && <p className="notice ok">Brouillon créé. Relisez-le avec l&apos;aperçu, puis publiez-le.</p>}
         <div className="actions">
           <Link className="btn ghost small" href={`/actualites/${a.slug}`} target="_blank">{a.publishedAt ? "Voir en ligne" : "Aperçu"}</Link>
           {/* La publication se fait depuis le formulaire (« Enregistrer et publier ») : ce qui est à l'écran est publié. */}

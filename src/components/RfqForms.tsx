@@ -223,8 +223,9 @@ export function SelectAll({ count, all, onAll }: { count: number; all: boolean; 
 
 export function SupplierProfileForm({ orgId, categories, current, canEdit }: { orgId: string; categories: Cat[]; current: { categories: string[]; coverage: string; listed: boolean }; canEdit: boolean }) {
   const [state, action, pending] = useActionState(updateSupplierProfile, undefined);
+  // ActionForm : la saisie (catégories, zone) reste après une erreur.
   return (
-    <form action={action} className="card form">
+    <ActionForm action={action} className="card form">
       <h2>Fiche prestataire</h2>
       <p className="muted">Les organisations consultent l&apos;annuaire par catégorie. Être référencé ne donne aucune priorité : elles choisissent librement qui consulter.</p>
       <Notice state={state} />
@@ -238,7 +239,7 @@ export function SupplierProfileForm({ orgId, categories, current, canEdit }: { o
       <label>Zone couverte<input name="coverage" defaultValue={current.coverage} placeholder="France entière, Grand Ouest…" disabled={!canEdit} /></label>
       <label className="check"><input type="checkbox" name="listed" defaultChecked={current.listed} disabled={!canEdit} /> Apparaître dans l&apos;annuaire des prestataires</label>
       {canEdit && <button className="btn" disabled={pending}>{pending ? "Enregistrement…" : "Enregistrer"}</button>}
-    </form>
+    </ActionForm>
   );
 }
 

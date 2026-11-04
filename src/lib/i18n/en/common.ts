@@ -286,4 +286,12 @@ export const COMMON: Record<string, string> = {
   "Avis laissés uniquement par les organisations qui ont retenu ce prestataire, après la prestation ; le nom des clients n'est pas affiché.": "Reviews left only by organisations that hired this supplier, after the service; client names are not shown.",
   "Événement momentanément indisponible": "Event temporarily unavailable",
   "La page de l'événement est momentanément masquée sur KolBase. Votre inscription est conservée ; l'organisateur vous écrira si l'événement change.": "The event page is temporarily hidden on KolBase. Your registration is kept; the organiser will write to you if the event changes.",
+  "Événement terminé : ce badge n'est plus à présenter.": "Event over: this badge no longer needs to be shown.",
+  "« Mes revenus » est réservé aux professions qui peuvent se référencer comme expert. Les hospitalités reçues figurent dans « Mes inscriptions ».": "“My income” is reserved for professions that can be listed as experts. Hospitality received is shown in “My registrations”.",
+  "Identifiant non vérifié : corrigez-le": "Identifier not verified: please correct it",
+  "KolBase n'a pas pu vérifier votre identifiant professionnel.": "KolBase could not verify your professional identifier.",
+  "Corrigez-le dans « Mon compte » : il sera contrôlé à nouveau, puis vous pourrez vous référencer.": "Correct it in “My account”: it will be checked again, then you can be listed.",
+  "Corriger mon identifiant": "Correct my identifier",
+  "Commencez par votre compte personnel : vous créerez ensuite l'espace de votre organisation, ou rejoindrez celle qui vous invite. Gratuit jusqu'à votre première action qui engage un tiers (prestataire : jusqu'à votre premier devis retenu).": "Start with your personal account: you will then create your organisation's space, or join the one inviting you. Free until your first action that commits a third party (service provider: until your first accepted quote).",
+  "En cours · inscriptions closes": "In progress · registration closed",
 };

@@ -4,7 +4,9 @@ import { linesTtc, mainVat, quoteTtc, quoteVatLabel, readLines } from "@/lib/quo
 import { stripePause } from "@/lib/billing-plans";
 import { mailingSlot, nextParisMonthStart } from "@/lib/newsletter";
 import { inSentence } from "@/lib/elision";
-import { eventState, orgEventStatus } from "@/lib/events";
+import { eventState, formatDuration, orgEventStatus } from "@/lib/events";
+import { callFull } from "@/lib/projects";
+import { perHeadLabel, perParticipant } from "@/lib/quotes";
 
 describe("entrée : page d'origine et profil gardés", () => {
   it("l'en-tête public transmet la page courante, sauf l'accueil et les pages d'authentification", () => {
@@ -95,5 +97,27 @@ describe("événements : états dans le temps communs", () => {
     expect(orgEventStatus(ev, 10, { suspended: true }, now).label).toBe("Masqué (organisation suspendue)");
     expect(orgEventStatus({ ...ev, publishedAt: null }, 0, { suspended: false }, now).label).toBe("Brouillon");
     expect(orgEventStatus(ev, 50, { suspended: false }, new Date("2026-11-14T10:00:00Z")).label).toBe("Publié · complet");
+  });
+});
+
+describe("finitions : durées, appels complets, seuils", () => {
+  it("durée lisible, la même partout", () => {
+    expect(formatDuration(15)).toBe("15 min");
+    expect(formatDuration(60)).toBe("1 h");
+    expect(formatDuration(90)).toBe("1 h 30");
+    expect(formatDuration(125)).toBe("2 h 05");
+    expect(formatDuration(90, "en")).toBe("1h30");
+  });
+  it("appel complet : places pourvues", () => {
+    expect(callFull({ slots: 1, _count: { applications: 1 } })).toBe(true);
+    expect(callFull({ slots: 2, _count: { applications: 1 } })).toBe(false);
+    expect(callFull({ slots: null, _count: { applications: 5 } })).toBe(false);
+  });
+  it("seuil d'une nuitée, d'un repas ; couvert commandé pour la restauration", () => {
+    const s = { hospitalityMealMax: 60, hospitalityNightMax: 150 } as Parameters<typeof perParticipant>[3];
+    expect(perParticipant("hebergement", 20000, 1, s)?.limit?.of).toBe("d'une nuitée");
+    expect(perParticipant("restauration", 2000, 1, s)?.limit?.of).toBe("d'un repas");
+    expect(perHeadLabel("restauration")).toBe("par couvert commandé");
+    expect(perHeadLabel("salle")).toBe("par participant prévu");
   });
 });

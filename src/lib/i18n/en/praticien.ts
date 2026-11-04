@@ -227,7 +227,6 @@ export const PRATICIEN: Record<string, string> = {
   // Profil expert
   "Profil expert": "Expert profile",
   "Ces informations apparaissent dans l'annuaire, consulté par les organisations.": "This information appears in the directory consulted by organisations.",
-  "Présentation": "Bio",
   "Parcours, domaines d'expertise, publications marquantes…": "Background, areas of expertise, key publications…",
   "Établissement / cabinet": "Hospital / practice",
   "Sur-spécialité": "Sub-specialty",

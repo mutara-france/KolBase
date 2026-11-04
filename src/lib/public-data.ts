@@ -8,7 +8,7 @@ import { supplierCategoryLabel } from "@/lib/suppliers";
 import { canSee, companyVisibility, kolVisibility } from "@/lib/visibility";
 import { logoSrc } from "@/lib/logos";
 import { country } from "@/lib/countries";
-import { SIGNED_STATUSES } from "@/lib/projects";
+import { callFull, SIGNED_STATUSES } from "@/lib/projects";
 import { featuredEvents, trackedPath } from "@/lib/services";
 import type { CallCardData, EventCardData, KolCardData, OrgCardData } from "@/components/PublicCards";
 
@@ -90,13 +90,16 @@ export async function publicCalls(take?: number): Promise<CallCardData[]> {
       status: "open", organization: { verification: "VERIFIED" },
       AND: [{ OR: [{ deadline: null }, { deadline: { gte: now } }] }, { OR: [{ eventId: null }, { event: { startsAt: { gte: now } } }] }],
     },
-    include: { organization: { select: { id: true, name: true, visibility: true, logoUpdatedAt: true } }, event: { select: { title: true, startsAt: true } } },
+    include: {
+      organization: { select: { id: true, name: true, visibility: true, logoUpdatedAt: true } }, event: { select: { title: true, startsAt: true } },
+      _count: { select: { applications: { where: { status: "retained" } } } },
+    },
     orderBy: [{ deadline: "asc" }, { createdAt: "desc" }],
   });
   // Pages publiques : seulement les organisations qui affichent leurs appels publiquement (réglage « Appels ouverts ») ;
   // les praticiens connectés voient tous les appels ouverts dans « Opportunités ».
   const visible = cs.filter((c) => canSee(companyVisibility(c.organization.visibility).projets, "public"));
-  return visible.slice(0, take).map((c) => ({ id: c.id, title: c.title, specialty: c.specialty, typeId: c.typeId, poster: c.organization.name, posterLogo: logoSrc(c.organization), deadline: c.deadline, description: c.description, budgetMinCents: c.budgetMinCents, budgetMaxCents: c.budgetMaxCents, open: true, event: c.event ? { title: c.event.title, startsAt: c.event.startsAt } : null }));
+  return visible.slice(0, take).map((c) => ({ id: c.id, title: c.title, specialty: c.specialty, typeId: c.typeId, poster: c.organization.name, posterLogo: logoSrc(c.organization), deadline: c.deadline, description: c.description, budgetMinCents: c.budgetMinCents, budgetMaxCents: c.budgetMaxCents, open: true, full: callFull(c), event: c.event ? { title: c.event.title, startsAt: c.event.startsAt } : null }));
 }
 
 /**

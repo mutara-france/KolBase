@@ -7,7 +7,7 @@ import { SiteHeader } from "@/components/SiteHeader";
 import { StatusPill } from "@/components/ProjectBits";
 import { db } from "@/lib/db";
 import { requireMembership } from "@/lib/orgs";
-import { BENEFIT_CATALOG, COMPLIANCE_ROLES, EVENT_MANAGER_ROLES, EVENT_ORGANIZER_ROLES, EVENT_TYPES, eventScope, eventTypeLabel, formatDate, formatEUR, formatTime, FORMAT_LABEL, needsOnlineLink, orgEventStatus, toParisInput } from "@/lib/events";
+import { BENEFIT_CATALOG, COMPLIANCE_ROLES, EVENT_MANAGER_ROLES, EVENT_ORGANIZER_ROLES, EVENT_TYPES, eventScope, eventTypeLabel, formatDate, formatEUR, formatTime, FORMAT_LABEL, formatDuration, needsOnlineLink, orgEventStatus, toParisInput } from "@/lib/events";
 import { isSuspendedOrg } from "@/lib/org-roles";
 import { cancelEvent, deleteEventDraft, setEventAgency, setEventFlag } from "@/lib/event-actions";
 import { deletableDraft, everPublished } from "@/lib/event-drafts";
@@ -15,7 +15,7 @@ import { BillingNotice } from "@/components/BillingNotice";
 import { engagementBlock } from "@/lib/billing";
 import { applyQuoteToBenefit } from "@/lib/rfq-actions";
 import { RFQ_STATUS, rfqDisplayStatus, rfqView, SUPPLIER_CATEGORIES, supplierCategoryLabel } from "@/lib/suppliers";
-import { perParticipant, quoteTtc } from "@/lib/quotes";
+import { perHeadLabel, perParticipant, quoteTtc } from "@/lib/quotes";
 import { costPerHead, eventHospitality } from "@/lib/indicators";
 import { complianceSettings, hospitalityRegime, REGIME_LABEL } from "@/lib/compliance";
 import { drPrefix } from "@/lib/professions";
@@ -194,7 +194,7 @@ export default async function Page({ params, searchParams }: { params: Promise<{
   const canDelete = isOrganizer && (await deletableDraft(event));
   const missingLink = !event.cancelledAt && needsOnlineLink(event, now);
   const publishBlocked = !readOnly && !event.publishedAt && !event.internal ? await engagementBlock(id, "evenement") : null;
-  const duration = event.durationMinutes ? (event.durationMinutes >= 60 ? `${Math.floor(event.durationMinutes / 60)} h${event.durationMinutes % 60 ? ` ${event.durationMinutes % 60}` : ""}` : `${event.durationMinutes} min`) : null;
+  const duration = event.durationMinutes ? formatDuration(event.durationMinutes) : null;
 
   const Flag = ({ flag, label, ghost, disabled }: { flag: string; label: string; ghost?: boolean; disabled?: boolean }) => (
     <form action={setEventFlag}>
@@ -386,7 +386,7 @@ export default async function Page({ params, searchParams }: { params: Promise<{
                                     {ref ? ` · ${kept ? `retenu : ${kept.supplier.name}` : "meilleure offre"} ${formatEUR(ttc)} TTC` : ""}
                                   </>}
                             </div>
-                            {pp && <div className={`text-xs ${pp.over ? "warn-text" : "muted"}`}>≈ {pp.each.toLocaleString("fr-FR", { maximumFractionDigits: 2 })} € TTC par couvert commandé{pp.limit ? (pp.over ? ` · au-dessus du seuil d'un ${pp.limit.what} (${pp.limit.max} € TTC)` : ` · sous le seuil d'un ${pp.limit.what}`) : ""}</div>}
+                            {pp && <div className={`text-xs ${pp.over ? "warn-text" : "muted"}`}>≈ {pp.each.toLocaleString("fr-FR", { maximumFractionDigits: 2 })} € TTC {perHeadLabel(r.category)}{pp.limit ? (pp.over ? ` · au-dessus du seuil ${pp.limit.of} (${pp.limit.max} € TTC)` : ` · sous le seuil ${pp.limit.of}`) : ""}</div>}
                             {ref && head.perPresent != null && <div className="text-xs muted">Pour information : {head.perPresent.toLocaleString("fr-FR", { maximumFractionDigits: 2 })} € TTC par présent ({present.length} au pointage)</div>}
                           </div>
                           <span className={`pill ${st.tone}`}>{st.label}</span>
@@ -396,7 +396,7 @@ export default async function Page({ params, searchParams }: { params: Promise<{
                           <form action={applyQuoteToBenefit} className="apply-benefit">
                             <input type="hidden" name="orgId" value={id} />
                             <input type="hidden" name="quoteId" value={kept.id} />
-                            <span className="text-sm">Reporter le prix par couvert dans la valeur déclarée</span>
+                            <span className="text-sm">Reporter le prix {perHeadLabel(r.category)} dans la valeur déclarée</span>
                             <select name="benefitId" aria-label="Hospitalité concernée">
                               {event.benefits.map((b) => <option key={b.id} value={b.id}>{b.label} (déclaré {formatEUR(b.valueCents)} TTC)</option>)}
                             </select>

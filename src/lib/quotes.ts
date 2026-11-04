@@ -51,6 +51,9 @@ export function quoteVatLabel(q: { vatBp: number; lines?: unknown }) {
   return rates.map(vatLabel).join(" et ");
 }
 
+/** Base du coût par personne d'un devis : le couvert commandé (restauration), sinon le participant prévu. */
+export const perHeadLabel = (category: string) => (category === "restauration" ? "par couvert commandé" : "par participant prévu");
+
 /**
  * Coût TTC par participant et repère réglementaire : pour la restauration, il est comparé au seuil d'un repas,
  * pour l'hébergement à celui d'une nuitée (seuils d'autorisation de l'arrêté du 7 août 2020, paramètres de l'organisation).
@@ -59,6 +62,7 @@ export function quoteVatLabel(q: { vatBp: number; lines?: unknown }) {
 export function perParticipant(category: string, ttcCents: number, headcount: number | null, s: ComplianceSettings) {
   if (!headcount || headcount <= 0) return null;
   const each = ttcCents / headcount / 100;
-  const limit = category === "restauration" ? { max: s.hospitalityMealMax, what: "repas" } : category === "hebergement" ? { max: s.hospitalityNightMax, what: "nuitée" } : null;
+  // `of` : « d'un repas », « d'une nuitée » (accord du déterminant).
+  const limit = category === "restauration" ? { max: s.hospitalityMealMax, what: "repas", of: "d'un repas" } : category === "hebergement" ? { max: s.hospitalityNightMax, what: "nuitée", of: "d'une nuitée" } : null;
   return { each, limit, over: !!limit && each > limit.max };
 }
