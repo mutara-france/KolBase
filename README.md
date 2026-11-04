@@ -162,7 +162,13 @@ l'en-tête `Authorization: Bearer $CRON_SECRET` (secret généré sur le service
 
 - envoie le rappel de la veille aux inscrits (date, lieu, programme, badge) ;
 - envoie, une heure après la fin d'un événement, le remerciement avec l'attestation de présence et le questionnaire ;
-- supprime les sessions et liens de connexion expirés depuis plus de 30 jours.
+- envoie les bilans des services KolBase réalisés ;
+- supprime les sessions et liens de connexion expirés depuis plus de 30 jours et les visites des liens suivis de plus
+  de 13 mois.
+
+Chaque exécution est enregistrée (table `TaskRun`) : `/admin` affiche un bandeau si aucune n'a réussi depuis deux
+heures. `HEARTBEAT_URL` (facultatif) est appelée après chaque réussite : une sonde externe (Healthchecks.io, Better
+Stack…) alerte quand ces appels cessent.
 
 `APP_URL` est fixée dans `render.yaml` pour le service cron (https://kolbase.io) ; sans elle, la commande échoue
 en nommant la variable manquante. Activer les alertes d'échec du service cron dans Render (Settings ›
@@ -200,7 +206,10 @@ lien de désinscription et les en-têtes `List-Unsubscribe` (désinscription en 
 
 Toute erreur serveur (page, action, route) est journalisée en JSON (Render › kolbase-web › Logs) et signalée par
 e-mail aux `PLATFORM_ADMIN_EMAILS` (`src/instrumentation.ts`), au plus une fois par erreur toutes les 30 minutes et
-dix fois par heure. `/api/health` vérifie l'application et la base (contrôle de santé Render).
+dix fois par heure. Journaux et alertes ne contiennent ni adresse e-mail complète ni jeton (`src/lib/redact.ts`).
+`/api/health` vérifie l'application et la base (contrôle de santé Render).
+
+Procédures (retour arrière, restauration de la base, changement de secret, maintenance) : `docs/exploitation.md`.
 
 ## Double authentification
 

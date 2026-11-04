@@ -1087,3 +1087,12 @@ model NewsletterCampaign {
   createdById String
   createdAt   DateTime      @default(now())
 }
+
+/// Suivi des tâches planifiées (POST /api/taches) : dernière exécution et dernière réussite, affichées dans /admin.
+model TaskRun {
+  name      String    @id
+  startedAt DateTime
+  okAt      DateTime?
+  error     String?
+  result    Json?
+}

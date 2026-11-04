@@ -84,6 +84,10 @@ services:
       # partagé avec le service cron ci-dessous.
       - key: CRON_SECRET
         generateValue: true
+      # Surveillance des tâches planifiées (facultatif) : adresse de « battement » d'un service externe (Healthchecks.io,
+      # Better Stack…), appelée après chaque exécution réussie ; ce service alerte quand les appels cessent.
+      - key: HEARTBEAT_URL
+        sync: false
       # Facturation (abonnements) : clé secrète Stripe, secret de la notification déclarée chez Stripe vers
       # <APP_URL>/api/stripe/webhook (checkout.session.completed, customer.subscription.*, invoice.payment_failed),
       # et identifiant du taux de TVA à appliquer (txr_…, facultatif). Sans clé : aucune facturation.

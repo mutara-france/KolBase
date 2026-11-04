@@ -1641,11 +1641,20 @@ async function submitNewOrg(page, siren) {
   const r = await (await fetch(`${BASE}/api/taches`, { method: "POST", headers: { Authorization: `Bearer ${process.env.CRON_SECRET ?? "secret-des-taches-de-test"}` } })).json();
   const left = (await pgc.query(`select count(*)::int n from "Session" where id = 'e2e-old-session'`)).rows[0].n;
   check("Conservation : sessions expirées purgées", left === 0 && r.purged?.sessions >= 1, JSON.stringify(r));
-  await pgc.end();
+  const run = (await pgc.query(`select "okAt", error, result from "TaskRun" where name = 'taches-horaires'`)).rows[0];
+  check("Tâches planifiées : exécution enregistrée", !!run?.okAt && run.error === null && run.result?.purged?.sessions >= 1, JSON.stringify(run));
   const adm = await session();
   await login(adm.page, "anne.chevalier@demo.kolbase.local");
   await adm.page.goto(`${BASE}/admin?onglet=lancement`);
-  check("Lancement : tâches planifiées vérifiées", /OK\s+Tâches planifiées/.test(await text(adm.page)));
+  const launch = await text(adm.page);
+  check("Lancement : tâches planifiées vérifiées", /OK\s+Tâches planifiées/.test(launch) && launch.includes("Dernière réussite il y a") && !launch.includes("Tâches planifiées : Aucune réussite"));
+  // Plus de deux heures sans réussite : bandeau en tête de l'administration, quel que soit l'onglet.
+  // Colonnes sans fuseau, écrites en UTC par Prisma : now() suivrait le fuseau du serveur PostgreSQL.
+  await pgc.query(`update "TaskRun" set "okAt" = timezone('utc', now()) - interval '3 hours', "startedAt" = timezone('utc', now()) - interval '3 hours' where name = 'taches-horaires'`);
+  await adm.page.goto(`${BASE}/admin`);
+  check("Tâches arrêtées : bandeau d'alerte dans /admin", (await text(adm.page)).includes("Tâches planifiées : Aucune réussite depuis 3 h"));
+  await pgc.query(`update "TaskRun" set "okAt" = timezone('utc', now()), "startedAt" = timezone('utc', now()) where name = 'taches-horaires'`);
+  await pgc.end();
   await adm.ctx.close();
 }
 
@@ -3149,7 +3158,8 @@ async function submitNewOrg(page, siren) {
     await row().locator('button:has-text("retirer")').click();
     check("Retirer la gratuité : confirmation qui annonce la reprise de la facturation", (await row().locator(".confirm-step").innerText()).includes("la facturation de son abonnement Stripe reprend") && !!(await q1(`select "exemptUntil" from "Subscription" where "organizationId" = 'demo-org-orthonova'`))?.exemptUntil);
     await row().locator('button:has-text("Confirmer : retirer la gratuité")').click();
-    await until(async () => !(await q1(`select "exemptUntil" from "Subscription" where "organizationId" = 'demo-org-orthonova'`))?.exemptUntil);
+    // La base est mise à jour avant l'appel à Stripe : attendre les deux, sinon le test dépend de la charge de la machine.
+    await until(async () => stripeState.subscriptions.get(subId).pause_collection === null && !(await q1(`select "exemptUntil" from "Subscription" where "organizationId" = 'demo-org-orthonova'`))?.exemptUntil);
     check("Gratuité retirée : facturation Stripe reprise", stripeState.subscriptions.get(subId).pause_collection === null && !(await q1(`select "exemptUntil" from "Subscription" where "organizationId" = 'demo-org-orthonova'`))?.exemptUntil);
     const back = await waitMail("thomas.garnier@demo.kolbase.local", "gratuité de l'abonnement retirée");
     check("E-mail : gratuité retirée, la facturation reprend", !!back && back.text.includes("la facturation de votre abonnement en cours reprend"));
