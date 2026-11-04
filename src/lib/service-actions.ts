@@ -9,6 +9,7 @@ import { EVENT_ORGANIZER_ROLES, formatDate, formatTime } from "@/lib/events";
 import { eurToCents, str } from "@/lib/form";
 import { sendMail } from "@/lib/mail";
 import { allocate } from "@/lib/service-pack";
+import type { ServiceKind } from "@/generated/prisma/client";
 import { invoiceOrder, newsletterAudience, newsletterAudienceCount, newsletterSendsThisMonth, newTrackCode, OPEN_ORDER, trackedPath, unsubscribeToken } from "@/lib/services";
 import { firstOfMonthLabel, mailingSlot, monthlyCapMessage, NEWSLETTER_MONTHLY_MAX } from "@/lib/newsletter";
 import { de } from "@/lib/elision";
@@ -119,7 +120,8 @@ export async function saveServiceOffer(form: FormData) {
   const price = eurToCents(str(form, "price"));
   const label = str(form, "label").slice(0, 120);
   const description = str(form, "description").slice(0, 600);
-  const kind = ["newsletter", "social", "une", "autre"].includes(str(form, "kind")) ? str(form, "kind") : "autre";
+  const asked = str(form, "kind");
+  const kind: ServiceKind = asked === "newsletter" || asked === "social" || asked === "une" ? asked : "autre";
   if (!label || price == null) return;
   const data = { label, description, priceCents: price, active: form.get("active") === "on", position: Number(str(form, "position")) || 0 };
   if (id) await db.serviceOffer.update({ where: { id }, data });
