@@ -462,7 +462,7 @@ export default async function Page({ params, searchParams }: { params: Promise<{
                     {groupOrders(event.serviceOrders).map((g) => {
                       if (!g.pack) return <ServiceOrderRow key={g.orders[0].id} o={g.orders[0]} />;
                       // Pack : une ligne « Pack visibilité — 990 € HT », le détail des services se déplie.
-                      const ps = packStatus(g.orders.map((o) => o.status));
+                      const ps = packStatus(g.orders.map((o) => (featuredUntil(o, now) ? "en_cours" : o.status)));
                       const total = g.orders.reduce((n, o) => n + o.priceCents, 0);
                       const cancellable = g.orders.every((o) => o.status === "demandee");
                       return (

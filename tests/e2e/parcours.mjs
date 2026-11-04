@@ -3130,6 +3130,41 @@ async function submitNewOrg(page, siren) {
     await adm.ctx.close();
   }
 
+  // 3. Pack et mise à la une : regroupés côté admin, lien suivi depuis l'accueil seulement, factures annoncées justes.
+  {
+    await pgc.query(`insert into "ServiceOrder" (id, "organizationId", "eventId", "offerId", label, "priceCents", "orderedById", status, "packLabel", "trackCode", "createdAt", "updatedAt")
+      select x.id, 'demo-org-dentalys', 'demo-ev-live-surgery', x.offer, x.label, x.price, u.id, 'demandee', 'Pack visibilité', x.code, now(), now()
+      from "User" u, (values ('e2e-l3-p1', 'svc-newsletter', 'E-mailing dédié aux membres KolBase', 58477, 'l3pack1'), ('e2e-l3-p2', 'svc-reseaux', 'Publication sur les réseaux sociaux de KolBase', 24577, 'l3pack2'), ('e2e-l3-p3', 'svc-une', 'À la une de la page d''accueil (7 jours)', 15946, 'l3pack3')) as x(id, offer, label, price, code)
+      where u.email = 'julien.faure@demo.kolbase.local'`);
+    const adm = await session();
+    await login(adm.page, "anne.chevalier@demo.kolbase.local");
+    await adm.page.goto(`${BASE}/admin?onglet=services`);
+    const grp = adm.page.locator('li.service-pack-group:has-text("Live surgery")');
+    const gt = (await grp.innerText()).replace(/\s+/g, " ");
+    check("Admin : services d'un pack regroupés sous son prix, détail dépliable", /Pack visibilité — 990 € HT/.test(gt) && gt.includes("Détail des 3 services du pack") && gt.includes("Publication sur les réseaux sociaux"), gt.slice(0, 200));
+    check("Admin : pas de « lien à utiliser » pour la mise à la une", !(await grp.locator('li.card:has-text("À la une de la page")').innerText()).includes("Lien suivi à utiliser") && (await grp.locator('li.card:has-text("réseaux sociaux")').innerText()).includes("Lien suivi à utiliser"));
+    await pgc.query(`delete from "ServiceOrder" where id in ('e2e-l3-p1', 'e2e-l3-p2', 'e2e-l3-p3')`);
+    await adm.ctx.close();
+    // Mise à la une réalisée (Soirée implantologie, plus haut) : lien suivi depuis l'accueil, direct depuis /evenements.
+    const anon = await session();
+    await anon.page.goto(`${BASE}/`);
+    const homeHref = await anon.page.locator('.event-card:has-text("Soirée implantologie") h3 a').getAttribute("href");
+    await anon.page.goto(`${BASE}/evenements`);
+    const listHref = await anon.page.locator('.event-card:has-text("Soirée implantologie") h3 a').first().getAttribute("href");
+    check("Mise à la une : lien suivi depuis l'accueil seulement", homeHref?.startsWith("/r/") && listHref === "/evenements/demo-ev-soiree-implanto", `${homeHref} | ${listHref}`);
+    await anon.ctx.close();
+    const org = await session();
+    await login(org.page, "julien.faure@demo.kolbase.local");
+    await org.page.goto(`${BASE}/organisations/demo-org-dentalys/evenements/demo-ev-soiree-implanto`);
+    check("Mise à la une : « En cours jusqu'au … » tant qu'elle dure", (await org.page.locator('li.service-order:has-text("À la une de la page")').first().innerText()).includes("En cours jusqu'au"));
+    await org.ctx.close();
+    // E-mails de réalisation : « prochaine facture » seulement si la ligne est sur la facture Stripe.
+    const hors = mails.find((m) => m.to === "julien.faure@demo.kolbase.local" && m.subject.startsWith("Service KolBase : E-mailing dédié"));
+    const stripeMail = mails.find((m) => m.to === "pierre.vidal@demo.kolbase.local" && m.subject.startsWith("Service KolBase : Publication sur les réseaux sociaux"));
+    check("Réalisation hors Stripe : « facture à venir »", !!hors && hors.text.includes("facture à venir") && !hors.text.includes("prochaine facture"), hors?.text);
+    check("Réalisation facturée par Stripe : « sur votre prochaine facture »", !!stripeMail && stripeMail.text.includes("sur votre prochaine facture"), stripeMail?.text);
+  }
+
   await pgc.end();
 }
 

@@ -19,7 +19,8 @@ import { asInterval, displayStatus, exempt, monthlyCents, PLANS, planFor, STATUS
 import { stripeEnabled } from "@/lib/billing";
 import { setExemption } from "@/lib/billing-actions";
 import { saveServiceOffer, updateServiceOrder } from "@/lib/service-actions";
-import { newsletterAudienceCount, newsletterSendsThisMonth, ORDER_STATUS, orderStats, trackedPath } from "@/lib/services";
+import { featuredUntil, newsletterAudienceCount, newsletterSendsThisMonth, ORDER_STATUS, orderStats, trackedPath } from "@/lib/services";
+import { groupOrders, packStatus } from "@/lib/service-pack";
 import { NEWSLETTER_MONTHLY_MAX, parisMonthLabel } from "@/lib/newsletter";
 import { reportLine } from "@/lib/service-report";
 import { country, licenseRule, practicesInFrance, registryLink } from "@/lib/countries";
@@ -272,16 +273,43 @@ async function ServicesAdmin() {
   const realized = orders.filter((o) => o.status === "realisee");
   const stats = await orderStats(orders.filter((o) => o.status !== "refusee" && o.status !== "annulee"));
   const app = process.env.APP_URL ?? "http://localhost:3000";
+  const now = new Date();
+  // Services d'un même pack regroupés : « Pack visibilité — 990 € HT », détail repliable (actions par service).
+  const groups = groupOrders(orders);
+  const isOpen = (o: (typeof orders)[number]) => ["demandee", "planifiee"].includes(o.status);
+  const openGroups = groups.filter((g) => g.orders.some(isOpen));
+  const doneGroups = groups.filter((g) => !g.orders.some(isOpen));
+  const Group = ({ g, unfold }: { g: (typeof groups)[number]; unfold: boolean }) => {
+    if (!g.pack) return <Row o={g.orders[0]} />;
+    const first = g.orders[0];
+    const ps = packStatus(g.orders.map((o) => (featuredUntil(o, now) ? "en_cours" : o.status)));
+    return (
+      <li className="card stack-sm service-pack-group">
+        <div>
+          <strong>{g.pack} — {formatEUR(g.orders.reduce((n, o) => n + o.priceCents, 0))} HT</strong> ·{" "}
+          <span className={`pill ${ps.status === "en_cours" ? "electric" : ORDER_STATUS[ps.status]?.tone ?? ""}`}>{ps.status === "en_cours" ? `En cours (${ps.done} sur ${ps.total} réalisé${ps.done > 1 ? "s" : ""})` : ORDER_STATUS[ps.status]?.label}</span>
+          <div className="text-sm muted">{first.organization.name} · « <Link href={`/evenements/${first.event.id}`}>{first.event.title}</Link> » du {formatDate(first.event.startsAt)} · commandé le {formatDate(first.createdAt)}</div>
+          {first.brief && <p className="text-sm">« {first.brief} »</p>}
+        </div>
+        <details className="older" open={unfold}>
+          <summary>Détail des {g.orders.length} services du pack</summary>
+          <ul className="plain stack-sm">{g.orders.map((o) => <Row key={o.id} o={o} />)}</ul>
+        </details>
+      </li>
+    );
+  };
   const Row = ({ o }: { o: (typeof orders)[number] }) => (
     <li className="card stack-sm">
       <div className="actions spread">
         <div>
-          <strong>{o.label}</strong> · {formatEUR(o.priceCents)} HT · <span className={`pill ${ORDER_STATUS[o.status]?.tone ?? ""}`}>{ORDER_STATUS[o.status]?.label}</span>
+          <strong>{o.label}</strong> · {formatEUR(o.priceCents)} HT{o.packLabel ? <span className="text-xs muted"> (part du pack)</span> : null} ·{" "}
+          {featuredUntil(o, now) ? <span className="pill electric">En cours jusqu&apos;au {formatDate(featuredUntil(o, now)!)}</span> : <span className={`pill ${ORDER_STATUS[o.status]?.tone ?? ""}`}>{ORDER_STATUS[o.status]?.label}</span>}
           <div className="text-sm muted">{o.organization.name} · « <Link href={`/evenements/${o.event.id}`}>{o.event.title}</Link> » du {formatDate(o.event.startsAt)} · commandé le {formatDate(o.createdAt)}{o.wishedAt ? ` · souhaité le ${formatDate(o.wishedAt)}` : ""}</div>
           {o.brief && <p className="text-sm">« {o.brief} »</p>}
           {o.adminNote && <p className="text-xs muted">{o.adminNote}</p>}
           {o.status === "realisee" && <p className="text-xs muted">{o.invoicedAt ? `Facturé (${o.invoiceRef})` : o.invoiceRef ?? "À facturer"}</p>}
-          {o.trackCode && o.offer.kind !== "newsletter" && ["demandee", "planifiee"].includes(o.status) && <p className="text-xs">Lien suivi à utiliser : <code>{app}{trackedPath(o.trackCode)}</code></p>}
+          {/* Lien à placer soi-même (post) ; l'e-mailing et la mise à la une de l'accueil l'utilisent d'eux-mêmes. */}
+          {o.trackCode && o.offer.kind === "social" && ["demandee", "planifiee"].includes(o.status) && <p className="text-xs">Lien suivi à utiliser : <code>{app}{trackedPath(o.trackCode)}</code></p>}
           {stats.get(o.id) && (o.status === "realisee" || stats.get(o.id)!.clicks > 0) && (
             <p className="text-xs service-stats">Bilan : {reportLine(stats.get(o.id)!, o.offer.kind)}{o.reportSentAt ? ` · bilan envoyé le ${formatDate(o.reportSentAt)}` : ""}</p>
           )}
@@ -310,10 +338,10 @@ async function ServicesAdmin() {
           </div>
           <Link className="btn ghost small" href="/admin/services/lettre">Lettre d&apos;information libre ({audience} praticien{audience > 1 ? "s" : ""} abonné{audience > 1 ? "s" : ""})</Link>
         </div>
-        {open.length === 0 ? <p className="muted">Aucune commande en attente.</p> : <ul className="plain stack-sm">{open.map((o) => <Row key={o.id} o={o} />)}</ul>}
+        {open.length === 0 ? <p className="muted">Aucune commande en attente.</p> : <ul className="plain stack-sm">{openGroups.map((g) => <Group key={g.orders[0].id} g={g} unfold />)}</ul>}
         {toInvoice.length > 0 && <p className="notice warn">{toInvoice.length} service{toInvoice.length > 1 ? "s" : ""} réalisé{toInvoice.length > 1 ? "s" : ""} à facturer hors Stripe.</p>}
         {done.length > 0 && (
-          <details className="older"><summary>Commandes traitées ({done.length})</summary><ul className="plain stack-sm">{done.map((o) => <Row key={o.id} o={o} />)}</ul></details>
+          <details className="older"><summary>Commandes traitées ({done.length})</summary><ul className="plain stack-sm">{doneGroups.map((g) => <Group key={g.orders[0].id} g={g} unfold={false} />)}</ul></details>
         )}
       </section>
       <section className="card stack-sm" id="lettre">

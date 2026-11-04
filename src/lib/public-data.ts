@@ -9,7 +9,11 @@ import { country } from "@/lib/countries";
 import { featuredEvents, trackedPath } from "@/lib/services";
 import type { CallCardData, EventCardData, KolCardData, OrgCardData } from "@/components/PublicCards";
 
-export async function publicEvents(take?: number): Promise<EventCardData[]> {
+/**
+ * Agenda public. `tracked` : liens suivis de la mise à la une (accueil seulement) ; ailleurs (/evenements), l'événement
+ * reste en tête et marqué « À la une », mais le lien est direct (la mise à la une vendue est celle de l'accueil).
+ */
+export async function publicEvents(take?: number, { tracked = false }: { tracked?: boolean } = {}): Promise<EventCardData[]> {
   // Événements « à la une » (service KolBase) d'abord, puis les prochains par date.
   const codes = await featuredEvents();
   const featured = [...codes.keys()];
@@ -21,7 +25,7 @@ export async function publicEvents(take?: number): Promise<EventCardData[]> {
   const rest = await db.event.findMany({ where: { ...where, id: { notIn: top.map((e) => e.id) } }, include, omit, orderBy: { startsAt: "asc" }, take: take != null ? Math.max(take - top.length, 0) : undefined });
   const sorted = top.sort((a, b) => featured.indexOf(a.id) - featured.indexOf(b.id));
   // Lien suivi de la mise à la une : visites et inscriptions comptées dans le bilan de l'organisateur.
-  return [...sorted.map((e) => ({ ...e, featured: true, trackedHref: codes.get(e.id) ? trackedPath(codes.get(e.id)!) : undefined })), ...rest].map((e) => ({ ...e, registrations: e._count.registrations }));
+  return [...sorted.map((e) => ({ ...e, featured: true, trackedHref: tracked && codes.get(e.id) ? trackedPath(codes.get(e.id)!) : undefined })), ...rest].map((e) => ({ ...e, registrations: e._count.registrations }));
 }
 
 /** Experts référencés tels qu'un visiteur non connecté peut les voir (réglages de visibilité appliqués). */

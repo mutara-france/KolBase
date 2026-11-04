@@ -9,7 +9,7 @@ import { de } from "@/lib/elision";
 import { withVat } from "@/lib/quotes";
 import { fmtEur, isLocale, makeT, type Locale, type T } from "@/lib/i18n";
 import { collabType, PROJECT_ROLES, SOURCING_ROLES, STATUS_LABEL } from "@/lib/projects";
-import { orderStats } from "@/lib/services";
+import { featuredUntil, orderStats } from "@/lib/services";
 import { conversion, reportParts } from "@/lib/service-report";
 import type { OrgRole } from "@/generated/prisma/client";
 
@@ -732,15 +732,20 @@ export function notifyPaymentFailed(orgId: string) {
 /** Suivi d'une commande de service : la personne qui l'a passée est prévenue (planifiée, refusée, réalisée). */
 export function notifyServiceOrder(orderId: string) {
   later(async () => {
-    const o = await db.serviceOrder.findUnique({ where: { id: orderId }, include: { event: { select: { id: true, title: true, organizationId: true } } } });
+    const o = await db.serviceOrder.findUnique({ where: { id: orderId }, include: { event: { select: { id: true, title: true, organizationId: true } }, offer: { select: { kind: true } } } });
     if (!o) return;
     const user = await db.user.findUnique({ where: { id: o.orderedById }, select: userSelect });
     if (!user) return;
     const what = `« ${o.label} » pour « ${o.event.title} »`;
+    // « Prochaine facture » seulement si le montant est déjà inscrit sur la facture Stripe de l'abonnement.
+    const amount = `${(o.priceCents / 100).toLocaleString("fr-FR")} € HT${o.packLabel ? ` (part du ${o.packLabel})` : ""}`;
+    const billing = o.priceCents > 0 ? `\n\nMontant : ${amount}, ${o.invoicedAt ? "sur votre prochaine facture" : "facture à venir"}.` : "";
+    const until = featuredUntil(o);
+    const feature = until ? `\n\nL'événement est à la une de la page d'accueil de KolBase jusqu'au ${until.toLocaleDateString("fr-FR", { timeZone: "Europe/Paris", day: "numeric", month: "long" })}.` : "";
     const text =
       o.status === "planifiee" ? `L'équipe KolBase a planifié ${what}${o.plannedAt ? ` : réalisation prévue le ${o.plannedAt.toLocaleDateString("fr-FR", { timeZone: "Europe/Paris", day: "numeric", month: "long" })}` : ""}.${o.adminNote ? `\n\n${o.adminNote}` : ""}`
       : o.status === "refusee" ? `L'équipe KolBase ne peut pas réaliser ${what}.\n\n${o.adminNote ?? ""}`
-      : o.status === "realisee" ? `L'équipe KolBase a réalisé ${what}.${o.resultUrl ? `\n\nRésultat : ${o.resultUrl}` : ""}${o.adminNote ? `\n\n${o.adminNote}` : ""}${o.priceCents > 0 ? `\n\nMontant : ${(o.priceCents / 100).toLocaleString("fr-FR")} € HT, sur votre prochaine facture.` : ""}`
+      : o.status === "realisee" ? `L'équipe KolBase a réalisé ${what}.${feature}${o.resultUrl ? `\n\nRésultat : ${o.resultUrl}` : ""}${o.adminNote ? `\n\n${o.adminNote}` : ""}${billing}`
       : null;
     if (!text) return;
     await send([user], { subject: `Service KolBase : ${o.label}`, text: `Bonjour,\n\n${text}`, cta: { label: "Voir l'événement", href: `/organisations/${o.event.organizationId}/evenements/${o.event.id}` } });
