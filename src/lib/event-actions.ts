@@ -12,7 +12,8 @@ import { eurToCents, intOrNull, str } from "@/lib/form";
 import { getT } from "@/lib/i18n/server";
 import { engagementGate } from "@/lib/billing";
 import type { GateLink } from "@/lib/billing-plans";
-import { notifyEventChanged, notifyEventConfided } from "@/lib/notifications";
+import { notifyEventChanged, notifyEventConfided, notifyEventWithdrawn, notifyMandateEnded } from "@/lib/notifications";
+import { activeMandate } from "@/lib/mandates";
 import { SOURCE_COOKIE } from "@/lib/services";
 import { deletableDraft, DRAFT_COUNTS } from "@/lib/event-drafts";
 
@@ -206,6 +207,8 @@ export async function setEventAgency(form: FormData) {
   await db.event.update({ where: { id: eventId }, data: { agencyId } });
   await audit(user.id, "event.agency", "Event", eventId, { agencyId });
   if (agencyId && agencyId !== event.agencyId) notifyEventConfided(eventId);
+  // L'agence précédente perd l'accès à l'événement : elle en est prévenue.
+  if (event.agencyId && agencyId !== event.agencyId) notifyEventWithdrawn(eventId, event.agencyId);
   revalidatePath(`/organisations/${orgId}/evenements/${eventId}`);
   revalidatePath(`/organisations/${orgId}/prestataires`);
 }
@@ -294,9 +297,6 @@ export async function markDeclared(form: FormData) {
 
 // ─── Mandats d'agence ──────────────────────────────────────────────────────
 
-/** Mandats en cours (non terminés) d'une organisation. */
-const activeMandate = (now = new Date()) => ({ OR: [{ endsAt: null }, { endsAt: { gt: now } }] });
-
 
 /** Fin de mandat : l'agence perd l'accès aux événements qui lui étaient confiés. */
 export async function endMandate(form: FormData) {
@@ -304,11 +304,25 @@ export async function endMandate(form: FormData) {
   const { user } = await requireMembership(orgId, EVENT_ORGANIZER_ROLES);
   const m = await db.mandate.findFirst({ where: { id: str(form, "mandateId"), mandatorId: orgId, ...activeMandate() } });
   if (!m) return;
+  const events = await db.event.findMany({ where: { organizationId: orgId, agencyId: m.agencyId }, select: { title: true }, orderBy: { startsAt: "asc" } });
   await db.$transaction([
     db.mandate.update({ where: { id: m.id }, data: { endsAt: new Date() } }),
     db.event.updateMany({ where: { organizationId: orgId, agencyId: m.agencyId }, data: { agencyId: null } }),
   ]);
   await audit(user.id, "mandate.end", "Mandate", m.id, { agencyId: m.agencyId });
+  notifyMandateEnded(m.id, events.map((e) => e.title));
+  revalidatePath(`/organisations/${orgId}/prestataires`);
+}
+
+/** Droit de l'agence de retenir un devis au nom de l'organisation (sinon elle propose, l'organisateur retient). */
+export async function setMandateAward(form: FormData) {
+  const orgId = str(form, "orgId");
+  const { user } = await requireMembership(orgId, EVENT_ORGANIZER_ROLES);
+  const m = await db.mandate.findFirst({ where: { id: str(form, "mandateId"), mandatorId: orgId, ...activeMandate() } });
+  if (!m) return;
+  const canAward = form.get("canAward") === "1";
+  await db.mandate.update({ where: { id: m.id }, data: { canAward } });
+  await audit(user.id, "mandate.award_right", "Mandate", m.id, { agencyId: m.agencyId, canAward });
   revalidatePath(`/organisations/${orgId}/prestataires`);
 }
 

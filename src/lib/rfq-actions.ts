@@ -12,7 +12,8 @@ import { isVatBp, linesTotal, MAX_LINES, withVat, type QuoteLine } from "@/lib/q
 import { MAX_UPLOAD_BYTES, putObject, safeFileName, storageEnabled } from "@/lib/storage";
 import { engagementGate, gateMessage, markSupplierTriggered, stripeEnabled, supplierCanQuote } from "@/lib/billing";
 import type { GateLink } from "@/lib/billing-plans";
-import { notifyAward, notifyQuote, notifyRfqCancelled, notifyRfqMessage, notifyRfqSent, notifySupplierBilling } from "@/lib/notifications";
+import { awardRight } from "@/lib/mandates";
+import { notifyAward, notifyQuote, notifyQuoteProposed, notifyRfqCancelled, notifyRfqMessage, notifyRfqSent, notifySupplierBilling } from "@/lib/notifications";
 
 export type ActionState = { error?: string; ok?: string; fix?: GateLink } | undefined;
 
@@ -38,6 +39,9 @@ export async function createRfq(_: ActionState, form: FormData): Promise<ActionS
   if (supplierIds.length === 0) return { error: "Sélectionnez au moins un prestataire." };
   const suppliers = await db.organization.findMany({ where: { id: { in: supplierIds }, kind: "PRESTATAIRE", listed: true, supplierCategories: { has: category } } });
   if (suppliers.length !== supplierIds.length) return { error: "Un des prestataires sélectionnés n'est pas référencé dans cette catégorie." };
+  // Une agence mandatée ne se consulte pas elle-même : l'organisation la consulte directement si elle le souhaite.
+  const own = suppliers.find((s) => user.memberships.some((m) => m.organizationId === s.id));
+  if (own) return { error: `${own.name} est votre propre organisation : vous ne pouvez pas la consulter pour le compte du client. Retirez-la de la sélection.` };
   const needs = str(form, "needs");
   if (needs.length < 10) return { error: "Décrivez votre besoin." };
   const deadlineRaw = str(form, "deadline");
@@ -90,12 +94,14 @@ export async function cancelRfq(form: FormData) {
 export async function awardQuote(form: FormData) {
   const orgId = str(form, "orgId");
   const { user, roles } = await requireMembership(orgId, EVENT_MANAGER_ROLES);
-  const quote = await db.quote.findFirst({ where: { id: str(form, "quoteId"), rfq: { organizationId: orgId, ...rfqScope(user, roles), status: "sent" } } });
+  const quote = await db.quote.findFirst({ where: { id: str(form, "quoteId"), rfq: { organizationId: orgId, ...rfqScope(user, roles), status: "sent" } }, include: { rfq: { select: { event: { select: { agencyId: true } } } } } });
   if (!quote) return;
   // Une offre expirée n'engage plus le prestataire : il faut d'abord lui demander une version à jour.
   if (quote.validUntil && quote.validUntil < new Date()) return;
   // Conflit d'intérêts : un membre du prestataire (agence mandatée, par exemple) ne retient pas son propre devis.
   if (user.memberships.some((m) => m.organizationId === quote.supplierId)) return;
+  // Agence mandatée sans le droit de retenir : elle propose, l'organisateur décide.
+  if ((await awardRight(orgId, roles, quote.rfq.event?.agencyId)) !== "award") return;
   // La demande n'est attribuée qu'une fois : deux décisions simultanées ne retiennent pas deux devis.
   const awarded = await db.$transaction(async (tx) => {
     const { count } = await tx.rfq.updateMany({ where: { id: quote.rfqId, status: "sent" }, data: { status: "awarded" } });
@@ -106,12 +112,26 @@ export async function awardQuote(form: FormData) {
   });
   if (!awarded) return;
   await audit(user.id, "rfq.award", "Rfq", quote.rfqId, { quoteId: quote.id, supplierId: quote.supplierId, amountCents: quote.amountCents });
-  notifyAward(quote.rfqId);
+  notifyAward(quote.rfqId, user.id);
   // Premier devis retenu : l'abonnement prestataire devient à activer (le référencement reste gratuit).
   if (stripeEnabled() && (await db.quote.count({ where: { supplierId: quote.supplierId, status: "retained" } })) === 1) {
     const client = (await db.organization.findUnique({ where: { id: orgId }, select: { name: true } }))?.name ?? "Une organisation";
     if (await markSupplierTriggered(quote.supplierId, `Premier devis retenu par ${client}`)) notifySupplierBilling(quote.supplierId, client);
   }
+  revalidatePath(`/organisations/${orgId}/prestataires`);
+}
+
+/** Agence mandatée sans droit de retenir : elle propose un devis aux organisateurs, qui décident. */
+export async function proposeQuote(form: FormData) {
+  const orgId = str(form, "orgId");
+  const { user, roles } = await requireMembership(orgId, EVENT_MANAGER_ROLES);
+  const quote = await db.quote.findFirst({ where: { id: str(form, "quoteId"), rfq: { organizationId: orgId, ...rfqScope(user, roles), status: "sent" } }, include: { rfq: { select: { event: { select: { agencyId: true } } } } } });
+  if (!quote || (quote.validUntil && quote.validUntil < new Date())) return;
+  if (user.memberships.some((m) => m.organizationId === quote.supplierId)) return;
+  if ((await awardRight(orgId, roles, quote.rfq.event?.agencyId)) !== "propose") return;
+  await db.rfq.update({ where: { id: quote.rfqId }, data: { proposedQuoteId: quote.id, proposedById: user.id, proposedAt: new Date() } });
+  await audit(user.id, "rfq.propose", "Rfq", quote.rfqId, { quoteId: quote.id, supplierId: quote.supplierId, amountCents: quote.amountCents });
+  notifyQuoteProposed(quote.rfqId, user.id);
   revalidatePath(`/organisations/${orgId}/prestataires`);
 }
 

@@ -311,6 +311,8 @@ model Mandate {
   agencyId   String
   agency     Organization @relation("agency", fields: [agencyId], references: [id])
   scope      String?
+  // Droit de retenir un devis au nom de l'organisation (sinon l'agence propose, l'organisateur retient).
+  canAward   Boolean      @default(false)
   startsAt   DateTime     @default(now())
   endsAt     DateTime?
 }
@@ -550,6 +552,10 @@ model Rfq {
   status         RfqStatus    @default(draft)
   sentAt         DateTime?
   createdById    String?
+  // Devis proposé par l'agence mandatée (sans droit de retenir) : l'organisateur décide.
+  proposedQuoteId String?
+  proposedById    String?
+  proposedAt      DateTime?
   createdAt      DateTime     @default(now())
 
   suppliers RfqSupplier[]

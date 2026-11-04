@@ -51,6 +51,12 @@ export const invitableRoles = (kind: OrgKind): OrgRole[] => (kind === "PRESTATAI
 /** Libellé d'un rôle selon le type d'organisation (dans une agence, « Prestataire » désigne un membre de l'équipe). */
 export const roleLabel = (role: OrgRole, kind: OrgKind) => (kind === "PRESTATAIRE" && role === "PRESTATAIRE" ? "Membre de l'équipe" : ROLE_LABEL[role]);
 
+/**
+ * Agence mandatée dans l'espace d'une organisation cliente : son seul rôle y est « Agence mandatée » (appartenance
+ * déduite du mandat). Elle n'y voit ni l'abonnement, ni la gestion de la fiche, ni la page publique « de l'organisation ».
+ */
+export const isAgencyOnly = (roles: OrgRole[], kind: OrgKind | string) => kind !== "PRESTATAIRE" && roles.length > 0 && roles.every((r) => r === "PRESTATAIRE");
+
 /** Une organisation n'agit auprès des praticiens qu'une fois validée par KolBase. */
 export const isVerifiedOrg = (org: { verification: string }) => org.verification === "VERIFIED";
 /** Page publique de l'organisation visible (/structures/[id]) : validée et présente dans l'annuaire. */

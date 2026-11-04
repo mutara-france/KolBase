@@ -2840,6 +2840,106 @@ async function submitNewOrg(page, siren) {
   await pgc.end();
 }
 
+// ── Lot 3 : agences, services de visibilité, administration ────────────────
+{
+  const pgc = new pg.Client({ connectionString: process.env.DATABASE_URL });
+  await pgc.connect();
+  const q1 = async (sql, args = []) => (await pgc.query(sql, args)).rows[0];
+  /** Geste irréversible en deux temps : le bouton, puis « Confirmer : … ». */
+  const confirmClick = async (scope, label) => {
+    await scope.locator(`button:has-text("${label}")`).first().click();
+    const ok = scope.locator('button:has-text("Confirmer")').first();
+    await ok.waitFor({ timeout: 3000 });
+    await ok.click();
+  };
+
+  // 1. Agence mandatée dans le circuit des devis : prévenue, tâches, droit de retenir, ce qu'elle ne voit pas.
+  {
+    // Mandat actif de Dentalys pour l'Agence Médiane (sans droit de retenir), « Live surgery » confié.
+    await pgc.query(`insert into "Mandate" (id, "mandatorId", "agencyId", scope) select 'e2e-l3-mandat', 'demo-org-dentalys', 'demo-org-mediane', 'Événements confiés'
+      where not exists (select 1 from "Mandate" where "mandatorId" = 'demo-org-dentalys' and "agencyId" = 'demo-org-mediane' and ("endsAt" is null or "endsAt" > now()))`);
+    await pgc.query(`update "Mandate" set "canAward" = false where "mandatorId" = 'demo-org-dentalys' and "agencyId" = 'demo-org-mediane'`);
+    await pgc.query(`update "Event" set "agencyId" = 'demo-org-mediane' where id = 'demo-ev-live-surgery'`);
+    // Demande créée par l'agence (Karim) : deux traiteurs consultés, deux devis reçus.
+    await pgc.query(`insert into "Rfq" (id, "organizationId", "eventId", category, needs, status, "sentAt", "createdById", headcount)
+      select 'e2e-l3-rfq', 'demo-org-dentalys', 'demo-ev-live-surgery', 'restauration', 'Déjeuner opératoire des participants de la chirurgie en direct, 80 couverts.', 'sent', now(), id, 80 from "User" where email = 'karim.benali@demo.kolbase.local'`);
+    await pgc.query(`insert into "RfqSupplier" ("rfqId", "supplierId") values ('e2e-l3-rfq', 'demo-sup-belleville'), ('e2e-l3-rfq', 'demo-sup-tablesdusud')`);
+    await pgc.query(`insert into "Quote" (id, "rfqId", "supplierId", "amountCents", "vatBp", "updatedAt") values ('e2e-l3-q1', 'e2e-l3-rfq', 'demo-sup-belleville', 240000, 1000, now()), ('e2e-l3-q2', 'e2e-l3-rfq', 'demo-sup-tablesdusud', 280000, 1000, now())`);
+
+    // Question du traiteur : l'agence qui a créé la demande est prévenue (appartenance par le mandat).
+    const sup = await session();
+    await login(sup.page, "ludovic.perrin@demo.kolbase.local");
+    await sup.page.goto(`${BASE}/organisations/demo-sup-belleville/devis`);
+    const card = sup.page.locator('section.card:has-text("Déjeuner opératoire")');
+    await card.locator('textarea[name="body"]').first().fill("Faut-il prévoir des plateaux-repas en salle ?");
+    await card.locator('button:has-text("Envoyer")').first().click();
+    check("Agence : question d'un prestataire envoyée à l'agence qui a créé la demande", !!(await waitMail("karim.benali@demo.kolbase.local", "Question de Traiteur Belleville")));
+    await sup.ctx.close();
+
+    const ag = await session();
+    await login(ag.page, "karim.benali@demo.kolbase.local");
+    await ag.page.goto(`${BASE}/organisations/demo-org-mediane`);
+    let at = await text(ag.page);
+    check("Accueil de l'agence : devis et questions des événements confiés", at.includes("Devis à comparer : Live surgery") && at.includes("Question de Traiteur Belleville"), at.slice(0, 400));
+    await ag.page.goto(`${BASE}/organisations/demo-org-dentalys`);
+    at = await text(ag.page);
+    check("Espace du client (agence) : tâches de devis et de questions", at.includes("Devis à comparer : Live surgery") && at.includes("Question de Traiteur Belleville"), at.slice(0, 400));
+    await ag.page.goto(`${BASE}/organisations/demo-org-dentalys/prestataires`);
+    const mine = ag.page.locator("section#rfq-e2e-l3-rfq");
+    check("Agence sans droit de retenir : « Proposer à l'organisation », pas « Retenir »", (await mine.locator('button:has-text("Proposer à l")').count()) === 2 && (await mine.locator('button:has-text("Retenir")').count()) === 0);
+    const capt = ag.page.locator("section#rfq-demo-rfq-captation");
+    check("Agence consultée sur son événement : « À retenir par l'organisation (conflit d'intérêts) »", (await capt.innerText()).includes("À retenir par l'organisation (conflit d'intérêts)"));
+    await ag.page.goto(`${BASE}/organisations/demo-org-dentalys/prestataires?onglet=nouvelle`);
+    await ag.page.locator('button.chip:has-text("Audiovisuel et captation")').click();
+    check("Nouvelle demande : l'agence ne peut pas se consulter elle-même", !(await text(ag.page)).includes("Agence Médiane Événements"));
+    // Ni l'abonnement, ni la gestion de la fiche, ni « Voir notre page publique » du client.
+    await ag.page.goto(`${BASE}/organisations/demo-org-dentalys/abonnement`);
+    check("Agence : pas d'accès à l'abonnement du client", !ag.page.url().includes("/abonnement"), ag.page.url());
+    await ag.page.click(".session-chip");
+    check("Agence : pas de « Voir notre page publique » pour le client", !(await ag.page.locator(".account-menu").innerText()).includes("Voir notre page publique"));
+    await ag.page.goto(`${BASE}/structures/demo-org-dentalys`);
+    check("Agence : pas de « Gérer l'organisation » sur la fiche publique du client", (await ag.page.locator('a:has-text("Gérer l\'organisation")').count()) === 0);
+    // L'agence propose : les organisateurs décident.
+    await ag.page.goto(`${BASE}/organisations/demo-org-dentalys/prestataires`);
+    await mine.locator('.quote:has-text("Traiteur Belleville") button:has-text("Proposer à l")').click();
+    await ag.page.waitForTimeout(1200);
+    check("Agence : devis proposé à l'organisation", (await mine.innerText()).includes("Proposé à l'organisation, qui retient"));
+    check("E-mail aux organisateurs : devis proposé par l'agence", !!(await waitMail("claire.morel@demo.kolbase.local", "Devis à retenir : Agence Médiane Événements propose Traiteur Belleville")));
+
+    const org = await session();
+    await login(org.page, "claire.morel@demo.kolbase.local");
+    await org.page.goto(`${BASE}/organisations/demo-org-dentalys`);
+    check("Accueil de l'organisation : devis proposé par l'agence à retenir", (await text(org.page)).includes("Devis à retenir : Live surgery"));
+    await org.page.goto(`${BASE}/organisations/demo-org-dentalys/prestataires`);
+    const oc = await org.page.locator("section#rfq-e2e-l3-rfq").innerText();
+    check("Carte de demande : « Créée par … (agence) » et devis proposé", oc.includes("Créée par Karim Benali (Agence Médiane Événements, agence mandatée)") && oc.includes("Proposé par l'agence mandatée"), oc.slice(0, 400));
+    check("Carte de demande : l'agence mandatée signalée parmi les prestataires consultés", (await org.page.locator("section#rfq-demo-rfq-captation").innerText()).includes("Agence mandatée sur cet événement"));
+    // Droit de retenir accordé : l'agence retient, les organisateurs sont prévenus.
+    await org.page.goto(`${BASE}/organisations/demo-org-dentalys/prestataires?onglet=agences`);
+    await org.page.locator('section.card:has-text("Agence Médiane") button:has-text("Autoriser à retenir les devis")').click();
+    await org.page.waitForTimeout(1000);
+    check("Mandat : droit de retenir les devis accordé", (await q1(`select "canAward" from "Mandate" where "mandatorId" = 'demo-org-dentalys' and "agencyId" = 'demo-org-mediane' and ("endsAt" is null or "endsAt" > now())`))?.canAward === true);
+    await ag.page.reload();
+    await confirmClick(mine.locator('.quote:has-text("Les Tables du Sud")'), "Retenir");
+    await ag.page.waitForTimeout(1500);
+    check("Agence avec droit : devis retenu", (await q1(`select status from "Quote" where id = 'e2e-l3-q2'`))?.status === "retained");
+    const won = await waitMail("claire.morel@demo.kolbase.local", "Agence Médiane Événements a retenu un devis");
+    check("E-mail aux organisateurs : devis retenu par l'agence (montants HT et TTC)", !!won && won.text.includes("devis des Tables du Sud") && /2\s800\s€ HT \(3\s080\s€ TTC\)/.test(won.text), won?.text);
+    // Événement repris, puis fin du mandat : l'agence est prévenue.
+    await org.page.goto(`${BASE}/organisations/demo-org-dentalys/evenements/demo-ev-live-surgery`);
+    await org.page.selectOption('select[name="agencyId"]', "");
+    await org.page.click('form:has(select[name="agencyId"]) button');
+    check("E-mail à l'agence : événement repris par l'organisation", !!(await waitMail("karim.benali@demo.kolbase.local", /Live surgery.*n'est plus confié à votre agence/)));
+    await org.page.goto(`${BASE}/organisations/demo-org-dentalys/prestataires?onglet=agences`);
+    await org.page.locator('section.card:has-text("Agence Médiane") button:has-text("Mettre fin au mandat")').click();
+    check("E-mail à l'agence : fin du mandat", !!(await waitMail("karim.benali@demo.kolbase.local", "Fin du mandat de Dentalys Implants")));
+    await org.ctx.close();
+    await ag.ctx.close();
+  }
+
+  await pgc.end();
+}
+
 // ── 4. Limitation des tentatives ───────────────────────────────────────────
 {
   const { ctx, page } = await session();

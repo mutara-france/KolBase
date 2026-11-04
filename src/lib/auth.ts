@@ -40,6 +40,10 @@ export async function destroyOtherSessions(userId: string) {
   await db.session.deleteMany({ where: { userId, NOT: token ? { tokenHash: sha256(token) } : undefined } });
 }
 
+/** Appartenance déduite d'un mandat d'agence (et non d'une invitation) : identifiant préfixé. */
+const MANDATE_PREFIX = "mandat:";
+export const viaMandate = (m: { id: string }) => m.id.startsWith(MANDATE_PREFIX);
+
 export const getCurrentUser = cache(async () => {
   const token = (await cookies()).get(COOKIE)?.value;
   if (!token) return null;
@@ -59,7 +63,7 @@ export const getCurrentUser = cache(async () => {
     });
     for (const m of mandates) {
       if (user.memberships.some((x) => x.organizationId === m.mandatorId && x.role === "PRESTATAIRE")) continue;
-      user.memberships.push({ id: `mandat:${m.id}`, userId: user.id, organizationId: m.mandatorId, role: "PRESTATAIRE", createdAt: m.startsAt, organization: m.mandator });
+      user.memberships.push({ id: `${MANDATE_PREFIX}${m.id}`, userId: user.id, organizationId: m.mandatorId, role: "PRESTATAIRE", createdAt: m.startsAt, organization: m.mandator });
     }
   }
   return user;

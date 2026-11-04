@@ -8,7 +8,7 @@ import { SiteHeader } from "@/components/SiteHeader";
 import { Avatar } from "@/components/Avatar";
 import { CallCard, EventCard } from "@/components/PublicCards";
 import { db } from "@/lib/db";
-import { getCurrentUser } from "@/lib/auth";
+import { getCurrentUser, viaMandate } from "@/lib/auth";
 import { ORG_KIND_LABEL, orgIsPublic } from "@/lib/orgs";
 import { canSee, companyVisibility, type Viewer } from "@/lib/visibility";
 import { ProposeForm } from "@/components/DossierForms";
@@ -34,7 +34,8 @@ export async function generateMetadata({ params }: { params: Promise<{ id: strin
 export default async function Page({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
   const [user, { t, locale }] = await Promise.all([getCurrentUser(), getT()]);
-  const isMember = !!user?.memberships.some((m) => m.organizationId === id);
+  // Membre de l'organisation (pas une agence qui y accède par son mandat : elle ne gère pas la fiche).
+  const isMember = !!user?.memberships.some((m) => m.organizationId === id && !viaMandate(m));
   const viewer: Viewer = isMember ? "proprietaire" : user ? "membre" : "public";
   const now = new Date();
   const o = await db.organization.findFirst({

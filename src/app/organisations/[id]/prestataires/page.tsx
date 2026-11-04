@@ -11,8 +11,9 @@ import { db } from "@/lib/db";
 import { requireMembership } from "@/lib/orgs";
 import { EVENT_MANAGER_ROLES, EVENT_ORGANIZER_ROLES, eventScope, formatDate, formatEUR } from "@/lib/events";
 import { QUOTE_STATUS, RFQ_STATUS, rfqDisplayStatus, SUPPLIER_CATEGORIES, supplierCategoryLabel } from "@/lib/suppliers";
-import { awardQuote, cancelRfq, sendRfq } from "@/lib/rfq-actions";
-import { endMandate } from "@/lib/event-actions";
+import { awardQuote, cancelRfq, proposeQuote, sendRfq } from "@/lib/rfq-actions";
+import { endMandate, setMandateAward } from "@/lib/event-actions";
+import { activeMandate, type AwardRight } from "@/lib/mandates";
 import { lineTotal, perParticipant, readLines, vatLabel, withVat } from "@/lib/quotes";
 import { costHeadcount } from "@/lib/indicators";
 import { complianceSettings } from "@/lib/compliance";
@@ -49,20 +50,39 @@ export default async function Page({ params, searchParams }: { params: Promise<{
     db.organization.findMany({ where: { kind: "PRESTATAIRE", listed: true, NOT: { supplierCategories: { isEmpty: true } } }, orderBy: { name: "asc" } }),
     db.event.findMany({ where: { organizationId: id, ...scope, startsAt: { gte: new Date() } }, orderBy: { startsAt: "asc" } }),
   ]);
-  const mandates = isOrganizer
-    ? await db.mandate.findMany({
-        where: { mandatorId: id, OR: [{ endsAt: null }, { endsAt: { gt: new Date() } }] },
-        include: { agency: { select: { id: true, name: true, _count: { select: { agencyEvents: { where: { organizationId: id } } } } } } },
-        orderBy: { startsAt: "desc" },
-      })
-    : [];
+  // Agences mandatées : listées pour l'organisateur, signalées parmi les prestataires consultés, et droit de
+  // décision de l'agence connectée (retenir, ou proposer à l'organisateur).
+  const mandates = await db.mandate.findMany({
+    where: { mandatorId: id, ...activeMandate() },
+    include: { agency: { select: { id: true, name: true, _count: { select: { agencyEvents: { where: { organizationId: id } } } } } } },
+    orderBy: { startsAt: "desc" },
+  });
+  const agencyName = new Map(mandates.map((m) => [m.agencyId, m.agency.name]));
+  const own = (orgId: string) => user.memberships.some((m) => m.organizationId === orgId);
+  const rightFor = (r: { event: { agencyId: string | null } | null }): AwardRight => {
+    if (isOrganizer) return "award";
+    const m = mandates.find((x) => x.agencyId === r.event?.agencyId && own(x.agencyId));
+    return !m ? "none" : m.canAward ? "award" : "propose";
+  };
+  // Auteur de chaque demande, et son agence quand il agit par un mandat.
+  const creatorIds = [...new Set(rfqs.flatMap((r) => [r.createdById, r.proposedById]).filter((x): x is string => !!x))];
+  const creators = new Map(
+    (creatorIds.length
+      ? await db.user.findMany({ where: { id: { in: creatorIds } }, select: { id: true, firstName: true, lastName: true, memberships: { where: { organization: { kind: "PRESTATAIRE" } }, select: { organizationId: true } } } })
+      : []
+    ).map((u) => {
+      const agency = u.memberships.map((m) => agencyName.get(m.organizationId)).find(Boolean);
+      return [u.id, `${u.firstName} ${u.lastName}${agency ? ` (${agency}, agence mandatée)` : ""}`];
+    }),
+  );
   // Présents des événements passés : le coût par participant d'un devis s'y rapporte après l'événement.
   const now = new Date();
   const pastEventIds = [...new Set(rfqs.filter((r) => r.event && r.event.startsAt < now).map((r) => r.event!.id))];
   const presentBy = new Map((pastEventIds.length ? await db.registration.groupBy({ by: ["eventId"], where: { eventId: { in: pastEventIds }, checkedInAt: { not: null } }, _count: { _all: true } }) : []).map((g) => [g.eventId, g._count._all]));
   const ratings = await db.supplierReview.groupBy({ by: ["supplierId"], _avg: { rating: true }, _count: { _all: true } });
   const ratingOf = (sid: string) => ratings.find((r) => r.supplierId === sid);
-  const suppliers = suppliersRaw.map((s) => ({
+  // Une agence ne se consulte pas elle-même pour le compte du client.
+  const suppliers = suppliersRaw.filter((s) => !own(s.id)).map((s) => ({
     id: s.id, name: s.name, categories: s.supplierCategories, city: s.headquarters, coverage: s.coverage, about: s.about, since: s.createdAt.getFullYear(),
     rating: ratingOf(s.id)?._avg.rating ?? null, reviews: ratingOf(s.id)?._count._all ?? 0,
   }));
@@ -110,6 +130,7 @@ export default async function Page({ params, searchParams }: { params: Promise<{
                     <span className={`pill ${st.tone}`}>{st.label}</span>
                   </div>
                   <p>{r.needs}</p>
+                  {r.createdById && creators.get(r.createdById) && <p className="text-sm muted">Créée par {creators.get(r.createdById)}</p>}
                   <div className="kv">
                     <div><span>Prestataires consultés</span><span>{r.suppliers.length}</span></div>
                     <div><span>Devis reçus</span><span>{r.quotes.length}{r.quotes.length ? ` · dès ${formatEUR(r.quotes[0].amountCents)} HT` : ""}</span></div>
@@ -129,7 +150,9 @@ export default async function Page({ params, searchParams }: { params: Promise<{
                           <div style={{ flex: 1, minWidth: 0 }}>
                             <div>
                               <strong>{q.supplier.name}</strong>
+                              {agencyName.has(q.supplierId) && <span className="pill wait"> {q.supplierId === r.event?.agencyId ? "Agence mandatée sur cet événement" : "Agence mandatée"}</span>}
                               {q.amountCents === best && <span className="pill ok"> Meilleure offre</span>}
+                              {r.status === "sent" && r.proposedQuoteId === q.id && <span className="pill electric" title={r.proposedById ? `Proposé par ${creators.get(r.proposedById) ?? "l'agence"}` : undefined}> Proposé par l&apos;agence mandatée</span>}
                               {q.status !== "submitted" && <span className={`pill ${q.status === "retained" ? "ok" : "done"}`}> {QUOTE_STATUS[q.status]}</span>}
                               {q.revision > 1 && <span className="pill"> Version {q.revision}</span>}
                             </div>
@@ -159,18 +182,29 @@ export default async function Page({ params, searchParams }: { params: Promise<{
                             )}
                           </div>
                           <span className="amount">{formatEUR(q.amountCents)} <span className="text-xs muted">HT</span></span>
-                          {r.status === "sent" && user.memberships.some((m) => m.organizationId === q.supplierId) && (
-                            <span className="text-xs muted" title="Conflit d'intérêts : vous êtes membre de ce prestataire.">Retenu par un autre membre</span>
+                          {r.status === "sent" && own(q.supplierId) && (
+                            <span className="text-xs muted" title="Conflit d'intérêts : vous êtes membre de ce prestataire.">À retenir par l&apos;organisation (conflit d&apos;intérêts)</span>
                           )}
-                          {r.status === "sent" && expired && !user.memberships.some((m) => m.organizationId === q.supplierId) && (
+                          {r.status === "sent" && expired && !own(q.supplierId) && (
                             <span className="text-xs warn-text" title="Une offre expirée n'engage plus le prestataire.">Offre expirée : demandez une version à jour</span>
                           )}
-                          {r.status === "sent" && !expired && !user.memberships.some((m) => m.organizationId === q.supplierId) && (
+                          {r.status === "sent" && !expired && !own(q.supplierId) && rightFor(r) === "award" && (
                             <form action={awardQuote}>
                               <input type="hidden" name="orgId" value={id} />
                               <input type="hidden" name="quoteId" value={q.id} />
                               <button className="btn small"><Check size={13} /> Retenir</button>
                             </form>
+                          )}
+                          {r.status === "sent" && !expired && !own(q.supplierId) && rightFor(r) === "propose" && (
+                            r.proposedQuoteId === q.id
+                              ? <span className="text-xs muted">Proposé à l&apos;organisation, qui retient</span>
+                              : (
+                                <form action={proposeQuote}>
+                                  <input type="hidden" name="orgId" value={id} />
+                                  <input type="hidden" name="quoteId" value={q.id} />
+                                  <button className="btn small secondary" title="Votre mandat ne permet pas de retenir un devis : l'organisation décide.">Proposer à l&apos;organisation</button>
+                                </form>
+                              )
                           )}
                         </div>
                         );
@@ -178,9 +212,10 @@ export default async function Page({ params, searchParams }: { params: Promise<{
                     </div>
                   )}
                   {r.status === "sent" && pending.length > 0 && (
-                    <p className="muted">En attente de réponse : {pending.map((s) => s.supplier.name + (s.declined ? " (a décliné)" : "")).join(", ")}.</p>
+                    <p className="muted">En attente de réponse : {pending.map((s) => s.supplier.name + (agencyName.has(s.supplierId) ? " (agence mandatée)" : "") + (s.declined ? " (a décliné)" : "")).join(", ")}.</p>
                   )}
-                  {r.status === "draft" && <p className="muted">Prestataires sélectionnés : {r.suppliers.map((s) => s.supplier.name).join(", ")}.</p>}
+                  {r.status === "draft" && <p className="muted">Prestataires sélectionnés : {r.suppliers.map((s) => s.supplier.name + (agencyName.has(s.supplierId) ? " (agence mandatée)" : "")).join(", ")}.</p>}
+                  {r.status === "sent" && rightFor(r) === "propose" && <p className="hint">Votre mandat ne vous permet pas de retenir un devis : proposez-en un, l&apos;organisation décide.</p>}
                   {(r.status === "sent" || r.status === "awarded") && (
                     <div className="rfq-threads">
                       <span className="label">Questions et échanges</span>
@@ -261,11 +296,24 @@ export default async function Page({ params, searchParams }: { params: Promise<{
                     {m.scope ? `${m.scope} · ` : ""}depuis le {formatDate(m.startsAt)} · {m.agency._count.agencyEvents} événement{m.agency._count.agencyEvents > 1 ? "s" : ""} confié{m.agency._count.agencyEvents > 1 ? "s" : ""}
                   </span>
                 </span>
-                <form action={endMandate}>
-                  <input type="hidden" name="orgId" value={id} />
-                  <input type="hidden" name="mandateId" value={m.id} />
-                  <button className="btn ghost small">Mettre fin au mandat</button>
-                </form>
+                <span className="actions" style={{ marginTop: 0 }}>
+                  <form action={setMandateAward}>
+                    <input type="hidden" name="orgId" value={id} />
+                    <input type="hidden" name="mandateId" value={m.id} />
+                    <input type="hidden" name="canAward" value={m.canAward ? "0" : "1"} />
+                    <button className="btn ghost small">{m.canAward ? "Ne plus laisser retenir les devis" : "Autoriser à retenir les devis"}</button>
+                  </form>
+                  <form action={endMandate}>
+                    <input type="hidden" name="orgId" value={id} />
+                    <input type="hidden" name="mandateId" value={m.id} />
+                    <button className="btn ghost small">Mettre fin au mandat</button>
+                  </form>
+                </span>
+                <span className="text-sm muted" style={{ flexBasis: "100%" }}>
+                  {m.canAward
+                    ? "Peut retenir un devis en votre nom sur les événements confiés ; vous êtes prévenu par e-mail de chaque décision."
+                    : "Propose les devis à retenir ; la décision revient à votre équipe."}
+                </span>
               </section>
             ))}
             {mandates.length > 0 && <p className="hint">Mettre fin au mandat retire aussitôt à l&apos;équipe de l&apos;agence l&apos;accès aux événements qui lui étaient confiés.</p>}

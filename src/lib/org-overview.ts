@@ -11,6 +11,7 @@ import { billingBlocked } from "@/lib/billing";
 import { pointedPastEvents } from "@/lib/checkin";
 import { toDeclare } from "@/lib/indicators";
 import { subscribeHref } from "@/lib/billing-plans";
+import { activeMandate } from "@/lib/mandates";
 
 
 const DAY = 864e5;
@@ -44,6 +45,9 @@ export const orgOverview = cache(async (orgId: string) => {
   const evScope = eventScope(user, roles);
   const now = new Date();
   const base = `/organisations/${orgId}`;
+  // Agence mandatée : seulement les demandes de devis des événements qui lui sont confiés.
+  const rfqScope = Object.keys(evScope).length ? { event: evScope } : {};
+  const ownOrgs = user.memberships.filter((m) => m.organization.kind === "PRESTATAIRE").map((m) => m.organizationId);
 
   const [projects, events, calls, undeclared, reviewQueue, rfqs, waitingQuotes] = await Promise.all([
     can.view ? db.project.findMany({ where: { organizationId: orgId }, include: { experts: true }, orderBy: { updatedAt: "desc" } }) : Promise.resolve([]),
@@ -59,8 +63,8 @@ export const orgOverview = cache(async (orgId: string) => {
     can.review
       ? db.materialVersion.findMany({ where: { status: "submitted", material: { project: { organizationId: orgId } } }, include: { material: { include: { project: { select: { id: true, title: true } } } } } })
       : Promise.resolve([]),
-    can.organizer
-      ? db.rfq.findMany({ where: { organizationId: orgId, status: { in: ["draft", "sent"] } }, include: { event: { select: { title: true } }, _count: { select: { quotes: true, suppliers: true } } } })
+    can.events
+      ? db.rfq.findMany({ where: { organizationId: orgId, status: { in: ["draft", "sent"] }, ...rfqScope }, include: { event: { select: { title: true } }, _count: { select: { quotes: true, suppliers: true } } } })
       : Promise.resolve([]),
     org.kind === "PRESTATAIRE"
       ? db.rfqSupplier.findMany({
@@ -118,10 +122,13 @@ export const orgOverview = cache(async (orgId: string) => {
       if (needsOnlineLink(e, now))
         todos.push({ href: `${base}/evenements/${e.id}#modifier`, title: `Ajouter le lien de connexion : ${e.title}`, detail: `${formatDate(e.startsAt)} · ${e._count.registrations} inscrit${e._count.registrations > 1 ? "s" : ""}`, icon: "AlertTriangle", tone: "danger" });
   }
-  if (can.organizer) {
+  // Organisateurs, et agence mandatée pour les événements qui lui sont confiés.
+  if (can.events) {
     for (const r of rfqs) {
       const label = r.event?.title ?? "Demande de devis";
       if (r.status === "draft") todos.push({ href: `${base}/prestataires`, title: `Demande de devis à envoyer : ${label}`, icon: "Receipt" });
+      else if (r.proposedQuoteId && can.organizer)
+        todos.push({ href: `${base}/prestataires#rfq-${r.id}`, title: `Devis à retenir : ${label}`, detail: "Proposé par l'agence mandatée", icon: "Receipt", tone: "warn" });
       else if (r._count.quotes > 0)
         todos.push({ href: `${base}/prestataires`, title: `Devis à comparer : ${label}`, detail: `${r._count.quotes} devis reçu${r._count.quotes > 1 ? "s" : ""} sur ${r._count.suppliers} prestataire${r._count.suppliers > 1 ? "s" : ""}`, icon: "Receipt", tone: "warn" });
     }
@@ -134,9 +141,13 @@ export const orgOverview = cache(async (orgId: string) => {
 
   // Questions sur les demandes de devis restées sans réponse : la dernière parole revient à l'autre partie.
   const isSupplier = org.kind === "PRESTATAIRE";
-  if (isSupplier || can.organizer) {
+  if (isSupplier || can.events) {
     const msgs = await db.rfqMessage.findMany({
-      where: { rfq: { status: { in: ["sent", "awarded"] }, ...(isSupplier ? {} : { organizationId: orgId }) }, ...(isSupplier ? { supplierId: orgId } : {}) },
+      where: {
+        rfq: { status: { in: ["sent", "awarded"] }, ...(isSupplier ? {} : { organizationId: orgId, ...rfqScope }) },
+        // Une agence ne se répond pas à elle-même : ses propres fils de prestataire sont dans son espace.
+        ...(isSupplier ? { supplierId: orgId } : ownOrgs.length ? { supplierId: { notIn: ownOrgs } } : {}),
+      },
       include: { supplier: { select: { name: true } }, rfq: { select: { id: true, organization: { select: { name: true } }, event: { select: { title: true } } } } },
       orderBy: { createdAt: "desc" },
       take: 200,
@@ -150,6 +161,31 @@ export const orgOverview = cache(async (orgId: string) => {
         todos.push({ href: `${base}/devis`, title: `Message de ${m.rfq.organization.name}`, detail: m.rfq.event?.title ?? "Demande de devis", icon: "MessageSquare", tone: "warn" });
       if (!isSupplier && m.fromSupplier)
         todos.push({ href: `${base}/prestataires#rfq-${m.rfqId}`, title: `Question de ${m.supplier.name}`, detail: m.rfq.event?.title ?? "Demande de devis", icon: "MessageSquare", tone: "warn" });
+    }
+  }
+
+  // Agence : les devis et questions des événements que ses clients lui confient (mandat actif), sans ses propres fils.
+  if (isSupplier) {
+    const confided = await db.rfq.findMany({
+      where: { status: "sent", event: { agencyId: orgId }, organization: { mandatesGiven: { some: { agencyId: orgId, ...activeMandate(now) } } } },
+      include: {
+        organization: { select: { name: true } },
+        event: { select: { title: true } },
+        _count: { select: { quotes: { where: { supplierId: { not: orgId } } } } },
+        messages: { where: { supplierId: { not: orgId } }, orderBy: { createdAt: "desc" }, select: { supplierId: true, fromSupplier: true, supplier: { select: { name: true } } } },
+      },
+    });
+    for (const r of confided) {
+      const href = `/organisations/${r.organizationId}/prestataires#rfq-${r.id}`;
+      const label = r.event?.title ?? "Demande de devis";
+      if (r._count.quotes > 0 && !r.proposedQuoteId)
+        todos.push({ href, title: `Devis à comparer : ${label}`, detail: `${r.organization.name} · ${r._count.quotes} devis reçu${r._count.quotes > 1 ? "s" : ""}`, icon: "Receipt", tone: "warn" });
+      const seen = new Set<string>();
+      for (const m of r.messages) {
+        if (seen.has(m.supplierId)) continue;
+        seen.add(m.supplierId);
+        if (m.fromSupplier) todos.push({ href, title: `Question de ${m.supplier.name}`, detail: `${label} · ${r.organization.name}`, icon: "MessageSquare", tone: "warn" });
+      }
     }
   }
 

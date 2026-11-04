@@ -4,7 +4,9 @@ import { db } from "@/lib/db";
 import { sendMail, type Mail } from "@/lib/mail";
 import { platformAdminEmails } from "@/lib/platform";
 import { drPrefix } from "@/lib/professions";
-import { COMPLIANCE_ROLES, EVENT_ORGANIZER_ROLES, FORMAT_LABEL, type EventChange } from "@/lib/events";
+import { COMPLIANCE_ROLES, EVENT_ORGANIZER_ROLES, FORMAT_LABEL, formatEUR, type EventChange } from "@/lib/events";
+import { de } from "@/lib/elision";
+import { withVat } from "@/lib/quotes";
 import { fmtEur, isLocale, makeT, type Locale, type T } from "@/lib/i18n";
 import { collabType, PROJECT_ROLES, SOURCING_ROLES, STATUS_LABEL } from "@/lib/projects";
 import { orderStats } from "@/lib/services";
@@ -292,17 +294,18 @@ export function notifyRfqSent(rfqId: string) {
   });
 }
 
-/** Devis reçu : prévient l'auteur de la demande (ou les organisateurs). */
+/** Devis reçu : prévient les interlocuteurs de la demande (auteur, agence de l'événement, ou organisateurs). */
 export function notifyQuote(rfqId: string, supplierId: string, revised = false) {
   later(async () => {
-    const [r, supplier] = await Promise.all([db.rfq.findUnique({ where: { id: rfqId } }), db.organization.findUnique({ where: { id: supplierId }, select: { name: true } })]);
+    const [r, supplier] = await Promise.all([
+      db.rfq.findUnique({ where: { id: rfqId }, include: { event: { select: { organizationId: true, agencyId: true } } } }),
+      db.organization.findUnique({ where: { id: supplierId }, select: { name: true } }),
+    ]);
     if (!r || !supplier) return;
-    const team = await members(r.organizationId, EVENT_ORGANIZER_ROLES);
-    const creator = team.find((u) => u.id === r.createdById);
-    await send(creator ? [creator] : team, {
-      subject: revised ? `Devis révisé par ${supplier.name}` : `Devis reçu de ${supplier.name}`,
+    await send(await rfqContacts(r, supplierId), {
+      subject: revised ? `Devis révisé par ${supplier.name}` : `Devis reçu ${de(supplier.name)}`,
       text: revised ? `Bonjour,\n\n${supplier.name} a révisé son devis.` : `Bonjour,\n\n${supplier.name} a répondu à votre demande de devis.`,
-      cta: { label: "Comparer les devis", href: `/organisations/${r.organizationId}/prestataires` },
+      cta: { label: "Comparer les devis", href: `/organisations/${r.organizationId}/prestataires#rfq-${r.id}` },
     });
   });
 }
@@ -310,6 +313,31 @@ export function notifyQuote(rfqId: string, supplierId: string, revised = false) 
 async function supplierTeam(supplierId: string) {
   const ms = await db.membership.findMany({ where: { organizationId: supplierId }, include: { user: { select: userSelect } } });
   return ms.map((m) => m.user);
+}
+
+/** Agence à qui l'événement est confié, sous mandat actif : son équipe et son droit de retenir les devis. */
+async function eventAgency(event: { organizationId: string; agencyId: string | null } | null) {
+  if (!event?.agencyId) return null;
+  const mandate = await db.mandate.findFirst({
+    where: { mandatorId: event.organizationId, agencyId: event.agencyId, OR: [{ endsAt: null }, { endsAt: { gt: new Date() } }] },
+    include: { agency: { select: { name: true } } },
+  });
+  if (!mandate) return null;
+  return { id: event.agencyId, name: mandate.agency.name, canAward: mandate.canAward, team: await supplierTeam(event.agencyId) };
+}
+
+/**
+ * Interlocuteurs d'une demande de devis côté client. L'appartenance d'une agence vient de son mandat (pas d'une
+ * adhésion) : son équipe est prévenue pour les événements qui lui sont confiés, sauf quand c'est elle qui répond.
+ * Côté organisation : l'auteur de la demande s'il en est membre ; sinon les organisateurs, sauf si l'agence qui l'a
+ * créée peut retenir les devis (sans ce droit, ce sont eux qui décident).
+ */
+async function rfqContacts(rfq: { organizationId: string; createdById: string | null; event: { organizationId: string; agencyId: string | null } | null }, supplierId?: string) {
+  const [organizers, agency] = await Promise.all([members(rfq.organizationId, EVENT_ORGANIZER_ROLES), eventAgency(rfq.event)]);
+  const agencyTeam = agency && agency.id !== supplierId ? agency.team : [];
+  const internal = organizers.find((u) => u.id === rfq.createdById);
+  const byAgency = !!agency?.team.some((u) => u.id === rfq.createdById);
+  return [...agencyTeam, ...(internal ? [internal] : byAgency && agency!.canAward ? [] : organizers)];
 }
 
 /** Événement confié à une agence : son équipe est prévenue et y accède aussitôt. */
@@ -325,10 +353,47 @@ export function notifyEventConfided(eventId: string) {
   });
 }
 
-/** Décision sur une demande de devis : le prestataire retenu et les autres sont prévenus. */
-export function notifyAward(rfqId: string) {
+/** Événement retiré à une agence (confié à une autre, ou repris par l'organisation) : l'agence est prévenue. */
+export function notifyEventWithdrawn(eventId: string, agencyId: string) {
   later(async () => {
-    const r = await db.rfq.findUnique({ where: { id: rfqId }, include: { organization: { select: { name: true } }, event: { select: { title: true } }, quotes: true } });
+    const e = await db.event.findUnique({ where: { id: eventId }, include: { organization: { select: { name: true } }, agency: { select: { name: true } } } });
+    if (!e || e.agencyId === agencyId) return;
+    await send(await supplierTeam(agencyId), {
+      subject: `« ${e.title} » n'est plus confié à votre agence`,
+      text: `Bonjour,\n\n${e.organization.name} ${e.agencyId ? "a confié l'événement à une autre agence" : "reprend l'organisation de l'événement"} « ${e.title} ». Votre équipe n'y a plus accès ; vos devis et échanges en tant que prestataire restent dans vos demandes de devis.`,
+      cta: { label: "Voir mes demandes de devis", href: `/organisations/${agencyId}/devis?onglet=toutes` },
+    });
+  });
+}
+
+/** Fin de mandat : l'agence perd l'accès aux événements que l'organisation lui avait confiés. */
+export function notifyMandateEnded(mandateId: string, eventTitles: string[]) {
+  later(async () => {
+    const m = await db.mandate.findUnique({ where: { id: mandateId }, include: { mandator: { select: { name: true } } } });
+    if (!m) return;
+    const list = eventTitles.length ? `\n\nÉvénements concernés : ${eventTitles.map((x) => `« ${x} »`).join(", ")}.` : "";
+    await send(await supplierTeam(m.agencyId), {
+      subject: `Fin du mandat ${de(m.mandator.name)}`,
+      text: `Bonjour,\n\n${m.mandator.name} a mis fin au mandat de votre agence. Votre équipe n'accède plus à son espace ni aux événements qu'elle vous avait confiés.${list}`,
+      cta: { label: "Voir mes demandes de devis", href: `/organisations/${m.agencyId}/devis?onglet=toutes` },
+    });
+  });
+}
+
+/** Résumé d'un devis : prestataire, montants HT et TTC. */
+const quoteSummary = (q: { amountCents: number; vatBp: number; supplier: { name: string } }) =>
+  `${q.supplier.name} : ${formatEUR(q.amountCents)} HT (${formatEUR(withVat(q.amountCents, q.vatBp))} TTC)`;
+
+/**
+ * Décision sur une demande de devis : le prestataire retenu et les autres sont prévenus. Côté client, la décision
+ * prise par l'agence mandatée est annoncée aux organisateurs ; celle de l'organisation, à l'agence de l'événement.
+ */
+export function notifyAward(rfqId: string, actorId?: string) {
+  later(async () => {
+    const r = await db.rfq.findUnique({
+      where: { id: rfqId },
+      include: { organization: { select: { name: true } }, event: { select: { title: true, organizationId: true, agencyId: true } }, quotes: { include: { supplier: { select: { name: true } } } } },
+    });
     if (!r) return;
     const what = r.event ? `pour « ${r.event.title} »` : "";
     for (const q of r.quotes) {
@@ -341,6 +406,40 @@ export function notifyAward(rfqId: string) {
         cta: { label: "Voir la demande", href: `/organisations/${q.supplierId}/devis?onglet=toutes` },
       });
     }
+    const kept = r.quotes.find((q) => q.status === "retained");
+    const agency = await eventAgency(r.event);
+    if (!kept || !actorId || !agency) return;
+    const href = `/organisations/${r.organizationId}/prestataires#rfq-${r.id}`;
+    const others = r.quotes.length - 1;
+    const rest = others > 0 ? ` ${others} autre${others > 1 ? "s" : ""} devis ${others > 1 ? "sont écartés" : "est écarté"}.` : "";
+    if (agency.team.some((u) => u.id === actorId)) {
+      await send(await members(r.organizationId, EVENT_ORGANIZER_ROLES), {
+        subject: `${agency.name} a retenu un devis ${what}`.trim(),
+        text: `Bonjour,\n\n${agency.name}, agence mandatée, a retenu en votre nom le devis ${de(quoteSummary(kept))}.${rest}\n\nVous pouvez retirer ce droit à l'agence dans Prestataires › Agences mandatées.`,
+        cta: { label: "Voir la demande", href },
+      }, actorId);
+    } else if (agency.id !== kept.supplierId) {
+      await send(agency.team, {
+        subject: `${r.organization.name} a retenu un devis ${what}`.trim(),
+        text: `Bonjour,\n\n${r.organization.name} a retenu le devis ${de(quoteSummary(kept))}.${rest}`,
+        cta: { label: "Voir la demande", href },
+      }, actorId);
+    }
+  });
+}
+
+/** Devis proposé par l'agence mandatée (sans droit de retenir) : les organisateurs décident. */
+export function notifyQuoteProposed(rfqId: string, actorId: string) {
+  later(async () => {
+    const r = await db.rfq.findUnique({ where: { id: rfqId }, include: { event: { select: { title: true, organizationId: true, agencyId: true } }, quotes: { include: { supplier: { select: { name: true } } } } } });
+    const q = r?.quotes.find((x) => x.id === r.proposedQuoteId);
+    const agency = await eventAgency(r?.event ?? null);
+    if (!r || !q || !agency) return;
+    await send(await members(r.organizationId, EVENT_ORGANIZER_ROLES), {
+      subject: `Devis à retenir : ${agency.name} propose ${q.supplier.name}`,
+      text: `Bonjour,\n\n${agency.name}, agence mandatée${r.event ? ` pour « ${r.event.title} »` : ""}, vous propose de retenir le devis ${de(quoteSummary(q))}. La décision vous revient : retenez ce devis ou un autre depuis la demande.`,
+      cta: { label: "Décider", href: `/organisations/${r.organizationId}/prestataires#rfq-${r.id}` },
+    }, actorId);
   });
 }
 
@@ -364,21 +463,19 @@ export function notifyRfqCancelled(rfqId: string) {
 export function notifyRfqMessage(rfqId: string, supplierId: string, fromSupplier: boolean, authorId: string) {
   later(async () => {
     const [r, supplier] = await Promise.all([
-      db.rfq.findUnique({ where: { id: rfqId }, include: { organization: { select: { name: true } } } }),
+      db.rfq.findUnique({ where: { id: rfqId }, include: { organization: { select: { name: true } }, event: { select: { organizationId: true, agencyId: true } } } }),
       db.organization.findUnique({ where: { id: supplierId }, select: { name: true } }),
     ]);
     if (!r || !supplier) return;
     if (fromSupplier) {
-      const team = await members(r.organizationId, EVENT_ORGANIZER_ROLES);
-      const creator = team.find((u) => u.id === r.createdById);
-      await send(creator ? [creator] : team, {
-        subject: `Question de ${supplier.name} sur votre demande de devis`,
+      await send(await rfqContacts(r, supplierId), {
+        subject: `Question ${de(supplier.name)} sur votre demande de devis`,
         text: `Bonjour,\n\n${supplier.name} vous a écrit au sujet de votre demande de devis.`,
         cta: { label: "Répondre", href: `/organisations/${r.organizationId}/prestataires#rfq-${r.id}` },
       }, authorId);
     } else {
       await send(await supplierTeam(supplierId), {
-        subject: `Message de ${r.organization.name} sur une demande de devis`,
+        subject: `Message ${de(r.organization.name)} sur une demande de devis`,
         text: `Bonjour,\n\n${r.organization.name} vous a écrit au sujet de sa demande de devis.`,
         cta: { label: "Répondre", href: `/organisations/${supplierId}/devis` },
       }, authorId);

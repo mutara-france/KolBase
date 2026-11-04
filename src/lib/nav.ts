@@ -1,7 +1,7 @@
 import type { OrgRole } from "@/generated/prisma/client";
 import { COMPLIANCE_ROLES, EVENT_MANAGER_ROLES, EVENT_ORGANIZER_ROLES } from "@/lib/events";
 import { PROJECT_VIEW_ROLES, REVIEW_ROLES, SOURCING_ROLES } from "@/lib/projects";
-import { STATS_ROLES } from "@/lib/org-roles";
+import { isAgencyOnly, STATS_ROLES } from "@/lib/org-roles";
 
 /**
  * Navigation de l'espace connecté : cinq rubriques au plus par espace (praticien ou organisation),
@@ -71,7 +71,8 @@ export function orgMenuLinks(orgId: string, roles: OrgRole[], kind: string): She
     links.push({ href: `${base}/membres`, label: "Membres et réglages", icon: "Users" });
   if (roles.includes("ADMIN")) links.push({ href: `${base}/abonnement`, label: "Abonnement", icon: "Wallet" });
   if (!isSupplier && has(roles, ["ADMIN", "PROJETS", "CONFORMITE"])) links.push({ href: `${base}/integrations`, label: "Intégrations", icon: "Plug" });
-  if (!isSupplier) links.push({ href: `/structures/${orgId}`, label: "Voir notre page publique", icon: "ExternalLink" });
+  // Une agence mandatée agit pour l'organisation sans la représenter : pas de « notre » page publique.
+  if (!isSupplier && !isAgencyOnly(roles, kind)) links.push({ href: `/structures/${orgId}`, label: "Voir notre page publique", icon: "ExternalLink" });
   return links;
 }
 
