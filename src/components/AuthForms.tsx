@@ -8,9 +8,7 @@ import { COUNTRIES } from "@/lib/countries";
 import { useT } from "@/components/I18nProvider";
 import { ActionForm } from "@/components/ActionForm";
 import type { GateLink } from "@/lib/billing-plans";
-
-/** Lien entre connexion et création de compte : la page d'origine (`next`) suit. */
-const withNext = (path: string, next?: string) => (next ? `${path}?next=${encodeURIComponent(next)}` : path);
+import { authLink } from "@/lib/safe-redirect";
 
 /** Message d'un formulaire ; un refus peut porter le lien de la page qui lève le blocage (contrat, abonnement). */
 export function Notice({ state }: { state: (NonNullable<FormState> & { fix?: GateLink }) | undefined }) {
@@ -19,26 +17,31 @@ export function Notice({ state }: { state: (NonNullable<FormState> & { fix?: Gat
   return null;
 }
 
-export function SignInForm({ next }: { next?: string }) {
+/** Connexion ; la page d'origine (`next`) et le profil « organisation » suivent vers les autres pages d'authentification. */
+export function SignInForm({ next, organisation = false }: { next?: string; organisation?: boolean }) {
   const [state, action, pending] = useActionState(signIn, undefined);
   const t = useT();
+  // ActionForm : l'adresse saisie reste après un mauvais mot de passe.
   return (
-    <form action={action} className="card form">
+    <ActionForm action={action} className="card form">
       <h1>{t("Connexion")}</h1>
       <Notice state={state} />
       <input type="hidden" name="next" value={next ?? ""} />
       <label>{t("E-mail")}<input name="email" type="email" autoComplete="email" required /></label>
       <label>{t("Mot de passe")}<input name="password" type="password" autoComplete="current-password" required /></label>
       <button className="btn" disabled={pending}>{pending ? t("Connexion…") : t("Se connecter")}</button>
-      <p className="muted"><Link href="/mot-de-passe-oublie">{t("Mot de passe oublié ?")}</Link></p>
-      <p className="muted">{t("Pas encore de compte ?")} <Link href={withNext("/inscription", next)}>{t("Créer un compte")}</Link></p>
-    </form>
+      <p className="muted"><Link href={authLink("/mot-de-passe-oublie", next)}>{t("Mot de passe oublié ?")}</Link></p>
+      <p className="muted">{t("Pas encore de compte ?")} <Link href={authLink("/inscription", next, organisation ? "organisation" : null)}>{t("Créer un compte")}</Link></p>
+    </ActionForm>
   );
 }
 
 
-/** Création de compte ; `organisation` : profil « Je représente une organisation » présélectionné (sans pays d'exercice). */
-export function SignUpForm({ next, organisation = false }: { next?: string; organisation?: boolean }) {
+/**
+ * Création de compte ; `organisation` : profil « Je représente une organisation » présélectionné (sans pays d'exercice).
+ * `email` : adresse invitée, préremplie.
+ */
+export function SignUpForm({ next, organisation = false, email }: { next?: string; organisation?: boolean; email?: string }) {
   const [state, action, pending] = useActionState(signUp, undefined);
   const [profession, setProfession] = useState(organisation ? "" : "Chirurgien-dentiste");
   const t = useT();
@@ -47,7 +50,7 @@ export function SignUpForm({ next, organisation = false }: { next?: string; orga
       <h1>{organisation ? t("Créer le compte de votre organisation") : t("Créer un compte")}</h1>
       <p className="muted">
         {organisation
-          ? t("Commencez par votre compte personnel : vous créerez ensuite l'espace de votre organisation, ou rejoindrez celle qui vous invite. Gratuit jusqu'à votre première action qui engage un tiers.")
+          ? t("Commencez par votre compte personnel : vous créerez ensuite l'espace de votre organisation, ou rejoindrez celle qui vous invite. Gratuit jusqu'à votre première action qui engage un tiers (prestataire : jusqu'à votre premier devis retenu).")
           : t("Un seul compte pour vous inscrire aux événements et, si vous le souhaitez, vous référencer comme expert.")}
       </p>
       <Notice state={state} />
@@ -56,7 +59,7 @@ export function SignUpForm({ next, organisation = false }: { next?: string; orga
         <label>{t("Prénom")}<input name="firstName" maxLength={120} autoComplete="given-name" required /></label>
         <label>{t("Nom")}<input name="lastName" maxLength={120} autoComplete="family-name" required /></label>
       </div>
-      <label>{t("E-mail professionnel")}<input name="email" type="email" autoComplete="email" required /></label>
+      <label>{t("E-mail professionnel")}<input name="email" type="email" autoComplete="email" defaultValue={email} required /></label>
       <label>{t("Profession")}
         <select name="profession" value={profession} onChange={(e) => setProfession(e.target.value)}>
           {PROFESSIONS.map((p) => <option key={p} value={p}>{t(p)}</option>)}
@@ -74,15 +77,17 @@ export function SignUpForm({ next, organisation = false }: { next?: string; orga
       <label>{t("Mot de passe")}<input name="password" type="password" autoComplete="new-password" minLength={10} required />
         <span className="hint">{t("10 caractères minimum, avec au moins une lettre et un chiffre.")}</span>
       </label>
-      <label className="check"><input type="checkbox" name="newsletter" value="1" /> {t("Recevoir la lettre d'information de KolBase : événements scientifiques et nouveautés (deux envois par mois au plus, désinscription en un clic)")}</label>
+      {/* La lettre d'information est réservée aux praticiens. */}
+      {profession !== "" && <label className="check"><input type="checkbox" name="newsletter" value="1" /> {t("Recevoir la lettre d'information de KolBase : événements scientifiques et nouveautés (deux envois par mois au plus, désinscription en un clic)")}</label>}
       <label className="check"><input type="checkbox" name="cgu" required /> {t("J'accepte les")} <Link href="/cgu" target="_blank">{t("conditions d'utilisation")}</Link> {t("et la")} <Link href="/confidentialite" target="_blank">{t("politique de confidentialité")}</Link>.</label>
       <button className="btn" disabled={pending}>{pending ? t("Création…") : t("Créer mon compte")}</button>
-      <p className="muted">{t("Déjà inscrit ?")} <Link href={withNext("/connexion", next)}>{t("Se connecter")}</Link></p>
+      <p className="muted">{t("Déjà inscrit ?")} <Link href={authLink("/connexion", next, profession === "" ? "organisation" : null)}>{t("Se connecter")}</Link></p>
     </ActionForm>
   );
 }
 
-export function ForgotPasswordForm() {
+/** Mot de passe oublié : la page d'origine (`next`) est gardée par le lien envoyé. */
+export function ForgotPasswordForm({ next }: { next?: string }) {
   const [state, action, pending] = useActionState(requestPasswordReset, undefined);
   const t = useT();
   return (
@@ -90,13 +95,14 @@ export function ForgotPasswordForm() {
       <h1>{t("Mot de passe oublié")}</h1>
       <p className="muted">{t("Indiquez l'adresse de votre compte : vous recevrez un lien pour choisir un nouveau mot de passe, valable une heure.")}</p>
       <Notice state={state} />
+      <input type="hidden" name="next" value={next ?? ""} />
       {!state?.ok && (
         <>
           <label>{t("E-mail")}<input name="email" type="email" autoComplete="email" required /></label>
           <button className="btn" disabled={pending}>{pending ? t("Envoi…") : t("Recevoir le lien")}</button>
         </>
       )}
-      <p className="muted"><Link href="/connexion">{t("Retour à la connexion")}</Link></p>
+      <p className="muted"><Link href={authLink("/connexion", next)}>{t("Retour à la connexion")}</Link></p>
     </form>
   );
 }

@@ -2,7 +2,7 @@ import type { ElementType } from "react";
 import Link from "next/link";
 import { BadgeCheck, Calendar, ChevronRight, MapPin, Ticket, Video } from "lucide-react";
 import { Avatar } from "@/components/Avatar";
-import { eventTypeLabel, TZ } from "@/lib/events";
+import { eventTypeLabel, formatDuration, TZ } from "@/lib/events";
 import { collabType } from "@/lib/projects";
 import { fmtDate, fmtEur } from "@/lib/i18n";
 import { getT } from "@/lib/i18n/server";
@@ -43,7 +43,7 @@ export type EventCardData = {
 const FORMAT = { PRESENTIEL: "présentiel", DISTANCIEL: "visioconférence", HYBRIDE: "hybride" } as const;
 export async function EventCard({ ev, compact = false }: { ev: EventCardData; compact?: boolean }) {
   const { t, locale } = await getT();
-  const dur = (m: number | null) => (m == null ? "" : m >= 60 ? ` · ${t("{h} h{m}", { h: Math.floor(m / 60), m: m % 60 ? String(m % 60).padStart(2, "0") : "" })}` : ` · ${m} min`);
+  const dur = (m: number | null) => (m == null ? "" : ` · ${formatDuration(m, locale)}`);
   const full = ev.capacity != null && ev.registrations >= ev.capacity;
   // Parties numériques seulement (jour, année, heure 24 h) : identiques en français et en anglais.
   const parts = new Intl.DateTimeFormat("fr-FR", { timeZone: TZ, day: "2-digit", month: "numeric", year: "numeric", hour: "2-digit", minute: "2-digit" }).formatToParts(ev.startsAt);
@@ -146,7 +146,7 @@ export async function OrgCard({ o }: { o: OrgCardData }) {
   );
 }
 
-export type CallCardData = { id: string; title: string; specialty: string | null; typeId: string; poster: string; posterLogo?: string | null; deadline: Date | null; description: string | null; budgetMinCents: number | null; budgetMaxCents: number | null; open: boolean; event?: { title: string; startsAt: Date } | null };
+export type CallCardData = { id: string; title: string; specialty: string | null; typeId: string; poster: string; posterLogo?: string | null; deadline: Date | null; description: string | null; budgetMinCents: number | null; budgetMaxCents: number | null; open: boolean; /** Toutes les places pourvues. */ full?: boolean; event?: { title: string; startsAt: Date } | null };
 export async function CallCard({ c, action }: { c: CallCardData; action?: React.ReactNode }) {
   const { t, locale } = await getT();
   const date = c.deadline ? fmtDate(locale, c.deadline, { day: "2-digit", month: "2-digit", year: "numeric" }) : undefined;
@@ -161,7 +161,7 @@ export async function CallCard({ c, action }: { c: CallCardData; action?: React.
           <div className="ink" style={{ fontWeight: 600 }}>{c.poster}</div>
           <div className="text-xs">{[c.specialty && t(c.specialty), t(collabType(c.typeId)?.label ?? c.typeId), c.event && t("intervention le {date}", { date: fmtDate(locale, c.event.startsAt) })].filter(Boolean).join(" · ")}</div>
         </div>
-        {!c.open && <span className="pill st-neutral">{t("Clôturé")}</span>}
+        {!c.open ? <span className="pill st-neutral">{t("Clôturé")}</span> : c.full && <span className="pill bad">{t("Complet")}</span>}
       </div>
       <h3 className="card-title" style={{ fontSize: 21 }}>{c.title}</h3>
       {c.description && <p className="text-sm mb-3">{c.description}</p>}

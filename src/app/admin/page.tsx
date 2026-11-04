@@ -20,11 +20,13 @@ import { stripeEnabled } from "@/lib/billing";
 import { setExemption } from "@/lib/billing-actions";
 import { saveServiceOffer, updateServiceOrder } from "@/lib/service-actions";
 import { featuredUntil, newsletterAudienceCount, newsletterSendsThisMonth, ORDER_STATUS, orderStats, trackedPath } from "@/lib/services";
-import { groupOrders, packStatus } from "@/lib/service-pack";
+import { groupOrders, packItemStatus, packStatus } from "@/lib/service-pack";
 import { NEWSLETTER_MONTHLY_MAX, parisMonthLabel } from "@/lib/newsletter";
 import { reportLine } from "@/lib/service-report";
 import { country, licenseRule, practicesInFrance, registryLink } from "@/lib/countries";
 import { ConfirmButton } from "@/components/ConfirmButton";
+import { ExemptionOffer } from "@/components/AdminForms";
+import { adminTwoFactorRequired } from "@/lib/two-factor";
 
 export const metadata = { title: "Administration — KolBase" };
 export const dynamic = "force-dynamic";
@@ -148,7 +150,7 @@ export default async function Page({ searchParams }: { searchParams: Promise<{ o
                         <form action={reviewOrganization} className="inline wrap">
                           <input type="hidden" name="orgId" value={o.id} />
                           <button className="btn small" name="decision" value="reactivate">Réactiver</button>
-                          <span className="hint">Page publique, événements et appels réapparaissent tels quels ; les administrateurs sont prévenus.</span>
+                          <span className="hint">Page publique, événements et appels réapparaissent tels quels ; la facturation de l&apos;abonnement reprend (sauf gratuité en cours) ; les administrateurs sont prévenus.</span>
                         </form>
                       )}
                       {o.verification !== "VERIFIED" && (
@@ -156,11 +158,13 @@ export default async function Page({ searchParams }: { searchParams: Promise<{ o
                           {o.verification !== "SUSPENDED" && (
                             <form action={reviewOrganization} className="inline wrap">
                               <input type="hidden" name="orgId" value={o.id} />
-                              <input name="note" placeholder="Note (facultatif)" aria-label="Note de validation (facultatif)" />
+                              <input name="note" placeholder="Note (facultatif, envoyée à l'organisation)" aria-label="Note de validation (facultatif, envoyée telle quelle à l'organisation)" />
                               <button className="btn small" name="decision" value="verify">Valider</button>
+                              <span className="hint">La note figure telle quelle dans l&apos;e-mail de validation envoyé aux administrateurs de l&apos;organisation.</span>
                             </form>
                           )}
-                          {o.verification !== "REJECTED" && (
+                          {/* Suspendue : pas de refus (il fermerait ses appels) ; la réactiver ou la laisser suspendue. */}
+                          {o.verification !== "REJECTED" && o.verification !== "SUSPENDED" && (
                             <form action={reviewOrganization} className="inline wrap">
                               <input type="hidden" name="orgId" value={o.id} />
                               <input name="note" placeholder="Motif du refus (obligatoire)" aria-label="Motif du refus" required style={{ minWidth: 260 }} />
@@ -173,7 +177,7 @@ export default async function Page({ searchParams }: { searchParams: Promise<{ o
                         <form action={reviewOrganization} className="inline wrap">
                           <input type="hidden" name="orgId" value={o.id} />
                           <input name="note" placeholder="Motif de la suspension (obligatoire)" aria-label="Motif de la suspension" required />
-                          <ConfirmButton className="btn ghost small" name="decision" value="suspend" confirm={`suspendre ${o.name}`} summary={<>Page publique, événements et appels à candidatures masqués, aucune nouvelle action ; rien n&apos;est supprimé et « Réactiver » rétablit tout. Les administrateurs sont prévenus par e-mail, avec le motif.</>}>
+                          <ConfirmButton className="btn ghost small" name="decision" value="suspend" confirm={`suspendre ${o.name}`} summary={<>Page publique, événements et appels à candidatures masqués, aucune nouvelle action ; rien n&apos;est supprimé et « Réactiver » rétablit tout. La facturation de l&apos;abonnement est mise en pause pendant la suspension. Les administrateurs sont prévenus par e-mail, avec le motif.</>}>
                             Suspendre
                           </ConfirmButton>
                         </form>
@@ -289,12 +293,12 @@ async function ServicesAdmin() {
   const Group = ({ g, unfold }: { g: (typeof groups)[number]; unfold: boolean }) => {
     if (!g.pack) return <Row o={g.orders[0]} />;
     const first = g.orders[0];
-    const ps = packStatus(g.orders.map((o) => (featuredUntil(o, now) ? "en_cours" : o.status)));
+    const ps = packStatus(g.orders.map((o) => packItemStatus(o, now)));
     return (
       <li className="card stack-sm service-pack-group">
         <div>
           <strong>{g.pack} — {formatEUR(g.orders.reduce((n, o) => n + o.priceCents, 0))} HT</strong> ·{" "}
-          <span className={`pill ${ps.status === "en_cours" ? "electric" : ORDER_STATUS[ps.status]?.tone ?? ""}`}>{ps.status === "en_cours" ? `En cours (${ps.done} sur ${ps.total} réalisé${ps.done > 1 ? "s" : ""})` : ORDER_STATUS[ps.status]?.label}</span>
+          <span className={`pill ${ps.status === "en_cours" ? "electric" : ORDER_STATUS[ps.status]?.tone ?? ""}`}>{ps.status === "en_cours" ? (ps.done === ps.total ? "Réalisé · mise à la une en cours" : `En cours (${ps.done} sur ${ps.total} réalisé${ps.done > 1 ? "s" : ""})`) : ORDER_STATUS[ps.status]?.label}</span>
           <div className="text-sm muted">{first.organization.name} · « <Link href={`/evenements/${first.event.id}`}>{first.event.title}</Link> » du {formatDate(first.event.startsAt)} · commandé le {formatDate(first.createdAt)}</div>
           {first.brief && <p className="text-sm">« {first.brief} »</p>}
         </div>
@@ -340,15 +344,16 @@ async function ServicesAdmin() {
       <section className="stack-sm">
         <div className="actions spread">
           <div>
-            <h2>Commandes à traiter ({open.length})</h2>
+            {/* Une commande = un service, ou un pack (ses services regroupés) : le compteur suit la liste affichée. */}
+            <h2>Commandes à traiter ({openGroups.length})</h2>
             <p className="text-sm muted">{realized.length} service{realized.length > 1 ? "s" : ""} réalisé{realized.length > 1 ? "s" : ""} pour {formatEUR(realized.reduce((n, o) => n + o.priceCents, 0))} HT.</p>
           </div>
           <Link className="btn ghost small" href="/admin/services/lettre">Lettre d&apos;information libre ({audience} praticien{audience > 1 ? "s" : ""} abonné{audience > 1 ? "s" : ""})</Link>
         </div>
-        {open.length === 0 ? <p className="muted">Aucune commande en attente.</p> : <ul className="plain stack-sm">{openGroups.map((g) => <Group key={g.orders[0].id} g={g} unfold />)}</ul>}
+        {openGroups.length === 0 ? <p className="muted">Aucune commande en attente.</p> : <ul className="plain stack-sm">{openGroups.map((g) => <Group key={g.orders[0].id} g={g} unfold />)}</ul>}
         {toInvoice.length > 0 && <p className="notice warn">{toInvoice.length} service{toInvoice.length > 1 ? "s" : ""} réalisé{toInvoice.length > 1 ? "s" : ""} à facturer hors Stripe.</p>}
-        {done.length > 0 && (
-          <details className="older"><summary>Commandes traitées ({done.length})</summary><ul className="plain stack-sm">{doneGroups.map((g) => <Group key={g.orders[0].id} g={g} unfold={false} />)}</ul></details>
+        {doneGroups.length > 0 && (
+          <details className="older"><summary>Commandes traitées ({doneGroups.length})</summary><ul className="plain stack-sm">{doneGroups.map((g) => <Group key={g.orders[0].id} g={g} unfold={false} />)}</ul></details>
         )}
       </section>
       <section className="card stack-sm" id="lettre">
@@ -416,8 +421,10 @@ async function ServicesAdmin() {
 }
 
 async function BillingAdmin() {
-  const orgs = await db.organization.findMany({ where: { verification: { in: ["VERIFIED", "SUSPENDED"] } }, select: { id: true, name: true, kind: true, subscription: true }, orderBy: { name: "asc" } });
+  const orgs = await db.organization.findMany({ where: { verification: { in: ["VERIFIED", "SUSPENDED"] } }, select: { id: true, name: true, kind: true, verification: true, subscription: true }, orderBy: { name: "asc" } });
   const now = new Date();
+  // Gratuité : aujourd'hui au plus tôt (date de Paris).
+  const today = now.toLocaleDateString("sv-SE", { timeZone: "Europe/Paris" });
   const paying = orgs.filter((o) => ["essai", "active", "impayee"].includes(o.subscription?.status ?? "") && !exempt(o.subscription, now));
   // Revenu mensuel récurrent : une formule annuelle compte pour un douzième.
   const mrr = paying.filter((o) => o.subscription!.status !== "essai").reduce((s, o) => s + monthlyCents(planFor(o.kind), asInterval(o.subscription!.interval)), 0);
@@ -428,7 +435,8 @@ async function BillingAdmin() {
         {stripeEnabled() ? "Facturation active (Stripe)." : "Facturation inactive : STRIPE_SECRET_KEY non défini, toutes les fonctions sont accessibles."}{" "}
         {paying.length} abonnement{paying.length > 1 ? "s" : ""} en cours, revenu mensuel hors essais : {formatEUR(mrr)} HT.
       </p>
-      <table className="table" tabIndex={0}>
+      <p className="hint scroll-hint">Tableau plus large que l&apos;écran : faites-le défiler vers la droite pour la colonne Gratuité.</p>
+      <table className="table" tabIndex={0} aria-label="Abonnements des organisations">
         <thead><tr><th>Organisation</th><th>Offre</th><th>Statut</th><th>Échéance</th><th>Gratuité</th></tr></thead>
         <tbody>
           {orgs.map((o) => {
@@ -440,20 +448,18 @@ async function BillingAdmin() {
                 <td><span className={`pill ${["active", "essai", "offerte"].includes(st) ? "ok" : st === "impayee" ? "wait" : ""}`}>{STATUS_LABEL[st]}</span>{o.subscription?.triggeredAt ? <div className="text-xs muted">{o.subscription.triggeredBy}</div> : null}</td>
                 <td>{o.subscription?.trialEndsAt && o.subscription.status === "essai" ? `essai → ${formatDate(o.subscription.trialEndsAt)}` : o.subscription?.currentPeriodEnd ? formatDate(o.subscription.currentPeriodEnd) : "—"}</td>
                 <td>
-                  <form action={setExemption} className="inline wrap">
-                    <input type="hidden" name="orgId" value={o.id} />
-                    {exempt(o.subscription, now) ? (
-                      <>
-                        <span className="text-xs">jusqu&apos;au {formatDate(o.subscription!.exemptUntil!)}{o.subscription!.exemptNote ? ` · ${o.subscription!.exemptNote}` : ""}</span>
-                        <input type="hidden" name="remove" value="1" />
-                        <ConfirmButton className="link" confirm="retirer la gratuité" summary={<>{o.name} est prévenue par e-mail ; {o.subscription?.stripeSubscriptionId && ["active", "essai", "impayee"].includes(o.subscription.status) ? "la facturation de son abonnement Stripe reprend." : "pour continuer à agir, un administrateur devra activer l'abonnement."}</>}>
-                          retirer
-                        </ConfirmButton>
-                      </>
-                    ) : (
-                      <><input type="date" name="until" aria-label="Offert jusqu'au" required /><input name="note" placeholder="Motif" aria-label="Motif" /><button className="link">offrir</button></>
-                    )}
-                  </form>
+                  {exempt(o.subscription, now) ? (
+                    <form action={setExemption} className="inline wrap">
+                      <input type="hidden" name="orgId" value={o.id} />
+                      <span className="text-xs">jusqu&apos;au {formatDate(o.subscription!.exemptUntil!)}{o.subscription!.exemptNote ? ` · ${o.subscription!.exemptNote}` : ""}</span>
+                      <input type="hidden" name="remove" value="1" />
+                      <ConfirmButton className="link" confirm="retirer la gratuité" summary={<>{o.name} est prévenue par e-mail ; {o.subscription?.stripeSubscriptionId && ["active", "essai", "impayee"].includes(o.subscription.status) ? (o.verification === "SUSPENDED" ? "la facturation de son abonnement Stripe reste en pause pendant la suspension." : "la facturation de son abonnement Stripe reprend.") : "pour continuer à agir, un administrateur devra activer l'abonnement."}</>}>
+                        retirer
+                      </ConfirmButton>
+                    </form>
+                  ) : (
+                    <ExemptionOffer orgId={o.id} min={today} />
+                  )}
                 </td>
               </tr>
             );
@@ -519,7 +525,13 @@ function LaunchChecklist({ demoOrgs, admins }: { demoOrgs: number; admins: { ema
     { ok: storageEnabled(), label: "Stockage des documents (S3_*)", detail: storageEnabled() ? `Compartiment : ${process.env.S3_BUCKET}` : "Non configuré : le dépôt de documents est désactivé." },
     { ok: esign && !!webhookSecret() && !signatureSandbox(), optional: !esign, label: "Signature électronique (YOUSIGN_*, facultatif)", detail: esignDetail },
     { ok: !!process.env.CRON_SECRET, label: "Tâches planifiées (CRON_SECRET, service cron kolbase-taches)", detail: process.env.CRON_SECRET ? "Configurées : rappels de la veille, attestations et questionnaires, purge des sessions expirées (toutes les heures)." : "Non configurées : synchroniser le Blueprint Render (service cron) ; ni rappels ni envois après les événements." },
-    { ok: stripeEnabled() && !!process.env.STRIPE_WEBHOOK_SECRET, label: "Facturation (STRIPE_SECRET_KEY, STRIPE_WEBHOOK_SECRET)", detail: stripeEnabled() ? (process.env.STRIPE_WEBHOOK_SECRET ? `Active${process.env.STRIPE_TAX_RATE ? ", TVA appliquée" : " (STRIPE_TAX_RATE à définir pour la TVA)"}. Notifications : <APP_URL>/api/stripe/webhook.` : "Clé définie mais secret des notifications manquant : déclarer <APP_URL>/api/stripe/webhook chez Stripe.") : "Inactive : abonnements non facturés, toutes les fonctions accessibles." },
+    // Facturation : en alerte tant que la TVA (STRIPE_TAX_RATE) n'est pas appliquée aux abonnements.
+    { ok: stripeEnabled() && !!process.env.STRIPE_WEBHOOK_SECRET && !!process.env.STRIPE_TAX_RATE, label: "Facturation (STRIPE_SECRET_KEY, STRIPE_WEBHOOK_SECRET, STRIPE_TAX_RATE)", detail: stripeEnabled() ? (process.env.STRIPE_WEBHOOK_SECRET ? `Active${process.env.STRIPE_TAX_RATE ? ", TVA appliquée" : " (STRIPE_TAX_RATE à définir pour la TVA)"}. Notifications : <APP_URL>/api/stripe/webhook.` : "Clé définie mais secret des notifications manquant : déclarer <APP_URL>/api/stripe/webhook chez Stripe.") : "Inactive : abonnements non facturés, toutes les fonctions accessibles." },
+    {
+      ok: adminTwoFactorRequired(),
+      label: "Double authentification des administrateurs KolBase (PLATFORM_ADMIN_2FA)",
+      detail: adminTwoFactorRequired() ? "Exigée." : "PLATFORM_ADMIN_2FA=optional : la double authentification n'est pas exigée des administrateurs KolBase (réservé aux environnements de test). Retirer la variable avant l'ouverture.",
+    },
     { ok: aiEnabled(), optional: true, label: "Assistant d'IA (ANTHROPIC_API_KEY, facultatif)", detail: aiEnabled() ? `Actif (modèle ${process.env.ANTHROPIC_MODEL ?? "par défaut"}).` : "Non configuré : brouillons, suggestion d'experts (sans résumé) et relecture assistée indisponibles." },
     { ok: !!orcidOAuth(), optional: true, label: "Connexion ORCID (facultatif)", detail: orcidOAuth() ? "Active." : "Non configurée : l'iD ORCID se saisit à la main." },
     { ok: legalGaps.length === 0, label: "Textes légaux (src/lib/legal.ts)", detail: legalGaps.length ? `À compléter : ${legalGaps.join(", ")}.` : "Complets." },

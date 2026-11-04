@@ -153,17 +153,22 @@ export function tabCount(tab: Pick<SectionTab, "key" | "href">, tabs: Pick<Secti
 
 /**
  * Boutons « Référencer mon organisation » et « Publier un événement » (accueil, aide) : sans compte, création
- * du compte d'une organisation ; connecté, directement la bonne page (événement de son organisation, ou
- * création de l'organisation).
+ * du compte d'une organisation ; connecté, directement la bonne page : nouvel événement de son organisation
+ * (organisateur), événements confiés (agence), sinon l'espace de son organisation. Création d'une organisation
+ * seulement pour qui n'en a aucune.
  */
 export function orgJoinHref(
   user: { memberships: { organizationId: string; role: OrgRole; organization: { kind: string } }[] } | null,
   target: "organisation" | "evenement",
 ) {
   if (!user) return "/inscription?profil=organisation";
+  const client = user.memberships.filter((x) => x.organization.kind !== "PRESTATAIRE");
   if (target === "evenement") {
-    const m = user.memberships.find((x) => x.organization.kind !== "PRESTATAIRE" && EVENT_ORGANIZER_ROLES.includes(x.role));
-    if (m) return `/organisations/${m.organizationId}/evenements/nouveau`;
+    const organizer = client.find((x) => EVENT_ORGANIZER_ROLES.includes(x.role));
+    if (organizer) return `/organisations/${organizer.organizationId}/evenements/nouveau`;
+    const agency = client.find((x) => x.role === "PRESTATAIRE");
+    if (agency) return `/organisations/${agency.organizationId}/evenements`;
   }
-  return "/organisations/nouvelle";
+  const own = client[0] ?? user.memberships[0];
+  return own ? `/organisations/${own.organizationId}` : "/organisations/nouvelle";
 }

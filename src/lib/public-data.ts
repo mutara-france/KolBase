@@ -8,6 +8,7 @@ import { supplierCategoryLabel } from "@/lib/suppliers";
 import { canSee, companyVisibility, kolVisibility } from "@/lib/visibility";
 import { logoSrc } from "@/lib/logos";
 import { country } from "@/lib/countries";
+import { callFull, SIGNED_STATUSES } from "@/lib/projects";
 import { featuredEvents, trackedPath } from "@/lib/services";
 import type { CallCardData, EventCardData, KolCardData, OrgCardData } from "@/components/PublicCards";
 
@@ -45,7 +46,8 @@ export async function publicEvents(take?: number, { tracked = false }: { tracked
 export async function publicExperts(take?: number): Promise<KolCardData[]> {
   const ps = await db.practitionerProfile.findMany({
     where: { listed: true },
-    include: { user: { select: { firstName: true, lastName: true } }, projectLinks: { where: { status: { notIn: ["ATT_EXPERTS", "DECLINE"] } }, select: { project: { select: { organizationId: true } } } } },
+    // Collaborations : les dossiers signés seulement, comme la fiche expert.
+    include: { user: { select: { firstName: true, lastName: true } }, projectLinks: { where: { status: { in: SIGNED_STATUSES } }, select: { project: { select: { organizationId: true } } } } },
     // « Réseau vérifié » : les identités vérifiées par KolBase d'abord, puis les plus récemment référencés.
     orderBy: [{ rppsVerified: "desc" }, { listedAt: "desc" }],
     take,
@@ -66,7 +68,8 @@ export async function publicExperts(take?: number): Promise<KolCardData[]> {
 export async function publicOrgs(take?: number): Promise<OrgCardData[]> {
   const os = await db.organization.findMany({
     where: { listed: true, verification: "VERIFIED" },
-    include: { _count: { select: { openCalls: { where: { status: "open" } }, projects: { where: { status: { notIn: ["ATT_EXPERTS", "DECLINE"] } } } } } },
+    // Collaborations : les dossiers signés seulement, comme la fiche de l'organisation et celle de l'expert.
+    include: { _count: { select: { openCalls: { where: { status: "open" } }, projects: { where: { status: { in: SIGNED_STATUSES } } } } } },
     orderBy: { createdAt: "asc" },
     take,
   });
@@ -87,13 +90,16 @@ export async function publicCalls(take?: number): Promise<CallCardData[]> {
       status: "open", organization: { verification: "VERIFIED" },
       AND: [{ OR: [{ deadline: null }, { deadline: { gte: now } }] }, { OR: [{ eventId: null }, { event: { startsAt: { gte: now } } }] }],
     },
-    include: { organization: { select: { id: true, name: true, visibility: true, logoUpdatedAt: true } }, event: { select: { title: true, startsAt: true } } },
+    include: {
+      organization: { select: { id: true, name: true, visibility: true, logoUpdatedAt: true } }, event: { select: { title: true, startsAt: true } },
+      _count: { select: { applications: { where: { status: "retained" } } } },
+    },
     orderBy: [{ deadline: "asc" }, { createdAt: "desc" }],
   });
   // Pages publiques : seulement les organisations qui affichent leurs appels publiquement (réglage « Appels ouverts ») ;
   // les praticiens connectés voient tous les appels ouverts dans « Opportunités ».
   const visible = cs.filter((c) => canSee(companyVisibility(c.organization.visibility).projets, "public"));
-  return visible.slice(0, take).map((c) => ({ id: c.id, title: c.title, specialty: c.specialty, typeId: c.typeId, poster: c.organization.name, posterLogo: logoSrc(c.organization), deadline: c.deadline, description: c.description, budgetMinCents: c.budgetMinCents, budgetMaxCents: c.budgetMaxCents, open: true, event: c.event ? { title: c.event.title, startsAt: c.event.startsAt } : null }));
+  return visible.slice(0, take).map((c) => ({ id: c.id, title: c.title, specialty: c.specialty, typeId: c.typeId, poster: c.organization.name, posterLogo: logoSrc(c.organization), deadline: c.deadline, description: c.description, budgetMinCents: c.budgetMinCents, budgetMaxCents: c.budgetMaxCents, open: true, full: callFull(c), event: c.event ? { title: c.event.title, startsAt: c.event.startsAt } : null }));
 }
 
 /**

@@ -10,6 +10,7 @@ import { INTEREST_YEARS, interestLines, practitionerLedger } from "@/lib/revenue
 import { removeDeclaredInterest } from "@/lib/revenue-actions";
 import { statusLabel } from "@/lib/projects";
 import { feeTotals } from "@/lib/indicators";
+import { canBeExpert } from "@/lib/professions";
 import { fmtDate, fmtEur } from "@/lib/i18n";
 import { getT } from "@/lib/i18n/server";
 
@@ -22,6 +23,8 @@ export default async function Page({ searchParams }: { searchParams: Promise<{ o
   const user = await requireUser();
   const p = user.practitioner;
   if (!p) redirect("/tableau-de-bord");
+  // Réservé aux professions qui peuvent être expertes (comme le menu) : sinon, retour à l'accueil avec un message.
+  if (!canBeExpert(p.profession) && !p.listed) redirect("/tableau-de-bord?acces=revenus");
   const sp = await searchParams;
   const onglet = sp.onglet === "liens" ? "liens" : sp.onglet === "transparence" ? "transparence" : sp.onglet === "facturation" ? "facturation" : "revenus";
   const { t, locale } = await getT();
@@ -35,7 +38,8 @@ export default async function Page({ searchParams }: { searchParams: Promise<{ o
   // À percevoir : convention signée, pas encore payée ; en préparation : le reste (pas encore dû).
   const { paid, due, preparing } = feeTotals(fees);
   const hospTotal = hosp.filter((h) => !h.absent).reduce((s, h) => s + h.valueCents, 0);
-  const orgs = new Set([...fees.map((f) => f.org.id), ...hosp.map((h) => h.org.id)]).size;
+  // Organisations : celles qui ont versé des honoraires ou accordé une hospitalité consommée (absents exclus, comme le total).
+  const orgs = new Set([...fees.map((f) => f.org.id), ...hosp.filter((h) => !h.absent).map((h) => h.org.id)]).size;
   const interests = interestLines(ledger);
   const tabs = [["revenus", t("Honoraires et avantages")], ["facturation", t("Notes d'honoraires")], ["liens", t("Liens d'intérêts")], ["transparence", t("Transparence Santé")]] as const;
   const billingOk = billingComplete(p);

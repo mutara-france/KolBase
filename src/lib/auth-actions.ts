@@ -24,24 +24,32 @@ export type FormState = { error?: string; ok?: string } | undefined;
 
 const emailOk = (e: string) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(e);
 
-// Limites anti-force brute (échecs comptés sur 15 min) et anti-création de comptes en masse (par heure).
+// Limites anti-force brute (échecs comptés sur 15 min) et anti-création de comptes en masse (par heure). Par adresse IP,
+// une marge pour un congrès dont les participants partagent le Wi-Fi ; par adresse e-mail, les essais répétés.
 const SIGNIN_WINDOW_MS = 15 * 60 * 1000;
 const SIGNIN_MAX_FAILURES_PER_EMAIL = 5;
 const SIGNIN_MAX_FAILURES_PER_IP = 30;
 const SIGNUP_WINDOW_MS = 60 * 60 * 1000;
-const SIGNUP_MAX_PER_IP = 10;
+const SIGNUP_MAX_PER_IP = 60;
+const SIGNUP_MAX_PER_EMAIL = 5;
 const RESET_WINDOW_MS = 60 * 60 * 1000;
 const RESET_MAX_PER_EMAIL = 3;
 const RESET_MAX_PER_IP = 10;
 const VERIFY_RESEND_MAX = 3;
 
-/** Lien de confirmation d'adresse (valable 7 jours). */
-async function sendVerification(user: { id: string; email: string; firstName: string }) {
-  const token = await issueToken(user.id, "VERIFY_EMAIL");
+/**
+ * Lien de confirmation d'adresse (valable 7 jours) ; `next` : page où revenir ensuite (invitation…). La lettre
+ * d'information n'est donnée comme raison qu'à un praticien (elle leur est réservée).
+ */
+async function sendVerification(user: { id: string; email: string; firstName: string }, practitioner: boolean, next?: string | null) {
+  const token = await issueToken(user.id, "VERIFY_EMAIL", next);
+  const why = practitioner
+    ? "Le reste de KolBase fonctionne sans cette confirmation ; elle est nécessaire pour recevoir la lettre d'information."
+    : "C'est à cette adresse que KolBase vous écrit (invitations, demandes, factures).";
   sendLater({
     to: user.email,
     subject: "Confirmez votre adresse e-mail — KolBase",
-    text: `Bonjour ${user.firstName},\n\nConfirmez votre adresse e-mail en un clic. Le reste de KolBase fonctionne sans cette confirmation ; elle est nécessaire pour recevoir la lettre d'information. Le lien est valable 7 jours et ne sert qu'une fois.\n\nSi vous n'avez pas créé de compte, ignorez ce message.`,
+    text: `Bonjour ${user.firstName},\n\nConfirmez votre adresse e-mail en un clic. ${why} Le lien est valable 7 jours et ne sert qu'une fois.\n\nSi vous n'avez pas créé de compte, ignorez ce message.`,
     cta: { label: "Confirmer mon adresse", href: `/confirmer-email/${token}` },
   });
 }
@@ -66,10 +74,13 @@ export async function signUp(_: FormState, form: FormData): Promise<FormState> {
   if (pwErr) return { error: t(pwErr) };
   if (!form.get("cgu")) return { error: t("Vous devez accepter les conditions d'utilisation.") };
   if (profession && !(PROFESSIONS as readonly string[]).includes(profession)) return { error: t("Profession invalide.") };
-  const newsletter = form.get("newsletter") === "1";
+  // Lettre d'information : réservée aux praticiens.
+  const newsletter = !!profession && form.get("newsletter") === "1";
   const signupKey = `signup:ip:${await clientIp()}`;
-  const wait = blockedFor(signupKey, SIGNUP_MAX_PER_IP, SIGNUP_WINDOW_MS);
+  const emailKey = `signup:email:${email}`;
+  const wait = Math.max(blockedFor(signupKey, SIGNUP_MAX_PER_IP, SIGNUP_WINDOW_MS), blockedFor(emailKey, SIGNUP_MAX_PER_EMAIL, SIGNUP_WINDOW_MS));
   if (wait) return tooMany(t, wait);
+  hit(emailKey);
 
   const exists = await db.user.findUnique({ where: { email } });
   if (exists) return { error: t("Un compte existe déjà avec cette adresse. Connectez-vous.") };
@@ -90,9 +101,10 @@ export async function signUp(_: FormState, form: FormData): Promise<FormState> {
   hit(signupKey);
   await audit(user.id, "user.signup", "User", user.id);
   if (newsletter) await audit(user.id, "user.notify_prefs", "User", user.id, { newsletter, source: "inscription" });
-  await sendVerification(user);
+  const next = safeNext(str(form, "next"), "");
+  await sendVerification(user, !!profession, next);
   await createSession(user.id);
-  redirect(safeNext(str(form, "next"), profession ? "/tableau-de-bord" : "/organisations/nouvelle"));
+  redirect(next || (profession ? "/tableau-de-bord" : "/organisations/nouvelle"));
 }
 
 export async function signIn(_: FormState, form: FormData): Promise<FormState> {
@@ -267,7 +279,8 @@ export async function requestPasswordReset(_: FormState, form: FormData): Promis
   hit(emailKey);
   const user = await db.user.findUnique({ where: { email } });
   if (user) {
-    const token = await issueToken(user.id, "RESET_PASSWORD");
+    // La page d'origine suit le lien : retour à cette page après le nouveau mot de passe.
+    const token = await issueToken(user.id, "RESET_PASSWORD", safeNext(str(form, "next"), ""));
     sendLater({
       to: user.email,
       subject: "Réinitialiser votre mot de passe — KolBase",
@@ -297,10 +310,11 @@ export async function resetPassword(_: FormState, form: FormData): Promise<FormS
   await db.session.deleteMany({ where: { userId: t.userId } });
   reset(`signin:email:${t.user.email}`);
   await audit(t.userId, "user.reset_password", "User", t.userId);
-  // Le lien reçu par e-mail ne remplace pas le second facteur.
-  if (t.user.totpEnabledAt) await startSecondFactor(t.userId, "/tableau-de-bord");
+  // Retour à la page d'origine gardée par le lien. Le lien reçu par e-mail ne remplace pas le second facteur.
+  const next = safeNext(t.next, "/tableau-de-bord");
+  if (t.user.totpEnabledAt) await startSecondFactor(t.userId, next);
   await createSession(t.userId);
-  redirect("/tableau-de-bord");
+  redirect(next);
 }
 
 /** Renvoie le lien de confirmation d'adresse. */
@@ -312,7 +326,7 @@ export async function resendVerification(_: FormState): Promise<FormState> {
   const wait = blockedFor(key, VERIFY_RESEND_MAX, RESET_WINDOW_MS);
   if (wait) return tooMany(t, wait);
   hit(key);
-  await sendVerification(user);
+  await sendVerification(user, !!user.practitioner);
   return { ok: t("Lien envoyé à {email}.", { email: user.email }) };
 }
 
@@ -320,7 +334,8 @@ export async function resendVerification(_: FormState): Promise<FormState> {
 export async function updateNotifyPrefs(_: FormState, form: FormData): Promise<FormState> {
   const user = await requireUser();
   const email = form.get("email") === "1";
-  const newsletter = form.get("newsletter") === "1";
+  // Lettre d'information réservée aux praticiens : sans profil praticien, la case n'est pas proposée.
+  const newsletter = !!user.practitioner && form.get("newsletter") === "1";
   const prefs = user.notifyPrefs && typeof user.notifyPrefs === "object" ? (user.notifyPrefs as Record<string, unknown>) : {};
   await db.user.update({ where: { id: user.id }, data: { notifyPrefs: { ...prefs, email, newsletter, newsletterAsked: true } } });
   // Consentement à la lettre d'information tracé (date, choix).

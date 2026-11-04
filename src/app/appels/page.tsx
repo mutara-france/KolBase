@@ -41,8 +41,9 @@ export default async function Page({ searchParams }: { searchParams: Promise<{ q
           {calls.length === 0 && <p className="muted">{q ? t("Aucun appel ne correspond à cette recherche.") : t("Aucun appel ouvert pour le moment.")}</p>}
           <div className="grid-2">
             {calls.map((c) => (
-              // « Candidater » partout ; « Se connecter pour candidater » seulement sans session.
-              <CallCard key={c.id} c={c} action={user ? <Link href={`/opportunites/${c.id}`} className="btn">{t("Candidater")}</Link> : <Link href={`/connexion?next=${encodeURIComponent(`/opportunites/${c.id}`)}`} className="btn"><LogIn size={14} /> {t("Se connecter pour candidater")}</Link>} />
+              // « Candidater » aux praticiens, « Se connecter pour candidater » sans session ; rien pour un compte
+              // d'organisation (la candidature est réservée aux experts) ni pour un appel complet.
+              <CallCard key={c.id} c={c} action={c.full ? undefined : user?.practitioner ? <Link href={`/opportunites/${c.id}`} className="btn">{t("Candidater")}</Link> : !user ? <Link href={`/connexion?next=${encodeURIComponent(`/opportunites/${c.id}`)}`} className="btn"><LogIn size={14} /> {t("Se connecter pour candidater")}</Link> : undefined} />
             ))}
           </div>
         </section>

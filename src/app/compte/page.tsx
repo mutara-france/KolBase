@@ -84,7 +84,7 @@ export default async function Page({ searchParams }: { searchParams: Promise<{ a
         {orcidNotice && <p className={`notice ${orcidNotice[0]}`}>{t(orcidNotice[1])}</p>}
         {emailNotice && <p className={`notice ${emailNotice[0]}`}>{t(emailNotice[1])}</p>}
         {admin === "confirmer" && !user.emailVerifiedAt && <p className="notice warn">{t("Confirmez votre adresse e-mail pour accéder à l'administration KolBase.")}</p>}
-        {!user.emailVerifiedAt && <EmailVerificationNotice email={user.email} />}
+        {!user.emailVerifiedAt && <EmailVerificationNotice email={user.email} practitioner={!!user.practitioner} />}
         {/* Sommaire : la page est longue, chaque encart a son ancre. */}
         <nav className="account-toc" aria-label={t("Sommaire")}>
           {[
@@ -178,7 +178,7 @@ export default async function Page({ searchParams }: { searchParams: Promise<{ a
               : null
           }
         /></div>
-        <div id="notifications"><NotificationsForm email={wantsEmail(user)} newsletter={subscribed(user)} /></div>
+        <div id="notifications"><NotificationsForm email={wantsEmail(user)} newsletter={subscribed(user)} practitioner={!!user.practitioner} /></div>
         <div id="identifiants"><PasswordForm email={user.email} /></div>
         <section className="card stack-sm" id="securite" aria-labelledby="securite-titre">
           <h2 id="securite-titre">{t("Sécurité : double authentification")}</h2>

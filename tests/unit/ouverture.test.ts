@@ -140,7 +140,10 @@ describe("boutons « Référencer mon organisation » et « Publier un événeme
     expect(orgJoinHref({ memberships: [] }, "organisation")).toBe("/organisations/nouvelle");
     expect(orgJoinHref({ memberships: [] }, "evenement")).toBe("/organisations/nouvelle");
     expect(orgJoinHref({ memberships: [m("INDUSTRIEL", "PROJETS")] }, "evenement")).toBe("/organisations/o1/evenements/nouveau");
-    expect(orgJoinHref({ memberships: [m("INDUSTRIEL", "CONFORMITE")] }, "evenement")).toBe("/organisations/nouvelle");
-    expect(orgJoinHref({ memberships: [m("PRESTATAIRE", "ADMIN")] }, "evenement")).toBe("/organisations/nouvelle");
+    // Lot 5b : qui a déjà une organisation n'est plus envoyé vers une création d'organisation vierge.
+    expect(orgJoinHref({ memberships: [m("INDUSTRIEL", "CONFORMITE")] }, "evenement")).toBe("/organisations/o1");
+    expect(orgJoinHref({ memberships: [m("PRESTATAIRE", "ADMIN")] }, "evenement")).toBe("/organisations/o1");
+    expect(orgJoinHref({ memberships: [m("INDUSTRIEL", "PRESTATAIRE")] }, "evenement")).toBe("/organisations/o1/evenements");
+    expect(orgJoinHref({ memberships: [m("INDUSTRIEL", "ADMIN")] }, "organisation")).toBe("/organisations/o1");
   });
 });

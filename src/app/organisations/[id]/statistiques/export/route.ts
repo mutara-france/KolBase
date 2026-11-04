@@ -20,13 +20,13 @@ export async function GET(req: Request, { params }: { params: Promise<{ id: stri
   for (const q of s.quarters) {
     rows.push(["Budget par trimestre", `${q.label} ${year} — honoraires`, eur(q.fees), "€ HT", ""]);
     rows.push(["Budget par trimestre", `${q.label} ${year} — logistique`, eur(q.logistics), "€ HT", "devis retenus et dépenses"]);
-    rows.push(["Budget par trimestre", `${q.label} ${year} — hospitalités`, eur(q.hospitality), "€ TTC", "valeur déclarée"]);
+    rows.push(["Budget par trimestre", `${q.label} ${year} — hospitalités`, eur(q.hospitality), "€ TTC", "valeur déclarée, absents exclus"]);
   }
   for (const t of s.byType) rows.push(["Honoraires par type", t.label, eur(t.cents), "€ HT", `${t.projects} dossier(s)`]);
   for (const e of s.top) rows.push(["Experts les mieux rémunérés", e.name, eur(e.cents), "€ HT", `${Math.round(e.share * 100)} % des honoraires`]);
   for (const x of s.specialties) rows.push(["Experts par spécialité", x.label, x.count, "experts", ""]);
   for (const e of s.events)
-    rows.push(["Événements", e.title, e.registrations, "inscrits", `${e.date.toLocaleDateString("fr-FR", { timeZone: "Europe/Paris" })} ; hospitalités ${eur(e.hospitality)} € TTC ; prestataires ${eur(e.suppliers)} € HT ; coût par inscrit ${eur(e.perParticipant)} € ; présents ${e.present} ; note ${e.rating != null ? e.rating.toFixed(1).replace(".", ",") : "—"}/5 (${e.responses} avis)`]);
+    rows.push(["Événements", e.title, e.registrations, "inscrits", `${e.date.toLocaleDateString("fr-FR", { timeZone: "Europe/Paris" })} ; hospitalités ${eur(e.hospitality)} € TTC ; prestataires ${eur(e.suppliers)} € HT ; hospitalités par ${e.presenceKnown ? "présent" : "inscrit"} ${eur(e.hospitalityPer)} € TTC ; prestataires par ${e.presenceKnown ? "présent" : "inscrit"} ${eur(e.suppliersPer)} € HT ; présents ${e.present} ; note ${e.rating != null ? e.rating.toFixed(1).replace(".", ",") : "—"}/5 (${e.responses} avis)`]);
   rows.push(["Satisfaction", "Note globale moyenne", s.satisfaction.average != null ? s.satisfaction.average.toFixed(2).replace(".", ",") : "", "sur 5", `${s.satisfaction.responses} avis`]);
   rows.push(["Délais", "Réponse des experts (médiane)", num(s.delays.expertResponse.days), "jours", `${s.delays.expertResponse.n} sollicitation(s)`]);
   rows.push(["Délais", "Validation conformité (médiane)", num(s.delays.compliance.days), "jours", `${s.delays.compliance.n} examen(s)`]);

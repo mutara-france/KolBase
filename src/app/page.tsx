@@ -210,7 +210,8 @@ export default async function Home({ searchParams }: { searchParams: Promise<{ c
               </div>
               <div className="grid-2">
                 {calls.map((c) => (
-                  <CallCard key={c.id} c={c} action={user ? <Link href={`/opportunites/${c.id}`} className="btn">{t("Candidater")}</Link> : <Link href={`/connexion?next=${encodeURIComponent(`/opportunites/${c.id}`)}`} className="btn">{t("Se connecter pour candidater")}</Link>} />
+                  // « Candidater » aux praticiens seulement ; un compte d'organisation ne candidate pas.
+                  <CallCard key={c.id} c={c} action={c.full ? undefined : user?.practitioner ? <Link href={`/opportunites/${c.id}`} className="btn">{t("Candidater")}</Link> : !user ? <Link href={`/connexion?next=${encodeURIComponent(`/opportunites/${c.id}`)}`} className="btn">{t("Se connecter pour candidater")}</Link> : undefined} />
                 ))}
               </div>
             </div>

@@ -1,7 +1,7 @@
 import "server-only";
 import { db } from "@/lib/db";
 import { stripe, stripeEnabled, type StripeSubscription } from "@/lib/stripe";
-import { asInterval, asObjectId, canEngage, ENGAGING, fromStripeStatus, planFor, planPrice, PLANS, subscribeHref, TRIAL_DAYS, type Blocked, type GateLink, type Interval, type Motive } from "@/lib/billing-plans";
+import { asInterval, asObjectId, canEngage, ENGAGING, fromStripeStatus, planFor, planPrice, PLANS, stripePause, subscribeHref, TRIAL_DAYS, type Blocked, type GateLink, type Interval, type Motive } from "@/lib/billing-plans";
 import { dpaCurrent, dpaHref, dpaMessage } from "@/lib/dpa";
 
 export { stripeEnabled };
@@ -39,8 +39,13 @@ export async function engagementGate(orgId: string, motive: Motive, objet?: stri
   return null;
 }
 
-/** Ce qui bloque l'action sur la page (bouton désactivé, bandeau) : le contrat, puis l'abonnement. */
+/**
+ * Ce qui bloque l'action sur la page (bouton désactivé, consigne, bandeau), dans l'ordre réel : la validation de
+ * l'organisation par KolBase, puis le contrat, puis l'abonnement.
+ */
 export async function engagementBlock(orgId: string, motive: Motive): Promise<Blocked> {
+  const org = await db.organization.findUnique({ where: { id: orgId }, select: { verification: true } });
+  if (org && org.verification !== "VERIFIED") return "validation";
   if (motive !== "reponse" && !(await dpaAccepted(orgId))) return "contrat";
   return (await billingBlocked(orgId, motive)) ? "abonnement" : null;
 }
@@ -121,17 +126,22 @@ export async function syncCheckout(orgId: string, sessionId: string) {
 }
 
 /**
- * Gratuité accordée à une organisation qui a un abonnement Stripe en cours : la facturation est mise en pause
- * (pause_collection « void » : rien n'est facturé pendant la pause), avec reprise automatique à la fin de la
- * gratuité (resumes_at) ; gratuité retirée : la facturation reprend aussitôt. Renvoie ce qui a été fait.
+ * Facturation Stripe alignée sur l'état de l'organisation (stripePause) : suspendue, en pause sans date de reprise ;
+ * gratuité en cours, en pause jusqu'à sa fin (reprise automatique, resumes_at) ; sinon, facturation normale.
+ * pause_collection « void » : rien n'est facturé pendant la pause. Appelée après la suspension, la réactivation et la
+ * gratuité (accordée ou retirée). Renvoie ce qui a été fait (null : pas d'abonnement Stripe en cours).
  */
-export async function pauseStripeBilling(orgId: string, until: Date | null): Promise<"paused" | "resumed" | null> {
-  const sub = await db.subscription.findUnique({ where: { organizationId: orgId }, select: { stripeSubscriptionId: true, status: true } });
+export async function syncStripePause(orgId: string): Promise<"paused" | "resumed" | null> {
+  const [sub, org] = await Promise.all([
+    db.subscription.findUnique({ where: { organizationId: orgId }, select: { stripeSubscriptionId: true, status: true, exemptUntil: true } }),
+    db.organization.findUnique({ where: { id: orgId }, select: { verification: true } }),
+  ]);
   if (!stripeEnabled() || !sub?.stripeSubscriptionId || !["essai", "active", "impayee"].includes(sub.status)) return null;
-  await stripe("POST", `/v1/subscriptions/${sub.stripeSubscriptionId}`, until
-    ? { pause_collection: { behavior: "void", resumes_at: Math.floor(until.getTime() / 1000) } }
+  const p = stripePause({ suspended: org?.verification === "SUSPENDED", exemptUntil: sub.exemptUntil });
+  await stripe("POST", `/v1/subscriptions/${sub.stripeSubscriptionId}`, p.pause
+    ? { pause_collection: { behavior: "void", ...(p.resumesAt ? { resumes_at: Math.floor(p.resumesAt.getTime() / 1000) } : {}) } }
     : { pause_collection: "" });
-  return until ? "paused" : "resumed";
+  return p.pause ? "paused" : "resumed";
 }
 
 /** Espace client Stripe : moyen de paiement, factures, résiliation. */

@@ -154,7 +154,7 @@ export default async function Page({ params, searchParams }: { params: Promise<{
               orgId={id}
               canEdit={isAdmin}
               v={{
-                status: org.verification, siren: org.siren, legalName: org.legalName, note: org.verificationNote, rna: org.rna, rnaAccepted: rnaAccepted(org.kind),
+                status: org.verification, siren: org.siren, legalName: org.legalName, note: org.verificationNote, rna: org.rna, rnaAccepted: rnaAccepted(org.kind), supplier: org.kind === "PRESTATAIRE",
                 requestedAt: org.verification === "PENDING" && org.verificationRequestedAt ? formatDate(org.verificationRequestedAt) : null,
               }}
             />
@@ -202,8 +202,8 @@ export default async function Page({ params, searchParams }: { params: Promise<{
             )}
             {isAdmin ? (
               <>
-                <EditOrgForm org={{ id: org.id, name: org.name, sector: org.sector, headquarters: org.headquarters, contactEmail: org.contactEmail, about: org.about, policy: org.policy, areas: org.areas }} />
-                <LogoForm orgId={id} name={org.name} src={logoSrc(org)} verified={org.verification === "VERIFIED"} />
+                <EditOrgForm supplier={isSupplier} org={{ id: org.id, name: org.name, sector: org.sector, headquarters: org.headquarters, contactEmail: org.contactEmail, about: org.about, policy: org.policy, areas: org.areas }} />
+                <LogoForm supplier={isSupplier} orgId={id} name={org.name} src={logoSrc(org)} verified={org.verification === "VERIFIED"} />
                 {/* Le référencement d'un prestataire se règle avec sa fiche prestataire (page Demandes de devis). */}
                 {!isSupplier && <OrgVisibilityForm orgId={id} v={companyVisibility(org.visibility)} listed={org.listed} />}
               </>

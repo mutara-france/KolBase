@@ -13,7 +13,7 @@ import { ORG_KIND_LABEL, orgIsPublic } from "@/lib/orgs";
 import { canSee, companyVisibility, type Viewer } from "@/lib/visibility";
 import { ProposeForm } from "@/components/DossierForms";
 import { FollowButton } from "@/components/FollowButton";
-import { COLLAB_TYPES } from "@/lib/projects";
+import { callFull, COLLAB_TYPES, SIGNED_STATUSES } from "@/lib/projects";
 import type { Metadata } from "next";
 import { getT } from "@/lib/i18n/server";
 
@@ -41,9 +41,10 @@ export default async function Page({ params }: { params: Promise<{ id: string }>
   const o = await db.organization.findFirst({
     where: { id, ...(isMember ? {} : { listed: true, verification: "VERIFIED" }) },
     include: {
-      openCalls: { where: { status: "open", OR: [{ deadline: null }, { deadline: { gte: now } }] }, orderBy: { deadline: "asc" } },
+      openCalls: { where: { status: "open", OR: [{ deadline: null }, { deadline: { gte: now } }] }, orderBy: { deadline: "asc" }, include: { _count: { select: { applications: { where: { status: "retained" } } } } } },
       events: { where: { publishedAt: { not: null }, startsAt: { gte: now } }, orderBy: { startsAt: "asc" }, include: { _count: { select: { registrations: true } } } },
-      _count: { select: { projects: { where: { status: { notIn: ["ATT_EXPERTS", "DECLINE"] } } } } },
+      // Collaborations : les dossiers signés seulement, comme la fiche expert.
+      _count: { select: { projects: { where: { status: { in: SIGNED_STATUSES } } } } },
     },
   });
   if (!o) notFound();
@@ -93,7 +94,7 @@ export default async function Page({ params }: { params: Promise<{ id: string }>
                 <div className="stat-card"><div className="stat-value">{book.rating != null ? <span className="rating"><Star size={20} /> {book.rating.toFixed(1).replace(".", ",")}</span> : "—"}</div><div className="stat-label">{t(book.reviews.length > 1 ? "{n} avis vérifiés" : "{n} avis vérifié", { n: book.reviews.length })}</div></div>
                 <div className="stat-card"><div className="stat-value">{delayLabel(book.delayHours, locale) ?? "—"}</div><div className="stat-label">{t("Délai de réponse médian")}</div></div>
                 <div className="stat-card"><div className="stat-value">{book.responseRate != null ? `${book.responseRate} %` : "—"}</div><div className="stat-label">{t("Taux de réponse aux demandes")}</div></div>
-                <div className="stat-card"><div className="stat-value tone-electric">{book.retained}</div><div className="stat-label">{t("Prestations réalisées via KolBase")}</div></div>
+                <div className="stat-card"><div className="stat-value tone-electric">{book.references.length}</div><div className="stat-label">{t("Prestations réalisées via KolBase")}</div></div>
               </div>
               {photos.length > 0 && (
                 <div className="gallery">
@@ -149,11 +150,11 @@ export default async function Page({ params }: { params: Promise<{ id: string }>
                 <h2 className="section-title">{t("Avis vérifiés")}</h2>
                 {book.reviews.length === 0 ? <p className="muted">{t("Aucun avis pour l'instant.")}</p> : book.reviews.map((r) => (
                   <div key={r.id} className="review">
-                    <span><span className="rating">{Array.from({ length: r.rating }, (_, i) => <Star key={i} size={14} />)}</span> <strong>{r.client.name}</strong> <span className="muted text-xs">{r.createdAt.toLocaleDateString(locale === "en" ? "en-GB" : "fr-FR", { month: "long", year: "numeric", timeZone: "Europe/Paris" })}</span></span>
+                    <span><span className="rating">{Array.from({ length: r.rating }, (_, i) => <Star key={i} size={14} />)}</span> <strong>{t("Organisation cliente")}</strong> <span className="muted text-xs">{r.createdAt.toLocaleDateString(locale === "en" ? "en-GB" : "fr-FR", { month: "long", year: "numeric", timeZone: "Europe/Paris" })}</span></span>
                     {r.comment && <p className="text-sm">{r.comment}</p>}
                   </div>
                 ))}
-                <p className="hint">{t("Avis laissés uniquement par les organisations qui ont retenu ce prestataire, après la prestation.")}</p>
+                <p className="hint">{t("Avis laissés uniquement par les organisations qui ont retenu ce prestataire, après la prestation ; le nom des clients n'est pas affiché.")}</p>
               </section>
             </>
           )}
@@ -161,7 +162,7 @@ export default async function Page({ params }: { params: Promise<{ id: string }>
             <ProposeForm orgId={o.id} orgName={o.name} types={COLLAB_TYPES} defaultFee={user.practitioner.dayRateCents != null ? String(user.practitioner.dayRateCents / 100) : ""} />
           )}
           {!isSupplier && <div className="stats-row">
-            <div className="stat-card"><div className="stat-value">{o.openCalls.length}</div><div className="stat-label">{t("Appels ouverts")}</div></div>
+            <div className="stat-card"><div className="stat-value">{o.openCalls.filter((c) => !callFull(c)).length}</div><div className="stat-label">{t("Appels ouverts")}</div></div>
             <div className="stat-card"><div className="stat-value tone-electric">{o.events.length}</div><div className="stat-label">{t("Événements à venir")}</div></div>
             <div className="stat-card"><div className="stat-value">{o._count.projects}</div><div className="stat-label">{t("Collaborations")}</div></div>
           </div>}
@@ -191,7 +192,8 @@ export default async function Page({ params }: { params: Promise<{ id: string }>
               <div className="section-head"><div><div className="eyebrow mb-1">{t("Opportunités")}</div><h2 className="section-h2">{t("Appels ouverts")}</h2></div></div>
               {canSee(v.projets, viewer) ? (
                 o.openCalls.length === 0 ? <p className="muted">{t("Aucun appel ouvert.")}</p> : (
-                  <div className="grid-2">{o.openCalls.map((c) => <CallCard key={c.id} c={{ ...c, poster: o.name, posterLogo: logoSrc(o), open: true }} action={<Link className="btn secondary" href={user ? `/opportunites/${c.id}` : `/connexion?next=${encodeURIComponent(`/opportunites/${c.id}`)}`}>{user ? t("Candidater") : t("Se connecter pour candidater")}</Link>} />)}</div>
+                  // Appel complet : « Complet », sans bouton ; « Candidater » aux praticiens, « Se connecter » aux visiteurs.
+                  <div className="grid-2">{o.openCalls.map((c) => <CallCard key={c.id} c={{ ...c, poster: o.name, posterLogo: logoSrc(o), open: true, full: callFull(c) }} action={callFull(c) ? undefined : user?.practitioner ? <Link className="btn secondary" href={`/opportunites/${c.id}`}>{t("Candidater")}</Link> : !user ? <Link className="btn secondary" href={`/connexion?next=${encodeURIComponent(`/opportunites/${c.id}`)}`}>{t("Se connecter pour candidater")}</Link> : undefined} />)}</div>
                 )
               ) : lock(t("Appels ouverts"))}
             </section>

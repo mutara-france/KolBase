@@ -8,6 +8,7 @@ import { collabType, PROJECT_ROLES } from "@/lib/projects";
 import { eurToCents, str } from "@/lib/form";
 import { parisToday, parseParisDateTime } from "@/lib/events";
 import { notifyFeeNote, notifyFeePaid, notifyTransparencyIssue } from "@/lib/notifications";
+import { licenseRule, practicesInFrance } from "@/lib/countries";
 import { billingComplete, formatIban, nextNumber, validIban, validSiret, vatBpOf, type FeeNoteData } from "@/lib/fee-notes";
 import { drPrefix } from "@/lib/professions";
 import { LEGAL_FORMS, payeeEntity, sirenOf } from "@/lib/structures";
@@ -129,7 +130,11 @@ export async function issueFeeNote(_: FormState, form: FormData): Promise<FormSt
   const signedAt = link.signature?.completedAt ?? link.project.signatureAttestedAt ?? signedLog?.createdAt ?? null;
   const type = collabType(link.project.typeId);
   const data: FeeNoteData = {
-    issuer: { name: `${drPrefix(prof.profession)}${user.firstName} ${user.lastName}`, entity: payeeEntity(prof.structures[0]), address: prof.billingAddress!, siret: prof.siret, vatNumber: prof.vatNumber, rpps: prof.rpps, iban: prof.iban ? formatIban(prof.iban) : null, vatRegime: prof.vatRegime },
+    issuer: { name: `${drPrefix(prof.profession)}${user.firstName} ${user.lastName}`, entity: payeeEntity(prof.structures[0]), address: prof.billingAddress!, siret: prof.siret, vatNumber: prof.vatNumber,
+      // Hors de France, l'identifiant du pays d'exercice (INAMI…), comme la convention.
+      rpps: practicesInFrance(prof.country) ? prof.rpps : null,
+      license: !practicesInFrance(prof.country) && prof.licenseNumber ? `${licenseRule(prof.country).label} ${prof.licenseNumber}` : null,
+      iban: prof.iban ? formatIban(prof.iban) : null, vatRegime: prof.vatRegime },
     recipient: { name: link.project.organization.name, siren: link.project.organization.siren, address: link.project.organization.headquarters },
     object: { title: link.project.title, type: type?.label ?? link.project.typeId, unit: type?.unit ?? null, units: link.days, signedAt: signedAt ? signedAt.toLocaleDateString("fr-FR", { timeZone: "Europe/Paris", day: "numeric", month: "long", year: "numeric" }) : null, projectRef: link.projectId.slice(-8).toUpperCase() },
   };

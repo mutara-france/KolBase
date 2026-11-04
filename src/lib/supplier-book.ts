@@ -1,6 +1,6 @@
 import "server-only";
 import { db } from "@/lib/db";
-import { withVat } from "@/lib/quotes";
+import { quoteTtc } from "@/lib/quotes";
 
 export const PHOTO_MAX_BYTES = 800 * 1024;
 export const PHOTO_MAX = 8;
@@ -45,8 +45,11 @@ export async function supplierBook(supplierId: string, withMarket = false) {
   const answered = quotes.length;
   const delays = quotes.filter((q) => q.rfq.sentAt).map((q) => (q.createdAt.getTime() - q.rfq.sentAt!.getTime()) / 36e5).filter((h) => h >= 0);
   const retained = quotes.filter((q) => q.status === "retained");
+  // Références : prestations déjà réalisées (événement passé), pas les devis retenus pour un événement à venir.
+  const now = new Date();
   const references = retained
     .map((q) => ({ category: q.rfq.category, city: q.rfq.event?.city ?? q.rfq.city, date: q.rfq.event?.startsAt ?? q.rfq.sentAt ?? q.createdAt, headcount: q.rfq.headcount }))
+    .filter((r) => r.date < now)
     .sort((a, b) => b.date.getTime() - a.date.getTime());
   const rating = reviews.length ? reviews.reduce((s, r) => s + r.rating, 0) / reviews.length : null;
 
@@ -55,10 +58,10 @@ export async function supplierBook(supplierId: string, withMarket = false) {
   if (withMarket) {
     const cats = [...new Set(quotes.map((q) => q.rfq.category))];
     const all = cats.length
-      ? await db.quote.findMany({ where: { rfq: { category: { in: cats }, headcount: { gt: 0 } } }, select: { supplierId: true, amountCents: true, vatBp: true, rfq: { select: { category: true, headcount: true } } } })
+      ? await db.quote.findMany({ where: { rfq: { category: { in: cats }, headcount: { gt: 0 } } }, select: { supplierId: true, amountCents: true, vatBp: true, ttcCents: true, rfq: { select: { category: true, headcount: true } } } })
       : [];
     market = cats.flatMap((c) => {
-      const per = (q: (typeof all)[number]) => withVat(q.amountCents, q.vatBp) / q.rfq.headcount! / 100;
+      const per = (q: (typeof all)[number]) => quoteTtc(q) / q.rfq.headcount! / 100;
       const inCat = all.filter((q) => q.rfq.category === c);
       const mine = median(inCat.filter((q) => q.supplierId === supplierId).map(per));
       const others = new Set(inCat.map((q) => q.supplierId));

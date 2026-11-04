@@ -6,7 +6,7 @@ import { createRfq, postRfqMessage, submitQuote, updateSupplierProfile } from "@
 import { Notice } from "@/components/AuthForms";
 import { ActionForm } from "@/components/ActionForm";
 import { BLOCKED_UNTIL, type Blocked } from "@/lib/billing-plans";
-import { defaultVatBp, VAT_OPTIONS } from "@/lib/quotes";
+import { defaultVatBp, VAT_OPTIONS, vatLabel } from "@/lib/quotes";
 import { Avatar } from "@/components/Avatar";
 import { AiDraft } from "@/components/AiDraft";
 
@@ -96,8 +96,8 @@ export function NewRfqForm({ orgId, categories, suppliers, events, defaultEventI
   );
 }
 
-type QuoteCurrent = { amount: string; delay: string; note: string; lines: { label: string; qty: number; unit: string }[]; vatBp: number; validUntil: string; conditions: string; revision: number; fileName: string | null };
-type Row = { key: number; label: string; qty: string; unit: string };
+type QuoteCurrent = { amount: string; delay: string; note: string; lines: { label: string; qty: number; unit: string; vatBp: number }[]; vatBp: number; validUntil: string; conditions: string; revision: number; fileName: string | null };
+type Row = { key: number; label: string; qty: string; unit: string; vat: number };
 
 const eur = (n: number) => n.toLocaleString("fr-FR", { style: "currency", currency: "EUR" });
 const num = (v: string) => { const n = Number(v.replace(/\s/g, "").replace(",", ".")); return Number.isFinite(n) ? n : 0; };
@@ -114,19 +114,20 @@ const LINE_EXAMPLE: Record<string, string> = {
   evenementiel: "Coordination sur place (journée)",
 };
 
-/** Devis du prestataire : détail ligne par ligne (total calculé), TVA, validité, conditions et PDF signé. */
+/** Devis du prestataire : détail ligne par ligne, chaque ligne à son taux de TVA (totaux calculés), validité, conditions et PDF signé. */
 export function QuoteForm({ orgId, rfqId, category, current, headcount, uploads, ai = false, offers = [], blocked = false }: { orgId: string; rfqId: string; category: string; current?: QuoteCurrent; headcount: number | null; uploads: boolean; ai?: boolean; offers?: { label: string; unit: string; unitCents: number }[]; blocked?: boolean }) {
   const [state, action, pending] = useActionState(submitQuote, undefined);
   const [open, setOpen] = useState(!current);
+  // Taux proposé pour une nouvelle ligne : celui de la catégorie (10 % restauration, hébergement, transport ; 20 % sinon).
+  const vat = defaultVatBp(category);
   // Un ancien devis au montant global devient une ligne « Forfait », modifiable comme les autres.
   const [rows, setRows] = useState<Row[]>(
     current?.lines.length
-      ? current.lines.map((l, i) => ({ key: i, label: l.label, qty: String(l.qty), unit: l.unit }))
+      ? current.lines.map((l, i) => ({ key: i, label: l.label, qty: String(l.qty), unit: l.unit, vat: l.vatBp }))
       : current?.amount
-        ? [{ key: 0, label: "Forfait", qty: "1", unit: current.amount }]
-        : [{ key: 0, label: "", qty: "1", unit: "" }],
+        ? [{ key: 0, label: "Forfait", qty: "1", unit: current.amount, vat: current.vatBp }]
+        : [{ key: 0, label: "", qty: "1", unit: "", vat }],
   );
-  const [vat, setVat] = useState(current?.vatBp ?? defaultVatBp(category));
   // Devis envoyé : le formulaire se referme (la saisie reste pour une révision).
   const [answered, setAnswered] = useState(state);
   if (state !== answered) {
@@ -141,7 +142,7 @@ export function QuoteForm({ orgId, rfqId, category, current, headcount, uploads,
   );
   const detailed = rows.some((r) => r.label || r.unit);
   const ht = rows.reduce((s, r) => s + num(r.qty) * num(r.unit), 0);
-  const ttc = ht * (1 + vat / 10000);
+  const ttc = rows.reduce((s, r) => s + num(r.qty) * num(r.unit) * (1 + r.vat / 10000), 0);
   const update = (key: number, patch: Partial<Row>) => setRows((rs) => rs.map((r) => (r.key === key ? { ...r, ...patch } : r)));
   return (
     <ActionForm action={action} className="form quote-form">
@@ -150,18 +151,21 @@ export function QuoteForm({ orgId, rfqId, category, current, headcount, uploads,
       <input type="hidden" name="rfqId" value={rfqId} />
       <span className="label">Détail de la proposition</span>
       <div className="quote-lines" role="table" aria-label="Lignes du devis">
-        <div className="quote-line head" role="row"><span>Désignation</span><span>Qté</span><span>Prix unitaire HT</span><span>Total HT</span><span /></div>
+        <div className="quote-line head" role="row"><span>Désignation</span><span>Qté</span><span>Prix unitaire HT</span><span>TVA</span><span>Total HT</span><span /></div>
         {rows.map((r) => (
           <div key={r.key} className="quote-line" role="row">
             <input name="line_label" value={r.label} onChange={(e) => update(r.key, { label: e.target.value })} placeholder={LINE_EXAMPLE[category] ?? "Désignation de la prestation"} aria-label="Désignation" />
             <input name="line_qty" value={r.qty} onChange={(e) => update(r.key, { qty: e.target.value })} inputMode="decimal" aria-label="Quantité" />
             <input name="line_unit" value={r.unit} onChange={(e) => update(r.key, { unit: e.target.value })} inputMode="decimal" placeholder="0,00" aria-label="Prix unitaire HT" />
+            <select name="line_vat" value={r.vat} onChange={(e) => update(r.key, { vat: Number(e.target.value) })} aria-label="Taux de TVA de la ligne">
+              {VAT_OPTIONS.map((v) => <option key={v.bp} value={v.bp}>{vatLabel(v.bp)}</option>)}
+            </select>
             <span className="mono">{eur(num(r.qty) * num(r.unit))}</span>
-            <button type="button" className="link danger" aria-label="Retirer la ligne" onClick={() => setRows((rs) => (rs.length > 1 ? rs.filter((x) => x.key !== r.key) : [{ key: Date.now(), label: "", qty: "1", unit: "" }]))}>×</button>
+            <button type="button" className="link danger" aria-label="Retirer la ligne" onClick={() => setRows((rs) => (rs.length > 1 ? rs.filter((x) => x.key !== r.key) : [{ key: Date.now(), label: "", qty: "1", unit: "", vat }]))}>×</button>
           </div>
         ))}
         <div className="actions">
-          <button type="button" className="link" onClick={() => setRows((rs) => [...rs, { key: Date.now(), label: "", qty: "1", unit: "" }])}><Plus size={13} /> Ajouter une ligne</button>
+          <button type="button" className="link" onClick={() => setRows((rs) => [...rs, { key: Date.now(), label: "", qty: "1", unit: "", vat }])}><Plus size={13} /> Ajouter une ligne</button>
           {offers.length > 0 && (
             <select
               aria-label="Ajouter depuis mon catalogue"
@@ -171,7 +175,7 @@ export function QuoteForm({ orgId, rfqId, category, current, headcount, uploads,
                 if (!o) return;
                 // Forfait « par personne » : quantité = participants attendus.
                 const qty = o.unit === "personne" && headcount ? String(headcount) : "1";
-                const row = { key: Date.now(), label: o.label, qty, unit: String(o.unitCents / 100).replace(".", ",") };
+                const row = { key: Date.now(), label: o.label, qty, unit: String(o.unitCents / 100).replace(".", ","), vat };
                 setRows((rs) => (rs.length === 1 && !rs[0].label && !rs[0].unit ? [row] : [...rs, row]));
               }}
             >
@@ -181,17 +185,14 @@ export function QuoteForm({ orgId, rfqId, category, current, headcount, uploads,
           )}
         </div>
       </div>
+      <p className="hint">TVA par ligne : 10 % pour la restauration, l&apos;hébergement et le transport de personnes, 20 % pour les boissons alcoolisées et la plupart des autres prestations.</p>
       <div className="row">
-        <label>TVA
-          <select name="vat" value={vat} onChange={(e) => setVat(Number(e.target.value))}>
-            {VAT_OPTIONS.map((v) => <option key={v.bp} value={v.bp}>{v.label}</option>)}
-          </select>
-        </label>
         <label>Offre valable jusqu&apos;au<input name="validUntil" type="date" defaultValue={current?.validUntil} /></label>
       </div>
       {detailed && (
         <div className="quote-totals">
           <span>Total HT <strong>{eur(ht)}</strong></span>
+          <span>TVA <strong>{eur(ttc - ht)}</strong></span>
           <span>TTC <strong>{eur(ttc)}</strong></span>
           {headcount ? <span>Par participant <strong>{eur(ttc / headcount)}</strong> TTC</span> : null}
         </div>
@@ -222,8 +223,9 @@ export function SelectAll({ count, all, onAll }: { count: number; all: boolean; 
 
 export function SupplierProfileForm({ orgId, categories, current, canEdit }: { orgId: string; categories: Cat[]; current: { categories: string[]; coverage: string; listed: boolean }; canEdit: boolean }) {
   const [state, action, pending] = useActionState(updateSupplierProfile, undefined);
+  // ActionForm : la saisie (catégories, zone) reste après une erreur.
   return (
-    <form action={action} className="card form">
+    <ActionForm action={action} className="card form">
       <h2>Fiche prestataire</h2>
       <p className="muted">Les organisations consultent l&apos;annuaire par catégorie. Être référencé ne donne aucune priorité : elles choisissent librement qui consulter.</p>
       <Notice state={state} />
@@ -237,7 +239,7 @@ export function SupplierProfileForm({ orgId, categories, current, canEdit }: { o
       <label>Zone couverte<input name="coverage" defaultValue={current.coverage} placeholder="France entière, Grand Ouest…" disabled={!canEdit} /></label>
       <label className="check"><input type="checkbox" name="listed" defaultChecked={current.listed} disabled={!canEdit} /> Apparaître dans l&apos;annuaire des prestataires</label>
       {canEdit && <button className="btn" disabled={pending}>{pending ? "Enregistrement…" : "Enregistrer"}</button>}
-    </form>
+    </ActionForm>
   );
 }
 

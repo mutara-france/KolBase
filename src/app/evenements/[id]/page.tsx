@@ -7,7 +7,7 @@ import { SiteHeader } from "@/components/SiteHeader";
 import { RegisterForm } from "@/components/EventForms";
 import { db } from "@/lib/db";
 import { getCurrentUser } from "@/lib/auth";
-import { eventTypeLabel, FORMAT_LABEL, isHcp } from "@/lib/events";
+import { EVENT_STATE_LABEL, eventState, eventTypeLabel, formatDuration, FORMAT_LABEL, isHcp } from "@/lib/events";
 import { cancelRegistration } from "@/lib/event-actions";
 import type { Metadata } from "next";
 import { fmtDate, fmtEur, intlLocale, type Locale } from "@/lib/i18n";
@@ -59,25 +59,18 @@ export default async function Page({ params, searchParams }: { params: Promise<{
     : null;
   const canReview = !!reg && !reg.survey && eventEnded(event) && (await attended(reg));
   const onlineUrl = reg && event.format !== "PRESENTIEL" ? (await db.event.findUnique({ where: { id }, select: { onlineUrl: true } }))?.onlineUrl ?? null : null;
-  const full = event.capacity != null && event._count.registrations >= event.capacity;
+  // États communs (src/lib/events.ts) : inscriptions closes dès le début, « passé » après la fin.
+  const st = eventState(event, event._count.registrations);
+  const full = st.full;
   // Commencé (inscriptions closes) puis terminé : le badge reste utile aux retardataires pendant l'événement.
-  const past = event.startsAt < new Date();
-  const ended = eventEnded(event);
+  const past = st.moment !== "a_venir";
+  const ended = st.moment === "passe";
   const back = encodeURIComponent(`/evenements/${id}`);
 
-  const left = event.capacity != null ? Math.max(0, event.capacity - event._count.registrations) : null;
+  // Places restantes et prix « par personne » : seulement tant que l'on peut s'inscrire (ni passé, ni en cours, ni annulé).
+  const left = event.capacity != null && st.upcoming ? Math.max(0, event.capacity - event._count.registrations) : null;
   const cancelled = !!event.cancelledAt;
-  const status = cancelled
-    ? { label: t("Événement annulé"), tone: "bad" }
-    : ended
-    ? { label: t("Événement passé"), tone: "done" }
-    : past
-      ? { label: t("En cours"), tone: "done" }
-    : !event.registrationOpen
-      ? { label: t("Inscriptions closes"), tone: "done" }
-      : full
-        ? { label: t("Complet"), tone: "bad" }
-        : { label: t("Inscriptions ouvertes"), tone: "ok" };
+  const status = { label: t(EVENT_STATE_LABEL[st.state].label), tone: EVENT_STATE_LABEL[st.state].tone };
   const benefitsTotal = event.benefits.reduce((s, b) => s + b.valueCents, 0);
   // Appels à candidatures rattachés à l'événement, encore ouverts (date limite, places).
   const openCalls = past || cancelled ? [] : event.calls.filter((c) => (!c.deadline || c.deadline >= new Date()) && (!c.slots || c._count.applications < c.slots));
@@ -93,13 +86,14 @@ export default async function Page({ params, searchParams }: { params: Promise<{
     startDate: event.startsAt.toISOString(),
     endDate: end?.toISOString(),
     eventStatus: `https://schema.org/${cancelled ? "EventCancelled" : "EventScheduled"}`,
+    // Offre (inscription) : seulement tant qu'elle est possible, sinon complet ; aucune pour un événement passé ou annulé.
     eventAttendanceMode: `https://schema.org/${event.format === "DISTANCIEL" ? "Online" : event.format === "HYBRIDE" ? "Mixed" : "Offline"}EventAttendanceMode`,
     location: event.format === "DISTANCIEL"
       ? { "@type": "VirtualLocation", url: `${base}/evenements/${id}` }
       : { "@type": "Place", name: event.venue ?? event.city ?? undefined, address: { "@type": "PostalAddress", addressLocality: event.city ?? undefined, addressCountry: "FR" } },
     image: [`${base}/evenements/${id}/opengraph-image`],
     organizer: { "@type": "Organization", name: event.organization.name, url: orgIsPublic(event.organization) ? `${base}/structures/${event.organization.id}` : undefined },
-    offers: { "@type": "Offer", price: 0, priceCurrency: "EUR", url: `${base}/evenements/${id}`, availability: `https://schema.org/${full || !event.registrationOpen ? "SoldOut" : "InStock"}`, validFrom: event.publishedAt?.toISOString() },
+    offers: st.upcoming ? { "@type": "Offer", price: 0, priceCurrency: "EUR", url: `${base}/evenements/${id}`, availability: `https://schema.org/${st.canRegister ? "InStock" : "SoldOut"}`, validFrom: event.publishedAt?.toISOString() } : undefined,
     maximumAttendeeCapacity: event.capacity ?? undefined,
   };
 
@@ -114,10 +108,10 @@ export default async function Page({ params, searchParams }: { params: Promise<{
           title={event.title}
           lead={t("Organisé par {name}", { name: event.organization.name })}
           facts={[
-            { icon: <CalendarDays size={13} />, label: t("Date"), value: fmtDate(locale, event.startsAt, { day: "numeric", month: "long", year: "numeric" }), sub: `${event.startsAt.toLocaleTimeString(intlLocale(locale), { timeZone: "Europe/Paris", hour: "2-digit", minute: "2-digit" })}${event.durationMinutes ? ` · ${t("{h} h {m}", { h: Math.floor(event.durationMinutes / 60), m: String(event.durationMinutes % 60).padStart(2, "0") })}` : ""}` },
+            { icon: <CalendarDays size={13} />, label: t("Date"), value: fmtDate(locale, event.startsAt, { day: "numeric", month: "long", year: "numeric" }), sub: `${event.startsAt.toLocaleTimeString(intlLocale(locale), { timeZone: "Europe/Paris", hour: "2-digit", minute: "2-digit" })}${event.durationMinutes ? ` · ${formatDuration(event.durationMinutes, locale)}` : ""}` },
             { icon: <MapPin size={13} />, label: t("Lieu"), value: event.format === "DISTANCIEL" ? t("En ligne") : event.city ?? t("À préciser"), sub: event.venue ?? undefined },
             ...(left != null && !cancelled ? [{ icon: <Users size={13} />, label: t("Places"), value: t("{n} restantes", { n: left }), sub: t("sur {capacity}", { capacity: event.capacity! }) }] : []),
-            { icon: <Gift size={13} />, label: t("Prise en charge"), value: event.benefits.length ? t("{amount} par personne", { amount: fmtEur(locale, benefitsTotal) }) : t("Aucune"), sub: event.benefits.length ? t("au plus, selon vos choix") : t("à vos frais") },
+            ...(st.upcoming ? [{ icon: <Gift size={13} />, label: t("Prise en charge"), value: event.benefits.length ? t("{amount} par personne", { amount: fmtEur(locale, benefitsTotal) }) : t("Aucune"), sub: event.benefits.length ? t("au plus, selon vos choix") : t("à vos frais") }] : []),
           ]}
         />
         {cancelled && (
@@ -134,7 +128,7 @@ export default async function Page({ params, searchParams }: { params: Promise<{
               {event.benefits.length === 0 ? (
                 <p className="muted">{t("Aucune prise en charge : les participants viennent à leurs frais.")}</p>
               ) : (
-                <ul className="plain stack-sm">{event.benefits.map((b) => <li key={b.id} className="flex-between"><span>{t(b.label)}</span><span className="muted">{t("{amount} par personne", { amount: fmtEur(locale, b.valueCents) })}</span></li>)}</ul>
+                <ul className="plain stack-sm">{event.benefits.map((b) => <li key={b.id} className="flex-between"><span>{t(b.label)}</span>{st.upcoming && <span className="muted">{t("{amount} par personne", { amount: fmtEur(locale, b.valueCents) })}</span>}</li>)}</ul>
               )}
               {event.benefits.length > 0 && <p className="hint">{t("Chaque prestation acceptée par un professionnel de santé est un avantage déclaré, rattaché à votre nom.")}</p>}
             </section>
@@ -149,8 +143,14 @@ export default async function Page({ params, searchParams }: { params: Promise<{
                   ].filter(Boolean).join(" · ")}
                 </p>
                 {c.description && <p className="pre-line clamp-4">{c.description}</p>}
+                {/* « Candidater » : aux experts référencés ; un visiteur se connecte d'abord (retour à l'appel). */}
                 {user?.practitioner?.listed ? (
                   <Link className="btn ghost small" href={`/opportunites/${c.id}`}>{t("Candidater")}</Link>
+                ) : !user ? (
+                  <>
+                    <Link className="btn ghost small" href={`/connexion?next=${encodeURIComponent(`/opportunites/${c.id}`)}`}>{t("Se connecter pour candidater")}</Link>
+                    <p className="hint">{t("Réservé aux experts référencés.")}</p>
+                  </>
                 ) : (
                   <p className="hint">{t("Réservé aux experts référencés.")}</p>
                 )}

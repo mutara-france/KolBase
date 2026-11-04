@@ -34,6 +34,15 @@ export const STATUS_LABEL: Record<string, string> = {
 
 export type SubLike = { status: string; exemptUntil: Date | null } | null | undefined;
 export const exempt = (s: SubLike, now = new Date()) => !!s?.exemptUntil && s.exemptUntil > now;
+/**
+ * Facturation Stripe d'un abonnement en cours : en pause sans date de reprise pendant une suspension par KolBase ; en
+ * pause jusqu'à la fin d'une gratuité en cours (reprise automatique) ; sinon facturée normalement.
+ */
+export function stripePause(o: { suspended: boolean; exemptUntil: Date | null | undefined }, now = new Date()): { pause: false } | { pause: true; resumesAt: Date | null } {
+  if (o.suspended) return { pause: true, resumesAt: null };
+  if (o.exemptUntil && o.exemptUntil > now) return { pause: true, resumesAt: o.exemptUntil };
+  return { pause: false };
+}
 /** Statut affiché : la gratuité prime. */
 export const displayStatus = (s: SubLike, now = new Date()) => (exempt(s, now) ? "offerte" : s?.status ?? "aucun");
 /** Actions engageantes autorisées : gratuité, mois offert, abonnement actif, ou paiement en cours de relance. */
@@ -59,9 +68,11 @@ export const asObjectId = (v: unknown): string | null => (typeof v === "string" 
 /** Lien joint au refus d'une action engageante : la page qui lève le blocage. */
 export type GateLink = { href: string; label: string };
 /** Ce qui bloque une action engageante sur une page (bouton désactivé) : contrat de sous-traitance, puis abonnement. */
-export type Blocked = "contrat" | "abonnement" | null;
+/** Ce qui bloque une action engageante, dans l'ordre : validation de l'organisation, contrat, abonnement. */
+export type Blocked = "validation" | "contrat" | "abonnement" | null;
 /** Fin de la consigne affichée sous un bouton désactivé (« Envoi possible … »). */
 export const BLOCKED_UNTIL = {
+  validation: "une fois l'organisation validée par KolBase",
   contrat: "une fois le contrat de sous-traitance accepté par un administrateur",
   abonnement: "une fois l'abonnement activé",
 } as const;

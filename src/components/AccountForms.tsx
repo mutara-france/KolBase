@@ -1,5 +1,6 @@
 "use client";
 
+import { inSentence } from "@/lib/elision";
 import { useActionState, useState } from "react";
 import { changePassword, deleteAccount, resendVerification, setListed, updateNotifyPrefs, updateProfile } from "@/lib/auth-actions";
 import { Notice } from "@/components/AuthForms";
@@ -84,7 +85,7 @@ function IdStatus({ p, show }: { p: NonNullable<Props["practitioner"]>; show: bo
       {status === "pending" && t("En cours de vérification par KolBase.")}
       {status === "rejected" &&
         (p.rppsNote
-          ? t("Non validé : {note}. Corrigez le numéro pour une nouvelle vérification.", { note: p.rppsNote })
+          ? t("Non validé : {note}. Corrigez le numéro pour une nouvelle vérification.", { note: inSentence(p.rppsNote) })
           : t("Non validé. Corrigez le numéro pour une nouvelle vérification."))}
       {status === "none" && t("Nécessaire pour être référencé comme expert ; vérifié par KolBase.")}
     </span>
@@ -147,7 +148,7 @@ export function ListingForm({ listed, eligible, idMissing, rpps }: {
           {t("N° RPPS : {rpps}", { rpps: rpps.value })} ·{" "}
           {rpps.status === "verified" ? t("Vérifié par KolBase : badge « Identité vérifiée » affiché.")
             : rpps.status === "pending" ? t("En cours de vérification par KolBase.")
-            : rpps.note ? t("Non validé : {note}. Corrigez le numéro pour une nouvelle vérification.", { note: rpps.note }) : t("Non validé. Corrigez le numéro pour une nouvelle vérification.")}
+            : rpps.note ? t("Non validé : {note}. Corrigez le numéro pour une nouvelle vérification.", { note: inSentence(rpps.note) }) : t("Non validé. Corrigez le numéro pour une nouvelle vérification.")}
           {" "}<span className="hint">{t("(modifiable dans Informations personnelles)")}</span>
         </p>
       )}
@@ -160,12 +161,16 @@ export function ListingForm({ listed, eligible, idMissing, rpps }: {
 }
 
 /** Adresse non confirmée : rappel et renvoi du lien. */
-export function EmailVerificationNotice({ email }: { email: string }) {
+export function EmailVerificationNotice({ email, practitioner = true }: { email: string; practitioner?: boolean }) {
   const [state, action, pending] = useActionState(resendVerification, undefined);
   const t = useT();
+  // La lettre d'information n'est donnée comme raison qu'à un praticien (elle leur est réservée).
   return (
     <form action={action} className="notice warn">
-      {t("Confirmez votre adresse")} <strong>{email}</strong> {t(": un lien vous a été envoyé. Sans confirmation, vous ne recevez pas la lettre d'information ; le reste de KolBase fonctionne normalement.")}{" "}
+      {t("Confirmez votre adresse")} <strong>{email}</strong>{" "}
+      {practitioner
+        ? t(": un lien vous a été envoyé. Sans confirmation, vous ne recevez pas la lettre d'information ; le reste de KolBase fonctionne normalement.")
+        : t(": un lien vous a été envoyé. C'est à cette adresse que KolBase vous écrit (invitations, demandes, factures).")}{" "}
       {state?.ok || state?.error ? <span>{state.ok ?? state.error}</span> : <button className="link" disabled={pending}>{t("Renvoyer le lien")}</button>}
     </form>
   );
@@ -182,7 +187,8 @@ export function ResendVerificationLink() {
   );
 }
 
-export function NotificationsForm({ email, newsletter = false }: { email: boolean; newsletter?: boolean }) {
+/** Notifications ; la lettre d'information n'est proposée qu'à un compte praticien (`practitioner`). */
+export function NotificationsForm({ email, newsletter = false, practitioner = true }: { email: boolean; newsletter?: boolean; practitioner?: boolean }) {
   const [state, action, pending] = useActionState(updateNotifyPrefs, undefined);
   const t = useT();
   return (
@@ -192,10 +198,16 @@ export function NotificationsForm({ email, newsletter = false }: { email: boolea
       <label className="check">
         <input type="checkbox" name="email" value="1" defaultChecked={email} /> {t("Recevoir par e-mail les sollicitations, réponses, messages, candidatures et devis")}
       </label>
-      <label className="check">
-        <input type="checkbox" name="newsletter" value="1" defaultChecked={newsletter} /> {t("Recevoir la lettre d'information de KolBase : événements scientifiques et nouveautés (deux envois par mois au plus)")}
-      </label>
-      <p className="hint">{t("Les e-mails de service (mot de passe, confirmation d'adresse, invitations) sont toujours envoyés. La lettre d'information peut présenter des événements d'organisations partenaires ; chaque envoi contient un lien de désinscription.")}</p>
+      {practitioner && (
+        <label className="check">
+          <input type="checkbox" name="newsletter" value="1" defaultChecked={newsletter} /> {t("Recevoir la lettre d'information de KolBase : événements scientifiques et nouveautés (deux envois par mois au plus)")}
+        </label>
+      )}
+      <p className="hint">
+        {practitioner
+          ? t("Les e-mails de service (mot de passe, confirmation d'adresse, invitations) sont toujours envoyés. La lettre d'information peut présenter des événements d'organisations partenaires ; chaque envoi contient un lien de désinscription.")
+          : t("Les e-mails de service (mot de passe, confirmation d'adresse, invitations) sont toujours envoyés.")}
+      </p>
       <button className="btn secondary" disabled={pending}>{t("Enregistrer")}</button>
     </form>
   );

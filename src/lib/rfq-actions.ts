@@ -8,7 +8,7 @@ import { isSuspendedOrg, isVerifiedOrg, notVerified, ORG_SUSPENDED, requireMembe
 import { EVENT_MANAGER_ROLES, EVENT_ORGANIZER_ROLES, eventScope, parseParisDateTime } from "@/lib/events";
 import { canCancelRfq, SUPPLIER_CATEGORIES } from "@/lib/suppliers";
 import { eurToCents, intOrNull, str } from "@/lib/form";
-import { isVatBp, linesTotal, MAX_LINES, withVat, type QuoteLine } from "@/lib/quotes";
+import { defaultVatBp, isVatBp, linesTotal, linesTtc, mainVat, MAX_LINES, quoteTtc, withVat, type QuoteLine } from "@/lib/quotes";
 import { MAX_UPLOAD_BYTES, putObject, safeFileName, storageEnabled } from "@/lib/storage";
 import { engagementGate, gateMessage, markSupplierTriggered, stripeEnabled, supplierCanQuote } from "@/lib/billing";
 import type { GateLink } from "@/lib/billing-plans";
@@ -174,7 +174,7 @@ export async function applyQuoteToBenefit(form: FormData) {
     db.eventBenefit.update({ where: { id: benefit.id }, data: { valueCents } }),
     db.registrationBenefit.updateMany({ where: { benefitId: benefit.id, registration: { declared: false } }, data: { valueCents } }),
   ]);
-  await audit(user.id, "event.benefit_value", "Event", quote.rfq.eventId, { benefit: benefit.label, from: benefit.valueCents, to: valueCents, quoteId: quote.id, ttcCents: withVat(quote.amountCents, quote.vatBp) });
+  await audit(user.id, "event.benefit_value", "Event", quote.rfq.eventId, { benefit: benefit.label, from: benefit.valueCents, to: valueCents, quoteId: quote.id, ttcCents: quoteTtc(quote) });
   revalidatePath(`/organisations/${orgId}/evenements/${quote.rfq.eventId}`);
 }
 
@@ -222,23 +222,29 @@ export async function submitQuote(_: ActionState, form: FormData): Promise<Actio
   // Après un premier devis retenu, répondre à une nouvelle demande suppose l'abonnement (les révisions restent libres).
   if (!(await db.quote.findFirst({ where: { rfqId, supplierId: orgId }, select: { id: true } })) && !(await supplierCanQuote(orgId))) return { error: gateMessage("reponse") };
 
-  // Devis détaillé (lignes) ou montant global.
+  // Devis détaillé (lignes, chacune à son taux de TVA) ou montant global.
+  const fallbackVat = Number(str(form, "vat") || defaultVatBp(invite.rfq.category));
+  if (!isVatBp(fallbackVat)) return { error: "Taux de TVA invalide." };
   const labels = form.getAll("line_label").map((v) => String(v).trim().slice(0, 200));
   const qtys = form.getAll("line_qty").map(String);
   const units = form.getAll("line_unit").map(String);
+  const vats = form.getAll("line_vat").map(String);
   const lines: QuoteLine[] = [];
   for (let i = 0; i < labels.length && i < MAX_LINES; i++) {
     if (!labels[i] && !units[i]) continue;
     const qty = Number((qtys[i] ?? "1").replace(",", "."));
     const unitCents = eurToCents(units[i] ?? "");
     if (!labels[i] || !Number.isFinite(qty) || qty <= 0 || qty > 100000 || unitCents === null) return { error: `Ligne ${i + 1} incomplète : désignation, quantité positive et prix unitaire.` };
-    lines.push({ label: labels[i], qty, unitCents });
+    const vatBp = vats[i] ? Number(vats[i]) : fallbackVat;
+    if (!isVatBp(vatBp)) return { error: `Ligne ${i + 1} : taux de TVA invalide.` };
+    lines.push({ label: labels[i], qty, unitCents, vatBp });
   }
   const amountCents = lines.length ? linesTotal(lines) : eurToCents(str(form, "amount"), { allowZero: false });
   if (!amountCents) return { error: "Détaillez votre offre ligne par ligne : désignation, quantité et prix unitaire." };
   if (amountCents > 1_000_000_000) return { error: "Montant trop élevé." };
-  const vatBp = Number(str(form, "vat") || "2000");
-  if (!isVatBp(vatBp)) return { error: "Taux de TVA invalide." };
+  // Taux du devis (unique, ou principal) et total TTC : somme des lignes à leur taux.
+  const vatBp = lines.length ? mainVat(lines, fallbackVat) : fallbackVat;
+  const ttcCents = lines.length ? linesTtc(lines, fallbackVat) : withVat(amountCents, vatBp);
   const validRaw = str(form, "validUntil");
   const validUntil = validRaw ? parseParisDateTime(`${validRaw}T23:59`) : null;
   if (validRaw && (!validUntil || validUntil < new Date())) return { error: "Date de validité invalide ou passée." };
@@ -256,7 +262,7 @@ export async function submitQuote(_: ActionState, form: FormData): Promise<Actio
 
   const existing = await db.quote.findUnique({ where: { rfqId_supplierId: { rfqId, supplierId: orgId } } });
   const data = {
-    amountCents, lines, vatBp, validUntil, conditions: str(form, "conditions") || null,
+    amountCents, lines, vatBp, ttcCents, validUntil, conditions: str(form, "conditions") || null,
     delay: str(form, "delay") || null, note: str(form, "note") || null, authorId: user.id, status: "submitted" as const,
   };
   const q = existing
@@ -297,12 +303,15 @@ export async function updateSupplierProfile(_: ActionState, form: FormData): Pro
   const { user, isAdmin, org: ctxOrg } = await requireSupplier(orgId);
   if (!isAdmin) return { error: "Réservé aux administrateurs." };
   const categories = form.getAll("categories").map(String).filter((c) => SUPPLIER_CATEGORIES.some((x) => x.id === c));
-  const listed = form.get("listed") === "on";
-  if (listed && categories.length === 0) return { error: "Choisissez au moins une catégorie pour être référencé." };
-  if (listed && !isVerifiedOrg(ctxOrg)) return { error: `Référencement impossible pour l'instant : ${notVerified(ctxOrg)}` };
+  const asked = form.get("listed") === "on";
+  if (asked && categories.length === 0) return { error: "Choisissez au moins une catégorie pour être référencé." };
+  // En attente de validation : catégories et zone sont enregistrées ; le référencement suivra la validation.
+  const listed = asked && isVerifiedOrg(ctxOrg);
   await db.organization.update({ where: { id: orgId }, data: { supplierCategories: categories, coverage: str(form, "coverage") || null, listed } });
   await audit(user.id, "supplier.profile", "Organization", orgId, { categories, listed });
   revalidatePath(`/organisations/${orgId}/devis`);
+  if (asked && !listed)
+    return { ok: isSuspendedOrg(ctxOrg) ? `Catégories et zone enregistrées. ${ORG_SUSPENDED}` : "Catégories et zone enregistrées. Le référencement dans l'annuaire suivra la validation de l'organisation par KolBase." };
   return { ok: "Fiche prestataire enregistrée." };
 }
 

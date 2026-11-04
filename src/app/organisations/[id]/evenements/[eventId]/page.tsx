@@ -7,25 +7,27 @@ import { SiteHeader } from "@/components/SiteHeader";
 import { StatusPill } from "@/components/ProjectBits";
 import { db } from "@/lib/db";
 import { requireMembership } from "@/lib/orgs";
-import { BENEFIT_CATALOG, COMPLIANCE_ROLES, EVENT_MANAGER_ROLES, EVENT_ORGANIZER_ROLES, EVENT_TYPES, eventScope, eventTypeLabel, formatDate, formatEUR, formatTime, FORMAT_LABEL, needsOnlineLink, toParisInput } from "@/lib/events";
+import { BENEFIT_CATALOG, COMPLIANCE_ROLES, EVENT_MANAGER_ROLES, EVENT_ORGANIZER_ROLES, EVENT_TYPES, eventScope, eventTypeLabel, formatDate, formatEUR, formatTime, FORMAT_LABEL, formatDuration, needsOnlineLink, orgEventStatus, toParisInput } from "@/lib/events";
+import { isSuspendedOrg } from "@/lib/org-roles";
 import { cancelEvent, deleteEventDraft, setEventAgency, setEventFlag } from "@/lib/event-actions";
 import { deletableDraft, everPublished } from "@/lib/event-drafts";
 import { BillingNotice } from "@/components/BillingNotice";
 import { engagementBlock } from "@/lib/billing";
 import { applyQuoteToBenefit } from "@/lib/rfq-actions";
 import { RFQ_STATUS, rfqDisplayStatus, rfqView, SUPPLIER_CATEGORIES, supplierCategoryLabel } from "@/lib/suppliers";
-import { perParticipant, withVat } from "@/lib/quotes";
-import { costHeadcount } from "@/lib/indicators";
+import { perHeadLabel, perParticipant, quoteTtc } from "@/lib/quotes";
+import { costPerHead, eventHospitality } from "@/lib/indicators";
 import { complianceSettings, hospitalityRegime, REGIME_LABEL } from "@/lib/compliance";
 import { drPrefix } from "@/lib/professions";
 import { checkinOpen } from "@/lib/checkin";
 import { eventEnd, eventEnded, fmtRating, surveySummary } from "@/lib/event-followup";
 import { ServiceOffers } from "@/components/ServiceForms";
 import { cancelServiceOrder } from "@/lib/service-actions";
-import { featuredUntil, newsletterAudienceCount, ORDER_STATUS, orderStats } from "@/lib/services";
+import { featuredUntil, newsletterAudienceCount, newsletterSendsThisMonth, ORDER_STATUS, orderStats } from "@/lib/services";
+import { mailingSlot } from "@/lib/newsletter";
 import { ConfirmButton } from "@/components/ConfirmButton";
 import { conversion, reportParts } from "@/lib/service-report";
-import { groupOrders, packSaving, packStatus } from "@/lib/service-pack";
+import { groupOrders, packItemStatus, packSaving, packStatus } from "@/lib/service-pack";
 import { SendNowButton } from "@/components/FollowupForms";
 
 export const metadata = { title: "Événement — KolBase" };
@@ -68,12 +70,13 @@ export default async function Page({ params, searchParams }: { params: Promise<{
   const [rfqs, agencies] = await Promise.all([
     db.rfq.findMany({
       where: { organizationId: id, eventId },
-      include: { _count: { select: { suppliers: true } }, suppliers: { select: { supplierId: true } }, quotes: { select: { id: true, amountCents: true, vatBp: true, status: true, supplierId: true, supplier: { select: { name: true } } }, orderBy: { amountCents: "asc" } } },
+      include: { _count: { select: { suppliers: true } }, suppliers: { select: { supplierId: true } }, quotes: { select: { id: true, amountCents: true, vatBp: true, ttcCents: true, status: true, supplierId: true, supplier: { select: { name: true } } }, orderBy: { amountCents: "asc" } } },
       orderBy: { createdAt: "asc" },
     }).then((rs) => {
       // Agence consultée sur une demande de son événement : seulement son propre devis (confidentialité des offres).
       const own = user.memberships.filter((m) => m.organization.kind === "PRESTATAIRE").map((m) => m.organizationId);
-      return rs.map((r) => rfqView({ ...r, messages: [] as { supplierId: string }[] }, own));
+      // Meilleure offre d'abord, sur le TTC (les lignes peuvent avoir des taux de TVA différents).
+      return rs.map((r) => rfqView({ ...r, quotes: [...r.quotes].sort((a, b) => quoteTtc(a) - quoteTtc(b)), messages: [] as { supplierId: string }[] }, own));
     }),
     // Agences proposées : les agences événementielles référencées, et celles déjà mandatées.
     isOrganizer
@@ -95,14 +98,12 @@ export default async function Page({ params, searchParams }: { params: Promise<{
   const experts = event.project?.experts ?? [];
   const participants = event.internal ? experts.length : event.registrations.length;
   const expected = event.capacity ?? (participants || null);
-  const totalCents = event.registrations.reduce((s, r) => s + r.benefits.reduce((x, b) => x + b.valueCents, 0), 0);
-  const withBenefits = event.registrations.filter((r) => r.benefits.length > 0).length;
   const askedCats = new Set(rfqs.filter((r) => r.status !== "cancelled").map((r) => r.category));
   // Catégories utiles selon le format : une visioconférence n'a besoin ni de salle ni d'hébergement.
   // Raccourcis vers les besoins logistiques courants ; les autres catégories restent accessibles par « Demander des devis ».
   const shortcutIds = event.format === "DISTANCIEL" ? ["audiovisuel", "communication"] : ["salle", "restauration", "hebergement", "transport", "audiovisuel"];
   const usefulCats = SUPPLIER_CATEGORIES.filter((c) => shortcutIds.includes(c.id) && !askedCats.has(c.id));
-  const engagedTtc = rfqs.reduce((s, r) => { const k = r.quotes.find((q) => q.status === "retained"); return s + (k ? withVat(k.amountCents, k.vatBp) : 0); }, 0);
+  const engagedTtc = rfqs.reduce((s, r) => { const k = r.quotes.find((q) => q.status === "retained"); return s + (k ? quoteTtc(k) : 0); }, 0);
   // Accueil et bilan : présence au pointage, coût réel, hospitalités à déclarer.
   const now = new Date();
   // Commencé n'est pas terminé : pointage pendant l'événement ; absents, bilan, attestations et avis après la fin.
@@ -110,10 +111,12 @@ export default async function Page({ params, searchParams }: { params: Promise<{
   const ended = eventEnded(event, now);
   const canPoint = !event.internal && checkinOpen(event.startsAt, now);
   const present = event.registrations.filter((r) => r.checkedInAt);
-  const pointed = present.length > 0;
+  // Une seule règle de présence (en-tête, bilan, Statistiques) : après l'événement pointé, les absents sont exclus.
+  const hosp = eventHospitality(event.registrations, ended);
+  const pointed = hosp.known;
   const hospOf = (rs: typeof event.registrations) => rs.reduce((s, r) => s + r.benefits.reduce((x, b) => x + b.valueCents, 0), 0);
   const absentsWithBenefits = pointed ? event.registrations.filter((r) => !r.checkedInAt && r.benefits.length > 0) : [];
-  const hospConsumed = pointed ? hospOf(present) : totalCents;
+  const hospConsumed = hosp.cents;
   const realCost = hospConsumed + engagedTtc;
   const isCompliance = roles.some((r) => COMPLIANCE_ROLES.includes(r));
   // Rappel de la veille, puis remerciement (attestation, questionnaire) : automatiques, ou envoyés d'un clic.
@@ -126,6 +129,8 @@ export default async function Page({ params, searchParams }: { params: Promise<{
   const openFor = (offerId: string) => event.serviceOrders.some((x) => x.offerId === offerId && ["demandee", "planifiee"].includes(x.status));
   // E-mailing (seul ou dans un pack) : l'audience actuelle est annoncée, et la commande impossible si elle est nulle.
   const audience = offers.some((o) => o.kind === "newsletter") ? await newsletterAudienceCount() : 0;
+  // Plafond mensuel de la lettre : prochain envoi le 1er du mois suivant ; e-mailing indisponible si l'événement a lieu avant.
+  const slot = offers.some((o) => o.kind === "newsletter") ? mailingSlot(await newsletterSendsThisMonth(), event.startsAt, now) : null;
   const offerCards = offers.map((o) => {
     const items = o.kind === "pack" ? offers.filter((x) => o.includes.includes(x.code)) : [];
     const mailing = o.kind === "newsletter" || items.some((x) => x.kind === "newsletter");
@@ -137,9 +142,15 @@ export default async function Page({ params, searchParams }: { params: Promise<{
       ordered: o.kind === "pack" ? items.length > 0 && items.every((x) => openFor(x.id)) : openFor(o.id),
       blocked: o.kind === "pack" && items.some((x) => openFor(x.id)),
       audience: mailing ? audience : undefined,
+      // Indisponible : e-mailing sans audience, ou plafond de la lettre atteint jusqu'après l'événement.
+      unavailable: mailing && audience === 0 ? "Indisponible : audience nulle." : mailing && slot?.tooLate ? "Indisponible avant l'événement : plafond de la lettre atteint." : undefined,
+      note: mailing && slot?.capped ? slot.message! : undefined,
+      minDate: mailing && slot?.capped && !slot.tooLate ? slot.nextAt!.toLocaleDateString("sv-SE", { timeZone: "Europe/Paris" }) : undefined,
     };
   }).filter((o) => !o.pack || o.compareAt != null || o.ordered);
-  const pack = offerCards.find((o) => o.pack && !o.blocked);
+  // Carte « Votre événement est en ligne » : seulement ce qui peut être commandé (ni pack ni e-mailing indisponible).
+  const orderable = offerCards.filter((o) => !o.ordered && !o.blocked && !o.unavailable);
+  const pack = orderable.find((o) => o.pack);
   const justPublished = publie === "1" && isOrganizer && !event.internal && !!event.publishedAt && !event.serviceOrders.some((x) => ["demandee", "planifiee"].includes(x.status));
   const serviceStats = isOrganizer ? await orderStats(event.serviceOrders.filter((o) => o.status === "realisee")) : new Map();
   /** Une commande de service : libellé, prix, dates, bilan ; « Annuler » tant qu'elle n'est pas planifiée (hors pack). */
@@ -176,21 +187,14 @@ export default async function Page({ params, searchParams }: { params: Promise<{
   const newRfq = (cat?: string) => `/organisations/${id}/prestataires?onglet=nouvelle&evenement=${eventId}${cat ? `&cat=${cat}` : ""}`;
   // Retiré de l'agenda après publication : ce n'est pas un brouillon.
   const withdrawn = !event.publishedAt && !event.internal && !event.cancelledAt && (await everPublished(event.id));
-  const status = event.cancelledAt
-    ? { label: "Annulé", tone: "bad" }
-    : event.internal
-      ? { label: "Réunion interne", tone: "electric" }
-      : event.publishedAt
-        ? { label: event.registrationOpen ? "Publié · inscriptions ouvertes" : "Publié · inscriptions closes", tone: event.registrationOpen ? "ok" : "done" }
-        : withdrawn
-          ? { label: "Retiré de l'agenda", tone: "done" }
-          : { label: "Brouillon", tone: "wait" };
+  // États communs (en cours, passé, complet…) ; masqué pendant la suspension de l'organisation.
+  const status = orgEventStatus(event, event._count.registrations, { suspended: isSuspendedOrg(org), withdrawn }, now);
   // Modification : les hospitalités déjà acceptées par un inscrit sont figées ; un brouillon jamais publié se supprime.
   const frozenBenefits = event.benefits.some((b) => b._count.accepted > 0);
   const canDelete = isOrganizer && (await deletableDraft(event));
   const missingLink = !event.cancelledAt && needsOnlineLink(event, now);
   const publishBlocked = !readOnly && !event.publishedAt && !event.internal ? await engagementBlock(id, "evenement") : null;
-  const duration = event.durationMinutes ? (event.durationMinutes >= 60 ? `${Math.floor(event.durationMinutes / 60)} h${event.durationMinutes % 60 ? ` ${event.durationMinutes % 60}` : ""}` : `${event.durationMinutes} min`) : null;
+  const duration = event.durationMinutes ? formatDuration(event.durationMinutes) : null;
 
   const Flag = ({ flag, label, ghost, disabled }: { flag: string; label: string; ghost?: boolean; disabled?: boolean }) => (
     <form action={setEventFlag}>
@@ -230,7 +234,7 @@ export default async function Page({ params, searchParams }: { params: Promise<{
             {!event.internal && (
               <div>
                 <dt><Gift size={13} /> Hospitalités</dt>
-                <dd>{formatEUR(totalCents)} TTC<small>{withBenefits} bénéficiaire{withBenefits > 1 ? "s" : ""} · valeur déclarée</small></dd>
+                <dd>{formatEUR(hosp.cents)} TTC<small>{hosp.beneficiaries} bénéficiaire{hosp.beneficiaries > 1 ? "s" : ""}{hosp.known ? ` présent${hosp.beneficiaries > 1 ? "s" : ""} · consommées` : " · valeur déclarée"}</small></dd>
               </div>
             )}
             <div>
@@ -240,13 +244,13 @@ export default async function Page({ params, searchParams }: { params: Promise<{
           </dl>
         </header>
 
-        {justPublished && offerCards.length > 0 && (
+        {justPublished && orderable.length > 0 && (
           <section className="card published-offer" aria-labelledby="publie">
             <Megaphone size={26} strokeWidth={1.6} aria-hidden />
             <div>
               <h2 id="publie">Votre événement est en ligne dans l&apos;agenda de KolBase</h2>
               <p className="muted">
-                Faites-le connaître auprès des praticiens membres : e-mailing dédié, post sur les réseaux sociaux de KolBase, mise à la une de la page d&apos;accueil.
+                Faites-le connaître auprès des praticiens membres : {orderable.filter((o) => !o.pack).map((o) => o.label.charAt(0).toLowerCase() + o.label.slice(1)).join(", ")}.
                 {pack ? <> {pack.label} : <strong>{pack.price}</strong> au lieu de {pack.compareAt}.</> : null}
               </p>
             </div>
@@ -277,7 +281,7 @@ export default async function Page({ params, searchParams }: { params: Promise<{
             <dl className="hero-facts">
               <div><dt><Users size={13} /> Présents</dt><dd>{pointed ? `${present.length} / ${event.registrations.length}` : "—"}<small>{pointed && event.registrations.length ? `${Math.round((present.length / event.registrations.length) * 100)} % des inscrits` : `${event.registrations.length} inscrit${event.registrations.length > 1 ? "s" : ""}`}</small></dd></div>
               <div><dt><Euro size={13} /> Coût réel</dt><dd>{formatEUR(realCost)} TTC<small>hospitalités et prestataires</small></dd></div>
-              <div><dt><Euro size={13} /> Par {pointed ? "présent" : "inscrit"}</dt><dd>{(pointed ? present.length : event.registrations.length) ? `${formatEUR(Math.round(realCost / (pointed ? present.length : event.registrations.length)))} TTC` : "—"}<small>{pointed ? "coût réel rapporté aux présents" : "coût réel rapporté aux inscrits"}</small></dd></div>
+              <div><dt><Euro size={13} /> Par {pointed ? "présent" : "inscrit"}</dt><dd>{hosp.headcount ? `${formatEUR(Math.round(realCost / hosp.headcount))} TTC` : "—"}<small>{pointed ? "coût réel rapporté aux présents" : "coût réel rapporté aux inscrits"}</small></dd></div>
               <div><dt><Gift size={13} /> Hospitalités</dt><dd>{formatEUR(hospConsumed)} TTC<small>{pointed ? "consommées par les présents" : "acceptées par les inscrits"}</small></dd></div>
             </dl>
             {absentsWithBenefits.length > 0 && (
@@ -292,7 +296,7 @@ export default async function Page({ params, searchParams }: { params: Promise<{
                 <strong>Attestations et questionnaire</strong>
                 <p className="muted text-sm">
                   {followed.length
-                    ? `Envoyés le ${formatDate(lastSent(followed, "followUpSentAt")!)} à ${followed.length} participant${followed.length > 1 ? "s" : ""}${pointed ? " présents" : ""}.`
+                    ? `Envoyés le ${formatDate(lastSent(followed, "followUpSentAt")!)} à ${followed.length} participant${followed.length > 1 ? "s" : ""}${pointed ? ` présent${followed.length > 1 ? "s" : ""}` : ""}.`
                     : ended
                       ? `Envoi automatique une heure après la fin : remerciement, ${pointed ? "attestation de présence et " : ""}questionnaire de satisfaction.`
                       : "Envoyés automatiquement une heure après la fin de l'événement."}
@@ -365,10 +369,10 @@ export default async function Page({ params, searchParams }: { params: Promise<{
                     const st = RFQ_STATUS[rfqDisplayStatus(r)];
                     const kept = r.quotes.find((q) => q.status === "retained");
                     const ref = kept ?? r.quotes[0];
-                    const ttc = ref ? withVat(ref.amountCents, ref.vatBp) : 0;
-                    // Après l'événement pointé, le coût se rapporte aux présents.
-                    const basis = costHeadcount(r.headcount ?? expected, present.length, ended);
-                    const pp = ref ? perParticipant(r.category, ttc, basis.n, settings) : null;
+                    const ttc = ref ? quoteTtc(ref) : 0;
+                    // Valeur et seuils : le prix par couvert commandé ; le coût par présent, après l'événement, pour information.
+                    const head = costPerHead(ttc, r.headcount ?? expected, present.length, ended);
+                    const pp = ref ? perParticipant(r.category, ttc, r.headcount ?? expected, settings) : null;
                     return (
                       <li key={r.id}>
                         <div className="logistics-row">
@@ -382,7 +386,8 @@ export default async function Page({ params, searchParams }: { params: Promise<{
                                     {ref ? ` · ${kept ? `retenu : ${kept.supplier.name}` : "meilleure offre"} ${formatEUR(ttc)} TTC` : ""}
                                   </>}
                             </div>
-                            {pp && <div className={`text-xs ${pp.over ? "warn-text" : "muted"}`}>≈ {pp.each.toLocaleString("fr-FR", { maximumFractionDigits: 2 })} € TTC par {basis.per}{pp.limit ? (pp.over ? ` · au-dessus du seuil d'un ${pp.limit.what} (${pp.limit.max} € TTC)` : ` · sous le seuil d'un ${pp.limit.what}`) : ""}</div>}
+                            {pp && <div className={`text-xs ${pp.over ? "warn-text" : "muted"}`}>≈ {pp.each.toLocaleString("fr-FR", { maximumFractionDigits: 2 })} € TTC {perHeadLabel(r.category)}{pp.limit ? (pp.over ? ` · au-dessus du seuil ${pp.limit.of} (${pp.limit.max} € TTC)` : ` · sous le seuil ${pp.limit.of}`) : ""}</div>}
+                            {ref && head.perPresent != null && <div className="text-xs muted">Pour information : {head.perPresent.toLocaleString("fr-FR", { maximumFractionDigits: 2 })} € TTC par présent ({present.length} au pointage)</div>}
                           </div>
                           <span className={`pill ${st.tone}`}>{st.label}</span>
                           {!readOnly && <Link className="btn ghost small" href={`/organisations/${id}/prestataires?onglet=demandes#rfq-${r.id}`}>{kept ? "Voir" : "Comparer"}</Link>}
@@ -391,7 +396,7 @@ export default async function Page({ params, searchParams }: { params: Promise<{
                           <form action={applyQuoteToBenefit} className="apply-benefit">
                             <input type="hidden" name="orgId" value={id} />
                             <input type="hidden" name="quoteId" value={kept.id} />
-                            <span className="text-sm">Reporter le coût réel dans la valeur déclarée</span>
+                            <span className="text-sm">Reporter le prix {perHeadLabel(r.category)} dans la valeur déclarée</span>
                             <select name="benefitId" aria-label="Hospitalité concernée">
                               {event.benefits.map((b) => <option key={b.id} value={b.id}>{b.label} (déclaré {formatEUR(b.valueCents)} TTC)</option>)}
                             </select>
@@ -480,7 +485,7 @@ export default async function Page({ params, searchParams }: { params: Promise<{
                     {groupOrders(event.serviceOrders).map((g) => {
                       if (!g.pack) return <ServiceOrderRow key={g.orders[0].id} o={g.orders[0]} />;
                       // Pack : une ligne « Pack visibilité — 990 € HT », le détail des services se déplie.
-                      const ps = packStatus(g.orders.map((o) => (featuredUntil(o, now) ? "en_cours" : o.status)));
+                      const ps = packStatus(g.orders.map((o) => packItemStatus(o, now)));
                       const total = g.orders.reduce((n, o) => n + o.priceCents, 0);
                       const cancellable = g.orders.every((o) => o.status === "demandee");
                       return (
@@ -581,7 +586,9 @@ export default async function Page({ params, searchParams }: { params: Promise<{
               ) : (
                 <>
                   <p className="next-hint">
-                    {event.publishedAt ? <>Publié dans <Link href={`/evenements/${event.id}`}>l&apos;agenda</Link>. Inscriptions {event.registrationOpen ? "ouvertes" : "fermées"}.</> : withdrawn ? "Retiré de l'agenda : l'événement n'est plus visible des praticiens." : "Brouillon : l'événement n'est pas encore visible des praticiens."}
+                    {event.publishedAt && isSuspendedOrg(org)
+                      ? "Masqué pendant la suspension de l'organisation : l'événement n'est plus visible des praticiens ; les inscrits gardent leur inscription."
+                      : event.publishedAt ? <>Publié dans <Link href={`/evenements/${event.id}`}>l&apos;agenda</Link>. {isPast ? "Inscriptions closes depuis le début de l'événement." : `Inscriptions ${event.registrationOpen ? "ouvertes" : "fermées"}.`}</> : withdrawn ? "Retiré de l'agenda : l'événement n'est plus visible des praticiens." : "Brouillon : l'événement n'est pas encore visible des praticiens."}
                   </p>
                   {!readOnly && <div className="transitions-stack">
                     {event.publishedAt ? (
@@ -602,7 +609,8 @@ export default async function Page({ params, searchParams }: { params: Promise<{
                         </form>
                       ) : <span className="hint">Événement avec des inscrits : son annulation relève de {org.name}.</span>
                     ) : org.verification === "VERIFIED" ? <Flag flag="publish" label={withdrawn ? "Republier dans l'agenda" : "Publier dans l'agenda"} disabled={!!publishBlocked} /> : <span className="hint">Publication possible une fois l&apos;organisation validée par KolBase.</span>}
-                    {event.registrationOpen ? <Flag flag="close" label="Fermer les inscriptions" ghost /> : <Flag flag="open" label="Rouvrir les inscriptions" ghost />}
+                    {/* Inscriptions : seulement pour un événement publié, avant son début (un brouillon n'en reçoit pas). */}
+                    {event.publishedAt && !isPast && (event.registrationOpen ? <Flag flag="close" label="Fermer les inscriptions" ghost /> : <Flag flag="open" label="Rouvrir les inscriptions" ghost />)}
                     {isOrganizer && !event.publishedAt && <Flag flag="internal" label="En faire une réunion interne" ghost />}
                   </div>}
                 </>

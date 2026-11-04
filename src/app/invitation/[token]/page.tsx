@@ -4,7 +4,6 @@ import { getCurrentUser } from "@/lib/auth";
 import { findInvitation, roleLabel } from "@/lib/orgs";
 import { acceptInvitation } from "@/lib/org-actions";
 import { getT } from "@/lib/i18n/server";
-import { mailEnabled } from "@/lib/mail";
 
 export async function generateMetadata() {
   const { t } = await getT();
@@ -17,9 +16,9 @@ export default async function Page({ params }: { params: Promise<{ token: string
   const { t } = await getT();
   const valid = inv && !inv.acceptedAt && !inv.revokedAt && inv.expiresAt > new Date();
   const back = encodeURIComponent(`/invitation/${token}`);
-  // Invitation nominative : seul le compte de l'adresse invitée peut l'accepter.
+  // Invitation nominative : seul le compte de l'adresse invitée peut l'accepter. L'accepter confirme cette adresse
+  // (le lien, reçu à cette adresse, prouve l'accès à la boîte).
   const wrongAccount = !!(valid && inv.email && user && user.email.toLowerCase() !== inv.email.toLowerCase());
-  const unconfirmed = !!(valid && inv.email && user && !wrongAccount && mailEnabled() && !user.emailVerifiedAt);
 
   return (
     <>
@@ -40,10 +39,6 @@ export default async function Page({ params }: { params: Promise<{ token: string
               {wrongAccount ? (
                 <p className="notice warn">
                   {t("Cette invitation est destinée à {email}. Connectez-vous avec cette adresse (vous êtes connecté en tant que {current}).", { email: inv.email!, current: user!.email })}
-                </p>
-              ) : unconfirmed ? (
-                <p className="notice warn">
-                  {t("Confirmez d'abord votre adresse e-mail avec le lien reçu à l'inscription (il peut être renvoyé depuis « Mon compte »), puis revenez sur cette page.")}
                 </p>
               ) : user ? (
                 <form action={acceptInvitation}>

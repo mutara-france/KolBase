@@ -4,16 +4,24 @@ import { SiteHeader } from "@/components/SiteHeader";
 import { CreateMenu, DashHead, DashStats, Timeline, TodoGroups, type TimelineItem } from "@/components/Dashboard";
 import { requireMembership } from "@/lib/orgs";
 import { orgOverview } from "@/lib/org-overview";
-import { formatEUR } from "@/lib/events";
+import { eventMoment, formatEUR } from "@/lib/events";
 import { supplierCategoryLabel } from "@/lib/suppliers";
 import { orgBillingLine, orgOnboarding } from "@/lib/onboarding";
 import { CheckCircle2, Circle } from "lucide-react";
-import { roleLabel, STATS_ROLES } from "@/lib/org-roles";
-import { de } from "@/lib/elision";
+import { rnaAccepted, roleLabel, STATS_ROLES } from "@/lib/org-roles";
+import type { OrgKind } from "@/generated/prisma/client";
+import { de, inSentence } from "@/lib/elision";
 
 export const metadata = { title: "Accueil — KolBase" };
 
 const plural = (n: number, one: string, many: string) => `${n} ${n > 1 ? many : one}`;
+/** Lien vers la demande de validation : la voir, ou compléter / corriger l'identité (SIREN, ou RNA pour une association). */
+const identityLink = (org: { verification: string; siren: string | null; rna: string | null; kind: OrgKind }) => {
+  const ids = rnaAccepted(org.kind) ? "SIREN ou RNA" : "SIREN";
+  if (org.verification === "REJECTED") return `Corriger l'identité (${ids})`;
+  if (org.siren || org.rna) return "Voir la demande";
+  return rnaAccepted(org.kind) ? "Compléter l'identité (SIREN ou RNA)" : "Renseigner le SIREN";
+};
 
 /** Accueil d'une organisation : ce qui attend une action, puis ce qui arrive. Le reste est dans les rubriques. */
 export default async function Page({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: Promise<{ acces?: string }> }) {
@@ -30,7 +38,8 @@ export default async function Page({ params, searchParams }: { params: Promise<{
 
   const active = projects.filter((p) => !["TERMINE", "DECLINE"].includes(p.status));
   const engaged = active.flatMap((p) => p.experts.filter((e) => !["ATT_EXPERTS", "DECLINE"].includes(e.status)));
-  const upcoming = events.filter((e) => e.startsAt >= now);
+  // À venir et en cours (commencé n'est pas terminé : visible le jour même) ; un événement annulé n'y figure plus.
+  const upcoming = events.filter((e) => !e.cancelledAt && eventMoment(e, now) !== "passe");
   const pendingApps = calls.reduce((s, c) => s + c.applications.length, 0);
   const hospValue = hosp.reduce((s, r) => s + r.benefits.reduce((x, b) => x + b.valueCents, 0), 0);
 
@@ -50,7 +59,7 @@ export default async function Page({ params, searchParams }: { params: Promise<{
     ...upcoming.map((e) => ({
       date: e.startsAt,
       title: e.title,
-      detail: [e.city ?? (e.format === "DISTANCIEL" ? "En ligne" : null), e.internal ? "réunion interne" : `${plural(e._count.registrations, "inscrit", "inscrits")}${e.capacity ? ` sur ${e.capacity}` : ""}`, e.publishedAt || e.internal ? null : "brouillon"]
+      detail: [eventMoment(e, now) === "en_cours" ? "en cours · inscriptions closes" : null, e.city ?? (e.format === "DISTANCIEL" ? "En ligne" : null), e.internal ? "réunion interne" : `${plural(e._count.registrations, "inscrit", "inscrits")}${e.capacity ? ` sur ${e.capacity}` : ""}`, e.publishedAt || e.internal ? null : "brouillon"]
         .filter(Boolean)
         .join(" · "),
       // La conformité lit la fiche de l'événement (hospitalités, inscrits) sans la modifier.
@@ -99,16 +108,18 @@ export default async function Page({ params, searchParams }: { params: Promise<{
         )}
         {org.verification === "SUSPENDED" && (
           <p className="notice error" role="status">
-            Organisation suspendue{org.verificationNote ? ` : ${org.verificationNote}` : ""}. Votre page publique, vos événements et vos appels sont masqués,
+            Organisation suspendue{org.verificationNote ? ` : ${inSentence(org.verificationNote)}` : ""}. Votre page publique, vos événements et vos appels sont masqués,
             et aucune nouvelle action n&apos;est possible jusqu&apos;à la réactivation par KolBase ; rien n&apos;est supprimé.
           </p>
         )}
         {org.verification !== "VERIFIED" && org.verification !== "SUSPENDED" && (
           <p className={`notice ${org.verification === "REJECTED" ? "error" : "warn"}`}>
             {org.verification === "REJECTED"
-              ? `KolBase n'a pas validé votre organisation${org.verificationNote ? ` : ${org.verificationNote}` : ""}.`
-              : "Votre organisation est en attente de validation par KolBase. D'ici là, elle ne peut ni solliciter de praticiens, ni publier."}{" "}
-            {isAdmin ? <Link href={`${base}/membres?onglet=organisation`}>{org.siren ? "Voir la demande" : "Renseigner le SIREN"}</Link> : "Un administrateur de l'organisation peut compléter la demande."}
+              ? `KolBase n'a pas validé votre organisation${org.verificationNote ? ` : ${inSentence(org.verificationNote)}` : ""}.`
+              : org.kind === "PRESTATAIRE"
+                ? "Votre organisation est en attente de validation par KolBase. D'ici là, elle ne peut ni répondre aux demandes de devis, ni figurer dans l'annuaire des prestataires."
+                : "Votre organisation est en attente de validation par KolBase. D'ici là, elle ne peut ni solliciter de praticiens, ni publier."}{" "}
+            {isAdmin ? <Link href={`${base}/membres?onglet=organisation`}>{identityLink(org)}</Link> : "Un administrateur de l'organisation peut compléter la demande."}
           </p>
         )}
         {onboarding.length > 0 && onboarding.some((s) => !s.done) && (

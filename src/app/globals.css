@@ -714,14 +714,16 @@ body:has(.sidebar) .site-footer { padding: 24px 32px; }
 
 /* Devis détaillés */
 .quote-lines { display: flex; flex-direction: column; gap: 6px; }
-.quote-line { display: grid; grid-template-columns: minmax(0, 1fr) 70px 130px 110px 24px; gap: 8px; align-items: center; }
+/* Colonnes : désignation, quantité, prix unitaire HT, taux de TVA de la ligne, total HT, retrait. */
+.quote-line { display: grid; grid-template-columns: minmax(0, 1fr) 64px 116px 86px 104px 24px; gap: 8px; align-items: center; }
 .quote-line.head { font-size: 11.5px; font-weight: 600; color: var(--ink-subtle); text-transform: uppercase; letter-spacing: 0.04em; }
 .quote-line .mono { text-align: right; font-size: 13px; }
 .quote-totals { display: flex; flex-wrap: wrap; gap: 8px 20px; padding: 10px 14px; border-radius: 12px; background: var(--bg-subtle); font-size: 13.5px; }
 @media (max-width: 640px) {
-  .quote-line { grid-template-columns: minmax(0, 1fr) 56px 90px 24px; }
-  .quote-line > .mono { display: none; }
-  .quote-line.head > span:nth-child(4) { display: none; }
+  /* Mobile : la désignation sur toute la largeur, puis quantité, prix, taux et retrait. */
+  .quote-line { grid-template-columns: 56px minmax(0, 1fr) 76px 24px; }
+  .quote-line > input[name="line_label"] { grid-column: 1 / -1; }
+  .quote-line > .mono, .quote-line.head { display: none; }
 }
 .quote-detail { margin-top: 6px; font-size: 13px; }
 .quote-detail table { width: 100%; border-collapse: collapse; }
@@ -1121,3 +1123,19 @@ p.service-stats { color: var(--ink-soft); }
 .account-toc { display: flex; flex-wrap: wrap; gap: 6px 14px; font-size: 14px; padding: 10px 14px; border-radius: 12px; background: var(--bg-subtle); border: 1px solid var(--line); }
 .account-toc a { white-space: nowrap; }
 main [id] { scroll-margin-top: 80px; }
+/* En-tête public, mobile : « Se connecter » en tête de la rangée défilante, distingué des rubriques. */
+.public-nav .nav-signin { color: var(--outremer); }
+/* Tableau plus large que l'écran (administration, Abonnements) : indice de défilement sur mobile seulement. */
+.scroll-hint { display: none; }
+@media (max-width: 860px) { .scroll-hint { display: block; } }
+/* Comparaison des devis sur mobile : le texte sur toute la largeur, puis le montant et le bouton dessous ; la
+   confirmation de « Retenir » revient à la ligne (pas de débordement à 390 px). */
+.confirm-step { max-width: 100%; box-sizing: border-box; }
+.confirm-step .btn { white-space: normal; text-align: left; max-width: 100%; }
+.quote-main { flex: 1; min-width: 0; }
+@media (max-width: 600px) {
+  .quote { align-items: flex-start; }
+  .quote > .quote-main { flex: 1 1 calc(100% - 42px); }
+  .quote > .amount { margin-left: 42px; }
+  .quote > form, .quote > span.text-xs { flex-basis: 100%; }
+}
