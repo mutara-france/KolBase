@@ -16,6 +16,7 @@
     "deploy:prepare": "sh scripts/predeploy.sh",
     "test": "vitest run",
     "test:e2e": "node tests/e2e/parcours.mjs",
+    "test:a11y": "node tests/e2e/accessibilite.mjs",
     "db:purge-demo": "tsx scripts/purge-demo.ts",
     "deadcode": "knip"
   },
@@ -40,6 +41,7 @@
     "sharp": "^0.35.5"
   },
   "devDependencies": {
+    "@axe-core/playwright": "^4.14.0",
     "@types/node": "^26.6.4",
     "@types/nodemailer": "^8.0.2",
     "@types/pg": "^8.23.1",

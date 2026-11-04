@@ -29,11 +29,12 @@ npm run deadcode              # fichiers, exports et dépendances inutilisés (k
 npm test                      # tests unitaires (règles de visibilité, conformité, rôles, montants…)
 # parcours de bout en bout : base chargée avec la démo, application lancée
 BASE=http://localhost:3000 DEMO_PASSWORD=… DATABASE_URL=… npm run test:e2e
+BASE=http://localhost:3000 DEMO_PASSWORD=… npm run test:a11y   # accessibilité (axe-core, WCAG 2.1 AA)
 ```
 
 Chaque pull request passe par GitHub Actions (`.github/workflows/ci.yml`) : types, code mort, tests unitaires,
 migrations appliquées à un PostgreSQL 17 neuf puis comparées au schéma Prisma (une migration oubliée
-fait échouer la vérification), données de démo, build, audit des dépendances et parcours de bout en bout.
+fait échouer la vérification), données de démo, build, audit des dépendances, parcours de bout en bout et accessibilité des pages principales.
 Un second job (« montee-de-version ») rejoue le déploiement sur une base déjà en service : la version précédente
 est installée et remplie avec la démo, puis cette version y applique ses migrations avec `scripts/predeploy.sh`.
 
