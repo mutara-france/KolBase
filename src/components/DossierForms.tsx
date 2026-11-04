@@ -112,8 +112,8 @@ export function ProposeForm({ orgId, orgName, types, defaultFee }: { orgId: stri
   );
 }
 
-/** Dépôt d'un document de dossier (pièce, ou convention signée d'un expert). */
-export function DocumentUploadForm({ projectId, experts, ownLinkId }: { projectId: string; experts: { id: string; name: string }[]; ownLinkId?: string }) {
+/** Dépôt d'un document de dossier (pièce, ou convention signée d'un expert). En signature, « Convention signée » d'office. */
+export function DocumentUploadForm({ projectId, experts, ownLinkId, defaultKind = "PIECE" }: { projectId: string; experts: { id: string; name: string }[]; ownLinkId?: string; defaultKind?: "PIECE" | "CONVENTION_SIGNEE" }) {
   const [state, action, pending] = useActionState(uploadDocument, undefined);
   const t = useT();
   return (
@@ -122,7 +122,7 @@ export function DocumentUploadForm({ projectId, experts, ownLinkId }: { projectI
       <input type="hidden" name="projectId" value={projectId} />
       <div className="row">
         <label>{t("Document")}
-          <select name="kind" defaultValue="PIECE">
+          <select name="kind" defaultValue={defaultKind}>
             <option value="PIECE">{t("Pièce du dossier")}</option>
             <option value="CONVENTION_SIGNEE">{t("Convention signée")}</option>
           </select>

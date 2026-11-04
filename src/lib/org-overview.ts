@@ -4,7 +4,7 @@ import type { TodoItem } from "@/components/Todo";
 import { getCurrentUser } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { COMPLIANCE_ROLES, EVENT_MANAGER_ROLES, EVENT_ORGANIZER_ROLES, eventEnded, eventScope, formatDate, needsOnlineLink } from "@/lib/events";
-import { PROJECT_ROLES, PROJECT_VIEW_ROLES, REVIEW_ROLES, SOURCING_ROLES } from "@/lib/projects";
+import { PROJECT_ROLES, PROJECT_VIEW_ROLES, recruitmentOpen, REVIEW_ROLES, SOURCING_ROLES } from "@/lib/projects";
 import { orgSectionTabs, tabCount, type OrgSectionKey, type SectionTab } from "@/lib/nav";
 import type { OrgRole } from "@/generated/prisma/client";
 import { billingBlocked } from "@/lib/billing";
@@ -90,6 +90,9 @@ export const orgOverview = cache(async (orgId: string) => {
       if (p.status === "VALIDE") todos.push({ href: dossier(p), title: `Choisir le régime : ${p.title}`, detail: "Déclaration simple ou autorisation de l'Ordre", icon: "CircleDot" });
       if (p.status === "ORDRE") todos.push({ href: dossier(p), title: `Réponse de l'Ordre attendue : ${p.title}`, detail: p.ordreRef ?? undefined, icon: "CalendarClock", tone: "warn" });
       if (p.status === "SIGNATURE") todos.push({ href: dossier(p), title: `Convention à faire signer : ${p.title}`, icon: "FileSignature", tone: "warn" });
+      // Contre-proposition d'un expert : accepter ses honoraires ou lui renvoyer une proposition.
+      if (recruitmentOpen(p.status) && p.experts.some((e) => e.status === "ATT_EXPERTS" && e.desiredFeeCents != null))
+        todos.push({ href: dossier(p), title: `Honoraires proposés par un expert : ${p.title}`, detail: "Accepter ou proposer d'autres conditions", icon: "Inbox", tone: "warn" });
       if (p.status === "ATT_EXPERTS" && now.getTime() - p.updatedAt.getTime() > 5 * DAY)
         todos.push({ href: dossier(p), title: `Relancer les experts : ${p.title}`, detail: `Sans réponse depuis le ${formatDate(p.updatedAt)}`, icon: "Inbox", tone: "warn" });
     }

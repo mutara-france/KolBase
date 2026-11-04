@@ -415,7 +415,10 @@ model ProjectExpert {
   days           Float?              // nombre d'unités (journées, interventions…)
   responseNote   String?
   respondedAt    DateTime?
-  desiredFeeCents Int?               // honoraires souhaités par l'expert dans sa réponse (€ HT, en centimes), facultatif
+  // Contre-proposition de l'expert (€ HT, en centimes) : la sollicitation reste ouverte, l'organisation répond.
+  desiredFeeCents Int?
+  // Honoraires précédents, quand l'organisation en a proposé d'autres ou a accepté ceux de l'expert.
+  previousFeeCents Int?
   // Paiement des honoraires, indiqué par l'organisation (visible de l'expert dans « Mes revenus »).
   paidAt         DateTime?
   paidCents      Int?

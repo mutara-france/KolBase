@@ -261,6 +261,8 @@ const linkIn = (mail) => mail?.text.match(/https?:\/\/\S+/g)?.find((u) => !u.end
   check("Expert : voit sa convention signée", (await text(expert.page)).includes("convention-roux-signée.pdf"));
   const own = await expert.page.request.get(`${BASE}${href}`);
   check("Expert : peut la télécharger", own.ok());
+  // En signature, « Convention signée » est présélectionnée (lot 5a) : une pièce se choisit.
+  await expert.page.selectOption('form:has(input[name="file"]) select[name="kind"]', "PIECE");
   await expert.page.setInputFiles('form:has(input[name="file"]) input[name="file"]', { name: "programme-tp.pdf", mimeType: "application/pdf", buffer: pdf });
   await expert.page.click('form:has(input[name="file"]) button:has-text("Déposer")');
   await expert.page.waitForTimeout(1500);
@@ -2321,12 +2323,14 @@ async function submitNewOrg(page, siren) {
     await exp.page.goto(`${BASE}/sollicitations/${link.id}`);
     const sol = await text(exp.page);
     check("Expert : plus de promesse de « contre-proposition », champ « Honoraires souhaités »", !sol.includes("contre-proposition") && (await exp.page.locator('input[name="desiredFee"]').count()) === 1);
+    // Lot 5a : d'autres honoraires se proposent par une réponse distincte, qui laisse la sollicitation ouverte.
     await exp.page.fill('input[name="desiredFee"]', "1800");
-    await exp.page.click('button:has-text("Donner mon accord de principe")');
+    await exp.page.click('button:has-text("Proposer d\'autres honoraires")');
     await exp.page.waitForTimeout(1200);
-    check("Expert : honoraires souhaités enregistrés avec l'accord", (await q1(`select "desiredFeeCents", status from "ProjectExpert" where id = $1`, [link.id])).desiredFeeCents === 180000);
-    const answer = await waitMail("claire.morel@demo.kolbase.local", "a donné son accord de principe — Board Lot 1");
-    check("E-mail à l'organisation : honoraires souhaités", !!answer && /Honoraires souhaités : 1\s800\s€/.test(answer.text), answer?.text.slice(0, 200) ?? "aucun e-mail");
+    const counter = await q1(`select "desiredFeeCents", status from "ProjectExpert" where id = $1`, [link.id]);
+    check("Expert : autres honoraires proposés, sollicitation ouverte", counter.desiredFeeCents === 180000 && counter.status === "ATT_EXPERTS", JSON.stringify(counter));
+    const answer = await waitMail("claire.morel@demo.kolbase.local", "propose d'autres honoraires — Board Lot 1");
+    check("E-mail à l'organisation : honoraires proposés par l'expert (ancien et nouveau montant)", !!answer && /1\s500\s€ → 1\s800\s€ HT/.test(answer.text), answer?.text.slice(0, 200) ?? "aucun e-mail");
     await org.page.goto(dossierUrl);
     check("Fiche du dossier : honoraires souhaités par l'expert", /Souhaités par l'expert : 1\s800\s€ HT/.test(await text(org.page)));
     // Nouvelle proposition : les honoraires changent, la réponse de l'expert est de nouveau attendue.
@@ -3570,8 +3574,8 @@ async function submitNewOrg(page, siren) {
     await ag.page.goto(`${BASE}/organisations/demo-org-dentalys/prestataires`);
     await ag.page.locator('section#rfq-e2e-5a-rfq3 button:has-text("Proposer à l")').click();
     await until(async () => (await q1(`select "proposedQuoteId" from "Rfq" where id = 'e2e-5a-rfq3'`))?.proposedQuoteId === "e2e-5a-q3");
-    await org.page.goto(`${BASE}/organisations/demo-org-dentalys`);
-    const proposed = (await text(org.page)).includes("Devis à retenir : Soirée des partenaires");
+    await org.page.goto(`${BASE}/organisations/demo-org-dentalys/prestataires`);
+    const proposed = (await org.page.locator("section#rfq-e2e-5a-rfq3").innerText()).includes("Proposé par l'agence mandatée");
     await sup.page.goto(`${BASE}/organisations/demo-sup-belleville/devis`);
     const c3 = sup.page.locator('section.card:has-text("Cocktail des partenaires")');
     await c3.locator('button:has-text("Réviser mon devis")').click();
@@ -3581,8 +3585,10 @@ async function submitNewOrg(page, siren) {
     await until(async () => !(await q1(`select "proposedQuoteId" from "Rfq" where id = 'e2e-5a-rfq3'`))?.proposedQuoteId);
     check("Révision : la proposition de l'agence est retirée", !(await q1(`select "proposedQuoteId" from "Rfq" where id = 'e2e-5a-rfq3'`))?.proposedQuoteId);
     check("Révision : e-mail à l'agence « devis proposé révisé »", !!(await waitMail(KARIM, "Devis proposé révisé : Traiteur Belleville")));
+    await org.page.goto(`${BASE}/organisations/demo-org-dentalys/prestataires`);
+    const r3 = await org.page.locator("section#rfq-e2e-5a-rfq3").innerText();
     await org.page.goto(`${BASE}/organisations/demo-org-dentalys`);
-    check("Révision : tâche « Devis à retenir » retirée", proposed && !(await text(org.page)).includes("Devis à retenir : Soirée des partenaires"));
+    check("Révision : proposition et tâche « Devis à retenir » retirées", proposed && !r3.includes("Proposé par l'agence mandatée") && !(await text(org.page)).includes("Devis à retenir : Soirée des partenaires"), r3.slice(0, 300));
     await sup.ctx.close();
     await org.ctx.close();
     await ag.ctx.close();
@@ -3745,6 +3751,93 @@ async function submitNewOrg(page, siren) {
     check("Compte supprimé : e-mail à l'équipe Projets", !!rm && rm.text.includes("revient en attente des experts"), rm?.text);
     await org.page.goto(`${BASE}/organisations/demo-org-dentalys/dossiers/e2e-5a-prj3`);
     check("Compte supprimé : dossier plus soumettable, expert signalé", (await org.page.locator('form:has(input[value="submit"])').count()) === 0 && (await text(org.page)).includes("Retiré : compte supprimé"));
+    await org.ctx.close();
+  }
+
+  // 3. Négociation des honoraires : l'expert propose d'autres honoraires, l'organisation les accepte ou renvoie une offre.
+  {
+    const MOREAU = "vincent.moreau@demo.kolbase.local";
+    const LEMOINE = "julie.lemoine@demo.kolbase.local";
+    const claireId = (await q1(`select id from "User" where email = $1`, [CLAIRE])).id;
+    await pgc.query(`insert into "Project" (id, "organizationId", title, "typeId", status, "createdById", "updatedAt") values ('e2e-5a-prj4', 'demo-org-dentalys', 'Board 5a négociation', 'advisory', 'ATT_EXPERTS', $1, now())`, [claireId]);
+    await pgc.query(`insert into "ProjectExpert" (id, "projectId", "practitionerId", status, "feeCents", days) values ('e2e-5a-l4', 'e2e-5a-prj4', 'demo-p-moreau', 'ATT_EXPERTS', 150000, 1)`);
+    const dossier = `${BASE}/organisations/demo-org-dentalys/dossiers/e2e-5a-prj4`;
+    const org = await session();
+    await login(org.page, CLAIRE);
+    // Premier e-mail de sollicitation : le nombre d'unités.
+    await org.page.goto(`${dossier}?modifier=1`);
+    await org.page.selectOption('#modifier select[name="expertId"]', "demo-p-lemoine");
+    await org.page.fill('#modifier form:has(select[name="expertId"]) input[name="units"]', "2");
+    await org.page.fill('#modifier form:has(select[name="expertId"]) input[name="fee"]', "1500");
+    await org.page.click('button:has-text("Ajouter et solliciter l\'expert")');
+    await until(async () => !!(await q1(`select id from "ProjectExpert" where "projectId" = 'e2e-5a-prj4' and "practitionerId" = 'demo-p-lemoine'`)));
+    const solMail = await waitMail(LEMOINE, /Nouvelle sollicitation de Dentalys Implants/);
+    const fresh = mails.filter((m) => m.to === LEMOINE && m.subject.includes("Nouvelle sollicitation de Dentalys Implants")).at(-1);
+    check("Première sollicitation : nombre d'unités et honoraires dans l'e-mail", !!solMail && fresh.text.includes("Prestation : 2 journées.") && /Honoraires proposés : 1\s500\s€ HT/.test(fresh.text), fresh?.text);
+
+    // L'expert : un montant avec « Accepter » est refusé ; « Proposer d'autres honoraires » laisse la sollicitation ouverte.
+    const mor = await session();
+    await login(mor.page, MOREAU);
+    await mor.page.goto(`${BASE}/sollicitations/e2e-5a-l4`);
+    const form = mor.page.locator('section.highlight form');
+    check("Expert : trois réponses (accord, autres honoraires, déclin) et ce qu'elles font",
+      (await form.locator('button:has-text("Donner mon accord de principe")').count()) === 1 && (await form.locator('button:has-text("Proposer d\'autres honoraires")').count()) === 1 && (await form.locator('button:has-text("Décliner")').count()) === 1
+      && (await form.innerText()).includes("la sollicitation reste ouverte"));
+    await form.locator('input[name="desiredFee"]').fill("1800");
+    await form.locator('button:has-text("Donner mon accord de principe")').click();
+    await form.locator(".notice.error").waitFor({ timeout: 4000 }).catch(() => {});
+    check("Expert : un montant avec « Accepter » est refusé (pas d'accord au montant refusé)", (await form.innerText()).includes("choisissez « Proposer d'autres honoraires »") && (await q1(`select status from "ProjectExpert" where id = 'e2e-5a-l4'`)).status === "ATT_EXPERTS");
+    await form.locator('textarea[name="note"]').fill("Deux demi-journées de préparation sont à prévoir.");
+    await form.locator('button:has-text("Proposer d\'autres honoraires")').click();
+    await until(async () => (await q1(`select "desiredFeeCents" from "ProjectExpert" where id = 'e2e-5a-l4'`))?.desiredFeeCents === 180000);
+    const cp = await q1(`select pe.status, pe."desiredFeeCents", p.status as project from "ProjectExpert" pe join "Project" p on p.id = pe."projectId" where pe.id = 'e2e-5a-l4'`);
+    check("Contre-proposition : sollicitation ouverte, dossier pas « Décliné »", cp.status === "ATT_EXPERTS" && cp.desiredFeeCents === 180000 && cp.project === "ATT_EXPERTS", JSON.stringify(cp));
+    const cpm = await waitMail(CLAIRE, "Dr Vincent Moreau propose d'autres honoraires — Board 5a négociation");
+    check("Contre-proposition : e-mail à l'équipe Projets (ancien et nouveau montant, message)", !!cpm && /1\s500\s€ → 1\s800\s€ HT/.test(cpm.text) && cpm.text.includes("Deux demi-journées"), cpm?.text);
+    await mor.page.goto(`${BASE}/sollicitations`);
+    check("Contre-proposition : « Contre-proposition envoyée » dans la liste de l'expert", (await mor.page.locator('a.tile:has-text("Board 5a négociation")').innerText()).includes("Contre-proposition envoyée"));
+
+    // L'organisation : tâche, carte, « Accepter ces honoraires » ; l'expert est engagé et prévenu.
+    await org.page.goto(`${BASE}/organisations/demo-org-dentalys`);
+    check("Accueil de l'organisation : honoraires proposés par un expert à traiter", (await text(org.page)).includes("Honoraires proposés par un expert : Board 5a négociation"));
+    await org.page.goto(dossier);
+    const card = org.page.locator('section.expert-card:has-text("Vincent Moreau")');
+    const ct = await card.innerText();
+    check("Dossier : contre-proposition visible avec les deux montants", ct.includes("Contre-proposition") && /1\s500\s€ → 1\s800\s€ HT/.test(ct), ct.slice(0, 300));
+    await confirmClick(card, "Accepter ces honoraires");
+    await until(async () => (await q1(`select status from "ProjectExpert" where id = 'e2e-5a-l4'`))?.status === "ACCORD");
+    const acc = await q1(`select pe.status, pe."feeCents", pe."previousFeeCents", pe."desiredFeeCents", p.status as project from "ProjectExpert" pe join "Project" p on p.id = pe."projectId" where pe.id = 'e2e-5a-l4'`);
+    check("Accepter ces honoraires : montant de l'expert, expert engagé", acc.status === "ACCORD" && acc.feeCents === 180000 && acc.previousFeeCents === 150000 && acc.desiredFeeCents === null && acc.project === "ACCORD", JSON.stringify(acc));
+    const am = await waitMail(MOREAU, "Honoraires acceptés : Board 5a négociation");
+    check("Accepter ces honoraires : e-mail à l'expert (1 500 € → 1 800 € HT)", !!am && /1\s500\s€ → 1\s800\s€ HT/.test(am.text), am?.text);
+    await mor.page.goto(`${BASE}/sollicitations/e2e-5a-l4`);
+    check("Page de l'expert : ancien montant rappelé", /1\s500\s€ → 1\s800\s€ HT/.test(await text(mor.page)));
+    await mor.ctx.close();
+
+    // « Proposer ces conditions » : confirmation visible ; l'e-mail et la page de l'expert rappellent l'ancien montant.
+    await org.page.goto(`${dossier}?modifier=1`);
+    const tf = org.page.locator('#modifier form.terms-form:has-text("Julie Lemoine")');
+    await tf.locator('input[name="fee"]').fill("1700");
+    await tf.locator('button:has-text("Proposer ces conditions")').click();
+    await tf.locator(".notice.ok").waitFor({ timeout: 5000 }).catch(() => {});
+    check("« Proposer ces conditions » : message de confirmation visible", (await tf.innerText()).includes("Nouvelle proposition envoyée à l'expert"), await tf.innerText());
+    const np = await waitMail(LEMOINE, "Nouvelle proposition de Dentalys Implants");
+    check("Nouvelle proposition : l'e-mail rappelle l'ancien montant", !!np && /1\s500\s€ → 1\s700\s€ HT/.test(np.text), np?.text);
+    const lem = await session();
+    await login(lem.page, LEMOINE);
+    const lid = (await q1(`select id from "ProjectExpert" where "projectId" = 'e2e-5a-prj4' and "practitionerId" = 'demo-p-lemoine'`)).id;
+    await lem.page.goto(`${BASE}/sollicitations/${lid}`);
+    check("Nouvelle proposition : la page de l'expert rappelle l'ancien montant", /1\s500\s€ → 1\s700\s€ HT/.test(await text(lem.page)));
+    await lem.ctx.close();
+
+    // Soumettre avec une réponse attendue : confirmation qui l'annonce, l'expert reçoit « Recrutement clos ».
+    await org.page.goto(dossier);
+    const sub = org.page.locator('form:has(input[value="submit"])');
+    await sub.locator('button:has-text("Soumettre à la conformité")').click();
+    check("Soumettre : « 1 réponse attendue sera close » annoncé", (await sub.innerText()).includes("1 réponse attendue sera close") && (await sub.innerText()).includes("Julie Lemoine"), await sub.innerText());
+    await sub.locator('button:has-text("Confirmer")').click();
+    await until(async () => (await q1(`select status from "Project" where id = 'e2e-5a-prj4'`))?.status === "EN_VALID");
+    check("Soumettre : l'offre renvoyée est close, l'experte prévenue", !!(await waitMail(LEMOINE, "Recrutement clos : Board 5a négociation")));
     await org.ctx.close();
   }
 

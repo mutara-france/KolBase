@@ -223,13 +223,13 @@ export async function DocumentsPanel({ projectId, linkId, canUpload, openUpload 
         linkId ? (
           <details className="disclosure" open={openUpload}>
             <summary>{t("Déposer un document")}</summary>
-            <DocumentUploadForm projectId={projectId} ownLinkId={linkId} experts={[]} />
+            <DocumentUploadForm projectId={projectId} ownLinkId={linkId} experts={[]} defaultKind={project.status === "SIGNATURE" ? "CONVENTION_SIGNEE" : "PIECE"} />
           </details>
         ) : (
           // Côté organisation, le formulaire reste replié sauf quand des conventions signées sont attendues.
           <details className="disclosure" open={openUpload}>
             <summary>{t("Déposer un document")}</summary>
-            <DocumentUploadForm projectId={projectId} experts={project.experts.map((e) => ({ id: e.id, name: expertName.get(e.id)! }))} />
+            <DocumentUploadForm projectId={projectId} experts={project.experts.map((e) => ({ id: e.id, name: expertName.get(e.id)! }))} defaultKind={project.status === "SIGNATURE" ? "CONVENTION_SIGNEE" : "PIECE"} />
           </details>
         )
       ) : (

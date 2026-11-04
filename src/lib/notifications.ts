@@ -89,13 +89,14 @@ export function notifySolicitations(projectId: string, kind: "sollicitation" | "
       const org = l.project.organization.name;
       const title = l.project.title;
       await send([l.practitioner.user], (t, locale) => {
-        const fee = l.feeCents != null ? ` ${t("Honoraires proposés : {montant} HT.", { montant: fmtEur(locale, l.feeCents) })}` : "";
+        const units = l.days != null ? ` ${t("Prestation : {n} {unit}.", { n: l.days.toLocaleString(locale === "en" ? "en-GB" : "fr-FR"), unit: unitLabel(t, l.project.typeId, l.days) })}` : "";
+        const fee = `${units}${l.feeCents != null ? ` ${t("Honoraires proposés : {montant} HT.", { montant: fmtEur(locale, l.feeCents) })}` : ""}`;
         return {
           subject: kind === "honoraires" ? t("Candidature retenue : {org} vous propose des honoraires", { org }) : t("Nouvelle sollicitation {de_org}", { org, de_org: de(org) }),
           text:
             kind === "honoraires"
-              ? `${t("Bonjour,")}\n\n${t("{org} a retenu votre candidature « {titre} ».", { org, titre: title })}${fee}\n\n${t("Acceptez ou déclinez la proposition sur KolBase : le dossier n'avance qu'après votre réponse.")}`
-              : `${t("Bonjour,")}\n\n${t("{org} vous sollicite pour « {titre} ».", { org, titre: title })}${fee}\n\n${t("Vous pouvez donner votre accord de principe, décliner ou poser vos questions sur KolBase.")}`,
+              ? `${t("Bonjour,")}\n\n${t("{org} a retenu votre candidature « {titre} ».", { org, titre: title })}${fee}\n\n${t("Acceptez, proposez d'autres honoraires ou déclinez sur KolBase : le dossier n'avance qu'après votre réponse.")}`
+              : `${t("Bonjour,")}\n\n${t("{org} vous sollicite pour « {titre} ».", { org, titre: title })}${fee}\n\n${t("Vous pouvez accepter, proposer d'autres honoraires, décliner ou poser vos questions sur KolBase.")}`,
           cta: { label: t("Répondre"), href: `/sollicitations/${l.id}` },
         };
       });
@@ -114,8 +115,12 @@ export function notifyNewProposal(linkId: string) {
       text: [
         t("Bonjour,"),
         t("{org} a modifié sa proposition pour « {titre} ».", { org, titre: l.project.title }),
-        [l.days != null ? t("Prestation : {n} {unit}.", { n: l.days.toLocaleString(locale === "en" ? "en-GB" : "fr-FR"), unit: unitLabel(t, l.project.typeId, l.days) }) : null, l.feeCents != null ? t("Honoraires proposés : {montant} HT.", { montant: fmtEur(locale, l.feeCents) }) : null].filter(Boolean).join(" "),
-        t("Votre réponse précédente ne vaut plus pour ces nouvelles conditions : acceptez ou déclinez la proposition sur KolBase."),
+        [
+          l.days != null ? t("Prestation : {n} {unit}.", { n: l.days.toLocaleString(locale === "en" ? "en-GB" : "fr-FR"), unit: unitLabel(t, l.project.typeId, l.days) }) : null,
+          // Ancien montant rappelé : « 1 500 € → 1 800 € HT ».
+          l.feeCents != null ? t("Honoraires proposés : {montant} HT.", { montant: l.previousFeeCents != null ? `${fmtEur(locale, l.previousFeeCents)} → ${fmtEur(locale, l.feeCents)}` : fmtEur(locale, l.feeCents) }) : null,
+        ].filter(Boolean).join(" "),
+        t("Votre réponse précédente ne vaut plus pour ces nouvelles conditions : acceptez, proposez d'autres honoraires ou déclinez sur KolBase."),
       ].filter(Boolean).join("\n\n"),
       cta: { label: t("Répondre"), href: `/sollicitations/${l.id}` },
     }));
@@ -213,8 +218,7 @@ export function notifyExpertAnswer(linkId: string, accepted: boolean) {
       subject: `${expertName(l.practitioner)} ${accepted ? "a donné son accord de principe" : "a décliné"} — ${l.project.title}`,
       text: (accepted
         ? `Bonjour,\n\n${expertName(l.practitioner)} a donné son accord de principe pour « ${l.project.title} ». Vous pouvez soumettre le dossier à la conformité.`
-        : `Bonjour,\n\n${expertName(l.practitioner)} a décliné « ${l.project.title} ».${l.responseNote ? `\n\nSon message : ${l.responseNote}` : ""}`)
-        + (l.desiredFeeCents != null ? `\n\nHonoraires souhaités : ${fmtEur("fr", l.desiredFeeCents)} HT (proposés : ${l.feeCents != null ? `${fmtEur("fr", l.feeCents)} HT` : "non indiqués"}). Vous pouvez modifier la proposition depuis le dossier.` : ""),
+        : `Bonjour,\n\n${expertName(l.practitioner)} a décliné « ${l.project.title} ».${l.responseNote ? `\n\nSon message : ${l.responseNote}` : ""}`),
       cta: { label: "Ouvrir le dossier", href: `/organisations/${l.project.organizationId}/dossiers/${l.projectId}` },
     });
   });
@@ -258,6 +262,38 @@ export function notifyExpertRemoved(expert: string, projects: { id: string; orga
         cta: { label: "Voir l'appel", href: `/organisations/${c.organizationId}/opportunites/${c.id}` },
       });
     }
+  });
+}
+
+/** Contre-proposition d'un expert : l'équipe Projets accepte ces honoraires ou renvoie une proposition. */
+export function notifyExpertCounter(linkId: string) {
+  later(async () => {
+    const l = await db.projectExpert.findUnique({ where: { id: linkId }, include: linkInclude });
+    if (!l?.desiredFeeCents) return;
+    const before = l.feeCents != null ? `${fmtEur("fr", l.feeCents)} → ` : "";
+    await send(await projectTeam(l.project), {
+      subject: `${expertName(l.practitioner)} propose d'autres honoraires — ${l.project.title}`,
+      text: `Bonjour,\n\n${expertName(l.practitioner)} propose d'autres honoraires pour « ${l.project.title} » : ${before}${fmtEur("fr", l.desiredFeeCents)} HT.${l.responseNote ? `\n\nSon message : ${l.responseNote}` : ""}\n\nLa sollicitation reste ouverte : acceptez ces honoraires, ou proposez d'autres conditions depuis le dossier.`,
+      cta: { label: "Ouvrir le dossier", href: `/organisations/${l.project.organizationId}/dossiers/${l.projectId}` },
+    });
+  });
+}
+
+/** Honoraires de l'expert acceptés par l'organisation : il est engagé. */
+export function notifyCounterAccepted(linkId: string) {
+  later(async () => {
+    const l = await db.projectExpert.findUnique({ where: { id: linkId }, include: linkInclude });
+    if (!l || l.feeCents == null) return;
+    const org = l.project.organization.name;
+    await send([l.practitioner.user], (t, locale) => ({
+      subject: t("Honoraires acceptés : {titre}", { titre: l.project.title }),
+      text: [
+        t("Bonjour,"),
+        t("{org} accepte vos honoraires pour « {titre} » : {montant} HT.", { org, titre: l.project.title, montant: l.previousFeeCents != null ? `${fmtEur(locale, l.previousFeeCents)} → ${fmtEur(locale, l.feeCents!)}` : fmtEur(locale, l.feeCents!) }),
+        t("Vous êtes engagé sur ce dossier : l'organisation le soumet à la conformité, puis la convention vous sera soumise."),
+      ].join("\n\n"),
+      cta: { label: t("Voir la sollicitation"), href: `/sollicitations/${l.id}` },
+    }));
   });
 }
 
