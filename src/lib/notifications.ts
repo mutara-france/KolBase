@@ -7,7 +7,7 @@ import { drPrefix } from "@/lib/professions";
 import { COMPLIANCE_ROLES, EVENT_ORGANIZER_ROLES, FORMAT_LABEL, formatEUR, type EventChange } from "@/lib/events";
 import { de } from "@/lib/elision";
 import { appUrl, eventIcsEntry, toIcs } from "@/lib/ics";
-import { withVat } from "@/lib/quotes";
+import { quoteTtc } from "@/lib/quotes";
 import { supplierCategoryLabel } from "@/lib/suppliers";
 import { fmtEur, isLocale, makeT, type Locale, type T } from "@/lib/i18n";
 import { collabType, PROJECT_ROLES, SOURCING_ROLES, STATUS_LABEL, type ExpertNotice } from "@/lib/projects";
@@ -534,8 +534,8 @@ export function notifyMandateEnded(mandateId: string, eventTitles: string[]) {
 }
 
 /** Résumé d'un devis : prestataire, montants HT et TTC. */
-const quoteSummary = (q: { amountCents: number; vatBp: number; supplier: { name: string } }) =>
-  `${q.supplier.name} : ${formatEUR(q.amountCents)} HT (${formatEUR(withVat(q.amountCents, q.vatBp))} TTC)`;
+const quoteSummary = (q: { amountCents: number; vatBp: number; ttcCents: number | null; supplier: { name: string } }) =>
+  `${q.supplier.name} : ${formatEUR(q.amountCents)} HT (${formatEUR(quoteTtc(q))} TTC)`;
 
 /**
  * Décision sur une demande de devis : le prestataire retenu et les autres sont prévenus. Côté client, la décision

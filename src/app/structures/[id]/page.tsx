@@ -13,7 +13,7 @@ import { ORG_KIND_LABEL, orgIsPublic } from "@/lib/orgs";
 import { canSee, companyVisibility, type Viewer } from "@/lib/visibility";
 import { ProposeForm } from "@/components/DossierForms";
 import { FollowButton } from "@/components/FollowButton";
-import { COLLAB_TYPES } from "@/lib/projects";
+import { COLLAB_TYPES, SIGNED_STATUSES } from "@/lib/projects";
 import type { Metadata } from "next";
 import { getT } from "@/lib/i18n/server";
 
@@ -43,7 +43,8 @@ export default async function Page({ params }: { params: Promise<{ id: string }>
     include: {
       openCalls: { where: { status: "open", OR: [{ deadline: null }, { deadline: { gte: now } }] }, orderBy: { deadline: "asc" } },
       events: { where: { publishedAt: { not: null }, startsAt: { gte: now } }, orderBy: { startsAt: "asc" }, include: { _count: { select: { registrations: true } } } },
-      _count: { select: { projects: { where: { status: { notIn: ["ATT_EXPERTS", "DECLINE"] } } } } },
+      // Collaborations : les dossiers signés seulement, comme la fiche expert.
+      _count: { select: { projects: { where: { status: { in: SIGNED_STATUSES } } } } },
     },
   });
   if (!o) notFound();
@@ -93,7 +94,7 @@ export default async function Page({ params }: { params: Promise<{ id: string }>
                 <div className="stat-card"><div className="stat-value">{book.rating != null ? <span className="rating"><Star size={20} /> {book.rating.toFixed(1).replace(".", ",")}</span> : "—"}</div><div className="stat-label">{t(book.reviews.length > 1 ? "{n} avis vérifiés" : "{n} avis vérifié", { n: book.reviews.length })}</div></div>
                 <div className="stat-card"><div className="stat-value">{delayLabel(book.delayHours, locale) ?? "—"}</div><div className="stat-label">{t("Délai de réponse médian")}</div></div>
                 <div className="stat-card"><div className="stat-value">{book.responseRate != null ? `${book.responseRate} %` : "—"}</div><div className="stat-label">{t("Taux de réponse aux demandes")}</div></div>
-                <div className="stat-card"><div className="stat-value tone-electric">{book.retained}</div><div className="stat-label">{t("Prestations réalisées via KolBase")}</div></div>
+                <div className="stat-card"><div className="stat-value tone-electric">{book.references.length}</div><div className="stat-label">{t("Prestations réalisées via KolBase")}</div></div>
               </div>
               {photos.length > 0 && (
                 <div className="gallery">
@@ -149,11 +150,11 @@ export default async function Page({ params }: { params: Promise<{ id: string }>
                 <h2 className="section-title">{t("Avis vérifiés")}</h2>
                 {book.reviews.length === 0 ? <p className="muted">{t("Aucun avis pour l'instant.")}</p> : book.reviews.map((r) => (
                   <div key={r.id} className="review">
-                    <span><span className="rating">{Array.from({ length: r.rating }, (_, i) => <Star key={i} size={14} />)}</span> <strong>{r.client.name}</strong> <span className="muted text-xs">{r.createdAt.toLocaleDateString(locale === "en" ? "en-GB" : "fr-FR", { month: "long", year: "numeric", timeZone: "Europe/Paris" })}</span></span>
+                    <span><span className="rating">{Array.from({ length: r.rating }, (_, i) => <Star key={i} size={14} />)}</span> <strong>{t("Organisation cliente")}</strong> <span className="muted text-xs">{r.createdAt.toLocaleDateString(locale === "en" ? "en-GB" : "fr-FR", { month: "long", year: "numeric", timeZone: "Europe/Paris" })}</span></span>
                     {r.comment && <p className="text-sm">{r.comment}</p>}
                   </div>
                 ))}
-                <p className="hint">{t("Avis laissés uniquement par les organisations qui ont retenu ce prestataire, après la prestation.")}</p>
+                <p className="hint">{t("Avis laissés uniquement par les organisations qui ont retenu ce prestataire, après la prestation ; le nom des clients n'est pas affiché.")}</p>
               </section>
             </>
           )}

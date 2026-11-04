@@ -35,7 +35,8 @@ export default async function Page({ searchParams }: { searchParams: Promise<{ o
   // À percevoir : convention signée, pas encore payée ; en préparation : le reste (pas encore dû).
   const { paid, due, preparing } = feeTotals(fees);
   const hospTotal = hosp.filter((h) => !h.absent).reduce((s, h) => s + h.valueCents, 0);
-  const orgs = new Set([...fees.map((f) => f.org.id), ...hosp.map((h) => h.org.id)]).size;
+  // Organisations : celles qui ont versé des honoraires ou accordé une hospitalité consommée (absents exclus, comme le total).
+  const orgs = new Set([...fees.map((f) => f.org.id), ...hosp.filter((h) => !h.absent).map((h) => h.org.id)]).size;
   const interests = interestLines(ledger);
   const tabs = [["revenus", t("Honoraires et avantages")], ["facturation", t("Notes d'honoraires")], ["liens", t("Liens d'intérêts")], ["transparence", t("Transparence Santé")]] as const;
   const billingOk = billingComplete(p);

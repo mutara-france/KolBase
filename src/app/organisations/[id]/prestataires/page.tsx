@@ -9,13 +9,13 @@ import { Avatar } from "@/components/Avatar";
 import { NewRfqForm, RfqMessageForm, SupplierLine } from "@/components/RfqForms";
 import { db } from "@/lib/db";
 import { requireMembership } from "@/lib/orgs";
-import { EVENT_MANAGER_ROLES, EVENT_ORGANIZER_ROLES, eventScope, formatDate, formatEUR } from "@/lib/events";
+import { EVENT_MANAGER_ROLES, EVENT_ORGANIZER_ROLES, eventEnded, eventScope, formatDate, formatEUR } from "@/lib/events";
 import { canCancelRfq, QUOTE_STATUS, RFQ_STATUS, rfqDisplayStatus, rfqView, SUPPLIER_CATEGORIES, supplierCategoryLabel } from "@/lib/suppliers";
 import { awardQuote, cancelRfq, proposeQuote, sendRfq } from "@/lib/rfq-actions";
 import { endMandate, setMandateAward } from "@/lib/event-actions";
 import { activeMandate, type AwardRight } from "@/lib/mandates";
-import { lineTotal, perParticipant, readLines, vatLabel, withVat } from "@/lib/quotes";
-import { costHeadcount } from "@/lib/indicators";
+import { lineTotal, lineVat, perParticipant, quoteTtc, quoteVatLabel, readLines, vatLabel } from "@/lib/quotes";
+import { costPerHead } from "@/lib/indicators";
 import { complianceSettings } from "@/lib/compliance";
 import { logoSrc } from "@/lib/logos";
 import { BillingNotice } from "@/components/BillingNotice";
@@ -63,7 +63,8 @@ export default async function Page({ params, searchParams }: { params: Promise<{
   const own = (orgId: string) => user.memberships.some((m) => m.organizationId === orgId);
   const ownOrgIds = user.memberships.filter((m) => m.organization.kind === "PRESTATAIRE").map((m) => m.organizationId);
   // Agence consultée sur une demande de l'événement qu'elle pilote : elle n'en voit que son devis et ses échanges.
-  const rfqs = rfqsRaw.map((r) => rfqView(r, ownOrgIds));
+  // Devis rangés par total TTC (taux de TVA par ligne) : la meilleure offre d'abord.
+  const rfqs = rfqsRaw.map((r) => rfqView({ ...r, quotes: [...r.quotes].sort((a, b) => quoteTtc(a) - quoteTtc(b)) }, ownOrgIds));
   const rightFor = (r: { conflicted: boolean; event: { agencyId: string | null } | null }): AwardRight => {
     if (r.conflicted) return "none";
     if (isOrganizer) return "award";
@@ -83,7 +84,8 @@ export default async function Page({ params, searchParams }: { params: Promise<{
   );
   // Présents des événements passés : le coût par participant d'un devis s'y rapporte après l'événement.
   const now = new Date();
-  const pastEventIds = [...new Set(rfqs.filter((r) => r.event && r.event.startsAt < now).map((r) => r.event!.id))];
+  // Même repère que la fiche de l'événement : présence connue une fois l'événement terminé (eventEnded).
+  const pastEventIds = [...new Set(rfqs.filter((r) => r.event && eventEnded(r.event, now)).map((r) => r.event!.id))];
   const presentBy = new Map((pastEventIds.length ? await db.registration.groupBy({ by: ["eventId"], where: { eventId: { in: pastEventIds }, checkedInAt: { not: null } }, _count: { _all: true } }) : []).map((g) => [g.eventId, g._count._all]));
   const ratings = await db.supplierReview.groupBy({ by: ["supplierId"], _avg: { rating: true }, _count: { _all: true } });
   const ratingOf = (sid: string) => ratings.find((r) => r.supplierId === sid);
@@ -123,7 +125,7 @@ export default async function Page({ params, searchParams }: { params: Promise<{
             {rfqs.length === 0 && <div className="card empty"><Receipt size={22} /><p className="muted">Aucune demande de devis.</p></div>}
             {rfqs.map((r) => {
               const st = RFQ_STATUS[rfqDisplayStatus(r)];
-              const best = r.quotes.length > 1 && !r.conflicted ? r.quotes[0].amountCents : null;
+              const best = r.quotes.length > 1 && !r.conflicted ? r.quotes[0].id : null;
               const kept = r.quotes.find((q) => q.status === "retained");
               // Agence consultée : le prestataire retenu, s'il s'agit d'un concurrent, sans son montant.
               const keptElsewhere = r.conflicted && r.status === "awarded" && !kept ? rfqsRaw.find((x) => x.id === r.id)?.quotes.find((q) => q.status === "retained")?.supplier.name : null;
@@ -156,7 +158,7 @@ export default async function Page({ params, searchParams }: { params: Promise<{
                   ) : (
                     <div className="kv">
                       <div><span>Prestataires consultés</span><span>{r.suppliers.length}</span></div>
-                      <div><span>Devis reçus</span><span>{r.quotes.length}{r.quotes.length ? ` · dès ${formatEUR(r.quotes[0].amountCents)} HT` : ""}</span></div>
+                      <div><span>Devis reçus</span><span>{r.quotes.length}{r.quotes.length ? ` · dès ${formatEUR(quoteTtc(r.quotes[0]))} TTC` : ""}</span></div>
                       <div><span>Réponse attendue</span><span>{r.deadline ? formatDate(r.deadline) : "à définir"}</span></div>
                     </div>
                   )}
@@ -164,40 +166,45 @@ export default async function Page({ params, searchParams }: { params: Promise<{
                     <div className="quotes">
                       {r.quotes.map((q) => {
                         const lines = readLines(q.lines);
-                        const ttc = withVat(q.amountCents, q.vatBp);
-                        const basis = costHeadcount(r.headcount, r.event ? presentBy.get(r.event.id) ?? 0 : 0, !!r.event && r.event.startsAt < now);
-                        const pp = perParticipant(r.category, ttc, basis.n, settings);
+                        const ttc = quoteTtc(q);
+                        // Seuils sur le prix par couvert commandé ; coût par présent après l'événement, pour information.
+                        const present = r.event ? presentBy.get(r.event.id) ?? 0 : 0;
+                        const head = costPerHead(ttc, r.headcount, present, !!r.event && eventEnded(r.event, now));
+                        const pp = perParticipant(r.category, ttc, r.headcount, settings);
                         const expired = q.validUntil && q.validUntil < new Date();
                         return (
-                        <div key={q.id} className={`quote${q.amountCents === best ? " best" : ""}`}>
+                        <div key={q.id} className={`quote${q.id === best ? " best" : ""}`}>
                           <Avatar name={q.supplier.name} size={30} square src={logoSrc(q.supplier)} />
                           <div style={{ flex: 1, minWidth: 0 }}>
                             <div>
                               <strong>{q.supplier.name}</strong>
                               {agencyName.has(q.supplierId) && <span className="pill wait"> {q.supplierId === r.event?.agencyId ? "Agence mandatée sur cet événement" : "Agence mandatée"}</span>}
-                              {q.amountCents === best && <span className="pill ok"> Meilleure offre</span>}
+                              {q.id === best && <span className="pill ok" title="Total TTC le plus bas"> Meilleure offre</span>}
                               {r.status === "sent" && r.proposedQuoteId === q.id && <span className="pill electric" title={r.proposedById ? `Proposé par ${creators.get(r.proposedById) ?? "l'agence"}` : undefined}> Proposé par l&apos;agence mandatée</span>}
                               {q.status !== "submitted" && <span className={`pill ${q.status === "retained" ? "ok" : "done"}`}> {QUOTE_STATUS[q.status]}</span>}
                               {q.revision > 1 && <span className="pill"> Version {q.revision}</span>}
                             </div>
                             <div className="muted">
                               {[
-                                `${formatEUR(ttc)} TTC (TVA ${vatLabel(q.vatBp)})`,
+                                `${formatEUR(ttc)} TTC (TVA ${quoteVatLabel(q)})`,
                                 q.validUntil ? `${expired ? "expiré le" : "valable jusqu'au"} ${formatDate(q.validUntil)}` : null,
                                 q.delay,
                               ].filter(Boolean).join(" · ")}
                             </div>
                             {pp && (
                               <div className={`text-xs ${pp.over ? "warn-text" : "muted"}`}>
-                                ≈ {pp.each.toLocaleString("fr-FR", { maximumFractionDigits: 2 })} € TTC par {basis.per}{basis.per === "présent" ? ` (${basis.n} présent${basis.n! > 1 ? "s" : ""} au pointage)` : ""}
+                                ≈ {pp.each.toLocaleString("fr-FR", { maximumFractionDigits: 2 })} € TTC par couvert commandé
                                 {pp.limit && (pp.over ? ` · au-dessus du seuil d'un ${pp.limit.what} (${pp.limit.max} € TTC) : autorisation de l'Ordre à prévoir pour les professionnels de santé` : ` · sous le seuil d'un ${pp.limit.what} (${pp.limit.max} € TTC)`)}
                               </div>
+                            )}
+                            {head.perPresent != null && (
+                              <div className="text-xs muted">Pour information : {head.perPresent.toLocaleString("fr-FR", { maximumFractionDigits: 2 })} € TTC par présent ({present} au pointage)</div>
                             )}
                             {(q.note || q.conditions || lines.length > 0 || q.fileKey) && (
                               <details className="quote-detail">
                                 <summary>Détail de l&apos;offre{lines.length ? ` (${lines.length} ligne${lines.length > 1 ? "s" : ""})` : ""}</summary>
                                 {lines.length > 0 && (
-                                  <table><tbody>{lines.map((l, i) => <tr key={i}><td>{l.label}</td><td>{l.qty} × {formatEUR(l.unitCents)} HT</td><td>{formatEUR(lineTotal(l))} HT</td></tr>)}</tbody></table>
+                                  <table><tbody>{lines.map((l, i) => <tr key={i}><td>{l.label}</td><td>{l.qty} × {formatEUR(l.unitCents)} HT</td><td>TVA {vatLabel(lineVat(l, q.vatBp))}</td><td>{formatEUR(lineTotal(l))} HT</td></tr>)}</tbody></table>
                                 )}
                                 {q.note && <p>{q.note}</p>}
                                 {q.conditions && <p className="muted">Conditions : {q.conditions}</p>}
@@ -220,7 +227,7 @@ export default async function Page({ params, searchParams }: { params: Promise<{
                                 confirm={`retenir le devis ${de(q.supplier.name)}`}
                                 summary={
                                   <>
-                                    <strong>{q.supplier.name}</strong> : {formatEUR(q.amountCents)} HT, soit {formatEUR(ttc)} TTC (TVA {vatLabel(q.vatBp)}).
+                                    <strong>{q.supplier.name}</strong> : {formatEUR(q.amountCents)} HT, soit {formatEUR(ttc)} TTC (TVA {quoteVatLabel(q)}).
                                     {r.quotes.length > 1 && <> Devis écartés : {r.quotes.filter((x) => x.id !== q.id).map((x) => `${x.supplier.name} (${formatEUR(x.amountCents)} HT)`).join(", ")}.</>}
                                     {" "}Chaque prestataire est prévenu par e-mail ; la décision est définitive.
                                   </>
@@ -298,7 +305,7 @@ export default async function Page({ params, searchParams }: { params: Promise<{
                         </ConfirmButton>
                       </form>
                     )}
-                    {kept && <span className="pill ok"><Check size={12} /> Attribué à {kept.supplier.name} — {formatEUR(kept.amountCents)} HT · {formatEUR(withVat(kept.amountCents, kept.vatBp))} TTC</span>}
+                    {kept && <span className="pill ok"><Check size={12} /> Attribué à {kept.supplier.name} — {formatEUR(kept.amountCents)} HT · {formatEUR(quoteTtc(kept))} TTC</span>}
                     {keptElsewhere && <span className="pill done">Attribuée à {keptElsewhere}</span>}
                   </div>
                   {kept && r.status === "awarded" && isOrganizer && (!r.event || r.event.startsAt < new Date()) && (

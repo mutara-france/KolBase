@@ -49,7 +49,8 @@ export const nextNumber = (year: number, existing: string[]) => {
 };
 
 export type FeeNoteData = {
-  issuer: { name: string; entity: string | null; address: string; siret: string | null; vatNumber: string | null; rpps: string | null; iban: string | null; vatRegime: string };
+  // Identifiant professionnel : RPPS en France ; ailleurs, celui du pays d'exercice (« Numéro INAMI … »), comme la convention.
+  issuer: { name: string; entity: string | null; address: string; siret: string | null; vatNumber: string | null; rpps: string | null; license?: string | null; iban: string | null; vatRegime: string };
   recipient: { name: string; siren: string | null; address: string | null };
   object: { title: string; type: string; unit: string | null; units: number | null; signedAt: string | null; projectRef: string };
 };
@@ -80,7 +81,7 @@ export async function feeNotePdf(n: { number: string; issuedAt: Date; amountCent
   text("ÉMETTEUR", M, y, 8, bold, MUTED);
   text("DESTINATAIRE", W / 2 + 10, y, 8, bold, MUTED);
   y -= 16;
-  const left = [d.issuer.entity ? `${d.issuer.entity}` : null, d.issuer.entity ? `représentée par ${d.issuer.name}` : d.issuer.name, ...lines(d.issuer.address), d.issuer.siret ? `SIRET ${d.issuer.siret}` : null, d.issuer.vatNumber ? `TVA ${d.issuer.vatNumber}` : null, d.issuer.rpps ? `RPPS ${d.issuer.rpps}` : null].filter(Boolean) as string[];
+  const left = [d.issuer.entity ? `${d.issuer.entity}` : null, d.issuer.entity ? `représentée par ${d.issuer.name}` : d.issuer.name, ...lines(d.issuer.address), d.issuer.siret ? `SIRET ${d.issuer.siret}` : null, d.issuer.vatNumber ? `TVA ${d.issuer.vatNumber}` : null, d.issuer.license ?? (d.issuer.rpps ? `RPPS ${d.issuer.rpps}` : null)].filter(Boolean) as string[];
   const rightCol = [d.recipient.name, ...(d.recipient.address ? lines(d.recipient.address) : []), d.recipient.siren ? `SIREN ${d.recipient.siren}` : null].filter(Boolean) as string[];
   left.forEach((l, i) => text(l, M, y - i * 14, 10, i === 0 ? bold : font));
   rightCol.forEach((l, i) => text(l, W / 2 + 10, y - i * 14, 10, i === 0 ? bold : font));

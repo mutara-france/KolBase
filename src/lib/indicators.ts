@@ -24,6 +24,24 @@ export function feeTotals(fees: { status: string; feeCents: number; paidAt: Date
  * fichier Transparence Santé).
  */
 export const isAbsent = (r: { checkedInAt: Date | null }, eventPointed: boolean) => eventPointed && !r.checkedInAt;
+/** Présence connue : événement terminé et pointé (au moins un présent). Avant la fin ou sans pointage : les inscrits comptent. */
+export const presenceKnown = (ended: boolean, presentCount: number) => ended && presentCount > 0;
+
+/**
+ * Hospitalités d'un événement, absents exclus une fois la présence connue : valeur (TTC), bénéficiaires, et effectif
+ * (présents après l'événement pointé, inscrits sinon). Même règle pour l'en-tête de l'événement, son bilan et les
+ * Statistiques.
+ */
+export function eventHospitality(regs: { checkedInAt: Date | null; benefits: { valueCents: number }[] }[], ended: boolean) {
+  const known = presenceKnown(ended, regs.filter((r) => r.checkedInAt).length);
+  const kept = regs.filter((r) => !isAbsent(r, known));
+  return {
+    known,
+    cents: kept.reduce((s, r) => s + r.benefits.reduce((x, b) => x + b.valueCents, 0), 0),
+    beneficiaries: kept.filter((r) => r.benefits.length > 0).length,
+    headcount: kept.length,
+  };
+}
 /** Hospitalité à déclarer : pas encore déclarée, et pas celle d'un absent. */
 export const toDeclare = (r: { declared: boolean; checkedInAt: Date | null }, eventPointed: boolean) => !r.declared && !isAbsent(r, eventPointed);
 
@@ -38,9 +56,16 @@ export function expertSplit<E extends { status: string; feeCents: number | null 
   return { engaged, proposed, engagedCents: sum(engaged), proposedCents: sum(proposed) };
 }
 
-/** Effectif du coût par participant d'un devis : après l'événement pointé, les présents ; avant, l'effectif prévu. */
-export function costHeadcount(planned: number | null, present: number, eventPast: boolean): { n: number | null; per: "présent" | "participant" } {
-  return eventPast && present > 0 ? { n: present, per: "présent" } : { n: planned, per: "participant" };
+/**
+ * Coût d'un devis par personne (en euros TTC). La valeur d'hospitalité et le repère des seuils portent sur le prix par
+ * couvert commandé (effectif prévu) ; une fois la présence connue (événement terminé et pointé), le coût par présent est
+ * donné à titre d'information, sans alerte réglementaire : l'avantage reçu reste le couvert commandé.
+ */
+export function costPerHead(ttcCents: number, planned: number | null, present: number, ended: boolean) {
+  return {
+    perCover: planned && planned > 0 ? ttcCents / planned / 100 : null,
+    perPresent: presenceKnown(ended, present) ? ttcCents / present / 100 : null,
+  };
 }
 
 /** Intervention confirmée : candidature retenue et honoraires proposés acceptés par l'expert. */

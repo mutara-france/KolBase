@@ -9,7 +9,7 @@ import { cancelSignatureRequest, signatureOpen } from "@/lib/yousign";
 import { payeeEntity, sirenOf } from "@/lib/structures";
 import { PAYMENT_TERMS } from "@/lib/fee-notes";
 import { professionalId } from "@/lib/countries";
-import { costHeadcount, expertSplit, feeTotals, isAbsent, speakerConfirmed, toDeclare } from "@/lib/indicators";
+import { costPerHead, eventHospitality, expertSplit, feeTotals, isAbsent, speakerConfirmed, toDeclare } from "@/lib/indicators";
 
 describe("contrat de sous-traitance exigé avant d'engager un tiers", () => {
   it("version en vigueur acceptée ; un prestataire n'en a pas", () => {
@@ -102,10 +102,21 @@ describe("une définition par indicateur", () => {
     expect(expertSplit(experts, false)).toMatchObject({ engagedCents: 3000, proposedCents: 0 });
   });
 
-  it("coût par participant d'un devis : les présents après l'événement pointé", () => {
-    expect(costHeadcount(50, 0, false)).toEqual({ n: 50, per: "participant" });
-    expect(costHeadcount(50, 32, true)).toEqual({ n: 32, per: "présent" });
-    expect(costHeadcount(50, 0, true)).toEqual({ n: 50, per: "participant" });
+  it("coût d'un devis : prix par couvert commandé, coût par présent pour information après l'événement pointé", () => {
+    // Prix par couvert commandé toujours ; coût par présent seulement une fois la présence connue (à titre d'information).
+    expect(costPerHead(500000, 50, 0, false)).toEqual({ perCover: 100, perPresent: null });
+    expect(costPerHead(500000, 50, 32, true)).toEqual({ perCover: 100, perPresent: 156.25 });
+    expect(costPerHead(500000, 50, 0, true)).toEqual({ perCover: 100, perPresent: null });
+    expect(costPerHead(500000, null, 2, false)).toEqual({ perCover: null, perPresent: null });
+  });
+
+  it("hospitalités d'un événement : absents exclus une fois l'événement terminé et pointé", () => {
+    const d = new Date();
+    const regs = [{ checkedInAt: d, benefits: [{ valueCents: 4800 }] }, { checkedInAt: null, benefits: [{ valueCents: 4800 }] }, { checkedInAt: null, benefits: [] }];
+    expect(eventHospitality(regs, true)).toEqual({ known: true, cents: 4800, beneficiaries: 1, headcount: 1 });
+    // Pendant l'événement (pointage en cours) ou sans pointage : les inscrits.
+    expect(eventHospitality(regs, false)).toEqual({ known: false, cents: 9600, beneficiaries: 2, headcount: 3 });
+    expect(eventHospitality(regs.slice(1), true)).toEqual({ known: false, cents: 4800, beneficiaries: 1, headcount: 2 });
   });
 
   it("« Vous intervenez » : candidature retenue et honoraires acceptés", () => {

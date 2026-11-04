@@ -1,11 +1,13 @@
 import { db } from "@/lib/db";
-import { collabType, fmvCheck } from "@/lib/projects";
+import { collabType, fmvCheck, isEngaged } from "@/lib/projects";
 import { REGISTER_STATUSES } from "@/lib/compliance-data";
-import type { ProjectStatus } from "@/generated/prisma/client";
+import { eventHospitality } from "@/lib/indicators";
+import { eventEnded } from "@/lib/events";
 
 export { STATS_ROLES } from "@/lib/org-roles";
 
-const ENGAGED = new Set<string>(REGISTER_STATUSES);
+/** Dossiers à déclarer sur Transparence Santé : validés par la conformité ou au-delà. */
+const VALIDATED = new Set<string>(REGISTER_STATUSES);
 const DAY = 86400000;
 
 export type StatsSeries = "fees" | "logistics" | "hospitality";
@@ -22,8 +24,10 @@ const inYear = (d: Date | null | undefined, y: number) => !!d && d.getUTCFullYea
 
 /**
  * Statistiques d'une organisation sur une année civile.
- * Budget engagé : honoraires des dossiers engagés (validés ou au-delà) à la date d'engagement,
- * logistique (devis retenus et dépenses saisies, HT) et hospitalités (valeur déclarée, TTC) à la date de l'événement.
+ * Engagé : même définition que l'accueil et les dossiers (src/lib/indicators.ts) : l'expert a accepté la proposition
+ * (accord de principe ou au-delà, dossier non abandonné). Budget engagé (HT) : honoraires des experts engagés à la date
+ * de leur accord, logistique (devis retenus et dépenses saisies) à la date de l'événement. Hospitalités (TTC, absents
+ * exclus après l'événement pointé) à part : jamais additionnées à des montants HT.
  */
 export async function orgStats(orgId: string, year: number) {
   const start = new Date(Date.UTC(year, 0, 1));
@@ -53,10 +57,11 @@ export async function orgStats(orgId: string, year: number) {
       select: { amountCents: true, updatedAt: true, rfq: { select: { createdAt: true, eventId: true, event: { select: { startsAt: true } } } } },
     }),
     db.expense.findMany({ where: { project: { organizationId: orgId }, status: { not: "draft" } }, select: { amountCents: true, date: true } }),
+    // Événements tenus ou à venir (un événement annulé n'a ni participants ni hospitalités).
     db.event.findMany({
-      where: { organizationId: orgId, startsAt: { gte: start, lt: end } },
+      where: { organizationId: orgId, startsAt: { gte: start, lt: end }, cancelledAt: null },
       select: {
-        id: true, title: true, startsAt: true, capacity: true, internal: true,
+        id: true, title: true, startsAt: true, durationMinutes: true, capacity: true, internal: true,
         registrations: { select: { kind: true, declared: true, profession: true, checkedInAt: true, benefits: { select: { valueCents: true } } } },
         rfqs: { select: { quotes: { where: { status: "retained" }, select: { amountCents: true } } } },
         surveys: { select: { overall: true } },
@@ -75,7 +80,7 @@ export async function orgStats(orgId: string, year: number) {
     list.push({ action: l.action, from: d.from ?? null, to: d.to ?? null, at: l.createdAt });
     history.set(l.entityId, list);
   }
-  const engagedAt = (p: (typeof projects)[number]) => history.get(p.id)?.find((s) => s.to && ENGAGED.has(s.to))?.at ?? (ENGAGED.has(p.status) ? p.updatedAt : null);
+  const validatedAt = (p: (typeof projects)[number]) => history.get(p.id)?.find((s) => s.to && VALIDATED.has(s.to))?.at ?? (VALIDATED.has(p.status) ? p.updatedAt : null);
 
   // ─── Budget par trimestre ───
   const quarters = [0, 1, 2, 3].map((q) => ({ label: `T${q + 1}`, fees: 0, logistics: 0, hospitality: 0 }));
@@ -83,22 +88,25 @@ export async function orgStats(orgId: string, year: number) {
   const byExpert = new Map<string, { name: string; cents: number; specialty: string | null }>();
   let engagedProjects = 0, fmvOver = 0, toDeclare = 0, declared = 0;
   for (const p of projects) {
-    const at = engagedAt(p);
-    if (!inYear(at, year)) continue;
+    // Experts engagés (proposition acceptée), comptés à la date de leur accord.
+    const engaged = p.experts.filter((e) => isEngaged(e.status) && inYear(e.respondedAt ?? e.createdAt, year));
+    if (VALIDATED.has(p.status) && inYear(validatedAt(p), year)) {
+      if (p.declared) declared++; else toDeclare++;
+    }
+    if (engaged.length === 0) continue;
     engagedProjects++;
-    if (p.declared) declared++; else toDeclare++;
     const t = collabType(p.typeId);
     let projectFees = 0;
-    for (const e of p.experts) {
+    for (const e of engaged) {
       const fee = e.feeCents ?? 0;
       projectFees += fee;
+      quarters[quarterOf(e.respondedAt ?? e.createdAt)].fees += fee;
       const key = e.practitioner.id;
       const cur = byExpert.get(key) ?? { name: `${e.practitioner.user.firstName} ${e.practitioner.user.lastName}`, cents: 0, specialty: e.practitioner.specialty };
       cur.cents += fee;
       byExpert.set(key, cur);
       if (fmvCheck(p.typeId, e.feeCents, e.days)?.verdict === "above") fmvOver++;
     }
-    quarters[quarterOf(at!)].fees += projectFees;
     const ty = byType.get(p.typeId) ?? { label: t?.label ?? p.typeId, cents: 0, projects: 0 };
     ty.cents += projectFees;
     ty.projects++;
@@ -110,17 +118,22 @@ export async function orgStats(orgId: string, year: number) {
   }
   for (const e of expenses) if (inYear(e.date, year)) quarters[quarterOf(e.date)].logistics += e.amountCents;
 
-  // ─── Événements : participants, hospitalités, coût par participant ───
+  // ─── Événements : participants, hospitalités, coût par présent ───
+  // Même règle de présence que la fiche de l'événement : après l'événement pointé, absents exclus et effectif = présents.
+  // Hospitalités (TTC) et prestataires (HT) rapportés à l'effectif séparément, jamais additionnés.
   const now = new Date();
   const eventRows = events.map((ev) => {
     const participants = ev.registrations.filter((r) => r.kind === "participant").length;
-    const hospitality = ev.registrations.reduce((s, r) => s + r.benefits.reduce((t, b) => t + b.valueCents, 0), 0);
+    const h = eventHospitality(ev.registrations, eventEnded(ev, now));
     const suppliers = ev.rfqs.reduce((s, r) => s + r.quotes.reduce((t, q) => t + q.amountCents, 0), 0);
-    quarters[quarterOf(ev.startsAt)].hospitality += hospitality;
+    quarters[quarterOf(ev.startsAt)].hospitality += h.cents;
     return {
       id: ev.id, title: ev.title, date: ev.startsAt, past: ev.startsAt < now, internal: ev.internal, capacity: ev.capacity,
-      registrations: ev.registrations.length, participants, hospitality, suppliers,
-      perParticipant: ev.registrations.length ? Math.round((hospitality + suppliers) / ev.registrations.length) : null,
+      registrations: ev.registrations.length, participants, hospitality: h.cents, suppliers,
+      // Effectif : présents une fois la présence connue, inscrits sinon.
+      headcount: h.headcount, presenceKnown: h.known,
+      hospitalityPer: h.headcount ? Math.round(h.cents / h.headcount) : null,
+      suppliersPer: h.headcount ? Math.round(suppliers / h.headcount) : null,
       fillRate: ev.capacity ? Math.round((ev.registrations.length / ev.capacity) * 100) : null,
       present: ev.registrations.filter((r) => r.checkedInAt).length,
       rating: ev.surveys.length ? ev.surveys.reduce((s, x) => s + x.overall, 0) / ev.surveys.length : null,
@@ -158,7 +171,8 @@ export async function orgStats(orgId: string, year: number) {
   return {
     year,
     years: Array.from({ length: Math.max(1, now.getUTCFullYear() - Math.min(firstYear, now.getUTCFullYear()) + 1) }, (_, i) => now.getUTCFullYear() - i),
-    totals: { ...totals, all: totals.fees + totals.logistics + totals.hospitality },
+    // Budget engagé : HT seulement (honoraires et logistique) ; les hospitalités (TTC) restent à part.
+    totals: { ...totals, ht: totals.fees + totals.logistics },
     quarters,
     byType: [...byType.values()].sort((a, b) => b.cents - a.cents),
     engagedProjects,
@@ -181,5 +195,4 @@ export async function orgStats(orgId: string, year: number) {
   };
 }
 
-/** Statuts pris en compte dans le budget engagé, pour l'aide en bas de page. */
-export const ENGAGED_STATUSES: ProjectStatus[] = REGISTER_STATUSES;
+

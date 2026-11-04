@@ -8,6 +8,7 @@ import { supplierCategoryLabel } from "@/lib/suppliers";
 import { canSee, companyVisibility, kolVisibility } from "@/lib/visibility";
 import { logoSrc } from "@/lib/logos";
 import { country } from "@/lib/countries";
+import { SIGNED_STATUSES } from "@/lib/projects";
 import { featuredEvents, trackedPath } from "@/lib/services";
 import type { CallCardData, EventCardData, KolCardData, OrgCardData } from "@/components/PublicCards";
 
@@ -45,7 +46,8 @@ export async function publicEvents(take?: number, { tracked = false }: { tracked
 export async function publicExperts(take?: number): Promise<KolCardData[]> {
   const ps = await db.practitionerProfile.findMany({
     where: { listed: true },
-    include: { user: { select: { firstName: true, lastName: true } }, projectLinks: { where: { status: { notIn: ["ATT_EXPERTS", "DECLINE"] } }, select: { project: { select: { organizationId: true } } } } },
+    // Collaborations : les dossiers signés seulement, comme la fiche expert.
+    include: { user: { select: { firstName: true, lastName: true } }, projectLinks: { where: { status: { in: SIGNED_STATUSES } }, select: { project: { select: { organizationId: true } } } } },
     // « Réseau vérifié » : les identités vérifiées par KolBase d'abord, puis les plus récemment référencés.
     orderBy: [{ rppsVerified: "desc" }, { listedAt: "desc" }],
     take,
@@ -66,7 +68,8 @@ export async function publicExperts(take?: number): Promise<KolCardData[]> {
 export async function publicOrgs(take?: number): Promise<OrgCardData[]> {
   const os = await db.organization.findMany({
     where: { listed: true, verification: "VERIFIED" },
-    include: { _count: { select: { openCalls: { where: { status: "open" } }, projects: { where: { status: { notIn: ["ATT_EXPERTS", "DECLINE"] } } } } } },
+    // Collaborations : les dossiers signés seulement, comme la fiche de l'organisation et celle de l'expert.
+    include: { _count: { select: { openCalls: { where: { status: "open" } }, projects: { where: { status: { in: SIGNED_STATUSES } } } } } },
     orderBy: { createdAt: "asc" },
     take,
   });

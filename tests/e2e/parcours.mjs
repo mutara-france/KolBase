@@ -2399,7 +2399,7 @@ async function submitNewOrg(page, siren) {
     await pgc.query(`insert into "RfqSupplier" ("rfqId", "supplierId") values ('e2e-lot1-rfq-tva', 'demo-sup-belleville')`);
     await sup.page.goto(`${BASE}/organisations/demo-sup-belleville/devis`);
     const card = sup.page.locator('section.card:has-text("Cocktail Lot 1 pour 40 personnes")');
-    check("Devis de restauration : TVA à 10 % proposée", (await card.locator('select[name="vat"]').inputValue()) === "1000");
+    check("Devis de restauration : TVA à 10 % proposée", (await card.locator('select[name="line_vat"]').first().inputValue()) === "1000");
     await card.locator('input[name="line_label"]').first().fill("Cocktail dînatoire 12 pièces");
     await card.locator('input[name="line_qty"]').first().fill("40");
     await card.locator('input[name="line_unit"]').first().fill("38");
@@ -2408,7 +2408,7 @@ async function submitNewOrg(page, siren) {
     const sent = await q1(`select "vatBp" from "Quote" where "rfqId" = 'e2e-lot1-rfq-tva'`);
     check("Devis envoyé : formulaire refermé, TVA enregistrée à 10 %", sent?.vatBp === 1000 && (await card.locator('button:has-text("Réviser mon devis")').count()) === 1 && (await card.locator("form.quote-form").count()) === 0, JSON.stringify(sent));
     await card.locator('button:has-text("Réviser mon devis")').click();
-    check("Révision : la TVA affichée reste celle envoyée", (await card.locator('select[name="vat"]').inputValue()) === "1000");
+    check("Révision : la TVA affichée reste celle envoyée", (await card.locator('select[name="line_vat"]').first().inputValue()) === "1000");
     await sup.ctx.close();
     // Prestataire sans devis retenu : référencement gratuit, aucun bouton de paiement.
     const won = await q1(`select count(*)::int n from "Quote" where "supplierId" = 'demo-org-mediane' and status = 'retained'`);
@@ -3978,6 +3978,87 @@ async function submitNewOrg(page, siren) {
     const box = await mp.locator('header.public-nav nav a:has-text("Se connecter")').boundingBox();
     check("Mobile : « Se connecter » visible sans défiler, avec la page d'origine", !!box && box.x >= 0 && box.x + box.width <= 390 && (await mp.locator('header.public-nav nav a:has-text("Se connecter")').getAttribute("href")) === "/connexion?next=%2Fexperts", JSON.stringify(box));
     await mob.close();
+  }
+
+  // 2. Chiffres de l'événement : une règle de présence, coût par couvert, TVA par ligne, collaborations signées.
+  {
+    const n = (s) => s.replace(/\s+/g, " ");
+    const cl = await session();
+    await login(cl.page, CLAIRE);
+    await cl.page.goto(`${BASE}/organisations/demo-org-dentalys/evenements/demo-ev-passe`);
+    const head = n(await cl.page.locator("header.page-hero").innerText());
+    const bilan = n(await cl.page.locator("section.bilan").innerText());
+    const hHead = head.match(/Hospitalités ([\d  ,]+) € TTC/)?.[1];
+    const hBilan = bilan.match(/Hospitalités ([\d  ,]+) € TTC/)?.[1];
+    check("Événement passé : en-tête et bilan, mêmes hospitalités (absents exclus)", !!hHead && hHead === hBilan && /bénéficiaires? présents? · consommées/.test(head), `${head.match(/Hospitalités[^·]*·[^·]*/)?.[0]} / ${hBilan}`);
+    const logi = n(await cl.page.locator('section:has(h2:has-text("Logistique et prestataires"))').innerText());
+    check("Événement passé : prix par couvert commandé, coût par présent pour information", logi.includes("par couvert commandé") && /Pour information : [\d  ,]+ € TTC par présent/.test(logi) && !/par présent[^·\n]*seuil/.test(logi), logi.slice(0, 300));
+    const apply = cl.page.locator("form.apply-benefit");
+    check("Report dans la valeur déclarée : le prix par couvert, plus le coût réel par présent", (await apply.count()) === 0 || ((await apply.innerText()).includes("prix par couvert") && !(await apply.innerText()).includes("coût réel")));
+    // Statistiques : effectif = présents, hospitalités (TTC) et prestataires (HT) jamais additionnés ; « engagé » expliqué.
+    await cl.page.goto(`${BASE}/organisations/demo-org-dentalys/statistiques`);
+    const st = n(await text(cl.page));
+    check("Statistiques : par présent, HT et TTC séparés", st.includes("Hospitalités par présent (TTC)") && st.includes("Prestataires par présent (HT)") && !st.includes("Par inscrit") && st.includes("Budget engagé (HT)"));
+    check("Statistiques : définition d'« engagé » en bas de page", st.includes("Engagé : l'expert a accepté la proposition"));
+    // TVA par ligne : repas à 10 %, vin à 20 % ; meilleure offre sur le TTC.
+    await pgc.query(`insert into "Subscription" ("organizationId", plan, status, "exemptUntil", "updatedAt") values ('demo-sup-belleville', 'prestataire', 'a_activer', '2099-12-31', now()) on conflict ("organizationId") do update set "exemptUntil" = '2099-12-31'`);
+    await pgc.query(`insert into "Rfq" (id, "organizationId", category, needs, status, "sentAt", headcount, city) values ('e2e-5b-rfq-tva', 'demo-org-dentalys', 'restauration', 'Dîner 5b avec vins pour 20 personnes.', 'sent', now(), 20, 'Lyon')`);
+    await pgc.query(`insert into "RfqSupplier" ("rfqId", "supplierId") values ('e2e-5b-rfq-tva', 'demo-sup-belleville'), ('e2e-5b-rfq-tva', 'demo-sup-tablesdusud')`);
+    // Concurrent : moins cher hors taxes, plus cher toutes taxes comprises (tout à 20 %).
+    await pgc.query(`insert into "Quote" (id, "rfqId", "supplierId", "amountCents", "vatBp", "updatedAt") values ('e2e-5b-q-tds', 'e2e-5b-rfq-tva', 'demo-sup-tablesdusud', 79000, 2000, now())`);
+    const sup = await session();
+    await login(sup.page, "ludovic.perrin@demo.kolbase.local");
+    await sup.page.goto(`${BASE}/organisations/demo-sup-belleville/devis`);
+    const card = sup.page.locator('section.card:has-text("Dîner 5b avec vins")');
+    check("Devis : taux de la ligne proposé selon la catégorie (10 %)", (await card.locator('select[name="line_vat"]').first().inputValue()) === "1000");
+    await card.locator('input[name="line_label"]').first().fill("Dîner assis 3 plats");
+    await card.locator('input[name="line_qty"]').first().fill("20");
+    await card.locator('input[name="line_unit"]').first().fill("35");
+    await card.locator('button:has-text("Ajouter une ligne")').click();
+    await card.locator('input[name="line_label"]').nth(1).fill("Vins (bouteilles)");
+    await card.locator('input[name="line_qty"]').nth(1).fill("10");
+    await card.locator('input[name="line_unit"]').nth(1).fill("10");
+    await card.locator('select[name="line_vat"]').nth(1).selectOption("2000");
+    const totals = n(await card.locator(".quote-totals").innerText());
+    await card.locator('button:has-text("Envoyer le devis")').click();
+    await until(async () => !!(await q1(`select id from "Quote" where "rfqId" = 'e2e-5b-rfq-tva' and "supplierId" = 'demo-sup-belleville'`)));
+    const qb = await q1(`select "amountCents" a, "ttcCents" t, "vatBp" v, lines from "Quote" where "rfqId" = 'e2e-5b-rfq-tva' and "supplierId" = 'demo-sup-belleville'`);
+    // 700 € HT à 10 % + 100 € HT à 20 % = 770 + 120 = 890 € TTC.
+    check("Devis : chaque ligne à son taux, TTC = somme des lignes", qb?.a === 80000 && qb?.t === 89000 && qb?.v === 1000 && qb?.lines?.[1]?.vatBp === 2000 && /TTC\s*890,00/.test(totals), `${JSON.stringify({ a: qb?.a, t: qb?.t, v: qb?.v })} ${totals}`);
+    await sup.ctx.close();
+    await cl.page.goto(`${BASE}/organisations/demo-org-dentalys/prestataires?onglet=demandes`);
+    const rfq = cl.page.locator('section:has-text("Dîner 5b avec vins")').first();
+    const best = n(await rfq.locator(".quote.best").innerText().catch(() => ""));
+    check("Comparaison : meilleure offre sur le TTC, taux par ligne affichés", best.includes("Traiteur Belleville") && best.includes("890,00 € TTC (TVA 10 % et 20 %)"), best.slice(0, 200));
+    // Cartes publiques : collaborations signées seulement (comme les fiches).
+    const signedOrg = (await q1(`select count(*)::int n from "Project" where "organizationId" = 'demo-org-dentalys' and status in ('SIGNE', 'TERMINE')`)).n;
+    const signedExpert = (await q1(`select count(*)::int n from "ProjectExpert" where "practitionerId" = 'demo-p-martin' and status in ('SIGNE', 'TERMINE')`)).n;
+    const anon = await session();
+    await anon.page.goto(`${BASE}/experts`);
+    const kc = n(await anon.page.locator('a.kol-card[href="/experts/demo-p-martin"]').innerText());
+    await anon.page.goto(`${BASE}/structures`);
+    const oc = n(await anon.page.locator('a[href="/structures/demo-org-dentalys"]').first().innerText());
+    check("Cartes publiques : collaborations signées seulement", kc.includes(`${signedExpert} collaboration`) && oc.includes(`${signedOrg} collaboration`), `${kc.match(/\d+ collaborations?/)?.[0]} (${signedExpert}) / ${oc.match(/\d+ collaborations?/)?.[0]} (${signedOrg})`);
+    // Book public : références passées seulement, avis sans le nom du client.
+    await pgc.query(`insert into "Rfq" (id, "organizationId", "eventId", category, needs, status, "sentAt", headcount) values ('e2e-5b-rfq-futur', 'demo-org-dentalys', 'demo-ev-soiree-implanto', 'restauration', 'Cocktail futur 5b.', 'awarded', now(), 30)`);
+    await pgc.query(`insert into "Quote" (id, "rfqId", "supplierId", "amountCents", "vatBp", status, "updatedAt") values ('e2e-5b-q-futur', 'e2e-5b-rfq-futur', 'demo-sup-belleville', 90000, 1000, 'retained', now())`);
+    const past = (await q1(`select count(*)::int n from "Quote" q join "Rfq" r on r.id = q."rfqId" left join "Event" e on e.id = r."eventId" where q."supplierId" = 'demo-sup-belleville' and q.status = 'retained' and coalesce(e."startsAt", r."sentAt", q."createdAt") < now()`)).n;
+    await anon.page.goto(`${BASE}/structures/demo-sup-belleville`);
+    const book = n(await text(anon.page));
+    const done = book.match(/(\d+) Prestations réalisées via KolBase/)?.[1];
+    const reviews = n(await anon.page.locator('section:has(h2:has-text("Avis vérifiés"))').innerText());
+    check("Book public : prestations passées seulement", done === String(past), `${done} / ${past}`);
+    check("Book public : avis sans le nom du client", !reviews.includes("Dentalys") && reviews.includes("Organisation cliente") && reviews.includes("le nom des clients n'est pas affiché"), reviews.slice(0, 200));
+    await pgc.query(`delete from "Quote" where id = 'e2e-5b-q-futur'`);
+    await pgc.query(`delete from "Rfq" where id = 'e2e-5b-rfq-futur'`);
+    await anon.ctx.close();
+    await cl.ctx.close();
+    // Revenus : export avec le statut de chaque ligne.
+    const ex = await session();
+    await login(ex.page, "antoine.martin@demo.kolbase.local");
+    const csv = await (await ex.ctx.request.get(`${BASE}/revenus/export?annee=${new Date().getFullYear()}`)).text();
+    check("Revenus : export CSV avec une colonne Statut", csv.split("\n")[0].includes("Statut") && /payé|convention signée|Accord|Signé/i.test(csv), csv.split("\n").slice(0, 2).join(" | "));
+    await ex.ctx.close();
   }
 
   await pgc.end();

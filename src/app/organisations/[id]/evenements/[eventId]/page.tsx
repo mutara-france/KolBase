@@ -14,8 +14,8 @@ import { BillingNotice } from "@/components/BillingNotice";
 import { engagementBlock } from "@/lib/billing";
 import { applyQuoteToBenefit } from "@/lib/rfq-actions";
 import { RFQ_STATUS, rfqDisplayStatus, rfqView, SUPPLIER_CATEGORIES, supplierCategoryLabel } from "@/lib/suppliers";
-import { perParticipant, withVat } from "@/lib/quotes";
-import { costHeadcount } from "@/lib/indicators";
+import { perParticipant, quoteTtc } from "@/lib/quotes";
+import { costPerHead, eventHospitality } from "@/lib/indicators";
 import { complianceSettings, hospitalityRegime, REGIME_LABEL } from "@/lib/compliance";
 import { drPrefix } from "@/lib/professions";
 import { checkinOpen } from "@/lib/checkin";
@@ -68,12 +68,13 @@ export default async function Page({ params, searchParams }: { params: Promise<{
   const [rfqs, agencies] = await Promise.all([
     db.rfq.findMany({
       where: { organizationId: id, eventId },
-      include: { _count: { select: { suppliers: true } }, suppliers: { select: { supplierId: true } }, quotes: { select: { id: true, amountCents: true, vatBp: true, status: true, supplierId: true, supplier: { select: { name: true } } }, orderBy: { amountCents: "asc" } } },
+      include: { _count: { select: { suppliers: true } }, suppliers: { select: { supplierId: true } }, quotes: { select: { id: true, amountCents: true, vatBp: true, ttcCents: true, status: true, supplierId: true, supplier: { select: { name: true } } }, orderBy: { amountCents: "asc" } } },
       orderBy: { createdAt: "asc" },
     }).then((rs) => {
       // Agence consultée sur une demande de son événement : seulement son propre devis (confidentialité des offres).
       const own = user.memberships.filter((m) => m.organization.kind === "PRESTATAIRE").map((m) => m.organizationId);
-      return rs.map((r) => rfqView({ ...r, messages: [] as { supplierId: string }[] }, own));
+      // Meilleure offre d'abord, sur le TTC (les lignes peuvent avoir des taux de TVA différents).
+      return rs.map((r) => rfqView({ ...r, quotes: [...r.quotes].sort((a, b) => quoteTtc(a) - quoteTtc(b)), messages: [] as { supplierId: string }[] }, own));
     }),
     // Agences proposées : les agences événementielles référencées, et celles déjà mandatées.
     isOrganizer
@@ -95,14 +96,12 @@ export default async function Page({ params, searchParams }: { params: Promise<{
   const experts = event.project?.experts ?? [];
   const participants = event.internal ? experts.length : event.registrations.length;
   const expected = event.capacity ?? (participants || null);
-  const totalCents = event.registrations.reduce((s, r) => s + r.benefits.reduce((x, b) => x + b.valueCents, 0), 0);
-  const withBenefits = event.registrations.filter((r) => r.benefits.length > 0).length;
   const askedCats = new Set(rfqs.filter((r) => r.status !== "cancelled").map((r) => r.category));
   // Catégories utiles selon le format : une visioconférence n'a besoin ni de salle ni d'hébergement.
   // Raccourcis vers les besoins logistiques courants ; les autres catégories restent accessibles par « Demander des devis ».
   const shortcutIds = event.format === "DISTANCIEL" ? ["audiovisuel", "communication"] : ["salle", "restauration", "hebergement", "transport", "audiovisuel"];
   const usefulCats = SUPPLIER_CATEGORIES.filter((c) => shortcutIds.includes(c.id) && !askedCats.has(c.id));
-  const engagedTtc = rfqs.reduce((s, r) => { const k = r.quotes.find((q) => q.status === "retained"); return s + (k ? withVat(k.amountCents, k.vatBp) : 0); }, 0);
+  const engagedTtc = rfqs.reduce((s, r) => { const k = r.quotes.find((q) => q.status === "retained"); return s + (k ? quoteTtc(k) : 0); }, 0);
   // Accueil et bilan : présence au pointage, coût réel, hospitalités à déclarer.
   const now = new Date();
   // Commencé n'est pas terminé : pointage pendant l'événement ; absents, bilan, attestations et avis après la fin.
@@ -110,10 +109,12 @@ export default async function Page({ params, searchParams }: { params: Promise<{
   const ended = eventEnded(event, now);
   const canPoint = !event.internal && checkinOpen(event.startsAt, now);
   const present = event.registrations.filter((r) => r.checkedInAt);
-  const pointed = present.length > 0;
+  // Une seule règle de présence (en-tête, bilan, Statistiques) : après l'événement pointé, les absents sont exclus.
+  const hosp = eventHospitality(event.registrations, ended);
+  const pointed = hosp.known;
   const hospOf = (rs: typeof event.registrations) => rs.reduce((s, r) => s + r.benefits.reduce((x, b) => x + b.valueCents, 0), 0);
   const absentsWithBenefits = pointed ? event.registrations.filter((r) => !r.checkedInAt && r.benefits.length > 0) : [];
-  const hospConsumed = pointed ? hospOf(present) : totalCents;
+  const hospConsumed = hosp.cents;
   const realCost = hospConsumed + engagedTtc;
   const isCompliance = roles.some((r) => COMPLIANCE_ROLES.includes(r));
   // Rappel de la veille, puis remerciement (attestation, questionnaire) : automatiques, ou envoyés d'un clic.
@@ -230,7 +231,7 @@ export default async function Page({ params, searchParams }: { params: Promise<{
             {!event.internal && (
               <div>
                 <dt><Gift size={13} /> Hospitalités</dt>
-                <dd>{formatEUR(totalCents)} TTC<small>{withBenefits} bénéficiaire{withBenefits > 1 ? "s" : ""} · valeur déclarée</small></dd>
+                <dd>{formatEUR(hosp.cents)} TTC<small>{hosp.beneficiaries} bénéficiaire{hosp.beneficiaries > 1 ? "s" : ""}{hosp.known ? ` présent${hosp.beneficiaries > 1 ? "s" : ""} · consommées` : " · valeur déclarée"}</small></dd>
               </div>
             )}
             <div>
@@ -277,7 +278,7 @@ export default async function Page({ params, searchParams }: { params: Promise<{
             <dl className="hero-facts">
               <div><dt><Users size={13} /> Présents</dt><dd>{pointed ? `${present.length} / ${event.registrations.length}` : "—"}<small>{pointed && event.registrations.length ? `${Math.round((present.length / event.registrations.length) * 100)} % des inscrits` : `${event.registrations.length} inscrit${event.registrations.length > 1 ? "s" : ""}`}</small></dd></div>
               <div><dt><Euro size={13} /> Coût réel</dt><dd>{formatEUR(realCost)} TTC<small>hospitalités et prestataires</small></dd></div>
-              <div><dt><Euro size={13} /> Par {pointed ? "présent" : "inscrit"}</dt><dd>{(pointed ? present.length : event.registrations.length) ? `${formatEUR(Math.round(realCost / (pointed ? present.length : event.registrations.length)))} TTC` : "—"}<small>{pointed ? "coût réel rapporté aux présents" : "coût réel rapporté aux inscrits"}</small></dd></div>
+              <div><dt><Euro size={13} /> Par {pointed ? "présent" : "inscrit"}</dt><dd>{hosp.headcount ? `${formatEUR(Math.round(realCost / hosp.headcount))} TTC` : "—"}<small>{pointed ? "coût réel rapporté aux présents" : "coût réel rapporté aux inscrits"}</small></dd></div>
               <div><dt><Gift size={13} /> Hospitalités</dt><dd>{formatEUR(hospConsumed)} TTC<small>{pointed ? "consommées par les présents" : "acceptées par les inscrits"}</small></dd></div>
             </dl>
             {absentsWithBenefits.length > 0 && (
@@ -292,7 +293,7 @@ export default async function Page({ params, searchParams }: { params: Promise<{
                 <strong>Attestations et questionnaire</strong>
                 <p className="muted text-sm">
                   {followed.length
-                    ? `Envoyés le ${formatDate(lastSent(followed, "followUpSentAt")!)} à ${followed.length} participant${followed.length > 1 ? "s" : ""}${pointed ? " présents" : ""}.`
+                    ? `Envoyés le ${formatDate(lastSent(followed, "followUpSentAt")!)} à ${followed.length} participant${followed.length > 1 ? "s" : ""}${pointed ? ` présent${followed.length > 1 ? "s" : ""}` : ""}.`
                     : ended
                       ? `Envoi automatique une heure après la fin : remerciement, ${pointed ? "attestation de présence et " : ""}questionnaire de satisfaction.`
                       : "Envoyés automatiquement une heure après la fin de l'événement."}
@@ -365,10 +366,10 @@ export default async function Page({ params, searchParams }: { params: Promise<{
                     const st = RFQ_STATUS[rfqDisplayStatus(r)];
                     const kept = r.quotes.find((q) => q.status === "retained");
                     const ref = kept ?? r.quotes[0];
-                    const ttc = ref ? withVat(ref.amountCents, ref.vatBp) : 0;
-                    // Après l'événement pointé, le coût se rapporte aux présents.
-                    const basis = costHeadcount(r.headcount ?? expected, present.length, ended);
-                    const pp = ref ? perParticipant(r.category, ttc, basis.n, settings) : null;
+                    const ttc = ref ? quoteTtc(ref) : 0;
+                    // Valeur et seuils : le prix par couvert commandé ; le coût par présent, après l'événement, pour information.
+                    const head = costPerHead(ttc, r.headcount ?? expected, present.length, ended);
+                    const pp = ref ? perParticipant(r.category, ttc, r.headcount ?? expected, settings) : null;
                     return (
                       <li key={r.id}>
                         <div className="logistics-row">
@@ -382,7 +383,8 @@ export default async function Page({ params, searchParams }: { params: Promise<{
                                     {ref ? ` · ${kept ? `retenu : ${kept.supplier.name}` : "meilleure offre"} ${formatEUR(ttc)} TTC` : ""}
                                   </>}
                             </div>
-                            {pp && <div className={`text-xs ${pp.over ? "warn-text" : "muted"}`}>≈ {pp.each.toLocaleString("fr-FR", { maximumFractionDigits: 2 })} € TTC par {basis.per}{pp.limit ? (pp.over ? ` · au-dessus du seuil d'un ${pp.limit.what} (${pp.limit.max} € TTC)` : ` · sous le seuil d'un ${pp.limit.what}`) : ""}</div>}
+                            {pp && <div className={`text-xs ${pp.over ? "warn-text" : "muted"}`}>≈ {pp.each.toLocaleString("fr-FR", { maximumFractionDigits: 2 })} € TTC par couvert commandé{pp.limit ? (pp.over ? ` · au-dessus du seuil d'un ${pp.limit.what} (${pp.limit.max} € TTC)` : ` · sous le seuil d'un ${pp.limit.what}`) : ""}</div>}
+                            {ref && head.perPresent != null && <div className="text-xs muted">Pour information : {head.perPresent.toLocaleString("fr-FR", { maximumFractionDigits: 2 })} € TTC par présent ({present.length} au pointage)</div>}
                           </div>
                           <span className={`pill ${st.tone}`}>{st.label}</span>
                           {!readOnly && <Link className="btn ghost small" href={`/organisations/${id}/prestataires?onglet=demandes#rfq-${r.id}`}>{kept ? "Voir" : "Comparer"}</Link>}
@@ -391,7 +393,7 @@ export default async function Page({ params, searchParams }: { params: Promise<{
                           <form action={applyQuoteToBenefit} className="apply-benefit">
                             <input type="hidden" name="orgId" value={id} />
                             <input type="hidden" name="quoteId" value={kept.id} />
-                            <span className="text-sm">Reporter le coût réel dans la valeur déclarée</span>
+                            <span className="text-sm">Reporter le prix par couvert dans la valeur déclarée</span>
                             <select name="benefitId" aria-label="Hospitalité concernée">
                               {event.benefits.map((b) => <option key={b.id} value={b.id}>{b.label} (déclaré {formatEUR(b.valueCents)} TTC)</option>)}
                             </select>

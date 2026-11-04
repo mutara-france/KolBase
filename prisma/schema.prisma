@@ -623,9 +623,12 @@ model Quote {
   amountCents Int          // total HT (somme des lignes quand le devis est détaillé)
   delay       String?
   note        String?
-  // Devis détaillé : lignes [{ label, qty, unitCents }], TVA en points de base (2000 = 20 %), validité, conditions, PDF.
+  // Devis détaillé : lignes [{ label, qty, unitCents, vatBp }] (taux par ligne, en points de base : 2000 = 20 %), validité,
+  // conditions, PDF. vatBp : taux unique, ou principal quand les lignes en ont plusieurs (lignes sans taux, montant global).
   lines       Json         @default("[]")
   vatBp       Int          @default(2000)
+  // Total TTC : somme des lignes à leur taux (null : montant HT au taux du devis).
+  ttcCents    Int?
   validUntil  DateTime?
   conditions  String?
   fileKey     String?

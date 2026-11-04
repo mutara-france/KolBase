@@ -13,7 +13,7 @@ import { requireMembership } from "@/lib/orgs";
 import { formatDate, formatEUR } from "@/lib/events";
 import { QUOTE_STATUS, SUPPLIER_CATEGORIES, supplierCategoryLabel } from "@/lib/suppliers";
 import { declineRfq } from "@/lib/rfq-actions";
-import { readLines, withVat } from "@/lib/quotes";
+import { lineVat, quoteTtc, readLines } from "@/lib/quotes";
 import { storageEnabled } from "@/lib/storage";
 import { BillingNotice } from "@/components/BillingNotice";
 import { ConfirmButton } from "@/components/ConfirmButton";
@@ -165,7 +165,7 @@ export default async function Page({ params, searchParams }: { params: Promise<{
                   <div className="kv">
                     <div><span>Reçue le</span><span>{r.sentAt ? formatDate(r.sentAt) : "—"}</span></div>
                     <div><span>Réponse attendue</span><span>{r.deadline ? formatDate(r.deadline) : "à définir"}</span></div>
-                    {q && <div><span>Votre devis{q.revision > 1 ? ` (version ${q.revision})` : ""}</span><span>{formatEUR(q.amountCents)} HT · {formatEUR(withVat(q.amountCents, q.vatBp))} TTC</span></div>}
+                    {q && <div><span>Votre devis{q.revision > 1 ? ` (version ${q.revision})` : ""}</span><span>{formatEUR(q.amountCents)} HT · {formatEUR(quoteTtc(q))} TTC</span></div>}
                   </div>
                   {!closed && (
                     <>
@@ -181,7 +181,7 @@ export default async function Page({ params, searchParams }: { params: Promise<{
                         current={q ? {
                           amount: String(q.amountCents / 100), delay: q.delay ?? "", note: q.note ?? "", conditions: q.conditions ?? "", vatBp: q.vatBp, revision: q.revision, fileName: q.fileName,
                           validUntil: q.validUntil ? q.validUntil.toISOString().slice(0, 10) : "",
-                          lines: readLines(q.lines).map((l) => ({ label: l.label, qty: l.qty, unit: String(l.unitCents / 100) })),
+                          lines: readLines(q.lines).map((l) => ({ label: l.label, qty: l.qty, unit: String(l.unitCents / 100), vatBp: lineVat(l, q.vatBp) })),
                         } : undefined}
                       />
                       {!q && !declined && (

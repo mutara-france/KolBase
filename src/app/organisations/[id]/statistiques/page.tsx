@@ -20,7 +20,7 @@ export default async function Page({ params, searchParams }: { params: Promise<{
   const year = Number.isInteger(asked) && asked >= 2000 && asked <= now ? asked : now;
   const s = await orgStats(id, year);
   const prev = year > Math.min(...s.years) ? await orgStats(id, year - 1) : null;
-  const delta = prev && prev.totals.all > 0 ? (s.totals.all - prev.totals.all) / prev.totals.all : null;
+  const delta = prev && prev.totals.ht > 0 ? (s.totals.ht - prev.totals.ht) / prev.totals.ht : null;
   const declaredTotal = s.compliance.declared + s.compliance.toDeclare;
   const base = `/organisations/${id}`;
 
@@ -41,8 +41,8 @@ export default async function Page({ params, searchParams }: { params: Promise<{
 
         <dl className="hero-facts">
           <div>
-            <dt><Euro size={13} /> Budget engagé</dt>
-            <dd>{formatEUR(s.totals.all)}<small>{delta != null ? `${delta >= 0 ? "+" : "−"}${pct(Math.abs(delta))} par rapport à ${year - 1}` : `en ${year}`}</small></dd>
+            <dt><Euro size={13} /> Budget engagé (HT)</dt>
+            <dd>{formatEUR(s.totals.ht)}<small>{delta != null ? `${delta >= 0 ? "+" : "−"}${pct(Math.abs(delta))} par rapport à ${year - 1}` : `en ${year}`} · hors hospitalités ({formatEUR(s.totals.hospitality)} TTC)</small></dd>
           </div>
           <div><dt><Users size={13} /> Experts rémunérés</dt><dd>{s.expertCount}<small>{s.engagedProjects} dossier{s.engagedProjects > 1 ? "s" : ""} engagé{s.engagedProjects > 1 ? "s" : ""}</small></dd></div>
           <div><dt><CalendarDays size={13} /> Événements</dt><dd>{s.events.length}<small>{s.participants} participant{s.participants > 1 ? "s" : ""} inscrit{s.participants > 1 ? "s" : ""}</small></dd></div>
@@ -53,7 +53,7 @@ export default async function Page({ params, searchParams }: { params: Promise<{
         <section className="card stack-sm">
           <div>
             <h2>Budget engagé par trimestre</h2>
-            <p className="muted">Honoraires des dossiers à la date de leur validation ; logistique (devis retenus et dépenses) et hospitalités à la date de l&apos;événement.</p>
+            <p className="muted">Honoraires des experts engagés à la date de leur accord ; logistique (devis retenus et dépenses) et hospitalités à la date de l&apos;événement.</p>
           </div>
           <StackedColumns
             caption={`Budget engagé par trimestre en ${year}`}
@@ -100,9 +100,9 @@ export default async function Page({ params, searchParams }: { params: Promise<{
           <h2>Événements {year}</h2>
           {s.events.length === 0 ? <p className="muted">Aucun événement sur l&apos;année.</p> : (
             <table className="table stats-table" tabIndex={0}>
-              <caption className="sr-only">Événements {year} : inscrits, hospitalités, prestataires et coût par inscrit</caption>
+              <caption className="sr-only">Événements {year} : inscrits, présents, hospitalités et prestataires, au total et par présent</caption>
               <thead>
-                <tr><th>Événement</th><th>Date</th><th className="num">Inscrits</th><th className="num">Présents</th><th className="num">Hospitalités</th><th className="num">Prestataires</th><th className="num">Par inscrit</th><th className="num">Avis</th></tr>
+                <tr><th>Événement</th><th>Date</th><th className="num">Inscrits</th><th className="num">Présents</th><th className="num">Hospitalités (TTC)</th><th className="num">Prestataires (HT)</th><th className="num">Hospitalités par présent (TTC)</th><th className="num">Prestataires par présent (HT)</th><th className="num">Avis</th></tr>
               </thead>
               <tbody>
                 {s.events.map((e) => (
@@ -113,31 +113,41 @@ export default async function Page({ params, searchParams }: { params: Promise<{
                     <td className="num">{e.present || (e.past ? "—" : "")}</td>
                     <td className="num">{formatEUR(e.hospitality)}</td>
                     <td className="num">{formatEUR(e.suppliers)}</td>
-                    <td className="num">{e.perParticipant != null ? formatEUR(e.perParticipant) : "—"}</td>
+                    <td className="num">{e.hospitalityPer != null ? formatEUR(e.hospitalityPer) : "—"}{e.hospitalityPer != null && !e.presenceKnown && <span className="muted text-xs"> par inscrit</span>}</td>
+                    <td className="num">{e.suppliersPer != null ? formatEUR(e.suppliersPer) : "—"}{e.suppliersPer != null && !e.presenceKnown && <span className="muted text-xs"> par inscrit</span>}</td>
                     <td className="num">{e.rating != null ? `${e.rating.toFixed(1).replace(".", ",")} ★` : "—"}</td>
                   </tr>
                 ))}
               </tbody>
             </table>
           )}
-          {s.events.length > 0 && <p className="hint">Hospitalités en valeur déclarée (TTC), prestataires selon les devis retenus (HT) ; le coût par inscrit additionne les deux.</p>}
+          {s.events.length > 0 && <p className="hint">Hospitalités en valeur déclarée (TTC), prestataires selon les devis retenus (HT), rapportés séparément à l&apos;effectif. Après un événement pointé, les absents sont exclus et l&apos;effectif est celui des présents ; avant, ou sans pointage, celui des inscrits.</p>}
         </section>
 
         <section className="card stack-sm">
           <h2>Conformité {year}</h2>
           <div className="stats-grid">
             <div className="stack-sm">
-              <p className="text-sm"><ShieldCheck size={14} /> <strong>Transparence Santé</strong> : {declaredTotal ? `${s.compliance.declared} dossier${s.compliance.declared > 1 ? "s" : ""} déclaré${s.compliance.declared > 1 ? "s" : ""} sur ${declaredTotal}` : "aucun dossier engagé"}.</p>
-              {declaredTotal > 0 && <Meter value={s.compliance.declared / declaredTotal} label="Part des dossiers engagés déclarés sur Transparence Santé" />}
+              <p className="text-sm"><ShieldCheck size={14} /> <strong>Transparence Santé</strong> : {declaredTotal ? `${s.compliance.declared} dossier${s.compliance.declared > 1 ? "s" : ""} déclaré${s.compliance.declared > 1 ? "s" : ""} sur ${declaredTotal} validé${declaredTotal > 1 ? "s" : ""}` : "aucun dossier validé"}.</p>
+              {declaredTotal > 0 && <Meter value={s.compliance.declared / declaredTotal} label="Part des dossiers validés déclarés sur Transparence Santé" />}
               {s.compliance.toDeclare > 0 && <Link className="text-sm" href={`${base}/conformite?onglet=transparence`}>Voir les déclarations à faire</Link>}
             </div>
             <ul className="top-list">
               <li><span>{s.compliance.fmvOver > 0 ? <AlertTriangle size={13} className="warn-text" /> : <ShieldCheck size={13} />} Honoraires au-dessus de la fourchette de juste contrepartie</span><span>{s.compliance.fmvOver}</span></li>
               <li><span>{s.compliance.blocked > 0 ? <AlertTriangle size={13} className="warn-text" /> : <ShieldCheck size={13} />} Dossiers bloqués par la conformité</span><span>{s.compliance.blocked}</span></li>
               <li><span><Truck size={13} /> Logistique engagée (devis et dépenses, HT)</span><span>{formatEUR(s.totals.logistics)}</span></li>
-              <li><span><Gift size={13} /> Hospitalités accordées (valeur déclarée)</span><span>{formatEUR(s.totals.hospitality)}</span></li>
+              <li><span><Gift size={13} /> Hospitalités accordées (valeur déclarée, TTC)</span><span>{formatEUR(s.totals.hospitality)}</span></li>
             </ul>
           </div>
+        </section>
+
+        <section className="card stack-sm" aria-labelledby="definitions">
+          <h2 id="definitions">Définitions</h2>
+          <ul className="hint">
+            <li><strong>Engagé</strong> : l&apos;expert a accepté la proposition (accord de principe ou étape suivante, dossier non abandonné), comme sur l&apos;accueil et les dossiers. Ses honoraires comptent dans le budget à la date de son accord.</li>
+            <li><strong>Budget engagé</strong> : honoraires des experts engagés et logistique (devis retenus, dépenses), hors taxes. Les hospitalités, en valeur déclarée toutes taxes comprises, sont présentées à part.</li>
+            <li><strong>Présents</strong> : après un événement pointé à l&apos;accueil, les inscrits non pointés sont absents ; leurs hospitalités, non consommées, ne sont pas comptées.</li>
+          </ul>
         </section>
       </main>
     </>
