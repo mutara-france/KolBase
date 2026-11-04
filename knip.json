@@ -1,0 +1,8 @@
+{
+  "$schema": "https://unpkg.com/knip@6/schema.json",
+  "entry": ["scripts/*.{mjs,ts}"],
+  "project": ["src/**/*.{ts,tsx}", "scripts/**/*.{mjs,ts}", "prisma/*.ts", "tests/**/*.{ts,mjs}"],
+  "ignoreDependencies": ["@prisma/client"],
+  "ignoreExportsUsedInFile": true,
+  "rules": { "duplicates": "off" }
+}

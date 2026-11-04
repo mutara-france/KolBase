@@ -8,7 +8,7 @@
  */
 import { luhnOk } from "@/lib/professions";
 
-export type Regulation = "FR" | "BE" | "US" | "EU" | "AUTRE";
+type Regulation = "FR" | "BE" | "US" | "EU" | "AUTRE";
 
 export type Country = {
   code: string;

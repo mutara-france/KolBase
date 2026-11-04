@@ -709,10 +709,17 @@ async function submitNewOrg(page, siren) {
   check("En-têtes de sécurité", h["x-frame-options"] === "DENY" && (h["content-security-policy"] ?? "").includes("frame-ancestors 'none'") && h["x-content-type-options"] === "nosniff", JSON.stringify({ xfo: h["x-frame-options"] }));
   await page.goto(`${BASE}/experts/demo-p-martin`);
   check("Fiche expert : titre de page descriptif", (await page.title()).startsWith("Dr Antoine Martin — Chirurgie orale"), await page.title());
+  const demoRobots = (await page.locator('meta[name="robots"]').first().getAttribute("content").catch(() => null)) ?? "";
+  check("Démonstration : fiche d'expert fictif non indexée", demoRobots.includes("noindex"), demoRobots);
+  await page.goto(`${BASE}/evenements/demo-ev-tp-endo`);
+  const demoEventRobots = (await page.locator('meta[name="robots"]').first().getAttribute("content").catch(() => null)) ?? "";
+  check("Démonstration : événement fictif non indexé", demoEventRobots.includes("noindex"), demoEventRobots);
+  await page.goto(`${BASE}/structures/septodont`);
+  check("Organisation réelle : indexable", (await page.locator('meta[name="robots"]').count()) === 0);
   const robots = await (await page.request.get(`${BASE}/robots.txt`)).text();
   check("robots.txt : espaces privés exclus", robots.includes("Disallow: /admin") && robots.includes("Disallow: /organisations") && robots.includes("sitemap.xml"));
   const sitemap = await (await page.request.get(`${BASE}/sitemap.xml`)).text();
-  check("Plan du site : experts référencés et événements publiés", sitemap.includes("/experts/demo-p-martin") && sitemap.includes("/evenements/demo-ev-tp-endo") && !sitemap.includes("demo-p-lambert"));
+  check("Plan du site : pages publiques et organisations réelles, sans les données de démonstration", sitemap.includes("/experts</loc>") && sitemap.includes("/structures/septodont") && !sitemap.includes("demo-"));
   await ctx.close();
 }
 

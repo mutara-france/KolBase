@@ -171,24 +171,6 @@ export async function revokeInvitation(form: FormData) {
   revalidatePath(`/organisations/${orgId}/membres`);
 }
 
-export async function removeMembership(form: FormData) {
-  const orgId = str(form, "orgId");
-  const { user } = await requireMembership(orgId, ["ADMIN"], { allowSupplier: true });
-  const id = str(form, "membershipId");
-  const m = await db.membership.findFirst({ where: { id, organizationId: orgId } });
-  if (!m) return;
-  // On ne retire pas le dernier administrateur, même si deux retraits arrivent en même temps (verrou sur l'organisation).
-  const removed = await db.$transaction(async (tx) => {
-    await tx.$queryRaw`SELECT 1 FROM "Organization" WHERE id = ${orgId} FOR UPDATE`;
-    if (m.role === "ADMIN" && (await tx.membership.count({ where: { organizationId: orgId, role: "ADMIN" } })) <= 1) return false;
-    return (await tx.membership.deleteMany({ where: { id } })).count === 1;
-  });
-  if (!removed) return;
-  await audit(user.id, "org.member_remove", "Membership", id, { userId: m.userId, role: m.role });
-  revalidatePath(`/organisations/${orgId}`);
-  revalidatePath(`/organisations/${orgId}/membres`);
-}
-
 export async function acceptInvitation(form: FormData) {
   const user = await requireUser();
   const token = str(form, "token");

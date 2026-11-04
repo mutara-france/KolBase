@@ -9,7 +9,7 @@ export const contentType = OG_TYPE;
 /** Aperçu de partage d'une actualité publiée. */
 export default async function Image({ params }: { params: Promise<{ slug: string }> }) {
   const { slug } = await params;
-  const a = await db.article.findFirst({ where: { slug, publishedAt: { not: null, lte: new Date() } } });
+  const a = await db.article.findFirst({ where: { slug, publishedAt: { not: null, lte: new Date() } }, select: { category: true, title: true, body: true } });
   if (!a) return ogImage({ title: "Actualités de KolBase" });
   return ogImage({
     kicker: `Actualités · ${a.category}`,

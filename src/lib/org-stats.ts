@@ -10,8 +10,6 @@ export { STATS_ROLES } from "@/lib/org-roles";
 const VALIDATED = new Set<string>(REGISTER_STATUSES);
 const DAY = 86400000;
 
-export type StatsSeries = "fees" | "logistics" | "hospitality";
-export type OrgStats = Awaited<ReturnType<typeof orgStats>>;
 
 const median = (xs: number[]) => {
   if (xs.length === 0) return null;

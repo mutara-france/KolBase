@@ -10,7 +10,7 @@ import { useState, type PointerEvent as RPointerEvent } from "react";
 
 export type ValueFormat = "eur" | "int" | "days";
 
-export function fmtValue(v: number, f: ValueFormat, compact = false) {
+function fmtValue(v: number, f: ValueFormat, compact = false) {
   if (f === "int") return v.toLocaleString("fr-FR");
   if (f === "days") return `${v.toLocaleString("fr-FR", { maximumFractionDigits: 1 })} j`;
   const eur = v / 100;

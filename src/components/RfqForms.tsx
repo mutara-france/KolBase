@@ -216,7 +216,7 @@ export function QuoteForm({ orgId, rfqId, category, current, headcount, uploads,
 }
 
 /** Sélection rapide de tous les prestataires de la catégorie (le choix reste modifiable un par un). */
-export function SelectAll({ count, all, onAll }: { count: number; all: boolean; onAll: () => void }) {
+function SelectAll({ count, all, onAll }: { count: number; all: boolean; onAll: () => void }) {
   if (count < 2) return null;
   return <button type="button" className="link" onClick={onAll}>{all ? "Tout désélectionner" : `Consulter les ${count} prestataires de la catégorie`}</button>;
 }

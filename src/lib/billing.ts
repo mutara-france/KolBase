@@ -7,7 +7,7 @@ import { dpaCurrent, dpaHref, dpaMessage } from "@/lib/dpa";
 export { stripeEnabled };
 
 /** Une action engageante est-elle possible pour cette organisation ? (toujours, si la facturation n'est pas activée) */
-export async function engagementAllowed(orgId: string) {
+async function engagementAllowed(orgId: string) {
   if (!stripeEnabled()) return true;
   const sub = await db.subscription.findUnique({ where: { organizationId: orgId }, select: { status: true, exemptUntil: true } });
   return canEngage(sub);

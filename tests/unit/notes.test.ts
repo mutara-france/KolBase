@@ -18,7 +18,7 @@ describe("notes d'honoraires", () => {
     expect(nextNumber(2027, ["NH-2026-008"])).toBe("NH-2027-001");
   });
   it("exige l'adresse, et le numéro de TVA pour un assujetti", () => {
-    const b = { billingEntity: null, billingAddress: "1 rue X", siret: null, vatRegime: "franchise", vatNumber: null, iban: null };
+    const b = { billingAddress: "1 rue X", siret: null, vatRegime: "franchise", vatNumber: null, iban: null };
     expect(billingComplete(b)).toBe(true);
     expect(billingComplete({ ...b, billingAddress: " " })).toBe(false);
     expect(billingComplete({ ...b, vatRegime: "assujetti" })).toBe(false);

@@ -22,19 +22,34 @@ export async function detectConflicts(projectId: string): Promise<Conflict[]> {
   const CUMUL_ALERT_EUR = complianceSettings(project.organization.complianceSettings).cumulAlert;
   const yearAgo = new Date(Date.now() - 365 * 864e5);
 
-  for (const e of project.experts) {
+  // Les deux recherches de chaque expert sont lancées ensemble, pour tous les experts du dossier.
+  const perExpert = await Promise.all(
+    project.experts.map((e) =>
+      Promise.all([
+        project.therapeuticArea
+          ? db.projectExpert.findMany({
+              where: {
+                practitionerId: e.practitionerId, status: ENGAGED,
+                project: { id: { not: project.id }, organizationId: { not: project.organizationId }, therapeuticArea: project.therapeuticArea, status: { notIn: [...CLOSED] } },
+              },
+              select: { project: { select: { organizationId: true } } },
+            })
+          : Promise.resolve([]),
+        db.projectExpert.findMany({
+          where: { practitionerId: e.practitionerId, status: ENGAGED, project: { organizationId: project.organizationId, createdAt: { gte: yearAgo }, status: { notIn: ["DECLINE", "REFUS_ORDRE"] } } },
+          select: { feeCents: true, projectId: true },
+        }),
+      ]),
+    ),
+  );
+
+  for (const [i, e] of project.experts.entries()) {
     const name = `Dr ${e.practitioner.user.firstName} ${e.practitioner.user.lastName}`;
+    const [others, links] = perExpert[i];
 
     // 1. Engagement simultané par une autre organisation dans le même domaine. Les dossiers des autres
     // organisations sont confidentiels : seul un signal anonyme est donné (ni nom, ni titre, ni montant).
     if (project.therapeuticArea) {
-      const others = await db.projectExpert.findMany({
-        where: {
-          practitionerId: e.practitionerId, status: ENGAGED,
-          project: { id: { not: project.id }, organizationId: { not: project.organizationId }, therapeuticArea: project.therapeuticArea, status: { notIn: [...CLOSED] } },
-        },
-        select: { project: { select: { organizationId: true } } },
-      });
       const orgs = new Set(others.map((o) => o.project.organizationId)).size;
       if (orgs > 0)
         out.push({
@@ -48,10 +63,6 @@ export async function detectConflicts(projectId: string): Promise<Conflict[]> {
       out.push({ kind: "beneficiaire", who: name, severity: "info", detail: `Rémunération versée à ${s.name} (${s.legalForm}), détenue à ${s.sharePercent} % par le praticien.` });
 
     // 3. Cumul annuel avec la même organisation.
-    const links = await db.projectExpert.findMany({
-      where: { practitionerId: e.practitionerId, status: ENGAGED, project: { organizationId: project.organizationId, createdAt: { gte: yearAgo }, status: { notIn: ["DECLINE", "REFUS_ORDRE"] } } },
-      select: { feeCents: true, projectId: true },
-    });
     const total = links.reduce((s, l) => s + (l.feeCents ?? 0), 0) + (links.some((l) => l.projectId === project.id) ? 0 : e.feeCents ?? 0);
     if (total > CUMUL_ALERT_EUR * 100)
       out.push({ kind: "cumul", who: name, severity: "danger", detail: `Cumul sur 12 mois avec cette organisation : ${formatEUR(total)} HT (seuil d'alerte ${formatEUR(CUMUL_ALERT_EUR * 100)}).` });

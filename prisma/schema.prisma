@@ -82,6 +82,8 @@ model Follow {
 
   @@unique([userId, practitionerId])
   @@unique([userId, organizationId])
+  @@index([practitionerId])
+  @@index([organizationId])
 }
 
 // Session de connexion : seul le hash du jeton est stocké.
@@ -136,7 +138,10 @@ model PractitionerProfile {
   // Coordonnées de facturation (conventions et notes d'honoraires) : adresse, SIRET, TVA, IBAN. La société
   // d'exercice éventuelle est la structure de facturation (PractitionerStructure.isPayee), seule source.
   billingAddress String?
-  billingEntity  String? // ancienne « société d'exercice », reprise dans les structures : plus lue, à supprimer
+  // Ancienne « société d'exercice », reprise dans les structures : plus lue. Exclue du client Prisma (@ignore) mais
+  // gardée en base le temps d'un déploiement, pour que l'ancienne version encore en service ne lise pas une colonne
+  // disparue ; à supprimer par une migration ultérieure (DROP COLUMN), une fois cette version en production.
+  billingEntity  String? @ignore
   siret          String?
   vatRegime      String   @default("franchise") // franchise (art. 293 B du CGI) ou assujetti
   vatNumber      String?
@@ -172,6 +177,8 @@ model PractitionerStructure {
   sharePercent   Int?
   isPayee        Boolean             @default(false)
   since          DateTime?
+
+  @@index([practitionerId])
 }
 
 // Lien d'intérêts noué hors de KolBase, déclaré par le praticien (complète sa déclaration de liens d'intérêts).
@@ -292,6 +299,8 @@ model Invitation {
   acceptedBy     User?        @relation("acceptedBy", fields: [acceptedById], references: [id])
   revokedAt      DateTime?
   createdAt      DateTime     @default(now())
+
+  @@index([organizationId])
 }
 
 // Rôles côté organisation (cf. ROLE_LABEL du prototype).
@@ -312,6 +321,7 @@ model Membership {
   createdAt      DateTime     @default(now())
 
   @@unique([userId, organizationId, role])
+  @@index([organizationId])
 }
 
 model Mandate {
@@ -325,6 +335,9 @@ model Mandate {
   canAward   Boolean      @default(false)
   startsAt   DateTime     @default(now())
   endsAt     DateTime?
+
+  @@index([mandatorId])
+  @@index([agencyId])
 }
 
 // ─── Dossiers (collaborations praticien ↔ organisation) ────────────────────
@@ -375,6 +388,8 @@ model Project {
   expenses  Expense[]
   events    Event[]
   materials Material[]
+
+  @@index([organizationId])
 }
 
 // Support (diaporama, article, vidéo…) soumis à relecture médico-réglementaire.
@@ -387,6 +402,8 @@ model Material {
   createdAt DateTime @default(now())
 
   versions MaterialVersion[]
+
+  @@index([projectId])
 }
 
 model MaterialVersion {
@@ -432,6 +449,7 @@ model ProjectExpert {
   feeNote   FeeNote?
 
   @@unique([projectId, practitionerId])
+  @@index([practitionerId])
 }
 
 // Statut d'une demande de signature électronique (valeurs du prestataire, Yousign).
@@ -482,6 +500,7 @@ model Document {
   createdAt       DateTime       @default(now())
 
   @@index([projectId])
+  @@index([projectExpertId])
 }
 
 model Message {
@@ -495,6 +514,9 @@ model Message {
   author    User     @relation(fields: [authorId], references: [id])
   body      String
   createdAt DateTime @default(now())
+
+  @@index([projectId])
+  @@index([projectExpertId])
 }
 
 model Expense {
@@ -505,6 +527,8 @@ model Expense {
   amountCents Int
   date        DateTime
   status      ExpenseStatus @default(draft)
+
+  @@index([projectId])
 }
 
 // ─── Événements, inscriptions, hospitalités ────────────────────────────────
@@ -553,6 +577,11 @@ model Event {
   serviceOrders ServiceOrder[]
   rfqs          Rfq[]
   calls         OpenCall[]
+
+  @@index([organizationId, startsAt])
+  @@index([startsAt])
+  @@index([agencyId])
+  @@index([projectId])
 }
 
 // Demande de devis adressée à des prestataires référencés.
@@ -583,6 +612,9 @@ model Rfq {
   quotes    Quote[]
   messages  RfqMessage[]
   review    SupplierReview?
+
+  @@index([organizationId])
+  @@index([eventId])
 }
 
 // Questions et échanges sur une demande de devis : un fil privé entre le demandeur et chaque prestataire consulté.
@@ -612,6 +644,7 @@ model RfqSupplier {
   declinedAt  DateTime?
 
   @@id([rfqId, supplierId])
+  @@index([supplierId])
 }
 
 model Quote {
@@ -640,6 +673,7 @@ model Quote {
   updatedAt   DateTime     @updatedAt
 
   @@unique([rfqId, supplierId])
+  @@index([supplierId])
 }
 
 // Prestation d'hospitalité proposée par l'événement (café, cocktail, nuitée…), valorisée.
@@ -652,6 +686,8 @@ model EventBenefit {
   valueCents Int
 
   accepted RegistrationBenefit[]
+
+  @@index([eventId])
 }
 
 // L'inscription passe toujours par un compte (rattachement nominatif des hospitalités).
@@ -685,6 +721,8 @@ model Registration {
   survey   SurveyResponse?
 
   @@unique([eventId, userId])
+  @@index([userId])
+  @@index([sourceOrderId])
 }
 
 model RegistrationBenefit {
@@ -695,6 +733,7 @@ model RegistrationBenefit {
   valueCents     Int          // valeur figée au moment de l'acceptation
 
   @@id([registrationId, benefitId])
+  @@index([benefitId])
 }
 
 // ─── Opportunités (appels ouverts) ─────────────────────────────────────────
@@ -721,6 +760,7 @@ model OpenCall {
   applications Application[]
 
   @@index([eventId])
+  @@index([organizationId])
 }
 
 model Application {
@@ -735,6 +775,7 @@ model Application {
   createdAt      DateTime            @default(now())
 
   @@unique([openCallId, practitionerId])
+  @@index([practitionerId])
 }
 
 // ─── Traçabilité ───────────────────────────────────────────────────────────
@@ -842,6 +883,7 @@ model SupplierReview {
   createdAt  DateTime     @default(now())
 
   @@index([supplierId])
+  @@index([clientId])
 }
 
 /** Logo d'une organisation (PNG, JPEG ou WebP, 500 Ko au plus), conservé en base pour ne pas dépendre du stockage S3. */
@@ -977,6 +1019,7 @@ model ServiceOrder {
 
   @@index([organizationId])
   @@index([status])
+  @@index([eventId])
 }
 
 // Clic sur un lien suivi : visiteur pseudonyme (empreinte non réversible, aucune adresse IP conservée).

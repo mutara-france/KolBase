@@ -10,7 +10,6 @@ import { EN } from "@/lib/i18n/en";
 
 export type Locale = "fr" | "en";
 export const LOCALES: Locale[] = ["fr", "en"];
-export const LOCALE_LABEL: Record<Locale, string> = { fr: "Français", en: "English" };
 export const isLocale = (v: unknown): v is Locale => v === "fr" || v === "en";
 
 export type Vars = Record<string, string | number | null | undefined>;

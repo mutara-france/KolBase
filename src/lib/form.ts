@@ -1,7 +1,7 @@
 /** Lecture et conversion des champs envoyés par les formulaires (actions serveur). */
 
 /** Longueur maximale d'un champ texte (les présentations les plus longues tiennent largement). */
-export const MAX_TEXT = 20_000;
+const MAX_TEXT = 20_000;
 /** Longueur maximale d'un nom de personne ou d'organisation. */
 export const MAX_NAME = 120;
 
@@ -13,7 +13,7 @@ export const str = (f: FormData, k: string, max = MAX_TEXT) => String(f.get(k) ?
  * Vide, négatif ou illisible : null. `allowZero: false` refuse aussi 0 (devis, par exemple).
  */
 /** Montant maximal accepté (10 millions d'euros) : reste représentable en centimes dans un entier PostgreSQL. */
-export const MAX_EUR = 10_000_000;
+const MAX_EUR = 10_000_000;
 
 export function eurToCents(v: string, { allowZero = true }: { allowZero?: boolean } = {}): number | null {
   const s = v.replace(/[\s  ]/g, "").replace(",", ".");

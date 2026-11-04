@@ -20,9 +20,10 @@ import { practicesInFrance } from "@/lib/countries";
 
 
 const DAY = 864e5;
+const LOOKBACK_DAYS = 7;
 
 /** Droits d'un ensemble de rôles dans une organisation (une organisation prestataire n'a que ses devis). */
-export function orgCan(roles: OrgRole[], kind: string) {
+function orgCan(roles: OrgRole[], kind: string) {
   const has = (list: OrgRole[]) => kind !== "PRESTATAIRE" && roles.some((r) => list.includes(r));
   return {
     sourcing: has(SOURCING_ROLES),
@@ -54,10 +55,25 @@ export const orgOverview = cache(async (orgId: string) => {
   const rfqScope = Object.keys(evScope).length ? { event: evScope } : {};
   const ownOrgs = user.memberships.filter((m) => m.organization.kind === "PRESTATAIRE").map((m) => m.organizationId);
 
+  // Calculée à chaque page de l'espace (pastilles de l'en-tête) : seulement ce qui peut encore demander une action,
+  // pas tout l'historique de l'organisation. Dossiers : en cours, ou terminés sans déclaration Transparence Santé.
+  // Événements : à venir ou en cours ; un événement commencé il y a plus de LOOKBACK n'est en cours que si sa durée
+  // dépasse LOOKBACK (eventEnd : début + durée).
+  const lookback = new Date(now.getTime() - LOOKBACK_DAYS * DAY);
   const [projects, events, calls, undeclared, reviewQueue, rfqs, waitingQuotes] = await Promise.all([
-    can.view ? db.project.findMany({ where: { organizationId: orgId }, include: { experts: true }, orderBy: { updatedAt: "desc" } }) : Promise.resolve([]),
+    can.view
+      ? db.project.findMany({
+          where: { organizationId: orgId, OR: [{ status: { notIn: ["TERMINE", "DECLINE"] } }, { status: "TERMINE", declared: false }] },
+          include: { experts: true },
+          orderBy: { updatedAt: "desc" },
+        })
+      : Promise.resolve([]),
     can.events || can.compliance
-      ? db.event.findMany({ where: { organizationId: orgId, ...(can.compliance ? {} : evScope) }, include: { _count: { select: { registrations: true } } }, orderBy: { startsAt: "asc" } })
+      ? db.event.findMany({
+          where: { organizationId: orgId, ...(can.compliance ? {} : evScope), OR: [{ startsAt: { gte: lookback } }, { durationMinutes: { gt: LOOKBACK_DAYS * 24 * 60 } }] },
+          include: { _count: { select: { registrations: true } } },
+          orderBy: { startsAt: "asc" },
+        })
       : Promise.resolve([]),
     can.sourcing
       ? db.openCall.findMany({ where: { organizationId: orgId, status: "open" }, include: { applications: { where: { status: "pending" }, select: { id: true } } } })

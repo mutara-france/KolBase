@@ -26,7 +26,7 @@ export const packSaving = (prices: number[], total: number) => Math.max(prices.r
 type Groupable = { packLabel: string | null; orderedById: string; createdAt: Date };
 /** Deux services d'un même pack sont commandés ensemble (une transaction) : quelques secondes d'écart au plus. */
 const SAME_ORDER_MS = 5000;
-export const samePack = (a: Groupable, b: Groupable) =>
+const samePack = (a: Groupable, b: Groupable) =>
   !!a.packLabel && a.packLabel === b.packLabel && a.orderedById === b.orderedById && Math.abs(a.createdAt.getTime() - b.createdAt.getTime()) <= SAME_ORDER_MS;
 
 /** Commandes regroupées par pack (même pack, même auteur, passées ensemble) ; les autres restent seules, dans l'ordre. */
@@ -41,7 +41,7 @@ export function groupOrders<T extends Groupable>(orders: T[]): { pack: string | 
 }
 
 /** Mise à la une réalisée et encore affichée sur l'accueil : réalisée pour l'avancement du pack, qui reste « en cours ». */
-export const FEATURED = "a_la_une";
+const FEATURED = "a_la_une";
 /** Statut d'une commande pour l'avancement d'un pack : FEATURED pour une mise à la une en cours. */
 export const packItemStatus = (o: { status: string; doneAt: Date | null; offer: { kind: string } }, now = new Date()) => (featuredUntil(o, now) ? FEATURED : o.status);
 

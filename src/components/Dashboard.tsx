@@ -1,13 +1,11 @@
 import Link from "next/link";
 import { ArrowRight, ChevronDown, Plus } from "lucide-react";
 import { TodoList, type TodoItem } from "@/components/Todo";
-import { TZ } from "@/lib/events";
-import { fmtDate, intlLocale, type Locale } from "@/lib/i18n";
+import { fmtDate } from "@/lib/i18n";
 import { getT } from "@/lib/i18n/server";
 
 /** Briques communes des tableaux de bord : en-tête, compteurs, « À faire », « À venir ». */
 
-export const todayLabel = (locale: Locale = "fr") => new Date().toLocaleDateString(intlLocale(locale), { timeZone: TZ, weekday: "long", day: "numeric", month: "long" });
 
 export function DashHead({ kicker, title, lede, action }: { kicker?: string; title: string; lede?: string; action?: React.ReactNode }) {
   return (
