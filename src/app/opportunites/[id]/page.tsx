@@ -41,7 +41,8 @@ export default async function Page({ params }: { params: Promise<{ id: string }>
   const mine = call.applications[0];
   const type = collabType(call.typeId);
   const full = call.slots != null && call._count.applications >= call.slots;
-  const closed = call.status !== "open" || (call.deadline != null && call.deadline < new Date()) || (call.event != null && call.event.startsAt < new Date()) || full;
+  // Organisation suspendue (ou plus validée) : l'appel est masqué, il ne reçoit plus de candidature.
+  const closed = call.status !== "open" || call.organization.verification !== "VERIFIED" || (call.deadline != null && call.deadline < new Date()) || (call.event != null && call.event.startsAt < new Date()) || full;
   const { t, locale } = await getT();
   const num = (n: number) => n.toLocaleString(intlLocale(locale));
 

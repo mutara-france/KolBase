@@ -27,7 +27,7 @@ import { ConfirmButton } from "@/components/ConfirmButton";
 export const metadata = { title: "Administration — KolBase" };
 export const dynamic = "force-dynamic";
 
-const TONE = { PENDING: "wait", VERIFIED: "ok", REJECTED: "bad" } as const;
+const TONE = { PENDING: "wait", VERIFIED: "ok", REJECTED: "bad", SUSPENDED: "bad" } as const;
 /** Messageries grand public : un administrateur d'entreprise s'inscrit d'ordinaire avec l'adresse de la société. */
 const PERSONAL_MAIL = /@(gmail|googlemail|hotmail|outlook|live|msn|yahoo|ymail|icloud|me|aol|gmx|laposte|orange|wanadoo|free|sfr|neuf|bbox|protonmail|proton)\./i;
 
@@ -60,6 +60,7 @@ export default async function Page({ searchParams }: { searchParams: Promise<{ o
   for (const o of orgs) if (o.siren) bySiren.set(o.siren, [...(bySiren.get(o.siren) ?? []), o]);
   const groups = [
     ["À valider", pending],
+    ["Suspendues", orgs.filter((o) => o.verification === "SUSPENDED")],
     ["Refusées", orgs.filter((o) => o.verification === "REJECTED")],
     ["Validées", orgs.filter((o) => o.verification === "VERIFIED")],
   ] as const;
@@ -130,17 +131,26 @@ export default async function Page({ searchParams }: { searchParams: Promise<{ o
                       </dd>
                       {o.contactEmail && (<><dt>Contact</dt><dd>{o.contactEmail}</dd></>)}
                       <dt>Page publique</dt>
-                      <dd>{o.listed && o.verification === "VERIFIED" ? "oui" : "non"}{o.listed && o.verification !== "VERIFIED" ? " (activée à la validation)" : ""}</dd>
-                      {o.verificationNote && (<><dt>Note</dt><dd>{o.verificationNote}</dd></>)}
+                      <dd>{o.listed && o.verification === "VERIFIED" ? "oui" : "non"}{o.listed && o.verification === "SUSPENDED" ? " (masquée pendant la suspension)" : o.listed && o.verification !== "VERIFIED" ? " (activée à la validation)" : ""}</dd>
+                      {o.verificationNote && (<><dt>{o.verification === "SUSPENDED" ? "Motif de la suspension" : "Note"}</dt><dd>{o.verificationNote}</dd></>)}
                     </dl>
                     <div className="actions wrap">
+                      {o.verification === "SUSPENDED" && (
+                        <form action={reviewOrganization} className="inline wrap">
+                          <input type="hidden" name="orgId" value={o.id} />
+                          <button className="btn small" name="decision" value="reactivate">Réactiver</button>
+                          <span className="hint">Page publique, événements et appels réapparaissent tels quels ; les administrateurs sont prévenus.</span>
+                        </form>
+                      )}
                       {o.verification !== "VERIFIED" && (
                         <>
-                          <form action={reviewOrganization} className="inline wrap">
-                            <input type="hidden" name="orgId" value={o.id} />
-                            <input name="note" placeholder="Note (facultatif)" aria-label="Note de validation (facultatif)" />
-                            <button className="btn small" name="decision" value="verify">Valider</button>
-                          </form>
+                          {o.verification !== "SUSPENDED" && (
+                            <form action={reviewOrganization} className="inline wrap">
+                              <input type="hidden" name="orgId" value={o.id} />
+                              <input name="note" placeholder="Note (facultatif)" aria-label="Note de validation (facultatif)" />
+                              <button className="btn small" name="decision" value="verify">Valider</button>
+                            </form>
+                          )}
                           {o.verification !== "REJECTED" && (
                             <form action={reviewOrganization} className="inline wrap">
                               <input type="hidden" name="orgId" value={o.id} />
@@ -154,7 +164,7 @@ export default async function Page({ searchParams }: { searchParams: Promise<{ o
                         <form action={reviewOrganization} className="inline wrap">
                           <input type="hidden" name="orgId" value={o.id} />
                           <input name="note" placeholder="Motif de la suspension (obligatoire)" aria-label="Motif de la suspension" required />
-                          <ConfirmButton className="btn ghost small" name="decision" value="suspend" confirm={`suspendre ${o.name}`} summary={<>Page publique et événements masqués, appels à candidatures clos, aucune nouvelle action ; rien n&apos;est supprimé et « Réactiver » rétablit tout. Les administrateurs sont prévenus par e-mail, avec le motif.</>}>
+                          <ConfirmButton className="btn ghost small" name="decision" value="suspend" confirm={`suspendre ${o.name}`} summary={<>Page publique, événements et appels à candidatures masqués, aucune nouvelle action ; rien n&apos;est supprimé et « Réactiver » rétablit tout. Les administrateurs sont prévenus par e-mail, avec le motif.</>}>
                             Suspendre
                           </ConfirmButton>
                         </form>
@@ -339,7 +349,7 @@ async function ServicesAdmin() {
 }
 
 async function BillingAdmin() {
-  const orgs = await db.organization.findMany({ where: { verification: "VERIFIED" }, select: { id: true, name: true, kind: true, subscription: true }, orderBy: { name: "asc" } });
+  const orgs = await db.organization.findMany({ where: { verification: { in: ["VERIFIED", "SUSPENDED"] } }, select: { id: true, name: true, kind: true, subscription: true }, orderBy: { name: "asc" } });
   const now = new Date();
   const paying = orgs.filter((o) => ["essai", "active", "impayee"].includes(o.subscription?.status ?? "") && !exempt(o.subscription, now));
   // Revenu mensuel récurrent : une formule annuelle compte pour un douzième.

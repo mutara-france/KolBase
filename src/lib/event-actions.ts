@@ -5,7 +5,7 @@ import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import { db } from "@/lib/db";
 import { audit, requireUser } from "@/lib/auth";
-import { ORG_NOT_VERIFIED, isVerifiedOrg, requireMembership } from "@/lib/orgs";
+import { isVerifiedOrg, notVerified, requireMembership } from "@/lib/orgs";
 import { BENEFIT_CATALOG, COMPLIANCE_ROLES, EVENT_MANAGER_ROLES, EVENT_ORGANIZER_ROLES, eventChanges, eventScope, EVENT_TYPES, ONLINE_URL_INVALID, parseOnlineUrl, parseParisDateTime } from "@/lib/events";
 import { EventFormat } from "@/generated/prisma/enums";
 import { eurToCents, intOrNull, str } from "@/lib/form";
@@ -69,7 +69,7 @@ export async function createEvent(_: ActionState, form: FormData): Promise<Actio
   // Réunion interne (board, comité) : jamais publiée, sans inscriptions en ligne.
   const internal = form.get("internal") === "1";
   const publish = !internal && form.get("publish") === "1";
-  if (publish && !isVerifiedOrg(org)) return { error: `Publication impossible pour l'instant : ${ORG_NOT_VERIFIED} Enregistrez l'événement en brouillon.` };
+  if (publish && !isVerifiedOrg(org)) return { error: `Publication impossible pour l'instant : ${notVerified(org)} Enregistrez l'événement en brouillon.` };
   const gate = publish ? await engagementGate(orgId, "evenement") : null;
   if (gate) return { ...gate, error: `${gate.error} Vous pouvez l'enregistrer en brouillon.` };
   const event = await db.event.create({
@@ -199,7 +199,7 @@ export async function setEventAgency(form: FormData) {
     if (!agency) return;
     const mandate = await db.mandate.findFirst({ where: { mandatorId: orgId, agencyId, ...activeMandate() } });
     if (!mandate) {
-      if (!agency.listed) return;
+      if (!agency.listed || agency.verification !== "VERIFIED") return;
       const m = await db.mandate.create({ data: { mandatorId: orgId, agencyId, scope: "Événements confiés" } });
       await audit(user.id, "mandate.create", "Mandate", m.id, { agencyId, eventId });
     }

@@ -150,4 +150,5 @@ export const COMMON: Record<string, string> = {
   "Vos inscriptions aux événements.": "Your event registrations.",
   "Prérequis : renseignez votre {id}": "Prerequisite: enter your {id}",
   "numéro RPPS": "RPPS number",
+  "Cette page n'est pas visible du public : l'organisation est suspendue par KolBase.": "This page is not visible to the public: the organisation is suspended by KolBase.",
 };

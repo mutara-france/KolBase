@@ -3,7 +3,7 @@ import Link from "next/link";
 import { SiteHeader } from "@/components/SiteHeader";
 import { NewProjectForm } from "@/components/ProjectForms";
 import { db } from "@/lib/db";
-import { isVerifiedOrg, ORG_NOT_VERIFIED, requireMembership } from "@/lib/orgs";
+import { isVerifiedOrg, notVerified, requireMembership } from "@/lib/orgs";
 import { COLLAB_TYPES, SOURCING_ROLES } from "@/lib/projects";
 import { BillingNotice } from "@/components/BillingNotice";
 import { engagementBlock } from "@/lib/billing";
@@ -23,7 +23,7 @@ export default async function Page({ params, searchParams }: { params: Promise<{
           <p className="muted"><Link href={`/organisations/${id}`}>{org.name}</Link> / <Link href={`/organisations/${id}/dossiers`}>Dossiers</Link></p>
           <section className="card stack-sm">
             <h1>Nouveau dossier</h1>
-            <p>{ORG_NOT_VERIFIED}</p>
+            <p>{notVerified(org)}</p>
             <p><Link className="btn secondary" href={`/organisations/${id}/membres?onglet=organisation`}>Suivre la validation</Link></p>
           </section>
         </main>

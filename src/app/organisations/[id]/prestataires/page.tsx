@@ -49,7 +49,7 @@ export default async function Page({ params, searchParams }: { params: Promise<{
       },
       orderBy: { createdAt: "desc" },
     }),
-    db.organization.findMany({ where: { kind: "PRESTATAIRE", listed: true, NOT: { supplierCategories: { isEmpty: true } } }, orderBy: { name: "asc" } }),
+    db.organization.findMany({ where: { kind: "PRESTATAIRE", listed: true, verification: "VERIFIED", NOT: { supplierCategories: { isEmpty: true } } }, orderBy: { name: "asc" } }),
     db.event.findMany({ where: { organizationId: id, ...scope, startsAt: { gte: new Date() } }, orderBy: { startsAt: "asc" } }),
   ]);
   // Agences mandatées : listées pour l'organisateur, signalées parmi les prestataires consultés, et droit de

@@ -75,7 +75,7 @@ export default async function Page({ params, searchParams }: { params: Promise<{
           where: {
             kind: "PRESTATAIRE",
             OR: [
-              { listed: true, supplierCategories: { has: "evenementiel" } },
+              { listed: true, verification: "VERIFIED", supplierCategories: { has: "evenementiel" } },
               { mandatesReceived: { some: { mandatorId: id, OR: [{ endsAt: null }, { endsAt: { gt: new Date() } }] } } },
             ],
           },

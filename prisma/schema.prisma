@@ -186,10 +186,13 @@ model DeclaredInterest {
 }
 
 // Validation des organisations par KolBase (SIREN contrôlé, puis validation par un administrateur).
+// Suspendue : validée puis mise en pause par KolBase (motif) ; pages publiques, événements et appels masqués,
+// rien n'est supprimé, la réactivation rend tout.
 enum OrgVerification {
   PENDING
   VERIFIED
   REJECTED
+  SUSPENDED
 }
 
 enum OrgKind {

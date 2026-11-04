@@ -121,13 +121,26 @@ export function ExpertProfileForm({ p, types }: { p: Expert; types: string[] }) 
   );
 }
 
-type Verification = { status: "PENDING" | "VERIFIED" | "REJECTED"; siren: string | null; legalName: string | null; note: string | null };
+type Verification = { status: "PENDING" | "VERIFIED" | "REJECTED" | "SUSPENDED"; siren: string | null; legalName: string | null; note: string | null };
 
 /** Validation de l'organisation par KolBase : statut et saisie du SIREN (administrateurs). */
 export function VerificationCard({ orgId, v, canEdit }: { orgId: string; v: Verification; canEdit: boolean }) {
   const [state, action, pending] = useActionState(submitSiren, undefined);
-  const label = { PENDING: "En attente de validation", VERIFIED: "Validée par KolBase", REJECTED: "Refusée" }[v.status];
-  const tone = { PENDING: "wait", VERIFIED: "ok", REJECTED: "bad" }[v.status];
+  const label = { PENDING: "En attente de validation", VERIFIED: "Validée par KolBase", REJECTED: "Refusée", SUSPENDED: "Suspendue par KolBase" }[v.status];
+  const tone = { PENDING: "wait", VERIFIED: "ok", REJECTED: "bad", SUSPENDED: "bad" }[v.status];
+  // Suspendue : seule l'équipe KolBase lève la suspension (pas de nouvelle demande de validation).
+  if (v.status === "SUSPENDED")
+    return (
+      <section className="card form">
+        <h2>Validation de l&apos;organisation <span className={`pill ${tone}`}>{label}</span></h2>
+        <p className="notice error">Organisation suspendue{v.note ? ` : ${v.note}` : ""}.</p>
+        <p className="muted">
+          Votre page publique, vos événements et vos appels à candidatures sont masqués, et aucune nouvelle action n&apos;est possible
+          (sollicitation, publication, demande de devis). Rien n&apos;est supprimé : tout réapparaît à la réactivation par KolBase.
+          Pour en discuter, répondez à l&apos;e-mail de suspension.
+        </p>
+      </section>
+    );
   return (
     <section className="card form">
       <h2>Validation de l&apos;organisation <span className={`pill ${tone}`}>{label}</span></h2>

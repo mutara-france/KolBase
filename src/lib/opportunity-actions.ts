@@ -4,7 +4,7 @@ import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import { db } from "@/lib/db";
 import { audit, requireUser } from "@/lib/auth";
-import { ORG_NOT_VERIFIED, isVerifiedOrg, requireMembership } from "@/lib/orgs";
+import { isVerifiedOrg, notVerified, requireMembership } from "@/lib/orgs";
 import { parseParisDateTime } from "@/lib/events";
 import { collabType, SOURCING_ROLES } from "@/lib/projects";
 import { eurToCents, str, unitsOrNull, UNITS_INVALID } from "@/lib/form";
@@ -22,7 +22,7 @@ export type ActionState = { error?: string; ok?: string; fix?: GateLink } | unde
 export async function createOpenCall(_: ActionState, form: FormData): Promise<ActionState> {
   const orgId = str(form, "orgId");
   const { user, org } = await requireMembership(orgId, SOURCING_ROLES);
-  if (!isVerifiedOrg(org)) return { error: ORG_NOT_VERIFIED };
+  if (!isVerifiedOrg(org)) return { error: notVerified(org) };
   const gate = await engagementGate(orgId, "appel");
   if (gate) return gate;
   const title = str(form, "title");
@@ -126,7 +126,7 @@ export async function rejectApplication(form: FormData) {
 export async function retainApplication(_: ActionState, form: FormData): Promise<ActionState> {
   const orgId = str(form, "orgId");
   const { user, org } = await requireMembership(orgId, SOURCING_ROLES);
-  if (!isVerifiedOrg(org)) return { error: ORG_NOT_VERIFIED };
+  if (!isVerifiedOrg(org)) return { error: notVerified(org) };
   const appId = str(form, "applicationId");
   const app = await db.application.findFirst({
     where: { id: appId, openCall: { organizationId: orgId } },

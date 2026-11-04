@@ -70,7 +70,9 @@ export default async function Page({ params }: { params: Promise<{ id: string }>
           {/* Aperçu par un membre : la page n'est pas encore (ou plus) visible du public. */}
           {isMember && !orgIsPublic(o) && (
             <p className="notice warn" role="status">
-              {o.verification !== "VERIFIED"
+              {o.verification === "SUSPENDED"
+                ? t("Cette page n'est pas visible du public : l'organisation est suspendue par KolBase.")
+                : o.verification !== "VERIFIED"
                 ? t("Cette page n'est pas visible du public : elle le sera dès que KolBase aura validé l'organisation.")
                 : t("Cette page n'est pas visible du public : l'organisation est retirée de l'annuaire.")}{" "}
               {!isSupplier && o.verification === "VERIFIED" && <Link href={`/organisations/${o.id}/membres?onglet=organisation`}>{t("La rendre visible")}</Link>}

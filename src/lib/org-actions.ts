@@ -57,6 +57,8 @@ export async function updateOrganization(_: FormState, form: FormData): Promise<
   const { user, org } = await requireMembership(orgId, ["ADMIN"], { allowSupplier: true });
   const name = str(form, "name", MAX_NAME);
   if (!name) return { error: "Le nom est obligatoire." };
+  // Suspendue : le nom reste celui que KolBase a validé (il ne repasserait pas par la validation).
+  if (org.verification === "SUSPENDED" && name !== org.name) return { error: "Organisation suspendue : le nom ne peut pas être modifié avant la réactivation par KolBase." };
   // Changer le nom d'une organisation validée relance la validation (usurpation d'un nom connu).
   const renamed = org.verification === "VERIFIED" && name !== org.name;
   await db.organization.update({
@@ -83,6 +85,8 @@ export async function updateOrganization(_: FormState, form: FormData): Promise<
 export async function submitSiren(_: FormState, form: FormData): Promise<FormState> {
   const orgId = str(form, "orgId");
   const { user, org } = await requireMembership(orgId, ["ADMIN"], { allowSupplier: true });
+  // Une suspension se lève par KolBase, pas par une nouvelle demande de validation.
+  if (org.verification === "SUSPENDED") return { error: "Organisation suspendue : la réactivation se fait par l'équipe KolBase, répondez à l'e-mail de suspension." };
   const siren = parseSiren(str(form, "siren"));
   if (!siren || !sirenKeyOk(siren)) return { error: "SIREN invalide : 9 chiffres (ou SIRET de 14 chiffres), vérifiez la saisie." };
   const { lookup, ...data } = await sirenFields(siren);

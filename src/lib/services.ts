@@ -28,7 +28,7 @@ export const trackedPath = (code: string) => `/r/${code}`;
 /** Événements « à la une » : service réalisé depuis moins de sept jours, événement publié et à venir (lien suivi). */
 export async function featuredEvents(now = new Date()) {
   const orders = await db.serviceOrder.findMany({
-    where: { status: "realisee", offer: { kind: "une" }, doneAt: { gte: new Date(now.getTime() - FEATURE_DAYS * 86400e3) }, event: { publishedAt: { not: null }, startsAt: { gte: now } } },
+    where: { status: "realisee", offer: { kind: "une" }, doneAt: { gte: new Date(now.getTime() - FEATURE_DAYS * 86400e3) }, event: { publishedAt: { not: null }, startsAt: { gte: now }, organization: { verification: "VERIFIED" } } },
     select: { eventId: true, trackCode: true },
     orderBy: { doneAt: "desc" },
   });

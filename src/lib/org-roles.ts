@@ -67,4 +67,9 @@ export const ORG_NOT_VERIFIED =
 /** Types d'organisation pour lesquels le SIREN est obligatoire (les sociétés savantes et associations n'en ont pas toujours). */
 export const SIREN_REQUIRED: OrgKind[] = ["INDUSTRIEL", "ORGANISME_FORMATION", "PRESTATAIRE"];
 
-export const VERIFICATION_LABEL = { PENDING: "En attente de validation", VERIFIED: "Validée", REJECTED: "Refusée" } as const;
+export const VERIFICATION_LABEL = { PENDING: "En attente de validation", VERIFIED: "Validée", REJECTED: "Refusée", SUSPENDED: "Suspendue" } as const;
+/** Organisation suspendue par KolBase : masquée et sans action nouvelle, jusqu'à sa réactivation. */
+export const isSuspendedOrg = (org: { verification: string }) => org.verification === "SUSPENDED";
+export const ORG_SUSPENDED = "Votre organisation est suspendue par KolBase : aucune nouvelle action n'est possible jusqu'à sa réactivation.";
+/** Pourquoi une organisation non validée ne peut pas agir : en attente de validation, ou suspendue. */
+export const notVerified = (org: { verification: string }) => (isSuspendedOrg(org) ? ORG_SUSPENDED : ORG_NOT_VERIFIED);

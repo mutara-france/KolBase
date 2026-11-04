@@ -517,8 +517,8 @@ async function sendService(recipients: Recipient[], mail: Omit<Mail, "to"> | Com
   }
 }
 
-/** Validation, refus ou suspension d'une organisation : ses administrateurs sont prévenus (motif compris). */
-export function notifyOrgDecision(orgId: string, decision: "verify" | "reject" | "suspend", note: string | null) {
+/** Validation, refus, suspension ou réactivation d'une organisation : ses administrateurs sont prévenus (motif compris). */
+export function notifyOrgDecision(orgId: string, decision: "verify" | "reject" | "suspend" | "reactivate", note: string | null) {
   later(async () => {
     const org = await db.organization.findUnique({ where: { id: orgId }, select: { name: true, kind: true, listed: true } });
     if (!org) return;
@@ -541,11 +541,17 @@ export function notifyOrgDecision(orgId: string, decision: "verify" | "reject" |
               text: `Bonjour,\n\nL'équipe KolBase n'a pas pu valider ${org.name}.${motif}\n\nCorrigez l'identité de l'organisation (SIREN, nom) dans Membres et réglages : la demande sera examinée de nouveau. Pour toute question, répondez à cet e-mail.`,
               cta: { label: "Corriger l'identité de l'organisation", href: `/organisations/${orgId}/membres?onglet=organisation` },
             }
-          : {
-              subject: `${org.name} est suspendue sur KolBase`,
-              text: `Bonjour,\n\nL'équipe KolBase a suspendu ${org.name}.${motif}\n\nPendant la suspension, votre page publique est retirée, vos appels à candidatures sont clos, et l'organisation ne peut plus solliciter d'experts, publier ni envoyer de demandes de devis. Pour en discuter, répondez à cet e-mail.`,
-              cta: { label: "Voir l'organisation", href: `/organisations/${orgId}/membres?onglet=organisation` },
-            };
+          : decision === "suspend"
+            ? {
+                subject: `${org.name} est suspendue sur KolBase`,
+                text: `Bonjour,\n\nL'équipe KolBase a suspendu ${org.name}.${motif}\n\nPendant la suspension, votre page publique, vos événements et vos appels à candidatures sont masqués, et l'organisation ne peut plus solliciter d'experts, publier ni envoyer de demandes de devis. Rien n'est supprimé : tout réapparaît tel quel à la réactivation. Pour en discuter, répondez à cet e-mail.`,
+                cta: { label: "Voir l'organisation", href: `/organisations/${orgId}` },
+              }
+            : {
+                subject: `${org.name} est de nouveau active sur KolBase`,
+                text: `Bonjour,\n\nL'équipe KolBase a levé la suspension de ${org.name}. ${supplier ? "Votre fiche prestataire est de nouveau visible et vous pouvez répondre aux demandes de devis." : "Votre page publique, vos événements et vos appels à candidatures sont de nouveau visibles ; vous pouvez de nouveau solliciter des experts, publier et consulter des prestataires."}`,
+                cta: { label: "Ouvrir l'espace de l'organisation", href: `/organisations/${orgId}` },
+              };
     await sendService(await members(orgId, ["ADMIN"]), mail);
   });
 }

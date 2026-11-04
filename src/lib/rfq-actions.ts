@@ -4,7 +4,7 @@ import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import { db } from "@/lib/db";
 import { audit } from "@/lib/auth";
-import { ORG_NOT_VERIFIED, isVerifiedOrg, requireMembership } from "@/lib/orgs";
+import { isSuspendedOrg, isVerifiedOrg, notVerified, ORG_SUSPENDED, requireMembership } from "@/lib/orgs";
 import { EVENT_MANAGER_ROLES, EVENT_ORGANIZER_ROLES, eventScope, parseParisDateTime } from "@/lib/events";
 import { SUPPLIER_CATEGORIES } from "@/lib/suppliers";
 import { eurToCents, intOrNull, str } from "@/lib/form";
@@ -37,7 +37,7 @@ export async function createRfq(_: ActionState, form: FormData): Promise<ActionS
   if (eventId && !event) return { error: "Événement introuvable." };
   const supplierIds = [...new Set(form.getAll("supplierIds").map(String))];
   if (supplierIds.length === 0) return { error: "Sélectionnez au moins un prestataire." };
-  const suppliers = await db.organization.findMany({ where: { id: { in: supplierIds }, kind: "PRESTATAIRE", listed: true, supplierCategories: { has: category } } });
+  const suppliers = await db.organization.findMany({ where: { id: { in: supplierIds }, kind: "PRESTATAIRE", listed: true, verification: "VERIFIED", supplierCategories: { has: category } } });
   if (suppliers.length !== supplierIds.length) return { error: "Un des prestataires sélectionnés n'est pas référencé dans cette catégorie." };
   // Une agence mandatée ne se consulte pas elle-même : l'organisation la consulte directement si elle le souhaite.
   const own = suppliers.find((s) => user.memberships.some((m) => m.organizationId === s.id));
@@ -49,7 +49,7 @@ export async function createRfq(_: ActionState, form: FormData): Promise<ActionS
   if (deadlineRaw && (!deadline || deadline < new Date())) return { error: "Date de réponse invalide ou passée." };
   const headcount = intOrNull(str(form, "headcount")) || event?.capacity || null;
   const send = str(form, "intent") === "send";
-  if (send && !isVerifiedOrg(org)) return { error: `Envoi impossible pour l'instant : ${ORG_NOT_VERIFIED} Enregistrez la demande en brouillon.` };
+  if (send && !isVerifiedOrg(org)) return { error: `Envoi impossible pour l'instant : ${notVerified(org)} Enregistrez la demande en brouillon.` };
   const gate = send ? await engagementGate(orgId, "devis") : null;
   if (gate) return { ...gate, error: `${gate.error} Vous pouvez l'enregistrer en brouillon.` };
 
@@ -190,7 +190,8 @@ async function requireSupplier(orgId: string) {
 
 export async function submitQuote(_: ActionState, form: FormData): Promise<ActionState> {
   const orgId = str(form, "orgId");
-  const { user } = await requireSupplier(orgId);
+  const { user, org } = await requireSupplier(orgId);
+  if (isSuspendedOrg(org)) return { error: ORG_SUSPENDED };
   const rfqId = str(form, "rfqId");
   const invite = await db.rfqSupplier.findUnique({ where: { rfqId_supplierId: { rfqId, supplierId: orgId } }, include: { rfq: true } });
   if (!invite || invite.rfq.status !== "sent") return { error: "Cette demande n'accepte plus de devis." };
@@ -266,7 +267,7 @@ export async function updateSupplierProfile(_: ActionState, form: FormData): Pro
   const categories = form.getAll("categories").map(String).filter((c) => SUPPLIER_CATEGORIES.some((x) => x.id === c));
   const listed = form.get("listed") === "on";
   if (listed && categories.length === 0) return { error: "Choisissez au moins une catégorie pour être référencé." };
-  if (listed && !isVerifiedOrg(ctxOrg)) return { error: `Référencement impossible pour l'instant : ${ORG_NOT_VERIFIED}` };
+  if (listed && !isVerifiedOrg(ctxOrg)) return { error: `Référencement impossible pour l'instant : ${notVerified(ctxOrg)}` };
   await db.organization.update({ where: { id: orgId }, data: { supplierCategories: categories, coverage: str(form, "coverage") || null, listed } });
   await audit(user.id, "supplier.profile", "Organization", orgId, { categories, listed });
   revalidatePath(`/organisations/${orgId}/devis`);

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { isAgencyOnly } from "@/lib/org-roles";
+import { isAgencyOnly, isSuspendedOrg, isVerifiedOrg, notVerified, ORG_NOT_VERIFIED, ORG_SUSPENDED, orgIsPublic, VERIFICATION_LABEL } from "@/lib/org-roles";
 import { orgMenuLinks } from "@/lib/nav";
 import { de, elides } from "@/lib/elision";
 import { featuredUntil, groupOrders, packStatus } from "@/lib/service-pack";
@@ -65,5 +65,17 @@ describe("mise à la une", () => {
     expect(featuredUntil(une, new Date("2026-11-09T10:00:00Z"))).toBeNull();
     expect(featuredUntil({ ...une, offer: { kind: "social" } }, new Date("2026-11-04T10:00:00Z"))).toBeNull();
     expect(featuredUntil({ ...une, status: "planifiee" }, new Date("2026-11-04T10:00:00Z"))).toBeNull();
+  });
+});
+
+describe("organisation suspendue", () => {
+  it("ni validée ni publique, message propre à la suspension", () => {
+    const org = { verification: "SUSPENDED", listed: true };
+    expect(isVerifiedOrg(org)).toBe(false);
+    expect(orgIsPublic(org)).toBe(false);
+    expect(isSuspendedOrg(org)).toBe(true);
+    expect(notVerified(org)).toBe(ORG_SUSPENDED);
+    expect(notVerified({ verification: "PENDING" })).toBe(ORG_NOT_VERIFIED);
+    expect(VERIFICATION_LABEL.SUSPENDED).toBe("Suspendue");
   });
 });

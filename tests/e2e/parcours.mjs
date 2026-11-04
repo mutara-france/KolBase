@@ -2975,6 +2975,43 @@ async function submitNewOrg(page, siren) {
     await adm.ctx.close();
   }
 
+  // 4. Suspension réversible : statut distinct, motif, confirmation, e-mail ; tout est masqué puis rendu.
+  {
+    const before = await q1(`select listed, (select count(*)::int from "OpenCall" where "organizationId" = 'demo-org-cdra' and status = 'open') calls from "Organization" where id = 'demo-org-cdra'`);
+    const adm = await session();
+    await login(adm.page, "anne.chevalier@demo.kolbase.local");
+    await adm.page.goto(`${BASE}/admin`);
+    const card = () => adm.page.locator('section.card:has-text("Collège Dentaire Rhône-Alpes")').first();
+    await card().locator('form:has(button:has-text("Suspendre")) input[name="note"]').fill("Contrôle de conformité en cours");
+    await card().locator('button:has-text("Suspendre")').click();
+    check("Suspension : confirmation avec ce qui est masqué", (await card().locator(".confirm-step").innerText()).includes("rien n'est supprimé"));
+    await card().locator('button:has-text("Confirmer : suspendre")').click();
+    await adm.page.waitForTimeout(1200);
+    const sus = await q1(`select verification, listed, (select count(*)::int from "OpenCall" where "organizationId" = 'demo-org-cdra' and status = 'open') calls from "Organization" where id = 'demo-org-cdra'`);
+    check("Suspension : statut « suspendue », rien de détruit (page publique et appels conservés)", sus.verification === "SUSPENDED" && sus.listed === before.listed && sus.calls === before.calls, JSON.stringify(sus));
+    const mail = await waitMail("pierre.vidal@demo.kolbase.local", "Collège Dentaire Rhône-Alpes est suspendue sur KolBase");
+    check("E-mail : suspension avec motif, rien n'est supprimé", !!mail && mail.text.includes("Motif : Contrôle de conformité en cours") && mail.text.includes("Rien n'est supprimé"));
+    const anon = await session();
+    check("Organisation suspendue : page publique masquée", (await anon.page.goto(`${BASE}/structures/demo-org-cdra`))?.status() === 404);
+    check("Organisation suspendue : événements masqués", (await anon.page.goto(`${BASE}/evenements/demo-ev-journee-cdra`))?.status() === 404);
+    const own = await session();
+    await login(own.page, "pierre.vidal@demo.kolbase.local");
+    await own.page.goto(`${BASE}/organisations/demo-org-cdra`);
+    check("Organisation : « Organisation suspendue : motif »", (await text(own.page)).includes("Organisation suspendue : Contrôle de conformité en cours"));
+    await own.page.goto(`${BASE}/organisations/demo-org-cdra/membres?onglet=organisation`);
+    check("Organisation suspendue : pas de nouvelle demande de validation", (await own.page.locator('input[name="siren"]').count()) === 0 && (await text(own.page)).includes("Suspendue par KolBase"));
+    // Réactiver : tout réapparaît tel quel.
+    await adm.page.goto(`${BASE}/admin`);
+    await card().locator('button:has-text("Réactiver")').click();
+    await adm.page.waitForTimeout(1200);
+    check("Réactivation : organisation validée", (await q1(`select verification from "Organization" where id = 'demo-org-cdra'`)).verification === "VERIFIED");
+    check("Réactivation : page publique et événements rendus", (await anon.page.goto(`${BASE}/structures/demo-org-cdra`))?.status() === 200 && (await anon.page.goto(`${BASE}/evenements/demo-ev-journee-cdra`))?.status() === 200);
+    check("E-mail : réactivation", !!(await waitMail("pierre.vidal@demo.kolbase.local", "Collège Dentaire Rhône-Alpes est de nouveau active")));
+    await own.ctx.close();
+    await anon.ctx.close();
+    await adm.ctx.close();
+  }
+
   await pgc.end();
 }
 
