@@ -3193,7 +3193,7 @@ async function submitNewOrg(page, siren) {
     await emma.page.check('input[name="ackHcp"]');
     await emma.page.click('button:has-text("M\'inscrire")');
     await emma.page.locator("text=Inscription confirmée").first().waitFor({ timeout: 8000 }).catch(() => {});
-    const mail = await waitMail(EMMA, "Inscription confirmée");
+    const mail = await waitMail(EMMA, "Inscription confirmée : « Travaux pratiques");
     const ics = mail?.attachments?.find((a) => a.filename?.endsWith(".ics"));
     check("Inscription : e-mail de confirmation (date, lieu, prestations, badge)", !!mail && mail.text.includes("Centre de formation Académie") && mail.text.includes("Pause café") && /\/inscriptions\/\S+\/badge/.test(mail.text) && mail.text.includes("Mes inscriptions"), mail?.text.slice(0, 200));
     check("Inscription : invitation d'agenda (.ics) jointe", !!ics && unfold(ics.content).includes("SUMMARY:Travaux pratiques") && ics.content.includes("BEGIN:VEVENT"), ics?.filename ?? "aucune pièce jointe");
@@ -3209,7 +3209,7 @@ async function submitNewOrg(page, siren) {
     await tile.locator('button:has-text("Confirmer : annuler mon inscription")').click();
     await emma.page.waitForURL(/annulee=1/, { timeout: 8000 }).catch(() => {});
     const gone = await until(async () => (await q1(`select count(*)::int n from "Registration" r join "User" u on u.id = r."userId" where u.email = $1 and r."eventId" = 'demo-ev-tp-endo'`, [EMMA])).n === 0);
-    const cancelMail = await waitMail(EMMA, "Inscription annulée");
+    const cancelMail = await waitMail(EMMA, "Inscription annulée : « Travaux pratiques");
     check("Mes inscriptions : annulation confirmée, message et e-mail", gone && (await text(emma.page)).includes("Inscription annulée") && !!cancelMail && cancelMail.text.includes("prestations que vous aviez acceptées"), cancelMail?.subject ?? "aucun e-mail");
 
     // En ligne : le lien de connexion part avec la confirmation ; annulation depuis la page de l'événement.
