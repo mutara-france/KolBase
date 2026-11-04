@@ -22,6 +22,7 @@ import { saveServiceOffer, updateServiceOrder } from "@/lib/service-actions";
 import { ORDER_STATUS, orderStats, trackedPath } from "@/lib/services";
 import { reportLine } from "@/lib/service-report";
 import { country, licenseRule, practicesInFrance, registryLink } from "@/lib/countries";
+import { ConfirmButton } from "@/components/ConfirmButton";
 
 export const metadata = { title: "Administration — KolBase" };
 export const dynamic = "force-dynamic";
@@ -153,7 +154,9 @@ export default async function Page({ searchParams }: { searchParams: Promise<{ o
                         <form action={reviewOrganization} className="inline wrap">
                           <input type="hidden" name="orgId" value={o.id} />
                           <input name="note" placeholder="Motif de la suspension (obligatoire)" aria-label="Motif de la suspension" required />
-                          <button className="btn ghost small" name="decision" value="suspend">Suspendre</button>
+                          <ConfirmButton className="btn ghost small" name="decision" value="suspend" confirm={`suspendre ${o.name}`} summary={<>Page publique et événements masqués, appels à candidatures clos, aucune nouvelle action ; rien n&apos;est supprimé et « Réactiver » rétablit tout. Les administrateurs sont prévenus par e-mail, avec le motif.</>}>
+                            Suspendre
+                          </ConfirmButton>
                         </form>
                       )}
                       {o.siren && (
@@ -363,7 +366,13 @@ async function BillingAdmin() {
                   <form action={setExemption} className="inline wrap">
                     <input type="hidden" name="orgId" value={o.id} />
                     {exempt(o.subscription, now) ? (
-                      <><span className="text-xs">jusqu&apos;au {formatDate(o.subscription!.exemptUntil!)}{o.subscription!.exemptNote ? ` · ${o.subscription!.exemptNote}` : ""}</span><input type="hidden" name="remove" value="1" /><button className="link">retirer</button></>
+                      <>
+                        <span className="text-xs">jusqu&apos;au {formatDate(o.subscription!.exemptUntil!)}{o.subscription!.exemptNote ? ` · ${o.subscription!.exemptNote}` : ""}</span>
+                        <input type="hidden" name="remove" value="1" />
+                        <ConfirmButton className="link" confirm="retirer la gratuité" summary={<>{o.name} est prévenue par e-mail ; {o.subscription?.stripeSubscriptionId && ["active", "essai", "impayee"].includes(o.subscription.status) ? "la facturation de son abonnement Stripe reprend." : "pour continuer à agir, un administrateur devra activer l'abonnement."}</>}>
+                          retirer
+                        </ConfirmButton>
+                      </>
                     ) : (
                       <><input type="date" name="until" aria-label="Offert jusqu'au" required /><input name="note" placeholder="Motif" aria-label="Motif" /><button className="link">offrir</button></>
                     )}

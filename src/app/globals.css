@@ -1098,3 +1098,10 @@ p.service-stats { color: var(--ink-soft); }
 .edit-block h3 { margin: 0; font-size: 15px; }
 .terms-form .fee-row { align-items: end; }
 .term.desired { color: var(--outremer); font-weight: 600; }
+
+/* Confirmation en deux temps d'un geste irréversible (ConfirmButton). */
+.confirm-step { display: inline-flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; padding: 10px 12px; border: 1px solid var(--danger); border-radius: 12px; background: var(--danger-bg); }
+.confirm-summary { flex-basis: 100%; font-size: 13px; color: var(--ink); }
+.confirm-summary ul { margin: 4px 0 0; padding-left: 18px; }
+.quote { flex-wrap: wrap; }
+.quote .award-form:has(.confirm-step) { flex-basis: 100%; }

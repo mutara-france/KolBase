@@ -8,6 +8,7 @@ import { ARTICLE_CATEGORIES } from "@/lib/article-format";
 import { coverSrc } from "@/lib/news";
 import { deleteArticle, setArticlePublished } from "@/lib/news-actions";
 import { formatDate } from "@/lib/events";
+import { ConfirmButton } from "@/components/ConfirmButton";
 
 export const metadata = { title: "Actualité — KolBase" };
 
@@ -29,17 +30,22 @@ export default async function Page({ params, searchParams }: { params: Promise<{
         {cree && <p className="notice ok">Brouillon créé. Relisez-le avec l&apos;aperçu, puis publiez-le.</p>}
         <div className="actions">
           <Link className="btn ghost small" href={`/actualites/${a.slug}`} target="_blank">{a.publishedAt ? "Voir en ligne" : "Aperçu"}</Link>
-          <form action={setArticlePublished}>
-            <input type="hidden" name="id" value={a.id} />
-            <input type="hidden" name="publish" value={a.publishedAt ? "0" : "1"} />
-            <button className={a.publishedAt ? "btn ghost small" : "btn small"}>{a.publishedAt ? "Repasser en brouillon" : "Publier"}</button>
-          </form>
+          {/* La publication se fait depuis le formulaire (« Enregistrer et publier ») : ce qui est à l'écran est publié. */}
+          {a.publishedAt && (
+            <form action={setArticlePublished}>
+              <input type="hidden" name="id" value={a.id} />
+              <input type="hidden" name="publish" value="0" />
+              <button className="btn ghost small">Repasser en brouillon</button>
+            </form>
+          )}
           <form action={deleteArticle}>
             <input type="hidden" name="id" value={a.id} />
-            <button className="link danger">Supprimer</button>
+            <ConfirmButton className="link danger" confirm="supprimer définitivement l'actualité" summary={<>« {a.title} »{a.publishedAt ? " est en ligne : elle disparaîtra de la rubrique Actualités et de l'accueil." : " (brouillon)."} La suppression est définitive.</>}>
+              Supprimer
+            </ConfirmButton>
           </form>
         </div>
-        <ArticleForm a={{ id: a.id, title: a.title, slug: a.slug, category: a.category, excerpt: a.excerpt, body: a.body, cover: coverSrc(a) }} categories={ARTICLE_CATEGORIES} />
+        <ArticleForm a={{ id: a.id, title: a.title, slug: a.slug, category: a.category, excerpt: a.excerpt, body: a.body, cover: coverSrc(a), published: !!a.publishedAt }} categories={ARTICLE_CATEGORIES} />
       </main>
     </>
   );

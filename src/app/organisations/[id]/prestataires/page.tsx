@@ -21,6 +21,8 @@ import { logoSrc } from "@/lib/logos";
 import { BillingNotice } from "@/components/BillingNotice";
 import { engagementBlock } from "@/lib/billing";
 import { Thread } from "@/components/ProjectBits";
+import { ConfirmButton } from "@/components/ConfirmButton";
+import { de } from "@/lib/elision";
 
 export const metadata = { title: "Prestataires — KolBase" };
 
@@ -189,10 +191,21 @@ export default async function Page({ params, searchParams }: { params: Promise<{
                             <span className="text-xs warn-text" title="Une offre expirée n'engage plus le prestataire.">Offre expirée : demandez une version à jour</span>
                           )}
                           {r.status === "sent" && !expired && !own(q.supplierId) && rightFor(r) === "award" && (
-                            <form action={awardQuote}>
+                            <form action={awardQuote} className="award-form">
                               <input type="hidden" name="orgId" value={id} />
                               <input type="hidden" name="quoteId" value={q.id} />
-                              <button className="btn small"><Check size={13} /> Retenir</button>
+                              <ConfirmButton
+                                confirm={`retenir le devis ${de(q.supplier.name)}`}
+                                summary={
+                                  <>
+                                    <strong>{q.supplier.name}</strong> : {formatEUR(q.amountCents)} HT, soit {formatEUR(ttc)} TTC (TVA {vatLabel(q.vatBp)}).
+                                    {r.quotes.length > 1 && <> Devis écartés : {r.quotes.filter((x) => x.id !== q.id).map((x) => `${x.supplier.name} (${formatEUR(x.amountCents)} HT)`).join(", ")}.</>}
+                                    {" "}Chaque prestataire est prévenu par e-mail ; la décision est définitive.
+                                  </>
+                                }
+                              >
+                                <Check size={13} /> Retenir
+                              </ConfirmButton>
                             </form>
                           )}
                           {r.status === "sent" && !expired && !own(q.supplierId) && rightFor(r) === "propose" && (

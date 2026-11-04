@@ -1008,6 +1008,10 @@ async function submitNewOrg(page, siren) {
   const sud = page.locator('section#rfq-demo-rfq-cocktail .quote:has-text("Les Tables du Sud")');
   check("Devis expiré : non retenable", (await sud.locator('button:has-text("Retenir")').count()) === 0 && (await sud.innerText()).includes("Offre expirée"));
   await page.locator('section#rfq-demo-rfq-cocktail .quote:has-text("Traiteur Belleville") button:has-text("Retenir")').click();
+  // Confirmation en deux temps : récapitulatif (HT, TTC, devis écartés), puis « Confirmer : … ».
+  const recap = await page.locator('section#rfq-demo-rfq-cocktail .quote:has-text("Traiteur Belleville") .confirm-step').innerText();
+  check("Retenir : récapitulatif avant confirmation", /HT, soit .* TTC/.test(recap) && recap.includes("Devis écartés : Les Tables du Sud"), recap);
+  await page.locator('section#rfq-demo-rfq-cocktail .quote:has-text("Traiteur Belleville") button:has-text("Confirmer : retenir le devis")').click();
   await page.waitForTimeout(1200);
   check("E-mail au prestataire retenu", !!(await waitMail("ludovic.perrin@demo.kolbase.local", "Votre devis est retenu")));
   // Le prestataire retenu voit la décision et le fil reste ouvert.
@@ -1036,6 +1040,7 @@ async function submitNewOrg(page, siren) {
   check("Réunion interne : ni publication ni inscriptions", t.includes("Réunion interne") && (await page.locator('button:has-text("Publier dans l\'agenda")').count()) === 0 && t.includes("Participants"));
   await page.goto(`${BASE}/organisations/demo-org-dentalys/prestataires`);
   await page.locator('section#rfq-demo-rfq-board-salle .quote:has-text("Espace Confluence") button:has-text("Retenir")').click();
+  await page.locator('section#rfq-demo-rfq-board-salle .quote:has-text("Espace Confluence") button:has-text("Confirmer")').click();
   await page.waitForTimeout(1200);
   await page.goto(`${BASE}/organisations/demo-org-dentalys/dossiers/demo-prj-board`);
   t = await text(page);
@@ -1765,6 +1770,7 @@ async function submitNewOrg(page, siren) {
   await login(org.page, "julien.faure@demo.kolbase.local");
   await org.page.goto(`${BASE}/organisations/demo-org-dentalys/prestataires`);
   await org.page.locator('section#rfq-e2e-rfq-trigger .quote:has-text("Les Tables du Sud") button:has-text("Retenir")').click();
+  await org.page.locator('section#rfq-e2e-rfq-trigger .quote:has-text("Les Tables du Sud") button:has-text("Confirmer")').click();
   await org.page.waitForTimeout(1200);
   const trig = (await pgc.query(`select "triggeredBy" from "Subscription" where "organizationId" = 'demo-sup-tablesdusud'`)).rows[0]?.triggeredBy ?? "";
   check("Prestataire : premier devis retenu, abonnement déclenché", trig.includes("Premier devis retenu par Dentalys"), trig);
@@ -1985,9 +1991,10 @@ async function submitNewOrg(page, siren) {
   check("Pack : équipe KolBase prévenue", !!(await waitMail("anne.chevalier@demo.kolbase.local", "Service commandé : Pack visibilité")));
   await page.goto(evUrl);
   const after = await text(page);
-  check("Pack : plus commandable, services listés", after.includes("(Pack visibilité)") && (await page.locator('.service-list li.service-pack button:has-text("Commander")').count()) === 0 && !after.includes("Votre événement est en ligne"));
-  // Annuler un service du pack annule le pack entier.
-  await page.locator('li.service-order:has-text("Publication sur les réseaux sociaux") button:has-text("Annuler")').click();
+  check("Pack : plus commandable, regroupé sous son prix", /Pack visibilité — 990\s€ HT/.test(after) && (await page.locator('.service-list li.service-pack button:has-text("Commander")').count()) === 0 && !after.includes("Votre événement est en ligne"));
+  // Un pack s'annule en entier, explicitement et après confirmation.
+  await page.locator('li.service-pack-order button:has-text("Annuler le pack")').click();
+  await page.locator('li.service-pack-order button:has-text("Confirmer : annuler le pack")').click();
   await page.waitForTimeout(1000);
   const st = (await pgc.query(`select distinct status from "ServiceOrder" where "eventId" = 'demo-ev-tp-endo'`)).rows.map((r) => r.status);
   check("Pack : annulation de l'ensemble", st.length === 1 && st[0] === "annulee", st.join(","));
@@ -2268,7 +2275,8 @@ async function submitNewOrg(page, siren) {
     await org.page.fill('input[name="startsAt"]', parisInput(30, "09:00"));
     await Promise.all([org.page.waitForURL(/\/evenements\/(?!nouveau)[^/?]+$/), org.page.click('button:has-text("Créer l\'événement")')]);
     const draftId = org.page.url().split("/").at(-1);
-    await Promise.all([org.page.waitForURL(/\/evenements$/), org.page.click('button:has-text("Supprimer le brouillon")')]);
+    await org.page.click('button:has-text("Supprimer le brouillon")');
+    await Promise.all([org.page.waitForURL(/\/evenements$/), org.page.click('button:has-text("Confirmer : supprimer le brouillon")')]);
     check("Brouillon jamais publié : supprimé", !(await q1(`select id from "Event" where id = $1`, [draftId])));
     await prac.ctx.close();
     await org.ctx.close();
@@ -2421,6 +2429,7 @@ async function submitNewOrg(page, siren) {
     check("Admin : motif de la suspension obligatoire", (await refus().locator('form:has(button:has-text("Suspendre")) input[name="note"][required]').count()) === 1);
     await refus().locator('form:has(button:has-text("Suspendre")) input[name="note"]').fill("Activité sans lien avec le secteur dentaire");
     await refus().locator('button:has-text("Suspendre")').click();
+    await refus().locator('button:has-text("Confirmer : suspendre")').click();
     await adm.page.waitForTimeout(1200);
     const susp = await waitMail("hugo.robert@demo.kolbase.local", "Société Lot Refus est suspendue sur KolBase");
     check("E-mail : suspension, avec le motif", !!susp && susp.text.includes("Motif : Activité sans lien avec le secteur dentaire"));
@@ -2935,6 +2944,35 @@ async function submitNewOrg(page, siren) {
     check("E-mail à l'agence : fin du mandat", !!(await waitMail("karim.benali@demo.kolbase.local", "Fin du mandat de Dentalys Implants")));
     await org.ctx.close();
     await ag.ctx.close();
+  }
+
+  // 6 et 7. Actualités : « Enregistrer et publier » publie ce qui est à l'écran ; suppression confirmée.
+  {
+    const adm = await session();
+    await login(adm.page, "anne.chevalier@demo.kolbase.local");
+    await adm.page.goto(`${BASE}/admin/actualites/nouveau`);
+    await adm.page.fill('input[name="title"]', "Lot trois : brouillon");
+    await adm.page.fill('textarea[name="excerpt"]', "Une actualité de test pour la publication depuis le formulaire.");
+    await adm.page.fill('textarea[name="body"]', "Premier jet.");
+    await Promise.all([adm.page.waitForURL(/\/admin\/actualites\/[^/?]+\?cree=1/), adm.page.click('button:has-text("Créer le brouillon")')]);
+    const artId = adm.page.url().split("/").at(-1).split("?")[0];
+    // Modifié à l'écran sans enregistrer, puis publié : c'est le texte à l'écran qui part en ligne.
+    await adm.page.fill('input[name="title"]', "Lot trois : version publiée");
+    await adm.page.fill('input[name="slug"]', "lot-trois-version-publiee");
+    await adm.page.fill('textarea[name="body"]', "Texte relu, publié tel quel.");
+    await adm.page.click('button:has-text("Enregistrer et publier")');
+    await adm.page.waitForTimeout(1200);
+    const anon = await session();
+    const pub = await anon.page.goto(`${BASE}/actualites/lot-trois-version-publiee`);
+    const pt = await text(anon.page);
+    check("Actualité : « Enregistrer et publier » publie le texte à l'écran", pub?.status() === 200 && pt.includes("Lot trois : version publiée") && pt.includes("Texte relu, publié tel quel."), pt.slice(0, 200));
+    await anon.ctx.close();
+    await adm.page.goto(`${BASE}/admin/actualites/${artId}`);
+    await adm.page.click('button:has-text("Supprimer")');
+    check("Suppression d'une actualité : confirmation d'abord", (await adm.page.locator('button:has-text("Confirmer : supprimer définitivement")').count()) === 1 && !!(await q1(`select id from "Article" where id = $1`, [artId])));
+    await Promise.all([adm.page.waitForURL(/onglet=actualites/), adm.page.click('button:has-text("Confirmer : supprimer définitivement")')]);
+    check("Suppression d'une actualité : confirmée", !(await q1(`select id from "Article" where id = $1`, [artId])));
+    await adm.ctx.close();
   }
 
   await pgc.end();

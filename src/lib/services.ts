@@ -2,6 +2,7 @@ import "server-only";
 import { randomBytes } from "node:crypto";
 import { db } from "@/lib/db";
 import { stripe, stripeEnabled } from "@/lib/stripe";
+import { FEATURE_DAYS, featuredUntil } from "@/lib/service-pack";
 
 /** Statuts d'une commande de service. */
 export const ORDER_STATUS: Record<string, { label: string; tone: string }> = {
@@ -12,7 +13,7 @@ export const ORDER_STATUS: Record<string, { label: string; tone: string }> = {
   annulee: { label: "Annulée", tone: "done" },
 };
 export const OPEN_ORDER = ["demandee", "planifiee"];
-export const FEATURE_DAYS = 7;
+export { FEATURE_DAYS, featuredUntil };
 
 /** Délai avant l'envoi du bilan d'un service réalisé (ou dès que l'événement a eu lieu). */
 export const REPORT_DELAY_DAYS = 7;

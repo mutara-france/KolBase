@@ -22,9 +22,10 @@ import { checkinOpen } from "@/lib/checkin";
 import { eventEnded, fmtRating, surveySummary } from "@/lib/event-followup";
 import { ServiceOffers } from "@/components/ServiceForms";
 import { cancelServiceOrder } from "@/lib/service-actions";
-import { ORDER_STATUS, orderStats } from "@/lib/services";
+import { featuredUntil, ORDER_STATUS, orderStats } from "@/lib/services";
+import { ConfirmButton } from "@/components/ConfirmButton";
 import { conversion, reportParts } from "@/lib/service-report";
-import { packSaving } from "@/lib/service-pack";
+import { groupOrders, packSaving, packStatus } from "@/lib/service-pack";
 import { SendNowButton } from "@/components/FollowupForms";
 
 export const metadata = { title: "Événement — KolBase" };
@@ -130,6 +131,37 @@ export default async function Page({ params, searchParams }: { params: Promise<{
   const pack = offerCards.find((o) => o.pack && !o.blocked);
   const justPublished = publie === "1" && isOrganizer && !event.internal && !!event.publishedAt && !event.serviceOrders.some((x) => ["demandee", "planifiee"].includes(x.status));
   const serviceStats = isOrganizer ? await orderStats(event.serviceOrders.filter((o) => o.status === "realisee")) : new Map();
+  /** Une commande de service : libellé, prix, dates, bilan ; « Annuler » tant qu'elle n'est pas planifiée (hors pack). */
+  const ServiceOrderRow = ({ o, inPack = false }: { o: (typeof event.serviceOrders)[number]; inPack?: boolean }) => {
+    const stats = serviceStats.get(o.id);
+    const until = featuredUntil(o, now);
+    return (
+      <li className="flex-between service-order">
+        <span>
+          <strong>{o.label}</strong> · {formatEUR(o.priceCents)} HT{inPack ? <span className="text-xs muted"> (part du pack)</span> : null}
+          <span className="text-xs muted"> · commandé le {formatDate(o.createdAt)}{o.plannedAt && o.status === "planifiee" ? ` · prévu le ${formatDate(o.plannedAt)}` : ""}{o.doneAt ? ` · réalisé le ${formatDate(o.doneAt)}` : ""}</span>
+          {o.adminNote && <span className="text-xs muted"> · {o.adminNote}</span>}
+          {o.resultUrl && <> · <a href={o.resultUrl} target="_blank" rel="noopener noreferrer" className="text-xs">voir le résultat</a></>}
+        </span>
+        {stats && (
+          <span className="service-stats" aria-label="Bilan du service">
+            {reportParts(stats, o.offer.kind).map((p) => {
+              const [n, ...rest] = p.key.replace("{n}", p.n.toLocaleString("fr-FR")).split(" ");
+              return <span key={p.key} className="service-stat"><strong>{n}</strong> {rest.join(" ")}</span>;
+            })}
+            {conversion(stats) != null && <span className="service-stat"><strong>{conversion(stats)} %</strong> des visiteurs inscrits</span>}
+            {stats.since != null && <span className="service-stat"><strong>{stats.since}</strong> inscription{stats.since > 1 ? "s" : ""} au total depuis le {formatDate(o.doneAt!)}</span>}
+          </span>
+        )}
+        <span className="actions" style={{ marginTop: 0 }}>
+          {until ? <span className="pill electric">En cours jusqu&apos;au {formatDate(until)}</span> : <span className={`pill ${ORDER_STATUS[o.status]?.tone ?? ""}`}>{ORDER_STATUS[o.status]?.label ?? o.status}</span>}
+          {o.status === "demandee" && !inPack && (
+            <form action={cancelServiceOrder}><input type="hidden" name="orgId" value={id} /><input type="hidden" name="orderId" value={o.id} /><button className="link danger">Annuler</button></form>
+          )}
+        </span>
+      </li>
+    );
+  };
   const newRfq = (cat?: string) => `/organisations/${id}/prestataires?onglet=nouvelle&evenement=${eventId}${cat ? `&cat=${cat}` : ""}`;
   const status = event.internal
     ? { label: "Réunion interne", tone: "electric" }
@@ -423,32 +455,39 @@ export default async function Page({ params, searchParams }: { params: Promise<{
                 </div>
                 {event.serviceOrders.length > 0 && (
                   <ul className="plain stack-sm">
-                    {event.serviceOrders.map((o) => (
-                      <li key={o.id} className="flex-between service-order">
-                        <span>
-                          <strong>{o.label}</strong>{o.packLabel ? <span className="text-xs muted"> ({o.packLabel})</span> : null} · {formatEUR(o.priceCents)} HT
-                          <span className="text-xs muted"> · commandé le {formatDate(o.createdAt)}{o.plannedAt && o.status === "planifiee" ? ` · prévu le ${formatDate(o.plannedAt)}` : ""}{o.doneAt ? ` · réalisé le ${formatDate(o.doneAt)}` : ""}</span>
-                          {o.adminNote && <span className="text-xs muted"> · {o.adminNote}</span>}
-                          {o.resultUrl && <> · <a href={o.resultUrl} target="_blank" rel="noopener noreferrer" className="text-xs">voir le résultat</a></>}
-                        </span>
-                        {serviceStats.get(o.id) && (
-                          <span className="service-stats" aria-label="Bilan du service">
-                            {reportParts(serviceStats.get(o.id)!, o.offer.kind).map((p) => {
-                              const [n, ...rest] = p.key.replace("{n}", p.n.toLocaleString("fr-FR")).split(" ");
-                              return <span key={p.key} className="service-stat"><strong>{n}</strong> {rest.join(" ")}</span>;
-                            })}
-                            {conversion(serviceStats.get(o.id)!) != null && <span className="service-stat"><strong>{conversion(serviceStats.get(o.id)!)} %</strong> des visiteurs inscrits</span>}
-                            {serviceStats.get(o.id)!.since != null && <span className="service-stat"><strong>{serviceStats.get(o.id)!.since}</strong> inscription{serviceStats.get(o.id)!.since! > 1 ? "s" : ""} au total depuis le {formatDate(o.doneAt!)}</span>}
-                          </span>
-                        )}
-                        <span className="actions" style={{ marginTop: 0 }}>
-                          <span className={`pill ${ORDER_STATUS[o.status]?.tone ?? ""}`}>{ORDER_STATUS[o.status]?.label ?? o.status}</span>
-                          {o.status === "demandee" && (
-                            <form action={cancelServiceOrder}><input type="hidden" name="orgId" value={id} /><input type="hidden" name="orderId" value={o.id} /><button className="link danger">Annuler</button></form>
-                          )}
-                        </span>
-                      </li>
-                    ))}
+                    {groupOrders(event.serviceOrders).map((g) => {
+                      if (!g.pack) return <ServiceOrderRow key={g.orders[0].id} o={g.orders[0]} />;
+                      // Pack : une ligne « Pack visibilité — 990 € HT », le détail des services se déplie.
+                      const ps = packStatus(g.orders.map((o) => o.status));
+                      const total = g.orders.reduce((n, o) => n + o.priceCents, 0);
+                      const cancellable = g.orders.every((o) => o.status === "demandee");
+                      return (
+                        <li key={g.orders[0].id} className="service-order service-pack-order stack-sm">
+                          <div className="flex-between">
+                            <span>
+                              <strong>{g.pack} — {formatEUR(total)} HT</strong>
+                              <span className="text-xs muted"> · {g.orders.length} services · commandé le {formatDate(g.orders[0].createdAt)}{ps.status === "en_cours" ? ` · ${ps.done} sur ${ps.total} réalisé${ps.done > 1 ? "s" : ""}` : ""}</span>
+                            </span>
+                            <span className="actions" style={{ marginTop: 0 }}>
+                              <span className={`pill ${ps.status === "en_cours" ? "electric" : ORDER_STATUS[ps.status]?.tone ?? ""}`}>{ps.status === "en_cours" ? "En cours" : ORDER_STATUS[ps.status]?.label ?? ps.status}</span>
+                              {cancellable && (
+                                <form action={cancelServiceOrder}>
+                                  <input type="hidden" name="orgId" value={id} />
+                                  <input type="hidden" name="orderId" value={g.orders[0].id} />
+                                  <ConfirmButton className="link danger" confirm={`annuler le pack (${g.orders.length} services)`} summary={<>Les {g.orders.length} services du pack sont annulés ensemble : {g.orders.map((o) => o.label).join(", ")}. Le prix réduit ne vaut que pour le pack entier.</>}>
+                                    Annuler le pack
+                                  </ConfirmButton>
+                                </form>
+                              )}
+                            </span>
+                          </div>
+                          <details className="older">
+                            <summary>Détail des services du pack</summary>
+                            <ul className="plain stack-sm">{g.orders.map((o) => <ServiceOrderRow key={o.id} o={o} inPack />)}</ul>
+                          </details>
+                        </li>
+                      );
+                    })}
                   </ul>
                 )}
                 {!event.publishedAt ? (
@@ -525,7 +564,7 @@ export default async function Page({ params, searchParams }: { params: Promise<{
                 <form action={deleteEventDraft} className="transitions-stack">
                   <input type="hidden" name="orgId" value={id} />
                   <input type="hidden" name="eventId" value={eventId} />
-                  <button className="link danger">Supprimer le brouillon</button>
+                  <ConfirmButton className="link danger" confirm="supprimer le brouillon" summary={<>« {event.title} » est supprimé définitivement, avec ses hospitalités prévues.</>}>Supprimer le brouillon</ConfirmButton>
                   <span className="hint">Jamais publié, sans inscrit ni demande rattachée : il peut être supprimé.</span>
                 </form>
               )}
