@@ -2823,6 +2823,20 @@ async function submitNewOrg(page, siren) {
     await us.ctx.close();
   }
 
+  {
+    // Webinaire sans pointage : tous les inscrits peuvent donner leur avis (personne n'y est « absent »).
+    const was = (await pgc.query(`SELECT "startsAt" FROM "Event" WHERE id = 'demo-ev-webinaire-aligneurs'`)).rows[0].startsAt;
+    await pgc.query(`UPDATE "Event" SET "startsAt" = now() - interval '1 day' WHERE id = 'demo-ev-webinaire-aligneurs'`);
+    const w = await session();
+    await login(w.page, "sarah.mercier@demo.kolbase.local");
+    await w.page.goto(`${BASE}/evenements/demo-ev-webinaire-aligneurs/avis`);
+    check("Webinaire sans pointage : questionnaire ouvert aux inscrits", (await w.page.locator("form.survey-form").count()) === 1, await text(w.page));
+    await w.page.goto(`${BASE}/evenements/demo-ev-webinaire-aligneurs`);
+    check("Webinaire sans pointage : « Donner mon avis » sur la fiche", (await text(w.page)).includes("Donner mon avis"));
+    await w.ctx.close();
+    await pgc.query(`UPDATE "Event" SET "startsAt" = $1 WHERE id = 'demo-ev-webinaire-aligneurs'`, [was]);
+  }
+
   await pgc.end();
 }
 

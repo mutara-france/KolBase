@@ -10,4 +10,5 @@ FROM "PractitionerProfile" p
 WHERE p."billingEntity" IS NOT NULL AND btrim(p."billingEntity") <> ''
   AND NOT EXISTS (SELECT 1 FROM "PractitionerStructure" s WHERE s."practitionerId" = p."id" AND s."isPayee");
 
-ALTER TABLE "PractitionerProfile" DROP COLUMN "billingEntity";
+-- La colonne « billingEntity » n'est plus lue : elle reste en base, le temps de vérifier la reprise en production,
+-- et sera supprimée par une migration ultérieure.

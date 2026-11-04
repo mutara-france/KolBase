@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { eventEnded } from "@/lib/event-followup";
+import { attended, eventEnded } from "@/lib/event-followup";
 import { CalendarDays, CalendarPlus, Gift, MapPin, Users } from "lucide-react";
 import { PageHero } from "@/components/PageHero";
 import { notFound } from "next/navigation";
@@ -53,6 +53,7 @@ export default async function Page({ params }: { params: Promise<{ id: string }>
   const reg = user
     ? await db.registration.findUnique({ where: { eventId_userId: { eventId: id, userId: user.id } }, include: { benefits: { include: { benefit: true } }, survey: { select: { id: true } } } })
     : null;
+  const canReview = !!reg && !reg.survey && eventEnded(event) && (await attended(reg));
   const onlineUrl = reg && event.format !== "PRESENTIEL" ? (await db.event.findUnique({ where: { id }, select: { onlineUrl: true } }))?.onlineUrl ?? null : null;
   const full = event.capacity != null && event._count.registrations >= event.capacity;
   const past = event.startsAt < new Date();
@@ -159,7 +160,7 @@ export default async function Page({ params }: { params: Promise<{ id: string }>
                   </p>
                   {!past && event.format !== "DISTANCIEL" && <Link className="btn secondary" href={`/inscriptions/${reg.id}/badge`}>{t("Mon badge d'accueil")}</Link>}
                   {eventEnded(event) && reg.checkedInAt && <a className="btn secondary" href={`/inscriptions/${reg.id}/attestation`}>{t("Mon attestation de présence")}</a>}
-                  {eventEnded(event) && reg.checkedInAt && !reg.survey && <Link className="btn ghost" href={`/evenements/${id}/avis`}>{t("Donner mon avis")}</Link>}
+                  {canReview && <Link className="btn ghost" href={`/evenements/${id}/avis`}>{t("Donner mon avis")}</Link>}
                   {!reg.declared && !past && (
                     <form action={cancelRegistration}><input type="hidden" name="eventId" value={id} /><button className="btn ghost">{t("Annuler mon inscription")}</button></form>
                   )}

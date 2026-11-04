@@ -56,9 +56,9 @@ export default async function Page() {
             : <p className="muted text-sm"><Video size={14} /> {t("Le lien de connexion vous sera communiqué par l'organisateur avant l'événement.")}</p>
         )}
         {/* Attestation et avis : réservés aux présents (pointés à l'accueil). */}
-        {eventEnded(r.event, now) && r.checkedInAt && (
+        {eventEnded(r.event, now) && (r.checkedInAt || (!r.survey && !pointed.has(r.eventId))) && (
           <div className="actions reg-actions">
-            <a className="btn small secondary" href={`/inscriptions/${r.id}/attestation`}><FileDown size={14} /> {t("Mon attestation de présence")}</a>
+            {r.checkedInAt && <a className="btn small secondary" href={`/inscriptions/${r.id}/attestation`}><FileDown size={14} /> {t("Mon attestation de présence")}</a>}
             {!r.survey && <Link className="btn small ghost" href={`/evenements/${r.eventId}/avis`}><Star size={14} /> {t("Donner mon avis")}</Link>}
           </div>
         )}

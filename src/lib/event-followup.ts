@@ -1,6 +1,7 @@
 import "server-only";
 import { randomBytes } from "node:crypto";
 import { db } from "@/lib/db";
+import { pointedPastEvents } from "@/lib/checkin";
 
 /**
  * Avant et après l'événement : rappel la veille, puis attestation de présence et questionnaire.
@@ -12,6 +13,14 @@ export const FOLLOWUP_MAX_AGE_MS = 14 * 24 * 3600 * 1000; // au-delà, plus d'en
 
 export const eventEnd = (e: { startsAt: Date; durationMinutes: number | null }) => new Date(e.startsAt.getTime() + (e.durationMinutes ?? 120) * 60000);
 export const eventEnded = (e: { startsAt: Date; durationMinutes: number | null }, now = new Date()) => eventEnd(e) <= now;
+
+/**
+ * Présent au sens du questionnaire : pointé, ou inscrit à un événement où personne n'a été pointé
+ * (webinaire, pointage non utilisé). Même règle que les absents de la conformité.
+ */
+export async function attended(r: { eventId: string; checkedInAt: Date | null }) {
+  return !!r.checkedInAt || !(await pointedPastEvents([r.eventId])).has(r.eventId);
+}
 
 /** Code de vérification de l'attestation, créé à la première édition (aléatoire, non devinable). */
 export async function ensureCertificateCode(registrationId: string) {
