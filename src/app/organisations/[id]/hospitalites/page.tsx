@@ -4,7 +4,7 @@ import { SectionNav } from "@/components/SectionNav";
 import { orgTabs } from "@/lib/org-overview";
 import { db } from "@/lib/db";
 import { requireMembership } from "@/lib/orgs";
-import { COMPLIANCE_ROLES, formatDate, formatEUR } from "@/lib/events";
+import { COMPLIANCE_ROLES, EVENT_MANAGER_ROLES, formatDate, formatEUR } from "@/lib/events";
 import { markDeclared } from "@/lib/event-actions";
 import { complianceSettings, foreignRegime, hospitalityRegime, REGIME_LABEL } from "@/lib/compliance";
 import { practicesInFrance } from "@/lib/countries";
@@ -16,7 +16,9 @@ export const metadata = { title: "Hospitalités — KolBase" };
 export default async function Page({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: Promise<{ statut?: string }> }) {
   const { id } = await params;
   const { statut = "a-declarer" } = await searchParams;
-  const { org } = await requireMembership(id, COMPLIANCE_ROLES);
+  const { org, roles } = await requireMembership(id, COMPLIANCE_ROLES);
+  // Le pointage relève de l'équipe organisatrice : le lien n'est montré qu'à elle.
+  const canPoint = roles.some((r) => EVENT_MANAGER_ROLES.includes(r));
 
   // Uniquement les inscriptions de praticiens ayant accepté au moins une prestation.
   const all = await db.registration.findMany({
@@ -70,9 +72,9 @@ export default async function Page({ params, searchParams }: { params: Promise<{
         {regs.length === 0 && <p className="muted">Rien à afficher.</p>}
         {[...byEvent].map(([eventId, rs]) => (
           <section key={eventId} className="card">
-            <h2>{rs[0].event.title}</h2>
+            <h2><Link href={`/organisations/${id}/evenements/${eventId}`}>{rs[0].event.title}</Link></h2>
             <p className="muted">{formatDate(rs[0].event.startsAt)} · {rs.filter((r) => !absent(r)).length} bénéficiaire{rs.filter((r) => !absent(r)).length > 1 ? "s" : ""} · {formatEUR(sum(rs.filter((r) => !absent(r))))} TTC</p>
-            {rs.some(absent) && <p className="notice warn">{rs.filter(absent).length} inscrit{rs.filter(absent).length > 1 ? "s" : ""} absent{rs.filter(absent).length > 1 ? "s" : ""} au pointage ({formatEUR(sum(rs.filter(absent)))} TTC) : avantage non consommé, non déclaré. <Link href={`/organisations/${id}/evenements/${eventId}/pointage`}>Corriger le pointage</Link> si la personne était présente.</p>}
+            {rs.some(absent) && <p className="notice warn">{rs.filter(absent).length} inscrit{rs.filter(absent).length > 1 ? "s" : ""} absent{rs.filter(absent).length > 1 ? "s" : ""} au pointage ({formatEUR(sum(rs.filter(absent)))} TTC) : avantage non consommé, non déclaré. {canPoint ? <><Link href={`/organisations/${id}/evenements/${eventId}/pointage`}>Corriger le pointage</Link> si la personne était présente.</> : "Si la personne était présente, l'équipe organisatrice peut corriger le pointage."}</p>}
             <table className="table" tabIndex={0}>
               <thead><tr><th>Bénéficiaire</th><th>Profession</th><th>Prestations</th><th>Valeur</th><th>Régime</th><th>Convention</th><th>Déclaration</th></tr></thead>
               <tbody>

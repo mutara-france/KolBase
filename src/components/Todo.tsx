@@ -3,7 +3,11 @@ import { AlertTriangle, ArrowRight, CalendarClock, CheckCircle2, CircleDot, File
 import { getT } from "@/lib/i18n/server";
 
 const ICONS = { AlertTriangle, Bell, BellRing, CalendarClock, CheckCircle2, CircleDot, FileSignature, Inbox, MessageSquare, Mic, Receipt, ShieldCheck, UserRound };
-export type TodoItem = { href: string; title: string; detail?: string; icon: keyof typeof ICONS; tone?: "electric" | "warn" | "danger" | "ok" };
+export type TodoItem = {
+  href: string; title: string; detail?: string; icon: keyof typeof ICONS; tone?: "electric" | "warn" | "danger" | "ok";
+  /** Onglet de rubrique dont l'action relève quand son lien mène ailleurs (pastilles des onglets). */
+  tab?: string;
+};
 
 export async function TodoList({ items, empty }: { items: TodoItem[]; empty?: string }) {
   if (items.length === 0) return <p className="todo-empty"><CheckCircle2 size={16} /> {empty ?? (await getT()).t("Rien à faire pour le moment.")}</p>;

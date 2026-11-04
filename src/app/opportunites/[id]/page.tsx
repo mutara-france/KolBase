@@ -56,7 +56,7 @@ export default async function Page({ params }: { params: Promise<{ id: string }>
         <p className="muted"><Link href="/opportunites">{t("Appels à candidatures")}</Link></p>
         <PageHero
           eyebrow={`${t("Appel à candidatures")} · ${call.organization.name}`}
-          status={<span className={`pill ${closed ? "done" : "ok"}`}>{closed ? t("Clôturé") : t("Ouvert")}</span>}
+          status={<span className={`pill ${full ? "bad" : closed ? "done" : "ok"}`}>{full ? t("Complet") : closed ? t("Clôturé") : t("Ouvert")}</span>}
           title={call.title}
           lead={call.description}
           facts={[
@@ -83,7 +83,7 @@ export default async function Page({ params }: { params: Promise<{ id: string }>
               {call.organization.about && <p className="text-sm">{call.organization.about}</p>}
               {orgIsPublic(call.organization) && <Link className="link" href={`/structures/${call.organizationId}`}>{t("Voir la page de l'organisation")}</Link>}
             </section>
-            <p className="hint">{t("Si votre candidature est retenue, l'organisation vous propose des honoraires ; votre accord ouvre un dossier de collaboration avec une convention.")}</p>
+            <p className="hint">{t("Si votre candidature est retenue, un dossier de collaboration s'ouvre et l'organisation vous propose des honoraires ; il avance après votre accord, jusqu'à la convention.")}</p>
           </div>
           <aside className="page-aside">
             <section className="card next-step">

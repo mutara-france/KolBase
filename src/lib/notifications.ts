@@ -510,13 +510,13 @@ export function notifyRfqMessage(rfqId: string, supplierId: string, fromSupplier
 
 // ─── E-mails de service (toujours envoyés) ─────────────────────────────────
 
-/** Invitation à rejoindre une organisation, quand l'adresse est connue. */
-export function notifyInvitation(email: string, orgName: string, inviterName: string, link: string) {
+/** Invitation à rejoindre une organisation, quand l'adresse est connue : le rôle proposé est annoncé. */
+export function notifyInvitation(email: string, orgName: string, inviterName: string, link: string, role: string) {
   later(async () => {
     await sendMail({
       to: email,
       subject: `${inviterName} vous invite à rejoindre ${orgName} sur KolBase`,
-      text: `Bonjour,\n\n${inviterName} vous invite à rejoindre l'espace ${de(orgName)} sur KolBase. Le lien est valable 14 jours et ne sert qu'une fois.`,
+      text: `Bonjour,\n\n${inviterName} vous invite à rejoindre l'espace ${de(orgName)} sur KolBase, avec le rôle « ${role} ».\n\nL'invitation est réservée à cette adresse e-mail : créez votre compte ou connectez-vous avec elle. Le lien est valable 14 jours et ne sert qu'une fois.`,
       cta: { label: "Rejoindre l'organisation", href: link },
     });
   });

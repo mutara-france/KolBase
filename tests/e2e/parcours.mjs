@@ -143,7 +143,7 @@ const linkIn = (mail) => mail?.text.match(/https?:\/\/\S+/g)?.find((u) => !u.end
   const { ctx, page } = await session();
   await login(page, "karim.benali@demo.kolbase.local");
   await page.goto(`${BASE}/organisations/demo-org-mediane/dossiers`);
-  check("Prestataire : toujours redirigé hors des dossiers", page.url().endsWith("/organisations/demo-org-mediane"), page.url());
+  check("Prestataire : toujours redirigé hors des dossiers", page.url().endsWith("/organisations/demo-org-mediane?acces=refuse"), page.url());
   await ctx.close();
 }
 
@@ -483,7 +483,7 @@ async function submitNewOrg(page, siren) {
   check("Nouvelle organisation : créée, en attente de validation", /\/organisations\/[^/]+$/.test(page.url()) && (await text(page)).includes("en attente de validation"), page.url());
   const orgUrl = page.url();
   await page.goto(`${BASE}/annuaire`);
-  check("Organisation non validée : pas d'annuaire", page.url().endsWith("/experts"), page.url());
+  check("Organisation non validée : pas d'annuaire", page.url().endsWith("/experts?acces=annuaire"), page.url());
   await page.goto(`${BASE}/experts/demo-p-martin`);
   check("Organisation non validée : tarif des experts masqué", !(await text(page)).includes("Tarif journalier indicatif"));
   const notAdmin = await page.goto(`${BASE}/admin`);

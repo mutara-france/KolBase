@@ -4,6 +4,7 @@ import { SiteHeader } from "@/components/SiteHeader";
 import { db } from "@/lib/db";
 import { requireMembership } from "@/lib/orgs";
 import { COMPLIANCE_ROLES } from "@/lib/events";
+import { signatureEnabled } from "@/lib/yousign";
 
 export const metadata = { title: "Intégrations — KolBase" };
 
@@ -34,11 +35,18 @@ export default async function Page({ params }: { params: Promise<{ id: string }>
       scope: "Registre des conventions et hospitalités",
       action: isCompliance ? { href: `/organisations/${id}/conformite?onglet=transparence`, label: "Ouvrir l'espace conformité" } : undefined,
     },
-    {
-      name: "Signature électronique", icon: FileSignature, status: "prevu",
-      detail: "Pas encore disponible. À terme : envoi des conventions en signature (Yousign, DocuSign…) et retour automatique du statut « signé » dans le dossier. En attendant, la convention se télécharge en PDF depuis le dossier.",
-      scope: "Conventions de collaboration et d'hospitalité",
-    },
+    // Signature électronique : active dès que le service (Yousign) est configuré sur la plateforme.
+    signatureEnabled()
+      ? {
+          name: "Signature électronique", icon: FileSignature, status: "actif",
+          detail: "Les conventions partent en signature électronique (Yousign) depuis le dossier, quand il est « En signature » : l'expert et votre signataire signent en ligne, le statut « signé » revient automatiquement dans le dossier avec le PDF signé.",
+          scope: "Conventions de collaboration",
+        }
+      : {
+          name: "Signature électronique", icon: FileSignature, status: "prevu",
+          detail: "Pas encore disponible. À terme : envoi des conventions en signature (Yousign) et retour automatique du statut « signé » dans le dossier. En attendant, la convention se télécharge en PDF depuis le dossier et le PDF signé s'y dépose.",
+          scope: "Conventions de collaboration",
+        },
     {
       name: "CRM (Veeva, Salesforce…)", icon: Link2, status: "prevu",
       detail: "Pas encore disponible. À terme : synchronisation des experts et des interactions avec votre CRM. En attendant, les registres et listes d'inscrits s'exportent en CSV.",

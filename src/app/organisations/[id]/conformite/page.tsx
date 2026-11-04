@@ -13,6 +13,7 @@ import { country, practicesInFrance } from "@/lib/countries";
 import { registerRows } from "@/lib/compliance-data";
 import { markProjectPublished, markSemesterPublished } from "@/lib/compliance-actions";
 import { detectConflicts } from "@/lib/conflicts";
+import { pointedPastEvents } from "@/lib/checkin";
 import { declarationRows, parseSemester, recentSemesters, semesterKey, semesterLabel } from "@/lib/transparence";
 
 export const metadata = { title: "Conformité — KolBase" };
@@ -62,7 +63,7 @@ export default async function Page({ params, searchParams }: { params: Promise<{
     include: { user: { select: { firstName: true, lastName: true, practitioner: { select: { country: true } } } }, event: { select: { id: true, title: true, startsAt: true } }, benefits: { include: { benefit: { select: { catalogId: true } } } } },
     orderBy: { event: { startsAt: "asc" } },
   });
-  const pointedEvents = new Set((await db.registration.groupBy({ by: ["eventId"], where: { event: { organizationId: id, startsAt: { lt: now } }, checkedInAt: { not: null } } })).map((g) => g.eventId));
+  const pointedEvents = await pointedPastEvents(hospRegs.map((r) => r.event.id), now);
   const hospAuthorizations = hospRegs
     .filter((r) => practicesInFrance(r.user.practitioner?.country ?? "FR") && !(pointedEvents.has(r.event.id) && !r.checkedInAt))
     .map((r) => ({ r, regime: hospitalityRegime(s, r.benefits.map((b) => ({ catalogId: b.benefit.catalogId, valueCents: b.valueCents }))) }))

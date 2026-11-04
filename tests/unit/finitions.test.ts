@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { eventIcsEntry, toIcs } from "@/lib/ics";
 import { eventEnd, eventEnded } from "@/lib/events";
+import { orgSectionTabs, tabCount } from "@/lib/nav";
 
 const t = (fr: string, vars?: Record<string, string>) => (vars ? fr.replace(/\{(\w+)\}/g, (_, k: string) => vars[k] ?? "") : fr);
 const base = { id: "ev1", title: "Webinaire", startsAt: new Date("2026-12-01T19:00:00Z"), durationMinutes: 60, venue: null, city: null };
@@ -33,5 +34,30 @@ describe("événement commencé, puis terminé", () => {
   });
   it("durée inconnue : deux heures", () => {
     expect(eventEnd({ startsAt: e.startsAt, durationMinutes: null }).toISOString()).toBe("2026-12-01T20:00:00.000Z");
+  });
+});
+
+describe("pastilles des onglets de la conformité", () => {
+  const tabs = orgSectionTabs("conformite", "o", ["CONFORMITE", "ADMIN"], "INDUSTRIEL");
+  const todos = [
+    { href: "/organisations/o/conformite?onglet=transparence" },
+    { href: "/organisations/o/conformite?onglet=transparence" },
+    { href: "/organisations/o/dossiers/p1", tab: "a-valider" },
+    { href: "/organisations/o/hospitalites" },
+    { href: "/organisations/o/relecture" },
+  ];
+  const count = (key: string) => tabCount(tabs.find((t) => t.key === key)!, tabs, todos);
+  it("une action compte pour son onglet seulement, même page ou pas", () => {
+    expect(count("a-valider")).toBe(1);
+    expect(count("transparence")).toBe(2);
+    expect(count("autorisations")).toBe(0);
+    expect(count("registre")).toBe(0);
+    expect(count("hospitalites")).toBe(1);
+    expect(count("relecture")).toBe(1);
+  });
+  it("lien vers une ancre de la page (demande de devis)", () => {
+    const ev = orgSectionTabs("evenements", "o", ["ADMIN"], "INDUSTRIEL");
+    expect(tabCount(ev.find((t) => t.key === "prestataires")!, ev, [{ href: "/organisations/o/prestataires#rfq-1" }])).toBe(1);
+    expect(tabCount(ev.find((t) => t.key === "evenements")!, ev, [{ href: "/organisations/o/evenements/e1" }])).toBe(1);
   });
 });

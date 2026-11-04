@@ -164,4 +164,9 @@ export const COMMON: Record<string, string> = {
   "Candidature envoyée. Un e-mail de confirmation vous est envoyé.": "Application sent. A confirmation email is on its way.",
   "En cours": "Ongoing",
   "Cet événement a commencé : les inscriptions sont closes.": "This event has started: registration is closed.",
+  "{org} n'est pas encore validée par KolBase : l'annuaire de recherche (coordonnées, sollicitations) s'ouvrira dès sa validation. En attendant, voici l'annuaire public des experts.": "{org} has not yet been verified by KolBase: the search directory (contact details, collaboration requests) will open once it is verified. In the meantime, here is the public directory of experts.",
+  "{org} est suspendue : l'annuaire de recherche est fermé jusqu'à sa réactivation. Voici l'annuaire public des experts.": "{org} is suspended: the search directory is closed until it is reactivated. Here is the public directory of experts.",
+  "L'annuaire de recherche est réservé aux rôles Projets et Administrateur de votre organisation. Voici l'annuaire public des experts.": "The search directory is reserved for the Projects and Administrator roles of your organisation. Here is the public directory of experts.",
+  "L'annuaire de recherche est réservé aux organisations validées par KolBase. Voici l'annuaire public des experts.": "The search directory is reserved for organisations verified by KolBase. Here is the public directory of experts.",
+  "Si votre candidature est retenue, un dossier de collaboration s'ouvre et l'organisation vous propose des honoraires ; il avance après votre accord, jusqu'à la convention.": "If your application is accepted, a collaboration file is opened and the organisation proposes fees; it moves forward once you agree, through to the agreement.",
 };

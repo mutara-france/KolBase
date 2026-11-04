@@ -5,7 +5,7 @@ import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import { db } from "@/lib/db";
 import { audit, requireUser } from "@/lib/auth";
-import { invitableRoles, isVerifiedOrg, requireMembership, SIREN_REQUIRED, sirenFields } from "@/lib/orgs";
+import { invitableRoles, isVerifiedOrg, requireMembership, roleLabel, SIREN_REQUIRED, sirenFields } from "@/lib/orgs";
 import { blockedFor, hit } from "@/lib/rate-limit";
 import { mailEnabled } from "@/lib/mail";
 import { LOGO_MAX_BYTES, sniffLogo } from "@/lib/logos";
@@ -131,7 +131,7 @@ export async function createInvitation(_: InviteState, form: FormData): Promise<
   revalidatePath(`/organisations/${orgId}`);
   revalidatePath(`/organisations/${orgId}/membres`);
   const link = `${process.env.APP_URL ?? ""}/invitation/${token}`;
-  if (email) notifyInvitation(email, org.name, `${user.firstName} ${user.lastName}`, link);
+  if (email) notifyInvitation(email, org.name, `${user.firstName} ${user.lastName}`, link, roleLabel(role, org.kind));
   return {
     ok: `${email ? `Invitation envoyée à ${email}. ` : ""}Lien valable ${INVITE_DAYS} jours, à usage unique. Copiez-le maintenant : il ne sera plus affiché.`,
     link,

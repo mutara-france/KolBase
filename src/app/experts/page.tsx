@@ -5,6 +5,8 @@ import { KolCard } from "@/components/PublicCards";
 import { publicExperts, publicSpecialties } from "@/lib/public-data";
 import { matches, normalize } from "@/lib/search";
 import { getT } from "@/lib/i18n/server";
+import { getCurrentUser } from "@/lib/auth";
+import { directoryRefusal } from "@/lib/orgs";
 
 export async function generateMetadata() {
   const { t } = await getT();
@@ -12,12 +14,14 @@ export async function generateMetadata() {
 }
 export const dynamic = "force-dynamic";
 
-type Params = { q?: string; type?: string; ville?: string; specialite?: string; page?: string };
+type Params = { q?: string; type?: string; ville?: string; specialite?: string; page?: string; acces?: string };
 const PER_PAGE = 24;
 
 export default async function Page({ searchParams }: { searchParams: Promise<Params> }) {
-  const { q = "", type = "", ville = "", specialite = "", page: pageParam = "1" } = await searchParams;
-  const [all, specialties, { t, locale }] = await Promise.all([publicExperts(), publicSpecialties(), getT()]);
+  const { q = "", type = "", ville = "", specialite = "", page: pageParam = "1", acces } = await searchParams;
+  const [all, specialties, { t, locale }, user] = await Promise.all([publicExperts(), publicSpecialties(), getT(), getCurrentUser()]);
+  // Arrivé ici depuis l'annuaire de recherche (« Praticiens ») sans y avoir accès : la raison est dite.
+  const refusal = acces === "annuaire" && user ? directoryRefusal(user) : null;
   // En anglais, la recherche porte aussi sur les libellés traduits (spécialité, profession, pays, types).
   const translated = (k: (typeof all)[number]) => (locale === "fr" ? [] : [k.specialty, k.profession, k.country, ...k.types].map((x) => (x ? t(x) : x)));
   const experts = all.filter((k) =>
@@ -53,6 +57,17 @@ export default async function Page({ searchParams }: { searchParams: Promise<Par
           </div>
         </section>
         <section className="public-section">
+          {refusal && (
+            <p className="notice warn" role="status">
+              {refusal.reason === "pending"
+                ? t("{org} n'est pas encore validée par KolBase : l'annuaire de recherche (coordonnées, sollicitations) s'ouvrira dès sa validation. En attendant, voici l'annuaire public des experts.", { org: refusal.org })
+                : refusal.reason === "suspended"
+                  ? t("{org} est suspendue : l'annuaire de recherche est fermé jusqu'à sa réactivation. Voici l'annuaire public des experts.", { org: refusal.org })
+                  : refusal.reason === "role"
+                    ? t("L'annuaire de recherche est réservé aux rôles Projets et Administrateur de votre organisation. Voici l'annuaire public des experts.")
+                    : t("L'annuaire de recherche est réservé aux organisations validées par KolBase. Voici l'annuaire public des experts.")}
+            </p>
+          )}
           <form className="filter-bar" action="/experts" method="get" role="search">
             <label htmlFor="experts-q" className="sr-only">{t("Rechercher un praticien")}</label>
             <input id="experts-q" name="q" type="search" defaultValue={q} placeholder={t("Nom, spécialité, ville, type d'intervention")} />

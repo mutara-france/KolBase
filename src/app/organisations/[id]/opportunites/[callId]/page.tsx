@@ -34,6 +34,8 @@ export default async function Page({ params }: { params: Promise<{ id: string; c
 
   const pendingCount = call.applications.filter((a) => a.status === "pending").length;
   const retained = call.applications.filter((a) => a.status === "retained").length;
+  // Places toutes pourvues : l'appel ne reçoit plus de candidature, même s'il n'est pas clôturé.
+  const full = call.slots != null && retained >= call.slots;
 
   return (
     <>
@@ -42,7 +44,7 @@ export default async function Page({ params }: { params: Promise<{ id: string; c
         <p className="muted"><Link href={`/organisations/${id}`}>{org.name}</Link> / <Link href={`/organisations/${id}/opportunites`}>Appels à candidatures</Link></p>
         <PageHero
           eyebrow={`Appel à candidatures · ${type?.label ?? call.typeId}${call.specialty ? ` · ${call.specialty}` : ""}`}
-          status={<span className={`pill ${call.status === "open" ? "ok" : "done"}`}>{call.status === "open" ? "Ouvert" : "Clôturé"}</span>}
+          status={<span className={`pill ${call.status !== "open" ? "done" : full ? "bad" : "ok"}`}>{call.status !== "open" ? "Clôturé" : full ? "Complet" : "Ouvert"}</span>}
           title={call.title}
           lead={call.description}
           facts={[
@@ -91,7 +93,7 @@ export default async function Page({ params }: { params: Promise<{ id: string; c
           <aside className="page-aside">
             <section className="card next-step">
               <span className="eyebrow-sm">Pilotage</span>
-              <p className="next-hint">{call.status === "open" ? "Les experts référencés voient l'appel dans « Appels à candidatures »" + (call.event ? " et sur la page de l'événement" : "") + ". Retenir une candidature propose des honoraires à l'expert ; son accord ouvre un dossier." : "Appel clôturé : il n'est plus visible des experts."}</p>
+              <p className="next-hint">{call.status !== "open" ? "Appel clôturé : il n'est plus visible des experts." : full ? "Complet : toutes les places sont pourvues, l'appel ne reçoit plus de candidature." : "Les experts référencés voient l'appel dans « Appels à candidatures »" + (call.event ? " et sur la page de l'événement" : "") + ". Retenir une candidature ouvre un dossier et propose des honoraires à l'expert ; le dossier avance après son accord."}</p>
               <form action={setOpenCallStatus} className="transitions-stack">
                 <input type="hidden" name="orgId" value={id} />
                 <input type="hidden" name="callId" value={callId} />

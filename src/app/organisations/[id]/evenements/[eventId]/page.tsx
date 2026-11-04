@@ -36,10 +36,12 @@ const HOSPITALITY_CATS = ["restauration", "hebergement"];
 export default async function Page({ params, searchParams }: { params: Promise<{ id: string; eventId: string }>; searchParams: Promise<{ publie?: string }> }) {
   const { id, eventId } = await params;
   const { publie } = await searchParams;
-  const { org, roles, user } = await requireMembership(id, EVENT_MANAGER_ROLES);
+  const { org, roles, user } = await requireMembership(id, [...EVENT_MANAGER_ROLES, "CONFORMITE"]);
   const isOrganizer = roles.some((r) => EVENT_ORGANIZER_ROLES.includes(r));
+  // Rôle Conformité seul : fiche en lecture (hospitalités, inscrits, bilan), sans aucune action.
+  const readOnly = !roles.some((r) => EVENT_MANAGER_ROLES.includes(r));
   const event = await db.event.findFirst({
-    where: { id: eventId, organizationId: id, ...eventScope(user, roles) },
+    where: { id: eventId, organizationId: id, ...(readOnly ? {} : eventScope(user, roles)) },
     include: {
       agency: { select: { name: true } },
       project: {
@@ -177,7 +179,7 @@ export default async function Page({ params, searchParams }: { params: Promise<{
   const frozenBenefits = event.benefits.some((b) => b._count.accepted > 0);
   const canDelete = isOrganizer && (await deletableDraft(event));
   const missingLink = needsOnlineLink(event, now);
-  const publishBlocked = !event.publishedAt && !event.internal ? await engagementBlock(id, "evenement") : null;
+  const publishBlocked = !readOnly && !event.publishedAt && !event.internal ? await engagementBlock(id, "evenement") : null;
   const duration = event.durationMinutes ? (event.durationMinutes >= 60 ? `${Math.floor(event.durationMinutes / 60)} h${event.durationMinutes % 60 ? ` ${event.durationMinutes % 60}` : ""}` : `${event.durationMinutes} min`) : null;
 
   const Flag = ({ flag, label, ghost, disabled }: { flag: string; label: string; ghost?: boolean; disabled?: boolean }) => (
@@ -193,7 +195,7 @@ export default async function Page({ params, searchParams }: { params: Promise<{
     <>
       <SiteHeader />
       <main className="stack">
-        <p className="muted"><Link href={`/organisations/${id}`}>{org.name}</Link> / <Link href={`/organisations/${id}/evenements`}>Événements</Link></p>
+        <p className="muted"><Link href={`/organisations/${id}`}>{org.name}</Link> / {readOnly ? <Link href={`/organisations/${id}/hospitalites`}>Hospitalités</Link> : <Link href={`/organisations/${id}/evenements`}>Événements</Link>}</p>
 
         <header className="page-hero">
           <div className="hero-top">
@@ -244,11 +246,12 @@ export default async function Page({ params, searchParams }: { params: Promise<{
 
         {publishBlocked && <BillingNotice orgId={id} motive="evenement" objet={eventId} />}
 
-        {!isOrganizer && <p className="notice ok">Événement confié à {event.agency?.name ?? "votre agence"} par {org.name}.</p>}
+        {readOnly && <p className="notice">Lecture seule (rôle Conformité) : les modifications de l&apos;événement relèvent de l&apos;équipe Projets ou d&apos;un administrateur.</p>}
+        {!isOrganizer && !readOnly && <p className="notice ok">Événement confié à {event.agency?.name ?? "votre agence"} par {org.name}.</p>}
 
         {missingLink && (
           <p className="notice error" role="alert">
-            Lien de connexion manquant : l&apos;événement commence le {formatDate(event.startsAt)} à {formatTime(event.startsAt)} et les inscrits ne peuvent pas se connecter. <a href="#modifier">Ajouter le lien de connexion</a>
+            Lien de connexion manquant : l&apos;événement commence le {formatDate(event.startsAt)} à {formatTime(event.startsAt)} et les inscrits ne peuvent pas se connecter. {!readOnly && <a href="#modifier">Ajouter le lien de connexion</a>}
           </p>
         )}
 
@@ -259,7 +262,7 @@ export default async function Page({ params, searchParams }: { params: Promise<{
                 <h2 id="bilan"><ClipboardCheck size={18} /> Bilan de l&apos;événement</h2>
                 <p className="muted">{pointed ? "D'après le pointage à l'accueil et les devis retenus." : "Aucun participant pointé : la présence n'est pas connue, les chiffres portent sur les inscrits."}</p>
               </div>
-              <a className="btn ghost small" href={`/organisations/${id}/evenements/${eventId}/emargement`}><FileDown size={14} /> Feuille d&apos;émargement</a>
+              {!readOnly && <a className="btn ghost small" href={`/organisations/${id}/evenements/${eventId}/emargement`}><FileDown size={14} /> Feuille d&apos;émargement</a>}
             </div>
             <dl className="hero-facts">
               <div><dt><Users size={13} /> Présents</dt><dd>{pointed ? `${present.length} / ${event.registrations.length}` : "—"}<small>{pointed && event.registrations.length ? `${Math.round((present.length / event.registrations.length) * 100)} % des inscrits` : `${event.registrations.length} inscrit${event.registrations.length > 1 ? "s" : ""}`}</small></dd></div>
@@ -273,7 +276,7 @@ export default async function Page({ params, searchParams }: { params: Promise<{
                 {isCompliance && <> <Link href={`/organisations/${id}/hospitalites`}>Hospitalités à déclarer</Link></>}
               </p>
             )}
-            <p className="hint"><Link href={`/organisations/${id}/evenements/${eventId}/pointage`}>Corriger le pointage</Link> si une arrivée n&apos;a pas été enregistrée.</p>
+            {!readOnly && <p className="hint"><Link href={`/organisations/${id}/evenements/${eventId}/pointage`}>Corriger le pointage</Link> si une arrivée n&apos;a pas été enregistrée.</p>}
             <div className="followup-row">
               <div>
                 <strong>Attestations et questionnaire</strong>
@@ -286,8 +289,8 @@ export default async function Page({ params, searchParams }: { params: Promise<{
                 </p>
               </div>
               <div className="actions">
-                {pointed && <a className="btn ghost small" href={`/organisations/${id}/evenements/${eventId}/attestations`}><FileDown size={14} /> Attestations (PDF)</a>}
-                {ended && followed.length < (pointed ? present.length : event.registrations.length) && <SendNowButton kind="followups" orgId={id} eventId={eventId} label={followed.length ? "Envoyer aux autres participants" : "Envoyer maintenant"} />}
+                {pointed && !readOnly && <a className="btn ghost small" href={`/organisations/${id}/evenements/${eventId}/attestations`}><FileDown size={14} /> Attestations (PDF)</a>}
+                {!readOnly && ended && followed.length < (pointed ? present.length : event.registrations.length) && <SendNowButton kind="followups" orgId={id} eventId={eventId} label={followed.length ? "Envoyer aux autres participants" : "Envoyer maintenant"} />}
               </div>
             </div>
           </section>
@@ -318,7 +321,7 @@ export default async function Page({ params, searchParams }: { params: Promise<{
 
         <div className="page-grid">
           <div className="page-main">
-            <details className="card edit-block" id="modifier" open={missingLink}>
+            {!readOnly && <details className="card edit-block" id="modifier" open={missingLink}>
               <summary><h2>Modifier l&apos;événement</h2></summary>
               <EditEventForm
                 orgId={id}
@@ -336,7 +339,7 @@ export default async function Page({ params, searchParams }: { params: Promise<{
                   onlineUrl: event.onlineUrl ?? "", benefits: event.benefits.map((b) => ({ catalogId: b.catalogId, valueCents: b.valueCents })),
                 }}
               />
-            </details>
+            </details>}
 
             <section className="card logistics">
               <div className="card-head">
@@ -344,7 +347,7 @@ export default async function Page({ params, searchParams }: { params: Promise<{
                   <h2>Logistique et prestataires</h2>
                   <p className="muted">Consultez les prestataires référencés, comparez leurs devis détaillés et retenez la meilleure offre : le coût par participant est rapproché des seuils d&apos;hospitalité.</p>
                 </div>
-                <Link className="btn" href={newRfq()}>Demander des devis</Link>
+                {!readOnly && <Link className="btn" href={newRfq()}>Demander des devis</Link>}
               </div>
               {rfqs.length > 0 && (
                 <ul className="logistics-list">
@@ -368,7 +371,7 @@ export default async function Page({ params, searchParams }: { params: Promise<{
                             {pp && <div className={`text-xs ${pp.over ? "warn-text" : "muted"}`}>≈ {pp.each.toLocaleString("fr-FR", { maximumFractionDigits: 2 })} € TTC par {basis.per}{pp.limit ? (pp.over ? ` · au-dessus du seuil d'un ${pp.limit.what} (${pp.limit.max} € TTC)` : ` · sous le seuil d'un ${pp.limit.what}`) : ""}</div>}
                           </div>
                           <span className={`pill ${st.tone}`}>{st.label}</span>
-                          <Link className="btn ghost small" href={`/organisations/${id}/prestataires?onglet=demandes#rfq-${r.id}`}>{kept ? "Voir" : "Comparer"}</Link>
+                          {!readOnly && <Link className="btn ghost small" href={`/organisations/${id}/prestataires?onglet=demandes#rfq-${r.id}`}>{kept ? "Voir" : "Comparer"}</Link>}
                         </div>
                         {isOrganizer && kept && pp && HOSPITALITY_CATS.includes(r.category) && event.benefits.length > 0 && (
                           <form action={applyQuoteToBenefit} className="apply-benefit">
@@ -422,7 +425,7 @@ export default async function Page({ params, searchParams }: { params: Promise<{
                                 {pending ? ` · ${pending} candidature${pending > 1 ? "s" : ""} à examiner` : ""}
                               </div>
                             </div>
-                            <span className={`pill ${c.status === "open" ? "ok" : "done"}`}>{c.status === "open" ? "Ouvert" : "Clôturé"}</span>
+                            <span className={`pill ${c.status !== "open" ? "done" : c.slots != null && kept.length >= c.slots ? "bad" : "ok"}`}>{c.status !== "open" ? "Clôturé" : c.slots != null && kept.length >= c.slots ? "Complet" : "Ouvert"}</span>
                             <Link className="btn ghost small" href={`/organisations/${id}/opportunites/${c.id}`}>Voir</Link>
                           </div>
                         </li>
@@ -513,7 +516,7 @@ export default async function Page({ params, searchParams }: { params: Promise<{
                 <h2>Programme</h2>
                 {!event.internal && event.publishedAt && event.program && <Link className="link" href={`/evenements/${event.id}`}>voir sur la page publique</Link>}
               </div>
-              <ProgramForm orgId={id} eventId={eventId} program={event.program ?? ""} ai={aiEnabled()} />
+              {readOnly ? (event.program ? <p className="pre-line">{event.program}</p> : <p className="muted">Aucun programme.</p>) : <ProgramForm orgId={id} eventId={eventId} program={event.program ?? ""} ai={aiEnabled()} />}
             </section>
 
             <section className="card">
@@ -558,11 +561,11 @@ export default async function Page({ params, searchParams }: { params: Promise<{
                   <p className="next-hint">
                     {event.publishedAt ? <>Publié dans <Link href={`/evenements/${event.id}`}>l&apos;agenda</Link>. Inscriptions {event.registrationOpen ? "ouvertes" : "fermées"}.</> : "Brouillon : l'événement n'est pas encore visible des praticiens."}
                   </p>
-                  <div className="transitions-stack">
+                  {!readOnly && <div className="transitions-stack">
                     {event.publishedAt ? <Flag flag="unpublish" label="Retirer de l'agenda" ghost /> : org.verification === "VERIFIED" ? <Flag flag="publish" label="Publier dans l'agenda" disabled={!!publishBlocked} /> : <span className="hint">Publication possible une fois l&apos;organisation validée par KolBase.</span>}
                     {event.registrationOpen ? <Flag flag="close" label="Fermer les inscriptions" ghost /> : <Flag flag="open" label="Rouvrir les inscriptions" ghost />}
                     {isOrganizer && !event.publishedAt && <Flag flag="internal" label="En faire une réunion interne" ghost />}
-                  </div>
+                  </div>}
                 </>
               )}
               {canDelete && (
@@ -580,17 +583,17 @@ export default async function Page({ params, searchParams }: { params: Promise<{
                 <h2 className="section-title"><QrCode size={15} /> {isPast ? "Événement en cours" : "Accueil le jour J"}</h2>
                 {isPast && <p className="notice">{present.length} présent{present.length > 1 ? "s" : ""} sur {event.registrations.length} inscrit{event.registrations.length > 1 ? "s" : ""}. Les retardataires peuvent encore être pointés ; les absents, le bilan et les attestations viennent après la fin, le {formatDate(eventEnd(event))} à {formatTime(eventEnd(event))}.</p>}
                 <p className="muted text-sm">Chaque inscrit a un badge (QR code) dans « Mes inscriptions ». Scannez-le avec l&apos;appareil photo du téléphone, ou cherchez son nom dans la liste.</p>
-                <div className="transitions-stack">
+                {!readOnly && <div className="transitions-stack">
                   <Link className={canPoint ? "btn" : "btn ghost"} href={`/organisations/${id}/evenements/${eventId}/pointage`}>{canPoint ? "Ouvrir le pointage" : "Préparer le pointage"}</Link>
                   <a className="btn ghost" href={`/organisations/${id}/evenements/${eventId}/emargement`}>Feuille d&apos;émargement (PDF)</a>
-                </div>
+                </div>}
                 <p className="muted text-sm reminder-status">
                   <Bell size={13} />{" "}
                   {reminded.length
                     ? `Rappel envoyé le ${formatDate(lastSent(reminded, "reminderSentAt")!)} à ${formatTime(lastSent(reminded, "reminderSentAt")!)} (${reminded.length} inscrit${reminded.length > 1 ? "s" : ""}).`
                     : "Rappel envoyé automatiquement la veille aux inscrits : date, lieu, programme et badge."}
                 </p>
-                {!isPast && event.registrations.length > reminded.length && <SendNowButton kind="reminders" orgId={id} eventId={eventId} label={reminded.length ? "Prévenir les nouveaux inscrits" : "Envoyer le rappel maintenant"} />}
+                {!readOnly && !isPast && event.registrations.length > reminded.length && <SendNowButton kind="reminders" orgId={id} eventId={eventId} label={reminded.length ? "Prévenir les nouveaux inscrits" : "Envoyer le rappel maintenant"} />}
               </section>
             )}
 
@@ -647,7 +650,7 @@ export default async function Page({ params, searchParams }: { params: Promise<{
                           <td>{r.benefits.map((b) => b.benefit.label).join(", ") || "Aucune"}</td>
                           <td>{formatEUR(r.benefits.reduce((s, b) => s + b.valueCents, 0))} TTC</td>
                           <td>{formatDate(r.createdAt)}</td>
-                          {canPoint && <td>{r.checkedInAt ? <><span className="pill ok">{formatTime(r.checkedInAt)}</span>{ended && <> <a className="link" href={`/organisations/${id}/evenements/${eventId}/attestations?inscription=${r.id}`}>attestation</a></>}</> : ended && pointed ? <span className="pill wait">Absent</span> : "—"}</td>}
+                          {canPoint && <td>{r.checkedInAt ? <><span className="pill ok">{formatTime(r.checkedInAt)}</span>{ended && !readOnly && <> <a className="link" href={`/organisations/${id}/evenements/${eventId}/attestations?inscription=${r.id}`}>attestation</a></>}</> : ended && pointed ? <span className="pill wait">Absent</span> : "—"}</td>}
                         </tr>
                       ))}
                     </tbody>

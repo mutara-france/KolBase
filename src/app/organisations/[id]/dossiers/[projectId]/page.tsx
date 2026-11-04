@@ -55,6 +55,27 @@ const ACTION_LABEL: Record<string, string> = {
   "project.edit": "Objet du dossier modifié",
   "project.terms": "Nouvelle proposition envoyée à un expert",
   "project.add_expert": "Expert ajouté au dossier",
+  "project.accept_proposal": "Proposition de l'expert acceptée",
+  "project.decline_proposal": "Proposition de l'expert déclinée",
+  "project.ordre": "Autorisation demandée à l'Ordre",
+  "project.declaration": "Déclaration simple : convention à signer",
+  "project.hors_france": "Hors France : obligations du pays vérifiées, convention à signer",
+  "project.ordre_ok": "Autorisation de l'Ordre obtenue",
+  "project.ordre_ko": "Autorisation de l'Ordre refusée",
+  "project.signed": "Convention signée",
+  "project.done": "Prestation réalisée",
+  "project.publish": "Publié sur Transparence Santé",
+  "project.unpublish": "Publication sur Transparence Santé annulée",
+  "ai.review": "Relecture assistée demandée",
+  "expert.paid": "Honoraires marqués payés",
+  "expert.unpaid": "Paiement des honoraires annulé",
+  "document.upload": "Document ajouté",
+  "document.signed_convention": "Convention signée déposée",
+  "document.delete": "Document supprimé",
+  "signature.ongoing": "Signature électronique en cours",
+  "signature.draft": "Envoi en signature électronique inachevé",
+  "signature.closed": "Demande de signature électronique close",
+  "transparency.report": "Erreur signalée par l'expert sur sa déclaration Transparence Santé",
 };
 
 /** Ce qu'il reste à faire, selon l'étape : affiché en tête de la colonne de droite. */
@@ -101,7 +122,7 @@ export default async function Page({ params, searchParams }: { params: Promise<{
   });
   if (!project) notFound();
   const linkIds = project.experts.map((e) => e.id);
-  const [history, owner] = await Promise.all([
+  const [history, owner, fromCall] = await Promise.all([
     db.auditLog.findMany({
       where: { OR: [{ entityType: "Project", entityId: projectId }, { entityType: "ProjectExpert", entityId: { in: linkIds } }] },
       include: { actor: { select: { firstName: true, lastName: true } } },
@@ -109,7 +130,13 @@ export default async function Page({ params, searchParams }: { params: Promise<{
       take: 50,
     }),
     project.createdById ? db.user.findUnique({ where: { id: project.createdById }, select: { firstName: true, lastName: true } }) : null,
+    // Dossier né d'une candidature à un appel rattaché à un événement : l'intervention a lieu à cet événement.
+    db.application.findFirst({
+      where: { projectId, openCall: { organizationId: id } },
+      select: { openCall: { select: { id: true, title: true, event: { select: { id: true, title: true, startsAt: true, city: true } } } } },
+    }),
   ]);
+  const callEvent = fromCall?.openCall.event ?? null;
 
   const type = collabType(project.typeId);
   const isProject = roles.some((r) => PROJECT_ROLES.includes(r));
@@ -161,14 +188,20 @@ export default async function Page({ params, searchParams }: { params: Promise<{
   const { engaged, proposed: waiting, engagedCents: total, proposedCents: proposed } = expertSplit(project.experts, !closed);
   const supplierCents = project.events.flatMap((ev) => ev.rfqs.flatMap((r) => r.quotes)).filter((q) => q.status === "retained").reduce((s, q) => s + q.amountCents, 0);
   const spent = total + project.expenses.reduce((s, e) => s + e.amountCents, 0) + supplierCents;
-  const showLogistics = needsMeeting(project.typeId) || project.events.length > 0;
+  // Dossier terminé ou abandonné : plus d'événement à créer ; un dossier né d'un appel renvoie à l'événement de l'appel.
+  const finished = project.status === "TERMINE" || project.status === "DECLINE";
+  const showLogistics = project.events.length > 0 || (!finished && (needsMeeting(project.typeId) || !!callEvent));
   const budgetPct = project.budgetCents ? Math.round((spent / project.budgetCents) * 100) : null;
   const recent = history.slice(0, 8);
   const older = history.slice(8);
 
   const historyItem = (h: (typeof history)[number]) => {
-    const d = h.data as { to?: string; note?: string; title?: string; version?: number; selfValidated?: boolean } | null;
-    const label = (ACTION_LABEL[h.action] ? ACTION_LABEL[h.action] + (d?.title ? ` : ${d.title}${d.version ? ` (v${d.version})` : ""}` : "") : null) ?? (d?.to ? `→ ${STATUS_LABEL[d.to as keyof typeof STATUS_LABEL] ?? d.to}` : h.action);
+    const d = h.data as { to?: string; note?: string; title?: string; name?: string; ref?: string; version?: number; selfValidated?: boolean } | null;
+    // Jamais de code technique : libellé connu, sinon l'étape atteinte, sinon une mention générique.
+    const what = d?.title ?? d?.name;
+    const label = ACTION_LABEL[h.action]
+      ? `${ACTION_LABEL[h.action]}${what ? ` : ${what}${d?.version ? ` (v${d.version})` : ""}` : ""}${d?.ref ? ` (réf. ${d.ref})` : ""}`
+      : d?.to ? `Étape : ${STATUS_LABEL[d.to as keyof typeof STATUS_LABEL] ?? "mise à jour"}` : "Mise à jour du dossier";
     return (
       <li key={h.id}>
         <div>
@@ -464,7 +497,17 @@ export default async function Page({ params, searchParams }: { params: Promise<{
 
             {showLogistics && <section className="card stack-sm">
               <h2 className="section-title"><CalendarDays size={15} /> Événement et logistique</h2>
-              {project.events.length === 0 ? (
+              {project.events.length === 0 && callEvent ? (
+                <div className="stack-sm">
+                  <p className="muted text-sm">Dossier né de l&apos;appel à candidatures « {isProject ? <Link href={`/organisations/${id}/opportunites/${fromCall!.openCall.id}`}>{fromCall!.openCall.title}</Link> : fromCall!.openCall.title} » : l&apos;intervention a lieu à cet événement, où se gèrent la logistique et les devis.</p>
+                  <ul className="linked-events">
+                    <li>
+                      <Link href={`/organisations/${id}/evenements/${callEvent.id}`}><strong>{callEvent.title}</strong></Link>
+                      <span className="muted text-xs">{formatDateTime(callEvent.startsAt)}{callEvent.city ? ` · ${callEvent.city}` : ""}</span>
+                    </li>
+                  </ul>
+                </div>
+              ) : project.events.length === 0 ? (
                 <p className="muted text-sm">Réunion, formation ou symposium : créez l&apos;événement rattaché au dossier pour consulter les prestataires (salle, traiteur, hébergement, transport) et comparer leurs devis.</p>
               ) : (
                 <ul className="linked-events">
@@ -485,11 +528,12 @@ export default async function Page({ params, searchParams }: { params: Promise<{
                   })}
                 </ul>
               )}
-              {isProject && (
+              {isProject && !finished && (project.events[0] || !callEvent) && (
                 <Link className="btn ghost small" href={project.events[0] ? `/organisations/${id}/prestataires?onglet=nouvelle&evenement=${project.events[0].id}` : `/organisations/${id}/evenements/nouveau?dossier=${projectId}`}>
                   {project.events[0] ? "Demander des devis" : "Créer l'événement du dossier"}
                 </Link>
               )}
+              {callEvent && project.events.length === 0 && <Link className="btn ghost small" href={`/organisations/${id}/evenements/${callEvent.id}`}>Voir l&apos;événement</Link>}
             </section>}
           </aside>
         </div>

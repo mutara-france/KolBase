@@ -64,7 +64,7 @@ export function InviteForm({ orgId, roles }: { orgId: string; roles: Opt[] }) {
   return (
     <form action={action} className="card form">
       <h2>Inviter un membre</h2>
-      <p className="muted">KolBase génère un lien d&apos;invitation à transmettre vous-même à la personne.</p>
+      <p className="muted">KolBase génère un lien d&apos;invitation, valable 14 jours et à usage unique. Avec une adresse, l&apos;invitation part par e-mail et seule cette adresse peut l&apos;accepter ; sans adresse, transmettez le lien vous-même.</p>
       <Notice state={state} />
       {state?.link && (
         <div className="copy">
@@ -79,7 +79,7 @@ export function InviteForm({ orgId, roles }: { orgId: string; roles: Opt[] }) {
         <label>Rôle
           <select name="role" defaultValue={roles.find((r) => r.value !== "ADMIN")?.value}>{roles.map((r) => <option key={r.value} value={r.value}>{r.label}</option>)}</select>
         </label>
-        <label>E-mail (mémo, facultatif)<input name="email" type="email" /></label>
+        <label>E-mail de la personne invitée (l&apos;invitation lui est envoyée et réservée)<input name="email" type="email" placeholder="Facultatif" /></label>
       </div>
       <button className="btn" disabled={pending} onClick={() => setCopied(false)}>{pending ? "Génération…" : "Générer le lien"}</button>
     </form>
