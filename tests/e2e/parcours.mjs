@@ -2460,6 +2460,8 @@ async function submitNewOrg(page, siren) {
     await adm.page.waitForTimeout(1200);
     const susp = await waitMail("hugo.robert@demo.kolbase.local", "Société Lot Refus est suspendue sur KolBase");
     check("E-mail : suspension, avec le motif", !!susp && susp.text.includes("Motif : Activité sans lien avec le secteur dentaire"));
+    // État final inchangé pour la suite du parcours : organisation refusée.
+    await pgc.query(`update "Organization" set verification = 'REJECTED', listed = false where id = 'e2e-lot1-refus'`);
     await pgc.query(`update "PractitionerProfile" set rpps = '19900000001', "rppsVerified" = false, "rppsCheckedAt" = null where id = 'demo-p-simon'`);
     await adm.page.goto(`${BASE}/admin?onglet=praticiens`);
     const simon = adm.page.locator('section.card:has-text("Emma Simon")');
@@ -3008,6 +3010,7 @@ async function submitNewOrg(page, siren) {
   {
     const before = await q1(`select listed, (select count(*)::int from "OpenCall" where "organizationId" = 'demo-org-cdra' and status = 'open') calls from "Organization" where id = 'demo-org-cdra'`);
     await adm.page.goto(`${BASE}/admin`);
+    const mark = mails.length;
     const card = () => adm.page.locator('section.card:has-text("Collège Dentaire Rhône-Alpes")').first();
     await card().locator('form:has(button:has-text("Suspendre")) input[name="note"]').fill("Contrôle de conformité en cours");
     await card().locator('button:has-text("Suspendre")').click();
@@ -3865,6 +3868,14 @@ async function submitNewOrg(page, siren) {
     await ok.click();
   };
   const CLAIRE = "claire.morel@demo.kolbase.local";
+  /** E-mail reçu depuis un repère (les blocs précédents ont pu envoyer un e-mail de même sujet). */
+  const mailSince = async (from, to, subject, timeout = 8000) => {
+    for (const end = Date.now() + timeout; Date.now() < end; await new Promise((r) => setTimeout(r, 200))) {
+      const m = mails.slice(from).find((x) => x.to === to && x.subject.includes(subject));
+      if (m) return m;
+    }
+    return null;
+  };
   /** Création de compte depuis la page ouverte (formulaire déjà affiché). */
   const signUpHere = async (page, first, last, email, password = "lot5b-mot-de-passe-1") => {
     await page.fill('input[name="firstName"]', first);
@@ -3989,18 +4000,20 @@ async function submitNewOrg(page, siren) {
     await cl.page.goto(`${BASE}/organisations/demo-org-dentalys/evenements/demo-ev-passe`);
     const head = n(await cl.page.locator("header.page-hero").innerText());
     const bilan = n(await cl.page.locator("section.bilan").innerText());
-    const hHead = head.match(/Hospitalités ([\d ,]+) € TTC/)?.[1];
-    const hBilan = bilan.match(/Hospitalités ([\d ,]+) € TTC/)?.[1];
-    check("Événement passé : en-tête et bilan, mêmes hospitalités (absents exclus)", !!hHead && hHead === hBilan && /bénéficiaires? présents? · consommées/.test(head), `${head.match(/Hospitalités[^·]*·[^·]*/)?.[0]} / ${hBilan}`);
+    const hHead = head.match(/Hospitalités ([\d ,]+) € TTC/i)?.[1];
+    const hBilan = bilan.match(/Hospitalités ([\d ,]+) € TTC/i)?.[1];
+    check("Événement passé : en-tête et bilan, mêmes hospitalités (absents exclus)", !!hHead && hHead === hBilan && /bénéficiaires? présents? · consommées/i.test(head), `${head.match(/Hospitalités[^·]*·[^·]*/i)?.[0]} / ${hBilan}`);
     const logi = n(await cl.page.locator('section:has(h2:has-text("Logistique et prestataires"))').innerText());
     check("Événement passé : prix par couvert commandé, coût par présent pour information", logi.includes("par couvert commandé") && /Pour information : [\d ,]+ € TTC par présent/.test(logi), logi.slice(0, 300));
-    const apply = cl.page.locator("form.apply-benefit");
-    check("Report dans la valeur déclarée : le prix par couvert, plus le coût réel par présent", (await apply.count()) === 0 || ((await apply.innerText()).includes("prix par couvert") && !(await apply.innerText()).includes("coût réel")));
+    const applies = await cl.page.locator("form.apply-benefit").allInnerTexts();
+    check("Report dans la valeur déclarée : le prix par couvert, plus le coût réel par présent", applies.every((x) => x.includes("prix par couvert") && !x.includes("coût réel")), applies.join(" | ").slice(0, 200));
     // Statistiques : effectif = présents, hospitalités (TTC) et prestataires (HT) jamais additionnés ; « engagé » expliqué.
     await cl.page.goto(`${BASE}/organisations/demo-org-dentalys/statistiques`);
-    const st = n(await text(cl.page));
-    check("Statistiques : par présent, HT et TTC séparés", st.includes("Hospitalités par présent (TTC)") && st.includes("Prestataires par présent (HT)") && !st.includes("Par inscrit") && st.includes("Budget engagé (HT)"));
-    check("Statistiques : définition d'« engagé » en bas de page", st.includes("Engagé : l'expert a accepté la proposition"));
+    // Texte lu en minuscules : en-têtes et intitulés sont en capitales par la feuille de style.
+    const st = n(await text(cl.page)).toLowerCase();
+    const thead = n(await cl.page.locator(".stats-table thead").first().innerText()).toLowerCase();
+    check("Statistiques : par présent, HT et TTC séparés", thead.includes("hospitalités par présent (ttc)") && thead.includes("prestataires par présent (ht)") && !thead.includes("par inscrit") && st.includes("budget engagé (ht)"), thead);
+    check("Statistiques : définition d'« engagé » en bas de page", st.includes("engagé : l'expert a accepté la proposition"));
     // TVA par ligne : repas à 10 %, vin à 20 % ; meilleure offre sur le TTC.
     await pgc.query(`insert into "Subscription" ("organizationId", plan, status, "exemptUntil", "updatedAt") values ('demo-sup-belleville', 'prestataire', 'a_activer', '2099-12-31', now()) on conflict ("organizationId") do update set "exemptUntil" = '2099-12-31'`);
     await pgc.query(`insert into "Rfq" (id, "organizationId", category, needs, status, "sentAt", headcount, city) values ('e2e-5b-rfq-tva', 'demo-org-dentalys', 'restauration', 'Dîner 5b avec vins pour 20 personnes.', 'sent', now(), 20, 'Lyon')`);
@@ -4071,6 +4084,7 @@ async function submitNewOrg(page, siren) {
     await pgc.query(`insert into "Subscription" ("organizationId", plan, status, "stripeCustomerId", "stripeSubscriptionId", "updatedAt") values ('demo-org-cdra', 'organisation', 'active', 'cus_e2e5b', $1, now())
       on conflict ("organizationId") do update set status = 'active', "stripeCustomerId" = 'cus_e2e5b', "stripeSubscriptionId" = $1, "exemptUntil" = null, "exemptNote" = null`, [subId]);
     await adm.page.goto(`${BASE}/admin`);
+    const mark = mails.length;
     const card = () => adm.page.locator('section.card:has-text("Collège Dentaire Rhône-Alpes")').first();
     await card().locator('form:has(button:has-text("Suspendre")) input[name="note"]').fill("Vérification de l'identité.");
     await card().locator('button:has-text("Suspendre")').click();
@@ -4080,7 +4094,7 @@ async function submitNewOrg(page, siren) {
     await until(async () => !!stripeState.subscriptions.get(subId).pause_collection);
     const paused = stripeState.subscriptions.get(subId).pause_collection;
     check("Suspension : facturation Stripe en pause, sans date de reprise", paused?.behavior === "void" && !paused.resumes_at, JSON.stringify(paused));
-    const smail = await waitMail("pierre.vidal@demo.kolbase.local", "Collège Dentaire Rhône-Alpes est suspendue");
+    const smail = await mailSince(mark, "pierre.vidal@demo.kolbase.local", "Collège Dentaire Rhône-Alpes est suspendue");
     check("E-mail de suspension : facturation en pause", !!smail && smail.text.includes("La facturation de votre abonnement est mise en pause"), smail?.text.slice(0, 300));
     await adm.page.goto(`${BASE}/admin`);
     check("Organisation suspendue : pas de « Refuser »", (await card().locator('button:has-text("Refuser")').count()) === 0 && (await card().locator('button:has-text("Réactiver")').count()) === 1);
@@ -4102,7 +4116,7 @@ async function submitNewOrg(page, siren) {
     await until(async () => (await q1(`select verification from "Organization" where id = 'demo-org-cdra'`)).verification === "VERIFIED");
     await until(async () => stripeState.subscriptions.get(subId).pause_collection === null);
     check("Réactivation : la facturation reprend", stripeState.subscriptions.get(subId).pause_collection === null);
-    const rmail = await waitMail("pierre.vidal@demo.kolbase.local", "Collège Dentaire Rhône-Alpes est de nouveau active", 8000);
+    const rmail = await mailSince(mark, "pierre.vidal@demo.kolbase.local", "Collège Dentaire Rhône-Alpes est de nouveau active");
     check("E-mail de réactivation : la facturation reprend", !!rmail && rmail.text.includes("La facturation de votre abonnement reprend"), rmail?.text.slice(-200));
     await pgc.query(`delete from "Subscription" where "organizationId" = 'demo-org-cdra' and "stripeSubscriptionId" = $1`, [subId]);
     await pv.ctx.close();
@@ -4180,7 +4194,7 @@ async function submitNewOrg(page, siren) {
   {
     const n = (s) => s.replace(/\s+/g, " ");
     await pgc.query(`insert into "Event" (id, "organizationId", title, "typeId", "startsAt", "durationMinutes", format, city, capacity, "publishedAt", "updatedAt") values
-      ('e2e-5b-ev-live', 'demo-org-dentalys', 'Atelier 5b en cours', 'travaux-pratiques', now() - interval '30 minutes', 120, 'PRESENTIEL', 'Lyon', 40, now() - interval '5 days', now()),
+      ('e2e-5b-ev-live', 'demo-org-dentalys', 'Atelier 5b en cours', 'travaux-pratiques', (now() at time zone 'utc') - interval '30 minutes', 120, 'PRESENTIEL', 'Lyon', 40, now() - interval '5 days', now()),
       ('e2e-5b-ev-draft', 'demo-org-dentalys', 'Atelier 5b brouillon', 'travaux-pratiques', now() + interval '20 days', 15, 'PRESENTIEL', 'Lyon', 40, null, now())`);
     const cl = await session();
     await login(cl.page, CLAIRE);
@@ -4250,7 +4264,7 @@ async function submitNewOrg(page, siren) {
     await pgc.query(`insert into "Membership" (id, "userId", "organizationId", role) select 'e2e-5b-sup-m', id, 'e2e-5b-sup', 'ADMIN' from "User" where email = 'hugo.robert@demo.kolbase.local'`);
     const hu = await session();
     await login(hu.page, "hugo.robert@demo.kolbase.local");
-    await hu.page.goto(`${BASE}/organisations/e2e-5b-sup/devis`);
+    await hu.page.goto(`${BASE}/organisations/e2e-5b-sup/devis?onglet=fiche`);
     const dv = await text(hu.page);
     check("Prestataire en attente : bandeau sans « l'abonnement se règle ensuite »", dv.includes("jusqu'à votre premier devis retenu") && !dv.includes("l'abonnement se règle ensuite"));
     const form = hu.page.locator('form:has(h2:has-text("Fiche prestataire"))');
