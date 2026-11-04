@@ -4,6 +4,7 @@ import { AiDraft } from "@/components/AiDraft";
 import { useActionState, useState } from "react";
 import { applyToCall, createOpenCall, retainApplication } from "@/lib/opportunity-actions";
 import { Notice } from "@/components/AuthForms";
+import { ActionForm } from "@/components/ActionForm";
 import { useT } from "@/components/I18nProvider";
 
 type CType = { id: string; label: string; category: string; unit: string; fmv: readonly number[] };
@@ -11,7 +12,7 @@ type CType = { id: string; label: string; category: string; unit: string; fmv: r
 type EventOpt = { id: string; label: string; title: string; typeId: string; area: string | null };
 
 /** Appel à candidatures : pour une collaboration, ou pour intervenir à l'un des événements de l'organisation. */
-export function NewCallForm({ orgId, types, ai = false, events = [], defaultEventId }: { orgId: string; types: readonly CType[]; ai?: boolean; events?: EventOpt[]; defaultEventId?: string }) {
+export function NewCallForm({ orgId, types, ai = false, events = [], defaultEventId, blocked = false }: { orgId: string; types: readonly CType[]; ai?: boolean; events?: EventOpt[]; defaultEventId?: string; blocked?: boolean }) {
   const [state, action, pending] = useActionState(createOpenCall, undefined);
   const [eventId, setEventId] = useState(defaultEventId ?? "");
   const ev = events.find((e) => e.id === eventId);
@@ -24,7 +25,7 @@ export function NewCallForm({ orgId, types, ai = false, events = [], defaultEven
     if (e && types.some((t) => t.id === e.typeId)) setTypeId(e.typeId);
   };
   return (
-    <form action={action} className="card form">
+    <ActionForm action={action} className="card form">
       <h2>Nouvel appel à candidatures</h2>
       <p className="muted">Visible de tous les experts référencés, qui peuvent y candidater. Rattachez-le à un événement si la personne retenue doit y intervenir.</p>
       <Notice state={state} />
@@ -55,8 +56,9 @@ export function NewCallForm({ orgId, types, ai = false, events = [], defaultEven
         <label>Date limite<input name="deadline" type="date" /></label>
       </div>
       <p className="hint">Repère : {type.fmv[0].toLocaleString("fr-FR")} à {type.fmv[1].toLocaleString("fr-FR")} € HT par {type.unit}.</p>
-      <button className="btn" disabled={pending}>{pending ? "Publication…" : "Publier l'appel"}</button>
-    </form>
+      <button className="btn" disabled={pending || blocked}>{pending ? "Publication…" : "Publier l'appel"}</button>
+      {blocked && <p className="hint">Publication possible une fois l&apos;abonnement activé (voir le bandeau en haut de la page).</p>}
+    </ActionForm>
   );
 }
 

@@ -4,6 +4,7 @@ import { cookies, headers } from "next/headers";
 import { redirect } from "next/navigation";
 import { cache } from "react";
 import { db } from "@/lib/db";
+import { loginPath } from "@/lib/safe-redirect";
 
 const COOKIE = "kb_session";
 const SESSION_DAYS = 30;
@@ -64,9 +65,10 @@ export const getCurrentUser = cache(async () => {
   return user;
 });
 
+/** Non connecté : connexion, puis retour au chemin demandé (en-tête `x-kb-path` posé par src/proxy.ts). */
 export async function requireUser() {
   const user = await getCurrentUser();
-  if (!user) redirect("/connexion");
+  if (!user) redirect(loginPath((await headers()).get("x-kb-path")));
   return user;
 }
 

@@ -1,5 +1,5 @@
 import { LegalPage } from "@/components/LegalPage";
-import { legal } from "@/lib/legal";
+import { LEGAL, legal } from "@/lib/legal";
 import { DPA_UPDATED, DPA_VERSION } from "@/lib/dpa";
 
 export const metadata = { title: "Contrat de sous-traitance (RGPD) — KolBase" };
@@ -31,7 +31,7 @@ export default function Page() {
           <li>Tenir un registre des traitements effectués pour le compte de l&apos;organisation et mettre à sa disposition les informations nécessaires pour démontrer le respect de ses obligations ; permettre des audits, sur demande écrite raisonnable et à la charge de l&apos;organisation, au plus une fois par an sauf violation avérée.</li>
           <li>Au terme du contrat, supprimer les données de l&apos;organisation ou les lui restituer (exports disponibles dans KolBase), sauf obligation légale de conservation.</li>
         </ul>],
-        ["Sous-traitants ultérieurs", <p key="s">L&apos;organisation autorise le recours aux sous-traitants ultérieurs suivants : hébergement de l&apos;application et de la base de données (Render, région Francfort, Union européenne) ; envoi des e-mails ({legal("emailProvider")}) ; stockage des documents ({legal("storageProvider")}) ; signature électronique ({legal("signatureProvider")}), lorsque l&apos;organisation l&apos;utilise ; assistant d&apos;IA ({legal("aiProvider")}), seulement lorsqu&apos;un membre le sollicite. Le sous-traitant impose à chacun des obligations de protection équivalentes et informe l&apos;organisation de tout changement envisagé, qui peut s&apos;y opposer pour un motif légitime. Pour l&apos;assistant d&apos;IA, situé aux États-Unis, le transfert est encadré par les garanties prévues au chapitre V du RGPD [mécanisme à préciser avec votre conseil].</p>],
+        ["Sous-traitants ultérieurs", <p key="s">L&apos;organisation autorise le recours aux sous-traitants ultérieurs suivants : hébergement de l&apos;application et de la base de données (Render, région Francfort, Union européenne) ; envoi des e-mails ({legal("emailProvider")}) ;{LEGAL.storageProvider ? ` stockage des documents (${LEGAL.storageProvider}) ;` : ""} signature électronique ({legal("signatureProvider")}), lorsque l&apos;organisation l&apos;utilise ; assistant d&apos;IA ({legal("aiProvider")}), seulement lorsqu&apos;un membre le sollicite. Le sous-traitant impose à chacun des obligations de protection équivalentes et informe l&apos;organisation de tout changement envisagé, qui peut s&apos;y opposer pour un motif légitime. Pour l&apos;assistant d&apos;IA, situé aux États-Unis, le transfert est encadré par les garanties prévues au chapitre V du RGPD [mécanisme à préciser avec votre conseil].</p>],
         ["Mesures de sécurité", <ul key="m" className="plain">
           <li>Hébergement dans l&apos;Union européenne, chiffrement des échanges (HTTPS), base de données accessible uniquement depuis le réseau privé de l&apos;hébergeur.</li>
           <li>Mots de passe hachés (scrypt) ; jetons de session et liens envoyés par e-mail stockés sous forme hachée ; limitation des tentatives de connexion.</li>

@@ -13,3 +13,9 @@ export function safeNext(next: string | null | undefined, fallback: string): str
     return fallback;
   }
 }
+
+/** Page de connexion qui ramène ensuite au chemin demandé (s'il est sûr et n'est pas l'accueil). */
+export function loginPath(path: string | null | undefined): string {
+  const next = safeNext(path, "/");
+  return next === "/" || next.startsWith("/connexion") ? "/connexion" : `/connexion?next=${encodeURIComponent(next)}`;
+}

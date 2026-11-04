@@ -3,10 +3,12 @@ import { cookies } from "next/headers";
 import type { TodoItem } from "@/components/Todo";
 import { getCurrentUser } from "@/lib/auth";
 import { db } from "@/lib/db";
-import { COMPLIANCE_ROLES, EVENT_MANAGER_ROLES, EVENT_ORGANIZER_ROLES, eventScope, formatDate } from "@/lib/events";
+import { COMPLIANCE_ROLES, EVENT_MANAGER_ROLES, EVENT_ORGANIZER_ROLES, eventScope, formatDate, needsOnlineLink } from "@/lib/events";
 import { PROJECT_ROLES, PROJECT_VIEW_ROLES, REVIEW_ROLES, SOURCING_ROLES } from "@/lib/projects";
 import { countFor, orgSectionTabs, type OrgSectionKey, type SectionTab } from "@/lib/nav";
 import type { OrgRole } from "@/generated/prisma/client";
+import { billingBlocked } from "@/lib/billing";
+import { subscribeHref } from "@/lib/billing-plans";
 
 
 const DAY = 864e5;
@@ -106,6 +108,10 @@ export const orgOverview = cache(async (orgId: string) => {
     for (const e of events)
       if (!e.publishedAt && !e.internal && e.startsAt >= now)
         todos.push({ href: `${base}/evenements/${e.id}`, title: `Brouillon à publier : ${e.title}`, detail: formatDate(e.startsAt), icon: "CalendarClock", tone: "warn" });
+    // Événement en ligne ou hybride à deux jours sans lien de connexion : les inscrits ne pourraient pas se connecter.
+    for (const e of events)
+      if (needsOnlineLink(e, now))
+        todos.push({ href: `${base}/evenements/${e.id}#modifier`, title: `Ajouter le lien de connexion : ${e.title}`, detail: `${formatDate(e.startsAt)} · ${e._count.registrations} inscrit${e._count.registrations > 1 ? "s" : ""}`, icon: "AlertTriangle", tone: "danger" });
   }
   if (can.organizer) {
     for (const r of rfqs) {
@@ -117,6 +123,9 @@ export const orgOverview = cache(async (orgId: string) => {
   }
   for (const w of waitingQuotes)
     todos.push({ href: `${base}/devis`, title: `Devis demandé par ${w.rfq.organization.name}`, detail: w.rfq.event?.title ?? w.rfq.needs.slice(0, 60), icon: "Receipt", tone: "warn" });
+  // Prestataire : après un premier devis retenu, l'abonnement est à activer pour répondre à de nouvelles demandes.
+  if (org.kind === "PRESTATAIRE" && roles.includes("ADMIN") && (await billingBlocked(orgId, "reponse")))
+    todos.unshift({ href: subscribeHref(orgId, "reponse"), title: "Activer l'abonnement", detail: "Premier devis retenu : l'abonnement (premier mois offert) permet de répondre à de nouvelles demandes", icon: "Receipt", tone: "warn" });
 
   // Questions sur les demandes de devis restées sans réponse : la dernière parole revient à l'autre partie.
   const isSupplier = org.kind === "PRESTATAIRE";

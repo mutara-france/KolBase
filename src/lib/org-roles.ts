@@ -53,6 +53,8 @@ export const roleLabel = (role: OrgRole, kind: OrgKind) => (kind === "PRESTATAIR
 
 /** Une organisation n'agit auprès des praticiens qu'une fois validée par KolBase. */
 export const isVerifiedOrg = (org: { verification: string }) => org.verification === "VERIFIED";
+/** Page publique de l'organisation visible (/structures/[id]) : validée et présente dans l'annuaire. */
+export const orgIsPublic = (org: { verification: string; listed: boolean }) => org.listed && isVerifiedOrg(org);
 export const ORG_NOT_VERIFIED =
   "Votre organisation doit d'abord être validée par KolBase (SIREN contrôlé). Un administrateur de l'organisation peut compléter la demande dans « Membres et réglages ».";
 

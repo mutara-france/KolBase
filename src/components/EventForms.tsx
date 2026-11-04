@@ -1,37 +1,40 @@
 "use client";
 
 import { useActionState, useState } from "react";
-import { createEvent, registerToEvent, saveEventProgram } from "@/lib/event-actions";
+import { createEvent, registerToEvent, saveEventProgram, updateEvent } from "@/lib/event-actions";
 import { AiDraft } from "@/components/AiDraft";
 import { Notice } from "@/components/AuthForms";
+import { ActionForm } from "@/components/ActionForm";
 import { useLocale, useT } from "@/components/I18nProvider";
 import { intlLocale, type Locale } from "@/lib/i18n";
 
 type Opt = { value: string; label: string };
 type CatalogItem = { id: string; label: string; typical: number };
+/** Valeurs d'un événement existant (formulaire de modification). */
+export type EventInitial = {
+  title: string; typeId: string; therapeuticArea: string; description: string; startsAt: string; durationMinutes: string;
+  format: string; capacity: string; city: string; venue: string; onlineUrl: string; benefits: { catalogId: string; valueCents: number }[];
+};
 
-export function NewEventForm({ orgId, types, formats, catalog, project }: { orgId: string; types: Opt[]; formats: Opt[]; catalog: readonly CatalogItem[]; project?: { id: string; title: string; area: string | null } }) {
-  const [state, action, pending] = useActionState(createEvent, undefined);
-  const [format, setFormat] = useState("PRESENTIEL");
-  const [picked, setPicked] = useState<Record<string, boolean>>({});
-  // Créé depuis un dossier (board, comité) : réunion interne par défaut.
-  const [internal, setInternal] = useState(!!project);
+/** Champs communs à la création et à la modification d'un événement. */
+function EventFields({ types, formats, catalog, initial, frozen, project }: { types: Opt[]; formats: Opt[]; catalog: readonly CatalogItem[]; initial?: EventInitial; frozen?: { label: string; valueCents: number }[]; project?: { title: string; area: string | null } }) {
+  const [format, setFormat] = useState(initial?.format ?? "PRESENTIEL");
+  const [picked, setPicked] = useState<Record<string, boolean>>(Object.fromEntries((initial?.benefits ?? []).map((b) => [b.catalogId, true])));
+  const value = (id: string, typical: number) => {
+    const b = initial?.benefits.find((x) => x.catalogId === id);
+    return b ? String(b.valueCents / 100).replace(".", ",") : typical;
+  };
   return (
-    <form action={action} className="card form">
-      <h1>Nouvel événement</h1>
-      <Notice state={state} />
-      <input type="hidden" name="orgId" value={orgId} />
-      {project && <input type="hidden" name="projectId" value={project.id} />}
-      {project && <p className="notice ok">Événement rattaché au dossier « {project.title} » : sa logistique (salle, traiteur, hébergement…) se pilote depuis la fiche de l&apos;événement.</p>}
-      <label>Titre<input name="title" required defaultValue={project?.title} /></label>
+    <>
+      <label>Titre<input name="title" required defaultValue={initial?.title ?? project?.title} /></label>
       <div className="row">
-        <label>Type<select name="typeId">{types.map((t) => <option key={t.value} value={t.value}>{t.label}</option>)}</select></label>
-        <label>Domaine thérapeutique<input name="therapeuticArea" placeholder="Implantologie…" defaultValue={project?.area ?? undefined} /></label>
+        <label>Type<select name="typeId" defaultValue={initial?.typeId}>{types.map((t) => <option key={t.value} value={t.value}>{t.label}</option>)}</select></label>
+        <label>Domaine thérapeutique<input name="therapeuticArea" placeholder="Implantologie…" defaultValue={initial?.therapeuticArea ?? project?.area ?? undefined} /></label>
       </div>
-      <label>Description<textarea name="description" rows={4} /></label>
+      <label>Description<textarea name="description" rows={4} defaultValue={initial?.description} /></label>
       <div className="row">
-        <label>Date et heure (Paris)<input name="startsAt" type="datetime-local" required /></label>
-        <label>Durée (minutes)<input name="durationMinutes" type="number" min={0} step={15} /></label>
+        <label>Date et heure (Paris)<input name="startsAt" type="datetime-local" required defaultValue={initial?.startsAt} /></label>
+        <label>Durée (minutes)<input name="durationMinutes" type="number" min={0} step={15} defaultValue={initial?.durationMinutes} /></label>
       </div>
       <div className="row">
         <label>Format
@@ -39,35 +42,82 @@ export function NewEventForm({ orgId, types, formats, catalog, project }: { orgI
             {formats.map((f) => <option key={f.value} value={f.value}>{f.label}</option>)}
           </select>
         </label>
-        <label>Places<input name="capacity" type="number" min={1} placeholder="Illimité" /></label>
+        <label>Places<input name="capacity" type="number" min={1} placeholder="Illimité" defaultValue={initial?.capacity} /></label>
       </div>
       {format !== "DISTANCIEL" && (
         <div className="row">
-          <label>Ville<input name="city" /></label>
-          <label>Lieu<input name="venue" placeholder="Hôtel, salle…" /></label>
+          <label>Ville<input name="city" defaultValue={initial?.city} /></label>
+          <label>Lieu<input name="venue" placeholder="Hôtel, salle…" defaultValue={initial?.venue} /></label>
         </div>
+      )}
+      {format !== "PRESENTIEL" && (
+        <label>Lien de connexion<input name="onlineUrl" type="url" inputMode="url" placeholder="https://…" defaultValue={initial?.onlineUrl} />
+          <span className="hint">Visioconférence (Zoom, Teams, Meet…), adresse en https. Communiqué aux seuls inscrits : sur leur page d&apos;inscription, dans le rappel de la veille et dans leur agenda. Vous pourrez l&apos;ajouter plus tard.</span>
+        </label>
       )}
       <fieldset>
         <legend>Hospitalités proposées aux participants</legend>
-        <p className="hint">Chaque prestation acceptée par un professionnel de santé constitue un avantage à conventionner et déclarer. Indiquez sa valeur réelle par personne (€ TTC).</p>
-        <div className="benefits">
-          {catalog.map((b) => (
-            <div key={b.id} className="benefit-row">
-              <label className="check">
-                <input type="checkbox" name={`benefit_${b.id}`} checked={!!picked[b.id]} onChange={(e) => setPicked({ ...picked, [b.id]: e.target.checked })} /> {b.label}
-              </label>
-              <input name={`value_${b.id}`} inputMode="decimal" defaultValue={b.typical} disabled={!picked[b.id]} aria-label={`Valeur ${b.label}`} />
-              <span className="hint">€</span>
+        {frozen ? (
+          <>
+            {frozen.length === 0 ? <p className="muted">Aucune.</p> : <ul className="plain stack-sm">{frozen.map((b) => <li key={b.label} className="flex-between"><span>{b.label}</span><span className="muted">{(b.valueCents / 100).toLocaleString("fr-FR", { style: "currency", currency: "EUR" })} TTC par personne</span></li>)}</ul>}
+            <p className="hint">Hospitalités figées : des inscrits les ont déjà acceptées, leur valeur est rattachée à leur nom. Pour reporter le coût réel d&apos;un devis retenu, utilisez la rubrique Logistique.</p>
+          </>
+        ) : (
+          <>
+            <p className="hint">Chaque prestation acceptée par un professionnel de santé constitue un avantage à conventionner et déclarer. Indiquez sa valeur réelle par personne (€ TTC).</p>
+            <div className="benefits">
+              {catalog.map((b) => (
+                <div key={b.id} className="benefit-row">
+                  <label className="check">
+                    <input type="checkbox" name={`benefit_${b.id}`} checked={!!picked[b.id]} onChange={(e) => setPicked({ ...picked, [b.id]: e.target.checked })} /> {b.label}
+                  </label>
+                  <input name={`value_${b.id}`} inputMode="decimal" defaultValue={value(b.id, b.typical)} disabled={!picked[b.id]} aria-label={`Valeur ${b.label}`} />
+                  <span className="hint">€</span>
+                </div>
+              ))}
             </div>
-          ))}
-        </div>
+          </>
+        )}
       </fieldset>
+    </>
+  );
+}
+
+export function NewEventForm({ orgId, types, formats, catalog, project, blocked = false }: { orgId: string; types: Opt[]; formats: Opt[]; catalog: readonly CatalogItem[]; project?: { id: string; title: string; area: string | null }; blocked?: boolean }) {
+  const [state, action, pending] = useActionState(createEvent, undefined);
+  // Créé depuis un dossier (board, comité) : réunion interne par défaut.
+  const [internal, setInternal] = useState(!!project);
+  return (
+    <ActionForm action={action} className="card form">
+      <h1>Nouvel événement</h1>
+      <Notice state={state} />
+      <input type="hidden" name="orgId" value={orgId} />
+      {project && <input type="hidden" name="projectId" value={project.id} />}
+      {project && <p className="notice ok">Événement rattaché au dossier « {project.title} » : sa logistique (salle, traiteur, hébergement…) se pilote depuis la fiche de l&apos;événement.</p>}
+      <EventFields types={types} formats={formats} catalog={catalog} project={project} />
       <label className="check">
         <input type="checkbox" name="internal" value="1" checked={internal} onChange={(e) => setInternal(e.target.checked)} /> Réunion interne (board, comité, réunion d&apos;experts) : ni publication dans l&apos;agenda, ni inscriptions en ligne
       </label>
-      {!internal && <label className="check"><input type="checkbox" name="publish" value="1" /> Publier immédiatement dans l&apos;agenda</label>}
+      {!internal && (
+        <label className="check"><input type="checkbox" name="publish" value="1" disabled={blocked} /> Publier immédiatement dans l&apos;agenda{blocked ? " (une fois l'abonnement activé ; enregistrez-le en brouillon d'ici là)" : ""}</label>
+      )}
       <button className="btn" disabled={pending}>{pending ? "Création…" : "Créer l'événement"}</button>
-    </form>
+    </ActionForm>
+  );
+}
+
+/** Modifier l'événement : les inscrits sont prévenus d'un changement de date, de lieu, de format ou de lien. */
+export function EditEventForm({ orgId, eventId, types, formats, catalog, initial, frozen, registrations }: { orgId: string; eventId: string; types: Opt[]; formats: Opt[]; catalog: readonly CatalogItem[]; initial: EventInitial; frozen?: { label: string; valueCents: number }[]; registrations: number }) {
+  const [state, action, pending] = useActionState(updateEvent, undefined);
+  return (
+    <ActionForm action={action} className="form">
+      <Notice state={state} />
+      <input type="hidden" name="orgId" value={orgId} />
+      <input type="hidden" name="eventId" value={eventId} />
+      {registrations > 0 && <p className="hint">{registrations} inscrit{registrations > 1 ? "s" : ""} : un changement de date, d&apos;heure, de lieu, de format ou de lien de connexion leur est annoncé par e-mail.</p>}
+      <EventFields types={types} formats={formats} catalog={catalog} initial={initial} frozen={frozen} />
+      <button className="btn" disabled={pending}>{pending ? "Enregistrement…" : "Mettre à jour l'événement"}</button>
+    </ActionForm>
   );
 }
 

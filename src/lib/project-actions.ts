@@ -6,14 +6,14 @@ import { db } from "@/lib/db";
 import { audit, requireUser } from "@/lib/auth";
 import { ORG_NOT_VERIFIED, isVerifiedOrg, requireMembership } from "@/lib/orgs";
 import { COMPLIANCE_ROLES } from "@/lib/events";
-import { collabType, PROJECT_ROLES, RECRUITING_STATUSES, recruitmentOpen, SOURCING_ROLES, PROJECT_VIEW_ROLES, TRANSITIONS, type TransitionKey } from "@/lib/projects";
+import { collabType, PROJECT_ROLES, projectEditable, RECRUITING_STATUSES, recruitmentOpen, SOURCING_ROLES, PROJECT_VIEW_ROLES, termsChanged, TRANSITIONS, type TransitionKey } from "@/lib/projects";
 import { storageEnabled } from "@/lib/storage";
 import { fourEyes, projectAuthors } from "@/lib/four-eyes";
 import type { ProjectStatus } from "@/generated/prisma/client";
 import { complianceSettings, projectRegime } from "@/lib/compliance";
 import { missingSignedConventions } from "@/lib/project-documents";
 import { eurToCents, str, unitsOrNull, UNITS_INVALID } from "@/lib/form";
-import { notifyCompliance, notifyExpertAnswer, notifyMessage, notifySolicitations } from "@/lib/notifications";
+import { notifyCompliance, notifyExpertAnswer, notifyMessage, notifyNewProposal, notifySolicitations } from "@/lib/notifications";
 import { engagementAllowed, gateMessage } from "@/lib/billing";
 import { getT } from "@/lib/i18n/server";
 
@@ -91,11 +91,15 @@ export async function respondToSolicitation(_: ActionState, form: FormData): Pro
   if (link.project.status === "DECLINE") return { error: t("Ce dossier a été abandonné par l'organisation.") };
   if (!recruitmentOpen(link.project.status)) return { error: t("Le recrutement de ce dossier est clos : l'organisation doit vous solliciter de nouveau.") };
   if (!["accept", "decline"].includes(answer)) return { error: t("Réponse invalide.") };
+  // Honoraires souhaités (facultatif) : l'organisation peut en tenir compte dans une nouvelle proposition.
+  const desiredRaw = str(form, "desiredFee");
+  const desiredFeeCents = desiredRaw ? eurToCents(desiredRaw, { allowZero: false }) : null;
+  if (desiredRaw && desiredFeeCents === null) return { error: t("Honoraires souhaités : montant invalide.") };
   const status: ProjectStatus = answer === "accept" ? "ACCORD" : "DECLINE";
   // Réponse prise en compte seulement si la sollicitation est toujours ouverte (double envoi, dossier avancé entre-temps).
   const { count } = await db.projectExpert.updateMany({
     where: { id: link.id, status: "ATT_EXPERTS", project: { status: { in: RECRUITING_STATUSES } } },
-    data: { status, responseNote: str(form, "note") || null, respondedAt: new Date() },
+    data: { status, responseNote: str(form, "note") || null, respondedAt: new Date(), desiredFeeCents },
   });
   if (count === 0) return { error: t("Vous avez déjà répondu.") };
   if (str(form, "note")) {
@@ -106,7 +110,7 @@ export async function respondToSolicitation(_: ActionState, form: FormData): Pro
   if (status === "DECLINE") {
     await db.application.updateMany({ where: { projectId: link.projectId, practitionerId: link.practitionerId, status: "retained" }, data: { status: "declined" } });
   }
-  await audit(user.id, answer === "accept" ? "solicitation.accept" : "solicitation.decline", "ProjectExpert", link.id, { projectId: link.projectId });
+  await audit(user.id, answer === "accept" ? "solicitation.accept" : "solicitation.decline", "ProjectExpert", link.id, { projectId: link.projectId, ...(desiredFeeCents ? { desiredFeeCents } : {}) });
   notifyExpertAnswer(link.id, answer === "accept");
   revalidatePath(`/sollicitations/${link.id}`);
   return { ok: answer === "accept" ? t("Accord de principe envoyé. L'organisation va préparer la convention.") : t("Sollicitation déclinée.") };
@@ -157,6 +161,11 @@ export async function advanceProject(form: FormData) {
   if (key === "hors_france" && regime !== "hors_france") return;
 
   const note = str(form, "note");
+  // Abandon : le motif est obligatoire (il figure dans l'historique du dossier).
+  if (key === "abandon" && !note) return;
+  // Retour en accord de principe : impossible si une convention est en cours de signature ou déjà signée
+  // (l'expert signerait des conditions qui vont changer).
+  if (key === "back_to_accord" && (await signaturesStarted(projectId))) return;
   // Validation par la conformité : contrôle à quatre yeux (pas d'auto-validation, sauf seul habilité et justification).
   let selfValidated = false;
   if (key === "validate") {
@@ -179,4 +188,100 @@ export async function advanceProject(form: FormData) {
   await audit(user.id, `project.${key}`, "Project", projectId, { from: project.status, to: t.to, note: note || undefined, ...(attest ? { attestation: "convention signée conservée hors KolBase" } : {}), ...(selfValidated ? { selfValidated: true } : {}) });
   if (key === "submit" || key === "validate" || key === "block") notifyCompliance(projectId, key, user.id);
   revalidatePath(`/organisations/${orgId}/dossiers/${projectId}`);
+  // Reprise après blocage ou retour en arrière : on arrive sur la modification du dossier.
+  if (key === "revise" || key === "back_to_accord") {
+    await syncProjectFromExperts(projectId);
+    redirect(`/organisations/${orgId}/dossiers/${projectId}?modifier=1#modifier`);
+  }
+}
+
+/** Une convention du dossier est-elle en cours de signature, signée électroniquement ou déposée signée ? */
+async function signaturesStarted(projectId: string) {
+  const [sig, doc] = await Promise.all([
+    db.conventionSignature.count({ where: { projectExpert: { projectId }, status: { in: ["ongoing", "done"] } } }),
+    db.document.count({ where: { projectId, kind: "CONVENTION_SIGNEE" } }),
+  ]);
+  return sig + doc > 0;
+}
+
+// ─── Modification du dossier (avant la signature) ──────────────────────────
+
+/** Dossier de l'organisation, modifiable par l'équipe Projets (recrutement en cours). */
+async function editableProject(orgId: string, projectId: string) {
+  const ctx = await requireMembership(orgId, PROJECT_ROLES);
+  const project = await db.project.findFirst({ where: { id: projectId, organizationId: orgId } });
+  if (!project) return { ...ctx, project: null, error: "Dossier introuvable." };
+  if (!projectEditable(project.status))
+    return { ...ctx, project: null, error: "Ce dossier n'est plus modifiable à cette étape : remettez-le d'abord en accord de principe." };
+  return { ...ctx, project, error: null };
+}
+
+/** Objet du dossier : titre, domaine, objet et déroulé. */
+export async function updateProjectObject(_: ActionState, form: FormData): Promise<ActionState> {
+  const orgId = str(form, "orgId");
+  const projectId = str(form, "projectId");
+  const { user, project, error } = await editableProject(orgId, projectId);
+  if (!project) return { error: error ?? "Dossier introuvable." };
+  const title = str(form, "title");
+  if (!title) return { error: "Le titre est obligatoire." };
+  const data = { title, therapeuticArea: str(form, "therapeuticArea") || null, description: str(form, "description") || null };
+  const changed = (Object.keys(data) as (keyof typeof data)[]).filter((k) => (project[k] ?? null) !== data[k]);
+  if (changed.length === 0) return { ok: "Aucune modification." };
+  await db.project.update({ where: { id: projectId }, data });
+  await audit(user.id, "project.edit", "Project", projectId, { fields: changed });
+  revalidatePath(`/organisations/${orgId}/dossiers/${projectId}`);
+  return { ok: "Objet du dossier enregistré." };
+}
+
+/**
+ * Conditions d'un expert (unités, honoraires). Modifiées : la proposition lui est renvoyée (réponse à nouveau
+ * attendue, e-mail « Nouvelle proposition »), et le statut du dossier suit les réponses des experts.
+ */
+export async function updateExpertTerms(_: ActionState, form: FormData): Promise<ActionState> {
+  const orgId = str(form, "orgId");
+  const projectId = str(form, "projectId");
+  const { user, project, error } = await editableProject(orgId, projectId);
+  if (!project) return { error: error ?? "Dossier introuvable." };
+  const link = await db.projectExpert.findFirst({ where: { id: str(form, "linkId"), projectId } });
+  if (!link) return { error: "Expert introuvable dans ce dossier." };
+  const fee = eurToCents(str(form, "fee"));
+  const units = unitsOrNull(str(form, "units"));
+  if (fee === null) return { error: "Indiquez des honoraires (0 si bénévole)." };
+  if (units === undefined) return { error: UNITS_INVALID };
+  const next = { feeCents: fee, days: units };
+  if (!termsChanged(link, next)) return { ok: "Conditions inchangées." };
+  await db.projectExpert.update({
+    where: { id: link.id },
+    data: { ...next, status: "ATT_EXPERTS", respondedAt: null, responseNote: null, desiredFeeCents: null },
+  });
+  await syncProjectFromExperts(projectId);
+  await audit(user.id, "project.terms", "ProjectExpert", link.id, { projectId, from: { feeCents: link.feeCents, days: link.days }, to: next, previousStatus: link.status });
+  notifyNewProposal(link.id);
+  revalidatePath(`/organisations/${orgId}/dossiers/${projectId}`);
+  return { ok: "Nouvelle proposition envoyée à l'expert : sa réponse est de nouveau attendue." };
+}
+
+/** Ajouter un expert au dossier : il reçoit la sollicitation comme les premiers experts. */
+export async function addProjectExpert(_: ActionState, form: FormData): Promise<ActionState> {
+  const orgId = str(form, "orgId");
+  const projectId = str(form, "projectId");
+  const { user, org, project, error } = await editableProject(orgId, projectId);
+  if (!project) return { error: error ?? "Dossier introuvable." };
+  if (!isVerifiedOrg(org)) return { error: ORG_NOT_VERIFIED };
+  if (!(await engagementAllowed(orgId))) return { error: gateMessage("sollicitation") };
+  const practitionerId = str(form, "expertId");
+  const expert = await db.practitionerProfile.findFirst({ where: { id: practitionerId, listed: true }, select: { id: true } });
+  if (!expert) return { error: "Choisissez un expert référencé." };
+  if (await db.projectExpert.findUnique({ where: { projectId_practitionerId: { projectId, practitionerId } } })) return { error: "Cet expert est déjà sollicité dans ce dossier." };
+  const fee = eurToCents(str(form, "fee"));
+  const units = unitsOrNull(str(form, "units"));
+  if (fee === null) return { error: "Indiquez des honoraires (0 si bénévole)." };
+  if (units === undefined) return { error: UNITS_INVALID };
+  const link = await db.projectExpert.create({ data: { projectId, practitionerId, feeCents: fee, days: units } });
+  const message = str(form, "message");
+  if (message) await db.message.create({ data: { projectId, projectExpertId: link.id, authorId: user.id, body: message } });
+  await audit(user.id, "project.add_expert", "ProjectExpert", link.id, { projectId, feeCents: fee, days: units });
+  notifySolicitations(projectId, "sollicitation", [link.id]);
+  revalidatePath(`/organisations/${orgId}/dossiers/${projectId}`);
+  return { ok: "Expert ajouté : la sollicitation lui est envoyée." };
 }

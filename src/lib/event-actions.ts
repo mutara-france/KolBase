@@ -6,37 +6,60 @@ import { revalidatePath } from "next/cache";
 import { db } from "@/lib/db";
 import { audit, requireUser } from "@/lib/auth";
 import { ORG_NOT_VERIFIED, isVerifiedOrg, requireMembership } from "@/lib/orgs";
-import { BENEFIT_CATALOG, COMPLIANCE_ROLES, EVENT_MANAGER_ROLES, EVENT_ORGANIZER_ROLES, eventScope, EVENT_TYPES, parseParisDateTime } from "@/lib/events";
+import { BENEFIT_CATALOG, COMPLIANCE_ROLES, EVENT_MANAGER_ROLES, EVENT_ORGANIZER_ROLES, eventChanges, eventScope, EVENT_TYPES, ONLINE_URL_INVALID, parseOnlineUrl, parseParisDateTime } from "@/lib/events";
 import { EventFormat } from "@/generated/prisma/enums";
 import { eurToCents, intOrNull, str } from "@/lib/form";
 import { getT } from "@/lib/i18n/server";
 import { engagementAllowed, gateMessage } from "@/lib/billing";
-import { notifyEventConfided } from "@/lib/notifications";
+import { subscribeHref } from "@/lib/billing-plans";
+import { notifyEventChanged, notifyEventConfided } from "@/lib/notifications";
 import { SOURCE_COOKIE } from "@/lib/services";
+import { deletableDraft, DRAFT_COUNTS } from "@/lib/event-drafts";
 
 export type ActionState = { error?: string; ok?: string } | undefined;
+
+/** Champs communs à la création et à la modification d'un événement (valeurs lues et contrôlées). */
+function readEventFields(form: FormData) {
+  const title = str(form, "title");
+  const typeId = str(form, "typeId");
+  const startsAt = parseParisDateTime(str(form, "startsAt"));
+  const format = str(form, "format") as EventFormat;
+  if (!title) return { error: "Le titre est obligatoire." } as const;
+  if (!EVENT_TYPES.some((t) => t.id === typeId)) return { error: "Type d'événement invalide." } as const;
+  if (!startsAt) return { error: "Date et heure invalides." } as const;
+  if (!Object.values(EventFormat).includes(format)) return { error: "Format invalide." } as const;
+  // Lien de connexion : pour un événement en ligne ou hybride seulement.
+  const onlineUrl = format === "PRESENTIEL" ? null : parseOnlineUrl(str(form, "onlineUrl", 500));
+  if (onlineUrl === undefined) return { error: ONLINE_URL_INVALID } as const;
+  const benefits: { catalogId: string; label: string; valueCents: number }[] = [];
+  for (const b of BENEFIT_CATALOG) {
+    if (!form.get(`benefit_${b.id}`)) continue;
+    const cents = eurToCents(str(form, `value_${b.id}`) || String(b.typical));
+    if (cents === null) return { error: `Montant invalide pour « ${b.label} ».` } as const;
+    benefits.push({ catalogId: b.id, label: b.label, valueCents: cents });
+  }
+  return {
+    fields: {
+      title, typeId, startsAt, format, onlineUrl,
+      therapeuticArea: str(form, "therapeuticArea") || null,
+      description: str(form, "description") || null,
+      durationMinutes: intOrNull(str(form, "durationMinutes")),
+      city: format === "DISTANCIEL" ? null : str(form, "city") || null,
+      venue: format === "DISTANCIEL" ? null : str(form, "venue") || null,
+      capacity: intOrNull(str(form, "capacity")),
+    },
+    benefits,
+  } as const;
+}
 
 export async function createEvent(_: ActionState, form: FormData): Promise<ActionState> {
   const orgId = str(form, "orgId");
   const { user, org } = await requireMembership(orgId, EVENT_ORGANIZER_ROLES);
 
-  const title = str(form, "title");
-  const typeId = str(form, "typeId");
-  const startsAt = parseParisDateTime(str(form, "startsAt"));
-  const format = str(form, "format") as EventFormat;
-  if (!title) return { error: "Le titre est obligatoire." };
-  if (!EVENT_TYPES.some((t) => t.id === typeId)) return { error: "Type d'événement invalide." };
-  if (!startsAt) return { error: "Date et heure invalides." };
-  if (startsAt < new Date()) return { error: "La date doit être dans le futur." };
-  if (!Object.values(EventFormat).includes(format)) return { error: "Format invalide." };
-
-  const benefits: { catalogId: string; label: string; valueCents: number }[] = [];
-  for (const b of BENEFIT_CATALOG) {
-    if (!form.get(`benefit_${b.id}`)) continue;
-    const cents = eurToCents(str(form, `value_${b.id}`) || String(b.typical));
-    if (cents === null) return { error: `Montant invalide pour « ${b.label} ».` };
-    benefits.push({ catalogId: b.id, label: b.label, valueCents: cents });
-  }
+  const read = readEventFields(form);
+  if ("error" in read) return { error: read.error };
+  const { fields, benefits } = read;
+  if (fields.startsAt < new Date()) return { error: "La date doit être dans le futur." };
 
   // Rattachement à un dossier de l'organisation (événement créé depuis la fiche du dossier).
   const projectId = str(form, "projectId");
@@ -50,16 +73,7 @@ export async function createEvent(_: ActionState, form: FormData): Promise<Actio
   const event = await db.event.create({
     data: {
       organizationId: orgId,
-      title,
-      typeId,
-      startsAt,
-      format,
-      therapeuticArea: str(form, "therapeuticArea") || null,
-      description: str(form, "description") || null,
-      durationMinutes: intOrNull(str(form, "durationMinutes")),
-      city: format === "DISTANCIEL" ? null : str(form, "city") || null,
-      venue: format === "DISTANCIEL" ? null : str(form, "venue") || null,
-      capacity: intOrNull(str(form, "capacity")),
+      ...fields,
       projectId: project?.id ?? null,
       internal,
       registrationOpen: !internal,
@@ -72,6 +86,69 @@ export async function createEvent(_: ActionState, form: FormData): Promise<Actio
   redirect(`/organisations/${orgId}/evenements/${event.id}${publish ? "?publie=1" : ""}`);
 }
 
+/**
+ * Modifier un événement : mêmes champs qu'à la création, plus le lien de connexion. Les inscrits sont prévenus
+ * par e-mail d'un changement de date, d'heure, de lieu, de format ou de lien. Les hospitalités restent modifiables
+ * tant qu'aucun inscrit n'en a accepté ; ensuite elles sont figées (valeurs déclarées).
+ */
+export async function updateEvent(_: ActionState, form: FormData): Promise<ActionState> {
+  const orgId = str(form, "orgId");
+  const eventId = str(form, "eventId");
+  const { user, roles } = await requireMembership(orgId, EVENT_MANAGER_ROLES);
+  const event = await db.event.findFirst({
+    where: { id: eventId, organizationId: orgId, ...eventScope(user, roles) },
+    include: { benefits: { include: { _count: { select: { accepted: true } } } }, _count: { select: { registrations: true } } },
+  });
+  if (!event) return { error: "Événement introuvable." };
+  const read = readEventFields(form);
+  if ("error" in read) return { error: read.error };
+  const { fields, benefits } = read;
+  // Un événement passé peut être corrigé (lieu, description…) ; une nouvelle date doit être à venir.
+  if (fields.startsAt.getTime() !== event.startsAt.getTime() && fields.startsAt < new Date()) return { error: "La nouvelle date doit être dans le futur." };
+  if (fields.capacity && fields.capacity < event._count.registrations)
+    return { error: `Capacité trop faible : ${event._count.registrations} personnes sont déjà inscrites.` };
+
+  const frozen = event.benefits.some((b) => b._count.accepted > 0);
+  const changes = eventChanges(event, fields);
+  await db.$transaction(async (tx) => {
+    await tx.event.update({ where: { id: event.id }, data: fields });
+    // Nouvelle date : le rappel de la veille repartira à la bonne date.
+    if (changes.includes("date")) await tx.registration.updateMany({ where: { eventId: event.id }, data: { reminderSentAt: null } });
+    if (!frozen) {
+      const keep = new Set(benefits.map((b) => b.catalogId));
+      await tx.eventBenefit.deleteMany({ where: { eventId: event.id, catalogId: { notIn: [...keep] } } });
+      for (const b of benefits) {
+        const existing = event.benefits.find((x) => x.catalogId === b.catalogId);
+        if (existing) await tx.eventBenefit.update({ where: { id: existing.id }, data: { valueCents: b.valueCents } });
+        else await tx.eventBenefit.create({ data: { eventId: event.id, ...b } });
+      }
+    }
+  });
+  await audit(user.id, "event.update", "Event", event.id, { changes, ...(frozen ? {} : { benefits: benefits.length }) });
+  if (changes.length > 0 && event._count.registrations > 0) notifyEventChanged(event.id, changes);
+  revalidatePath(`/organisations/${orgId}/evenements/${eventId}`);
+  revalidatePath(`/evenements/${eventId}`);
+  revalidatePath("/evenements");
+  const n = event._count.registrations;
+  const told = changes.length > 0 && n > 0 ? (n > 1 ? ` Les ${n} inscrits sont prévenus par e-mail.` : " L'inscrit est prévenu par e-mail.") : "";
+  return { ok: `Événement mis à jour.${told}` };
+}
+
+/** Supprimer un brouillon jamais publié, sans inscrit ni demande rattachée (devis, appel, service). */
+export async function deleteEventDraft(form: FormData) {
+  const orgId = str(form, "orgId");
+  const eventId = str(form, "eventId");
+  const { user } = await requireMembership(orgId, EVENT_ORGANIZER_ROLES);
+  const event = await db.event.findFirst({
+    where: { id: eventId, organizationId: orgId, publishedAt: null },
+    include: DRAFT_COUNTS,
+  });
+  if (!event || !(await deletableDraft(event))) return;
+  await db.event.delete({ where: { id: event.id } });
+  await audit(user.id, "event.delete", "Event", event.id, { title: event.title });
+  redirect(`/organisations/${orgId}/evenements`);
+}
+
 /** Publier / dépublier, ouvrir / fermer les inscriptions. */
 export async function setEventFlag(form: FormData) {
   const orgId = str(form, "orgId");
@@ -79,7 +156,7 @@ export async function setEventFlag(form: FormData) {
   const { user, roles, org } = await requireMembership(orgId, EVENT_MANAGER_ROLES);
   const flag = str(form, "flag");
   if (flag === "publish" && !isVerifiedOrg(org)) return;
-  if (flag === "publish" && !(await engagementAllowed(orgId))) redirect(`/organisations/${orgId}/abonnement?motif=evenement`);
+  if (flag === "publish" && !(await engagementAllowed(orgId))) redirect(subscribeHref(orgId, "evenement", eventId));
   // Passer en réunion interne (ou l'ouvrir au public) relève de l'équipe organisatrice, pas d'une agence.
   if ((flag === "internal" || flag === "public") && !roles.some((r) => EVENT_ORGANIZER_ROLES.includes(r))) return;
   const data =

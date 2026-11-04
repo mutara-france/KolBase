@@ -42,3 +42,5 @@ export function icsResponse(filename: string, body: string) {
 export const appUrl = () => (process.env.APP_URL ?? "").replace(/\/$/, "");
 export const eventLocation = (e: { format: string; venue: string | null; city: string | null }) =>
   e.format === "DISTANCIEL" ? "Visioconférence" : [e.venue, e.city].filter(Boolean).join(", ") || null;
+/** Lien de connexion d'un événement en ligne ou hybride : à n'inclure que pour une personne inscrite. */
+export const joinUrl = (e: { format: string; onlineUrl: string | null }) => (e.format === "PRESENTIEL" ? null : e.onlineUrl);

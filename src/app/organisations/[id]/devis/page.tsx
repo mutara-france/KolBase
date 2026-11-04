@@ -15,6 +15,8 @@ import { QUOTE_STATUS, SUPPLIER_CATEGORIES, supplierCategoryLabel } from "@/lib/
 import { declineRfq } from "@/lib/rfq-actions";
 import { readLines, withVat } from "@/lib/quotes";
 import { storageEnabled } from "@/lib/storage";
+import { BillingNotice } from "@/components/BillingNotice";
+import { billingBlocked } from "@/lib/billing";
 
 export const metadata = { title: "Demandes de devis — KolBase" };
 
@@ -23,6 +25,8 @@ export default async function Page({ params, searchParams }: { params: Promise<{
   const { onglet = "en-cours" } = await searchParams;
   const { org, isAdmin, user } = await requireMembership(id);
   if (org.kind !== "PRESTATAIRE") redirect(`/organisations/${id}`);
+  // Après un premier devis retenu, une nouvelle réponse suppose l'abonnement (les révisions restent libres).
+  const quoteBlocked = await billingBlocked(id, "reponse");
 
   const invites = await db.rfqSupplier.findMany({
     where: { supplierId: id, rfq: { status: { not: "draft" } } },
@@ -53,6 +57,7 @@ export default async function Page({ params, searchParams }: { params: Promise<{
       <SiteHeader />
       <main className="stack">
         <h1>Demandes de devis</h1>
+        <BillingNotice orgId={id} motive="reponse" />
         {!org.listed && <p className="notice warn">Votre organisation n&apos;apparaît pas dans l&apos;annuaire des prestataires. Complétez la fiche prestataire pour être consulté.</p>}
         <div className="stats">
           <div className="card stat"><span className="muted">À traiter</span><strong>{todo.length}</strong></div>
@@ -171,6 +176,7 @@ export default async function Page({ params, searchParams }: { params: Promise<{
                         ai={aiEnabled()}
                         headcount={r.headcount}
                         uploads={storageEnabled()}
+                        blocked={quoteBlocked}
                         current={q ? {
                           amount: String(q.amountCents / 100), delay: q.delay ?? "", note: q.note ?? "", conditions: q.conditions ?? "", vatBp: q.vatBp, revision: q.revision, fileName: q.fileName,
                           validUntil: q.validUntil ? q.validUntil.toISOString().slice(0, 10) : "",

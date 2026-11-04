@@ -10,12 +10,12 @@ import { country } from "@/lib/countries";
 import { intlLocale, type T } from "@/lib/i18n";
 import { getT } from "@/lib/i18n/server";
 
-function Hidden({ level, viewer, label, t }: { level: VisLevel; viewer: Viewer; label: string; t: T }) {
+function Hidden({ level, viewer, label, t, back }: { level: VisLevel; viewer: Viewer; label: string; t: T; back: string }) {
   if (level === "masque") return null;
   return (
     <p className="hidden-note">
       {viewer === "public" ? <Lock size={13} /> : <EyeOff size={13} />} {t("{label} : réservé aux organisations inscrites.", { label })}{" "}
-      {viewer === "public" && <Link href="/connexion">{t("Se connecter")}</Link>}
+      {viewer === "public" && <Link href={`/connexion?next=${encodeURIComponent(back)}`}>{t("Se connecter")}</Link>}
     </p>
   );
 }
@@ -76,8 +76,8 @@ export async function ExpertProfile({ id, viewer, solicitHref, userId = null }: 
           <div className="stat-card"><div className="stat-value">{t("{amount} €", { amount: (p.dayRateCents / 100).toLocaleString(intlLocale(locale)) })}</div><div className="stat-label">{t("Tarif journalier indicatif (HT)")}</div></div>
         )}
       </div>
-      {!canSee(v.historique, viewer) && <Hidden level={v.historique} viewer={viewer} label={t("Statistiques d'activité")} t={t} />}
-      {!canSee(v.tarif, viewer) && <Hidden level={v.tarif} viewer={viewer} label={t("Tarif indicatif")} t={t} />}
+      {!canSee(v.historique, viewer) && <Hidden level={v.historique} viewer={viewer} label={t("Statistiques d'activité")} t={t} back={`/experts/${id}`} />}
+      {!canSee(v.tarif, viewer) && <Hidden level={v.tarif} viewer={viewer} label={t("Tarif indicatif")} t={t} back={`/experts/${id}`} />}
 
       <div className="grid-2">
         <section className="card">
@@ -93,7 +93,7 @@ export async function ExpertProfile({ id, viewer, solicitHref, userId = null }: 
               <dt><Languages size={12} /> {t("Langues")}</dt><dd>{p.languages.join(", ") || "—"}</dd>
               {p.orcid && (<><dt>ORCID</dt><dd><a href={`https://orcid.org/${p.orcid}`} target="_blank" rel="noreferrer">{p.orcid}</a>{p.orcidVerified && <span className="verif ok small"> <BadgeCheck size={12} /> {t("vérifié")}</span>}</dd></>)}
             </dl>
-          ) : <Hidden level={v.contact} viewer={viewer} label={t("Coordonnées")} t={t} />}
+          ) : <Hidden level={v.contact} viewer={viewer} label={t("Coordonnées")} t={t} back={`/experts/${id}`} />}
         </section>
       </div>
 
@@ -112,7 +112,7 @@ export async function ExpertProfile({ id, viewer, solicitHref, userId = null }: 
                 ))}
               </ul>
             )
-          ) : <Hidden level={v.publications} viewer={viewer} label={t("Publications")} t={t} />}
+          ) : <Hidden level={v.publications} viewer={viewer} label={t("Publications")} t={t} back={`/experts/${id}`} />}
         </section>
       ) : null}
 
@@ -146,7 +146,7 @@ export async function ExpertProfile({ id, viewer, solicitHref, userId = null }: 
                 ))}
               </ul>
             )
-          ) : <Hidden level={v.structures} viewer={viewer} label={t("Structures juridiques")} t={t} />}
+          ) : <Hidden level={v.structures} viewer={viewer} label={t("Structures juridiques")} t={t} back={`/experts/${id}`} />}
         </section>
       ) : null}
       {viewer === "membre" && p.dayRateCents == null && canSee(v.tarif, viewer) && <p className="text-xs"><Wallet size={12} /> {t("Tarif non renseigné.")}</p>}

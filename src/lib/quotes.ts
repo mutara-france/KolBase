@@ -10,6 +10,8 @@ export const VAT_OPTIONS = [
   { bp: 0, label: "0 % (exonéré ou non assujetti)" },
 ] as const;
 export const isVatBp = (n: number) => VAT_OPTIONS.some((v) => v.bp === n);
+/** Taux proposé par défaut : 10 % pour la restauration, l'hébergement et le transport de personnes, 20 % sinon. */
+export const defaultVatBp = (category: string) => (["restauration", "hebergement", "transport"].includes(category) ? 1000 : 2000);
 export const vatLabel = (bp: number) => `${(bp / 100).toLocaleString("fr-FR")} %`;
 
 export const MAX_LINES = 40;

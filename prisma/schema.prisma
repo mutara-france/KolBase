@@ -403,6 +403,7 @@ model ProjectExpert {
   days           Float?              // nombre d'unités (journées, interventions…)
   responseNote   String?
   respondedAt    DateTime?
+  desiredFeeCents Int?               // honoraires souhaités par l'expert dans sa réponse (€ HT, en centimes), facultatif
   // Paiement des honoraires, indiqué par l'organisation (visible de l'expert dans « Mes revenus »).
   paidAt         DateTime?
   paidCents      Int?
@@ -518,6 +519,8 @@ model Event {
   // Réunion interne (board, comité…) : ni publication dans l'agenda, ni inscriptions en ligne.
   internal         Boolean      @default(false)
   program          String?      // programme scientifique (déroulé horaire), affiché sur la page publique
+  // Lien de connexion (visioconférence, https) des événements en ligne ou hybrides : communiqué aux seuls inscrits.
+  onlineUrl        String?
   // Agence prestataire mandatée : ses membres (rôle Prestataire) ne voient que les événements confiés.
   agencyId         String?
   agency           Organization? @relation("agencyEvents", fields: [agencyId], references: [id])

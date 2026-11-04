@@ -1693,8 +1693,16 @@ async function submitNewOrg(page, siren) {
   };
   await page.goto(`${BASE}/organisations/demo-org-cdra/dossiers/nouveau`);
   check("Abonnement : bandeau avant la première action engageante", (await text(page)).includes("l'abonnement de l'organisation doit être activé"));
-  await fillDossier("Conférence implantologie — facturation");
-  check("Abonnement : sollicitation refusée tant qu'il n'est pas activé", (await text(page)).includes("Membres et réglages › Abonnement") && page.url().endsWith("/dossiers/nouveau"));
+  // Bouton d'envoi désactivé et lien direct vers l'abonnement ; un envoi forcé est refusé par le serveur, la saisie reste.
+  check("Abonnement : envoi désactivé, lien direct vers l'abonnement", (await page.locator('button:has-text("Envoyer les sollicitations")').isDisabled()) && (await page.locator('a[href="/organisations/demo-org-cdra/abonnement?motif=sollicitation"]').count()) === 1);
+  await page.fill('input[name="title"]', "Conférence implantologie — facturation");
+  await page.locator(".expert-pick label.check input").first().check();
+  const fee0 = page.locator('input[name^="fee_"]').first();
+  if (!(await fee0.inputValue())) await fee0.fill("1500");
+  await page.locator('button:has-text("Envoyer les sollicitations")').evaluate((b) => { b.disabled = false; });
+  await page.click('button:has-text("Envoyer les sollicitations")');
+  await page.waitForTimeout(1500);
+  check("Abonnement : sollicitation refusée tant qu'il n'est pas activé", (await text(page)).includes("menu du compte › Abonnement") && page.url().endsWith("/dossiers/nouveau") && (await page.inputValue('input[name="title"]')) === "Conférence implantologie — facturation");
   await page.goto(`${BASE}/organisations/demo-org-cdra/abonnement`);
   let t = await text(page);
   check("Abonnement : page de l'organisation (tarif, déclencheur)", t.includes("599 € HT par mois") && t.includes("première action qui engage un tiers"));
@@ -1739,9 +1747,8 @@ async function submitNewOrg(page, siren) {
   await qf.locator('input[name="line_label"]').first().fill("Plateau-repas");
   await qf.locator('input[name="line_qty"]').first().fill("12");
   await qf.locator('input[name="line_unit"]').first().fill("24");
-  await qf.locator('button:has-text("Envoyer le devis")').click();
-  await sup.page.waitForTimeout(1200);
-  check("Prestataire : après un devis retenu, l'abonnement est demandé", (await qf.innerText().catch(() => "")).includes("répondre à de nouvelles demandes de devis") || (await text(sup.page)).includes("répondre à de nouvelles demandes de devis"));
+  // Après un premier devis retenu : bandeau avec lien vers l'abonnement, réponse désactivée.
+  check("Prestataire : après un devis retenu, l'abonnement est demandé", (await text(sup.page)).includes("répondre à de nouvelles demandes de devis") && (await qf.locator('button:has-text("Envoyer le devis")').isDisabled()) && (await sup.page.locator('a[href="/organisations/demo-sup-belleville/abonnement?motif=reponse"]').count()) === 1);
   await sup.page.goto(`${BASE}/organisations/demo-sup-belleville/abonnement`);
   check("Prestataire : abonnement 249 € HT, référencement gratuit", (await text(sup.page)).includes("249 € HT par mois") && (await text(sup.page)).includes("référencement dans l'annuaire"));
   await sup.ctx.close();
@@ -2090,6 +2097,364 @@ async function submitNewOrg(page, siren) {
   await s4.ctx.close();
   // Remise à l'état initial pour les vérifications suivantes.
   await pgc.query(`update "Organization" set "require2fa" = false where id = 'demo-org-orthonova'`);
+  await pgc.end();
+}
+
+// ── Lot 1 : ouverture (lien de connexion, modifications, retour après connexion, décisions, prix) ──
+{
+  const pgc = new pg.Client({ connectionString: process.env.DATABASE_URL });
+  await pgc.connect();
+  const q1 = async (sql, args = []) => (await pgc.query(sql, args)).rows[0];
+  /** Valeur d'un champ « date et heure » (heure de Paris), dans `days` jours. */
+  const parisInput = (days, hm) => `${new Date(Date.now() + days * 864e5).toLocaleDateString("sv-SE", { timeZone: "Europe/Paris" })}T${hm}`;
+  /** Connexion avec le formulaire de la page affichée (la page d'origine est portée par « next »). */
+  const loginHere = async (page, email) => {
+    await page.fill('input[name="email"]', email);
+    await page.fill('input[name="password"]', PW);
+    await Promise.all([page.waitForLoadState("networkidle"), page.click('button:has-text("Se connecter")')]);
+    await page.waitForTimeout(800);
+  };
+  const unfold = (ics) => ics.replace(/\r\n /g, "");
+
+  // 4. Page d'origine conservée : pages réservées, liens entre connexion et création de compte, déjà connecté.
+  {
+    const a = await session();
+    await a.page.goto(`${BASE}/admin?onglet=lancement`);
+    check("Retour après connexion : /admin renvoie vers la connexion avec next", a.page.url().includes("/connexion?next=%2Fadmin%3Fonglet%3Dlancement"), a.page.url());
+    await loginHere(a.page, "anne.chevalier@demo.kolbase.local");
+    check("Retour après connexion : /admin atteint après la connexion", a.page.url() === `${BASE}/admin?onglet=lancement`, a.page.url());
+    await a.ctx.close();
+    const reg = await q1(`select r.id from "Registration" r join "User" u on u.id = r."userId" where u.email = 'ines.lambert@demo.kolbase.local' and r."eventId" = 'demo-ev-soiree-implanto'`);
+    const b = await session();
+    await b.page.goto(`${BASE}/inscriptions/${reg.id}/badge`);
+    await loginHere(b.page, "ines.lambert@demo.kolbase.local");
+    check("Retour après connexion : badge d'inscription", b.page.url() === `${BASE}/inscriptions/${reg.id}/badge`, b.page.url());
+    await b.ctx.close();
+    const c = await session();
+    await c.page.goto(`${BASE}/connexion?next=%2Fevenements`);
+    check("Connexion → « Créer un compte » transmet next", (await c.page.locator('main a:has-text("Créer un compte")').getAttribute("href")) === "/inscription?next=%2Fevenements");
+    await c.page.goto(`${BASE}/inscription?next=%2Fevenements`);
+    check("Création de compte → « Se connecter » transmet next", (await c.page.locator('main form a:has-text("Se connecter")').getAttribute("href")) === "/connexion?next=%2Fevenements");
+    await c.page.goto(`${BASE}/experts/demo-p-martin`);
+    check("Fiche expert : verrou « Se connecter » avec next", ((await c.page.locator('.hidden-note a:has-text("Se connecter")').first().getAttribute("href")) ?? "") === "/connexion?next=%2Fexperts%2Fdemo-p-martin");
+    await c.ctx.close();
+    const d = await session();
+    await login(d.page, "claire.morel@demo.kolbase.local");
+    await d.page.goto(`${BASE}/connexion?next=%2Fannuaire`);
+    check("Déjà connecté : /connexion mène à next", d.page.url() === `${BASE}/annuaire`, d.page.url());
+    await d.page.goto(`${BASE}/inscription?next=%2Fevenements`);
+    check("Déjà connecté : /inscription mène à next", d.page.url() === `${BASE}/evenements`, d.page.url());
+    await d.page.goto(`${BASE}/connexion?next=%2F%2Fevil.example`);
+    check("Déjà connecté : next externe ignoré", d.page.url() === `${BASE}/compte`, d.page.url());
+    await d.ctx.close();
+  }
+
+  // 8. Inscription « organisation », boutons de l'accueil et de l'invitation.
+  {
+    const a = await session();
+    await a.page.goto(`${BASE}/inscription?profil=organisation`);
+    check("Inscription organisation : titre, profil présélectionné, sans pays d'exercice", (await a.page.locator("main h1").innerText()) === "Créer le compte de votre organisation" && (await a.page.locator('select[name="profession"]').inputValue()) === "" && (await a.page.locator('select[name="country"]').count()) === 0);
+    await a.page.goto(`${BASE}/`);
+    check("Accueil sans compte : « Publier un événement » → compte d'organisation", (await a.page.locator('a:has-text("Publier un événement")').first().getAttribute("href")) === "/inscription?profil=organisation");
+    const home = await text(a.page);
+    check("Accueil : plus de « gratuit » sans nuance pour les organisations", !home.includes("c'est gratuit") && !home.includes("Le référencement est gratuit.") && home.includes("gratuit jusqu'à votre première action"));
+    await a.page.goto(`${BASE}/aide`);
+    await a.page.click('summary:has-text("Combien coûte KolBase ?")');
+    const faq = (await a.page.locator('details.faq:has-text("Combien coûte KolBase ?")').innerText()).replace(/\s/g, " ");
+    check("Aide : prix annoncés (organisation, prestataire) et conditions de vente", faq.includes("599 € HT par mois") && faq.includes("5 990 € HT par an") && faq.includes("249 € HT par mois") && faq.includes("premier mois est offert") && (await a.page.locator('details.faq a[href="/conditions-de-vente"]').count()) === 1);
+    check("Aide sans compte : « Référencer mon organisation » → compte d'organisation", (await a.page.locator('a:has-text("Référencer mon organisation")').first().getAttribute("href")) === "/inscription?profil=organisation");
+    await a.page.goto(`${BASE}/mentions-legales`);
+    const ml = await text(a.page);
+    await a.page.goto(`${BASE}/confidentialite`);
+    const pc = await text(a.page);
+    check("Mentions légales et confidentialité : pas d'hébergeur « à compléter » affiché", !ml.includes("hébergeur des documents") && !pc.includes("hébergeur des documents") && !ml.includes("à compléter]"));
+    await a.ctx.close();
+    const o = await session();
+    await login(o.page, "claire.morel@demo.kolbase.local");
+    await o.page.goto(`${BASE}/`);
+    check("Accueil connecté : « Publier un événement » → nouvel événement de l'organisation", (await o.page.locator('a:has-text("Publier un événement")').first().getAttribute("href")) === "/organisations/demo-org-dentalys/evenements/nouveau");
+    await o.page.goto(`${BASE}/organisations/demo-org-dentalys/membres`);
+    await o.page.fill('form:has(h2:has-text("Inviter un membre")) input[name="email"]', "lot1.invite@exemple.fr");
+    await o.page.click('button:has-text("Générer le lien")');
+    await o.page.waitForSelector(".copy input", { timeout: 10000 }).catch(() => {});
+    const invite = await o.page.locator(".copy input").inputValue().catch(() => "");
+    await o.page.goto(`${BASE}/organisations/demo-org-dentalys/prestataires?onglet=annuaire`);
+    const dir = await text(o.page);
+    check("Annuaire des prestataires : note sur le référencement gratuit corrigée", dir.includes("Le référencement des prestataires est gratuit") && !dir.includes("peuvent rémunérer KolBase"));
+    await o.ctx.close();
+    const anon = await session();
+    await anon.page.goto(invite);
+    const create = (await anon.page.locator('main a:has-text("Créer un compte")').getAttribute("href").catch(() => "")) ?? "";
+    check("Invitation : « Créer un compte » mène au compte d'organisation, avec retour", create.startsWith("/inscription?profil=organisation&next=%2Finvitation%2F"), create);
+    await anon.ctx.close();
+  }
+
+  // 1 et 3. Événement en ligne : lien de connexion réservé aux inscrits, modification annoncée, tâche à J-2, brouillon.
+  {
+    const org = await session();
+    await login(org.page, "pierre.vidal@demo.kolbase.local");
+    await org.page.goto(`${BASE}/organisations/demo-org-cdra/evenements/nouveau`);
+    const title = "Webinaire Lot 1 — parodontologie en ligne";
+    await org.page.fill('input[name="title"]', title);
+    await org.page.fill('input[name="startsAt"]', parisInput(10, "18:00"));
+    await org.page.selectOption('select[name="format"]', "DISTANCIEL");
+    await org.page.fill('input[name="onlineUrl"]', "http://zoom.example.com/j/1");
+    await org.page.check('input[name="publish"]');
+    await org.page.click('button:has-text("Créer l\'événement")');
+    await org.page.waitForTimeout(1500);
+    check("Événement : lien de connexion en http refusé", (await text(org.page)).includes("Lien de connexion invalide"));
+    check("Formulaire : saisie conservée après une erreur", (await org.page.inputValue('input[name="title"]')) === title && (await org.page.inputValue('select[name="format"]')) === "DISTANCIEL" && (await org.page.isChecked('input[name="publish"]')));
+    await org.page.fill('input[name="onlineUrl"]', "https://zoom.example.com/j/123456");
+    await Promise.all([org.page.waitForURL(/\/evenements\/[^/?]+\?publie=1/), org.page.click('button:has-text("Créer l\'événement")')]);
+    const evId = org.page.url().match(/\/evenements\/([^/?]+)\?/)[1];
+    check("Événement en ligne créé avec son lien", (await q1(`select "onlineUrl" from "Event" where id = $1`, [evId])).onlineUrl === "https://zoom.example.com/j/123456");
+    const pub = await (await fetch(`${BASE}/evenements/${evId}`)).text();
+    const pubIcs = await (await fetch(`${BASE}/evenements/${evId}/calendrier`)).text();
+    check("Lien de connexion absent de la page publique et du .ics d'un non-inscrit", !pub.includes("zoom.example.com") && !pubIcs.includes("zoom.example.com"));
+    // Inscription d'une praticienne : le lien apparaît partout où elle le cherche.
+    const prac = await session();
+    await login(prac.page, "sarah.mercier@demo.kolbase.local");
+    await prac.page.goto(`${BASE}/evenements/${evId}`);
+    check("Non inscrite : pas de lien de connexion", !(await prac.page.content()).includes("zoom.example.com"));
+    await prac.page.click('button:has-text("M\'inscrire")');
+    await prac.page.waitForTimeout(1200);
+    await prac.page.reload();
+    check("Inscrite : lien de connexion dans l'encart « Vous êtes inscrit »", (await prac.page.locator('.next-step:has-text("Vous êtes inscrit") a[href="https://zoom.example.com/j/123456"]').count()) === 1);
+    await prac.page.goto(`${BASE}/inscriptions`);
+    check("Mes inscriptions : lien de connexion", (await prac.page.locator('a[href="https://zoom.example.com/j/123456"]').count()) === 1);
+    const ics1 = unfold(await (await prac.ctx.request.get(`${BASE}/evenements/${evId}/calendrier`)).text());
+    const ics2 = unfold(await (await prac.ctx.request.get(`${BASE}/inscriptions/calendrier`)).text());
+    check("Fichiers .ics d'une inscrite : lien de connexion", ics1.includes("LOCATION:https://zoom.example.com/j/123456") && ics1.includes("Lien de connexion : https://zoom.example.com/j/123456") && ics2.includes("https://zoom.example.com/j/123456"));
+    // Modification : nouvelle date et nouveau lien, inscrite prévenue ; hospitalités encore modifiables.
+    await org.page.goto(`${BASE}/organisations/demo-org-cdra/evenements/${evId}`);
+    check("Événement publié : pas de « Supprimer le brouillon »", (await org.page.locator('button:has-text("Supprimer le brouillon")').count()) === 0);
+    await org.page.click("#modifier summary");
+    await org.page.fill('#modifier input[name="startsAt"]', parisInput(11, "18:30"));
+    await org.page.fill('#modifier input[name="onlineUrl"]', "https://zoom.example.com/j/999");
+    await org.page.check('#modifier input[name="benefit_cafe"]');
+    await org.page.fill('#modifier input[name="value_cafe"]', "15");
+    await org.page.click('button:has-text("Mettre à jour l\'événement")');
+    await org.page.waitForTimeout(1500);
+    check("Modification : enregistrée, inscrite prévenue", (await org.page.locator("#modifier").innerText()).includes("Événement mis à jour. L'inscrit est prévenu par e-mail."));
+    const change = await waitMail("sarah.mercier@demo.kolbase.local", `Changement : « ${title} »`);
+    check("E-mail « Changement » : nouvelle date et nouveau lien", !!change && change.text.includes("Nouvelle date") && change.text.includes("Lien de connexion : https://zoom.example.com/j/999"), change?.text.slice(0, 200) ?? "aucun e-mail");
+    check("Hospitalités modifiables tant qu'aucun inscrit ne les a acceptées", (await q1(`select "valueCents" from "EventBenefit" where "eventId" = $1 and "catalogId" = 'cafe'`, [evId]))?.valueCents === 1500);
+    await org.page.click('button:has-text("Envoyer le rappel maintenant")');
+    const reminder = await waitMail("sarah.mercier@demo.kolbase.local", `Rappel : « ${title} »`);
+    check("Rappel de la veille : lien de connexion", !!reminder && reminder.text.includes("Lien de connexion : https://zoom.example.com/j/999"), reminder?.text.slice(0, 200) ?? "aucun e-mail");
+    // Lien manquant à moins de deux jours : tâche pour l'organisateur.
+    await pgc.query(`update "Event" set "startsAt" = now() + interval '1 day', "onlineUrl" = null where id = $1`, [evId]);
+    await org.page.goto(`${BASE}/organisations/demo-org-cdra`);
+    check("Lien manquant à J-2 : tâche « Ajouter le lien de connexion »", (await text(org.page)).includes(`Ajouter le lien de connexion : ${title}`));
+    await org.page.goto(`${BASE}/organisations/demo-org-cdra/evenements/${evId}`);
+    check("Lien manquant à J-2 : alerte et formulaire ouvert", (await text(org.page)).includes("Lien de connexion manquant") && (await org.page.locator("#modifier[open]").count()) === 1);
+    // Page publique de l'organisation masquée : pas de lien vers elle, bandeau dans l'aperçu.
+    await pgc.query(`update "Organization" set listed = false where id = 'demo-org-cdra'`);
+    const hidden = await (await fetch(`${BASE}/evenements/${evId}`)).text();
+    const ld = JSON.parse(hidden.match(/<script type="application\/ld\+json">([^<]*)<\/script>/)?.[1] ?? "null");
+    check("Organisation non visible : ni lien vers sa page, ni url dans les données structurées", !hidden.includes('href="/structures/demo-org-cdra"') && ld?.organizer?.name === "Collège Dentaire Rhône-Alpes" && !ld?.organizer?.url);
+    await org.page.goto(`${BASE}/structures/demo-org-cdra`);
+    check("Aperçu de la page publique : « Cette page n'est pas visible du public »", (await text(org.page)).includes("Cette page n'est pas visible du public"));
+    await pgc.query(`update "Organization" set listed = true where id = 'demo-org-cdra'`);
+    // Brouillon jamais publié, sans inscrit : supprimable.
+    await org.page.goto(`${BASE}/organisations/demo-org-cdra/evenements/nouveau`);
+    await org.page.fill('input[name="title"]', "Brouillon Lot 1 à supprimer");
+    await org.page.fill('input[name="startsAt"]', parisInput(30, "09:00"));
+    await Promise.all([org.page.waitForURL(/\/evenements\/(?!nouveau)[^/?]+$/), org.page.click('button:has-text("Créer l\'événement")')]);
+    const draftId = org.page.url().split("/").at(-1);
+    await Promise.all([org.page.waitForURL(/\/evenements$/), org.page.click('button:has-text("Supprimer le brouillon")')]);
+    check("Brouillon jamais publié : supprimé", !(await q1(`select id from "Event" where id = $1`, [draftId])));
+    await prac.ctx.close();
+    await org.ctx.close();
+    // Hospitalités déjà acceptées : figées, avec une mention.
+    const dent = await session();
+    await login(dent.page, "claire.morel@demo.kolbase.local");
+    await dent.page.goto(`${BASE}/organisations/demo-org-dentalys/evenements/demo-ev-soiree-implanto`);
+    await dent.page.click("#modifier summary");
+    const frozen = await dent.page.locator("#modifier").innerText();
+    check("Hospitalités acceptées par des inscrits : figées, avec une mention", frozen.includes("Hospitalités figées") && (await dent.page.locator('#modifier input[name^="benefit_"]').count()) === 0);
+    await dent.ctx.close();
+  }
+
+  // 2. Dossier modifiable avant la signature ; honoraires souhaités par l'expert.
+  {
+    const org = await session();
+    await login(org.page, "claire.morel@demo.kolbase.local");
+    await org.page.goto(`${BASE}/organisations/demo-org-dentalys/dossiers/nouveau?expert=demo-p-fontaine`);
+    await org.page.fill('input[name="title"]', "Board Lot 1 — péri-implantite");
+    await org.page.fill('input[name="fee_demo-p-fontaine"]', "1500");
+    await Promise.all([org.page.waitForURL(/\/dossiers\/(?!nouveau)[^/?]+$/), org.page.click('button:has-text("Envoyer les sollicitations")')]);
+    const dossierUrl = org.page.url();
+    const projectId = dossierUrl.split("/").at(-1);
+    const link = await q1(`select id from "ProjectExpert" where "projectId" = $1 and "practitionerId" = 'demo-p-fontaine'`, [projectId]);
+    const exp = await session();
+    await login(exp.page, "isabelle.fontaine@demo.kolbase.local");
+    await exp.page.goto(`${BASE}/sollicitations/${link.id}`);
+    const sol = await text(exp.page);
+    check("Expert : plus de promesse de « contre-proposition », champ « Honoraires souhaités »", !sol.includes("contre-proposition") && (await exp.page.locator('input[name="desiredFee"]').count()) === 1);
+    await exp.page.fill('input[name="desiredFee"]', "1800");
+    await exp.page.click('button:has-text("Donner mon accord de principe")');
+    await exp.page.waitForTimeout(1200);
+    check("Expert : honoraires souhaités enregistrés avec l'accord", (await q1(`select "desiredFeeCents", status from "ProjectExpert" where id = $1`, [link.id])).desiredFeeCents === 180000);
+    const answer = await waitMail("claire.morel@demo.kolbase.local", "a donné son accord de principe — Board Lot 1");
+    check("E-mail à l'organisation : honoraires souhaités", !!answer && /Honoraires souhaités : 1\s800\s€/.test(answer.text), answer?.text.slice(0, 200) ?? "aucun e-mail");
+    await org.page.goto(dossierUrl);
+    check("Fiche du dossier : honoraires souhaités par l'expert", /Souhaités par l'expert : 1\s800\s€ HT/.test(await text(org.page)));
+    // Nouvelle proposition : les honoraires changent, la réponse de l'expert est de nouveau attendue.
+    await org.page.click("#modifier summary");
+    await org.page.locator('#modifier form.terms-form:has-text("Isabelle Fontaine") input[name="fee"]').fill("1800");
+    await org.page.locator('#modifier form.terms-form:has-text("Isabelle Fontaine") button:has-text("Proposer ces conditions")').click();
+    await org.page.waitForTimeout(1500);
+    const after = await q1(`select pe.status, pe."feeCents", p.status as project from "ProjectExpert" pe join "Project" p on p.id = pe."projectId" where pe.id = $1`, [link.id]);
+    check("Conditions modifiées : proposition renvoyée à l'expert", after.status === "ATT_EXPERTS" && after.feeCents === 180000 && after.project === "ATT_EXPERTS", JSON.stringify(after));
+    check("Conditions modifiées : journal d'audit", !!(await q1(`select id from "AuditLog" where action = 'project.terms' and "entityId" = $1`, [link.id])));
+    const proposal = await waitMail("isabelle.fontaine@demo.kolbase.local", "Nouvelle proposition de Dentalys Implants");
+    check("E-mail « Nouvelle proposition » à l'expert", !!proposal && /1\s800\s€/.test(proposal.text), proposal?.subject ?? "aucun e-mail");
+    await exp.ctx.close();
+    // Lien de l'e-mail ouvert sans session : connexion, puis retour à la sollicitation.
+    const viaMail = await session();
+    await viaMail.page.goto(linkIn(proposal) ?? `${BASE}/sollicitations/${link.id}`);
+    check("Lien d'e-mail sans session : connexion avec next", viaMail.page.url().includes(`/connexion?next=%2Fsollicitations%2F${link.id}`), viaMail.page.url());
+    await loginHere(viaMail.page, "isabelle.fontaine@demo.kolbase.local");
+    check("Lien d'e-mail : retour à la sollicitation après connexion", viaMail.page.url() === `${BASE}/sollicitations/${link.id}` && (await text(viaMail.page)).includes("Votre réponse"), viaMail.page.url());
+    await viaMail.ctx.close();
+    // Objet modifié, expert ajouté.
+    await org.page.goto(`${dossierUrl}?modifier=1`);
+    await org.page.fill('#modifier textarea[name="description"]', "Board de quatre heures sur la péri-implantite, synthèse écrite attendue.");
+    await org.page.click('button:has-text("Mettre à jour l\'objet")');
+    await org.page.waitForTimeout(1200);
+    check("Objet du dossier modifié", (await q1(`select description from "Project" where id = $1`, [projectId])).description.startsWith("Board de quatre heures"));
+    await org.page.selectOption('#modifier select[name="expertId"]', "demo-p-roux");
+    await org.page.fill('#modifier form:has(select[name="expertId"]) input[name="fee"]', "1200");
+    await org.page.click('button:has-text("Ajouter et solliciter l\'expert")');
+    await org.page.waitForTimeout(1500);
+    check("Expert ajouté au dossier et sollicité", !!(await q1(`select id from "ProjectExpert" where "projectId" = $1 and "practitionerId" = 'demo-p-roux' and status = 'ATT_EXPERTS'`, [projectId])) && !!(await waitMail("mathieu.roux@demo.kolbase.local", "Nouvelle sollicitation de Dentalys Implants")));
+    // Bloqué par la conformité : « Reprendre le dossier » mène à la modification.
+    await pgc.query(`update "Project" set status = 'BLOQUE', "complianceNote" = 'Honoraires à justifier' where id = $1`, [projectId]);
+    await org.page.goto(dossierUrl);
+    check("Bloqué : pas de modification directe", (await org.page.locator("#modifier").count()) === 0);
+    await Promise.all([org.page.waitForURL(/modifier=1/), org.page.click('button:has-text("Reprendre le dossier")')]);
+    check("« Reprendre le dossier » mène à la modification", (await org.page.locator("#modifier[open]").count()) === 1 && ["ACCORD", "ATT_EXPERTS"].includes((await q1(`select status from "Project" where id = $1`, [projectId])).status));
+    check("Abandon : motif obligatoire", (await org.page.locator('form:has(button:has-text("Abandonner le dossier")) input[name="note"][required]').count()) === 1);
+    // En signature : retour en accord de principe ou abandon ; plus de retour une fois une signature lancée.
+    await pgc.query(`update "Project" set status = 'SIGNATURE' where id = $1`, [projectId]);
+    await org.page.goto(dossierUrl);
+    check("En signature : « Retour en accord de principe » et abandon proposés", (await org.page.locator('button:has-text("Retour en accord de principe")').count()) === 1 && (await org.page.locator('button:has-text("Abandonner le dossier")').count()) === 1);
+    await Promise.all([org.page.waitForURL(/modifier=1/), org.page.click('button:has-text("Retour en accord de principe")')]);
+    check("Retour en accord de principe : dossier de nouveau modifiable", (await org.page.locator("#modifier[open]").count()) === 1);
+    await pgc.query(`update "Project" set status = 'SIGNATURE' where id = $1`, [projectId]);
+    await pgc.query(`insert into "ConventionSignature" (id, "projectExpertId", "requestId", status, "updatedAt") values ('e2e-lot1-sig', $1, 'e2e-lot1-req', 'ongoing', now())`, [link.id]);
+    await org.page.goto(dossierUrl);
+    check("Signature en cours : plus de retour en accord de principe", (await org.page.locator('button:has-text("Retour en accord de principe")').count()) === 0 && (await text(org.page)).includes("le retour en accord de principe n'est plus possible"));
+    await org.page.fill('form:has(button:has-text("Abandonner le dossier")) input[name="note"]', "Budget de l'année annulé");
+    await org.page.click('button:has-text("Abandonner le dossier")');
+    await org.page.waitForTimeout(1200);
+    const abandoned = await q1(`select p.status, (select data->>'note' from "AuditLog" where action = 'project.abandon' and "entityId" = p.id) as note from "Project" p where p.id = $1`, [projectId]);
+    check("Abandon depuis « En signature », motif dans l'historique", abandoned.status === "DECLINE" && abandoned.note === "Budget de l'année annulé", JSON.stringify(abandoned));
+    await org.ctx.close();
+  }
+
+  // 9. Devis : TVA à 10 % pour la restauration, conservée après l'envoi ; 7. prestataire après un premier devis retenu.
+  {
+    const sup = await session();
+    await login(sup.page, "ludovic.perrin@demo.kolbase.local");
+    await sup.page.goto(`${BASE}/organisations/demo-sup-belleville`);
+    check("Prestataire après un premier devis retenu : tâche « Activer l'abonnement »", (await text(sup.page)).includes("Activer l'abonnement"));
+    await pgc.query(`insert into "Subscription" ("organizationId", plan, status, "exemptUntil", "updatedAt") values ('demo-sup-belleville', 'prestataire', 'a_activer', '2099-12-31', now()) on conflict ("organizationId") do update set "exemptUntil" = '2099-12-31'`);
+    await pgc.query(`insert into "Rfq" (id, "organizationId", category, needs, status, "sentAt", headcount, city) values ('e2e-lot1-rfq-tva', 'demo-org-dentalys', 'restauration', 'Cocktail Lot 1 pour 40 personnes, soirée scientifique.', 'sent', now(), 40, 'Lyon')`);
+    await pgc.query(`insert into "RfqSupplier" ("rfqId", "supplierId") values ('e2e-lot1-rfq-tva', 'demo-sup-belleville')`);
+    await sup.page.goto(`${BASE}/organisations/demo-sup-belleville/devis`);
+    const card = sup.page.locator('section.card:has-text("Cocktail Lot 1 pour 40 personnes")');
+    check("Devis de restauration : TVA à 10 % proposée", (await card.locator('select[name="vat"]').inputValue()) === "1000");
+    await card.locator('input[name="line_label"]').first().fill("Cocktail dînatoire 12 pièces");
+    await card.locator('input[name="line_qty"]').first().fill("40");
+    await card.locator('input[name="line_unit"]').first().fill("38");
+    await card.locator('button:has-text("Envoyer le devis")').click();
+    await sup.page.waitForTimeout(1500);
+    const sent = await q1(`select "vatBp" from "Quote" where "rfqId" = 'e2e-lot1-rfq-tva'`);
+    check("Devis envoyé : formulaire refermé, TVA enregistrée à 10 %", sent?.vatBp === 1000 && (await card.locator('button:has-text("Réviser mon devis")').count()) === 1 && (await card.locator("form.quote-form").count()) === 0, JSON.stringify(sent));
+    await card.locator('button:has-text("Réviser mon devis")').click();
+    check("Révision : la TVA affichée reste celle envoyée", (await card.locator('select[name="vat"]').inputValue()) === "1000");
+    await sup.ctx.close();
+    // Prestataire sans devis retenu : référencement gratuit, aucun bouton de paiement.
+    const won = await q1(`select count(*)::int n from "Quote" where "supplierId" = 'demo-org-mediane' and status = 'retained'`);
+    await pgc.query(`delete from "Subscription" where "organizationId" = 'demo-org-mediane'`);
+    const ag = await session();
+    await login(ag.page, "karim.benali@demo.kolbase.local");
+    await ag.page.goto(`${BASE}/organisations/demo-org-mediane/abonnement`);
+    check("Prestataire sans devis retenu : « Référencement gratuit », pas de paiement", won.n === 0 && (await text(ag.page)).includes("Référencement gratuit : rien à payer avant votre premier devis retenu") && (await ag.page.locator('button:has-text("Activer l\'abonnement")').count()) === 0);
+    await ag.ctx.close();
+  }
+
+  // 5 et 6. Décisions de l'équipe KolBase annoncées ; page publique activée à la validation.
+  {
+    check("E-mail : organisation validée (Implants Express)", !!(await waitMail("ines.lambert@demo.kolbase.local", "Implants Express est validée sur KolBase")));
+    check("E-mail : identité du praticien vérifiée", !!(await waitMail("hugo.robert@demo.kolbase.local", "Votre identité est vérifiée sur KolBase")));
+    const gift = await waitMail("pierre.vidal@demo.kolbase.local", "KolBase vous offre l'abonnement jusqu'au");
+    check("E-mail : gratuité de l'abonnement offerte", !!gift && gift.text.includes("Pilote"), gift?.subject ?? "aucun e-mail");
+    await pgc.query(`insert into "Organization" (id, name, kind, siren, verification, listed, areas, "updatedAt") values ('e2e-lot1-labo', 'Laboratoire Lot Un', 'INDUSTRIEL', '552100554', 'PENDING', false, '{}', now()), ('e2e-lot1-refus', 'Société Lot Refus', 'INDUSTRIEL', null, 'PENDING', false, '{}', now())`);
+    await pgc.query(`insert into "Membership" (id, "userId", "organizationId", role) select 'e2e-lot1-m1', id, 'e2e-lot1-labo', 'ADMIN' from "User" where email = 'julie.lemoine@demo.kolbase.local'`);
+    await pgc.query(`insert into "Membership" (id, "userId", "organizationId", role) select 'e2e-lot1-m2', id, 'e2e-lot1-refus', 'ADMIN' from "User" where email = 'hugo.robert@demo.kolbase.local'`);
+    const adm = await session();
+    await login(adm.page, "anne.chevalier@demo.kolbase.local");
+    await adm.page.goto(`${BASE}/admin`);
+    const labo = adm.page.locator('section.card:has-text("Laboratoire Lot Un")').first();
+    check("Admin : « Page publique : non » avant validation", /Page publique\s*non/.test(await labo.innerText()));
+    check("Admin : motif du refus obligatoire", (await labo.locator('form:has(button:has-text("Refuser")) input[name="note"][required]').count()) === 1);
+    await labo.locator('button:has-text("Valider")').click();
+    await adm.page.waitForTimeout(1200);
+    const lab = await q1(`select verification, listed from "Organization" where id = 'e2e-lot1-labo'`);
+    check("Validation : page publique activée", lab.verification === "VERIFIED" && lab.listed === true && (await fetch(`${BASE}/structures/e2e-lot1-labo`)).status === 200, JSON.stringify(lab));
+    check("E-mail aux administrateurs : organisation validée", !!(await waitMail("julie.lemoine@demo.kolbase.local", "Laboratoire Lot Un est validée sur KolBase")));
+    await adm.page.goto(`${BASE}/admin`);
+    check("Admin : « Page publique : oui » après validation", /Page publique\s*oui/.test(await adm.page.locator('section.card:has-text("Laboratoire Lot Un")').first().innerText()));
+    const refus = () => adm.page.locator('section.card:has-text("Société Lot Refus")').first();
+    await refus().locator('button:has-text("Valider")').click();
+    await adm.page.waitForTimeout(1200);
+    await adm.page.goto(`${BASE}/admin`);
+    check("Admin : motif de la suspension obligatoire", (await refus().locator('form:has(button:has-text("Suspendre")) input[name="note"][required]').count()) === 1);
+    await refus().locator('form:has(button:has-text("Suspendre")) input[name="note"]').fill("Activité sans lien avec le secteur dentaire");
+    await refus().locator('button:has-text("Suspendre")').click();
+    await adm.page.waitForTimeout(1200);
+    const susp = await waitMail("hugo.robert@demo.kolbase.local", "Société Lot Refus est suspendue sur KolBase");
+    check("E-mail : suspension, avec le motif", !!susp && susp.text.includes("Motif : Activité sans lien avec le secteur dentaire"));
+    await adm.page.goto(`${BASE}/admin`);
+    await refus().locator('form:has(button:has-text("Refuser")) input[name="note"]').fill("SIREN déjà utilisé par une autre organisation");
+    await refus().locator('button:has-text("Refuser")').click();
+    await adm.page.waitForTimeout(1200);
+    const rej = await waitMail("hugo.robert@demo.kolbase.local", "Société Lot Refus n'a pas été validée sur KolBase");
+    check("E-mail : refus, avec le motif", !!rej && rej.text.includes("Motif : SIREN déjà utilisé"));
+    await pgc.query(`update "PractitionerProfile" set rpps = '19900000001', "rppsVerified" = false, "rppsCheckedAt" = null where id = 'demo-p-simon'`);
+    await adm.page.goto(`${BASE}/admin?onglet=praticiens`);
+    const simon = adm.page.locator('section.card:has-text("Emma Simon")');
+    check("Admin : motif obligatoire pour refuser une identité", (await simon.locator('form:has(button:has-text("Refuser")) input[name="note"][required]').count()) === 1);
+    await simon.locator('form:has(button:has-text("Refuser")) input[name="note"]').fill("Numéro introuvable dans l'Annuaire Santé");
+    await simon.locator('button:has-text("Refuser")').click();
+    await adm.page.waitForTimeout(1200);
+    const idRej = await waitMail("emma.simon@demo.kolbase.local", "Votre identifiant professionnel n'a pas pu être vérifié");
+    check("E-mail : identité refusée, motif et consigne", !!idRej && idRej.text.includes("Numéro introuvable") && idRej.text.includes("Informations personnelles"));
+    await adm.ctx.close();
+  }
+
+  // 7. Prise en main : ligne « Abonnement » ; publication bloquée, puis reprise après le paiement.
+  {
+    await pgc.query(`insert into "Event" (id, "organizationId", title, "typeId", "startsAt", format, city, "updatedAt") values ('e2e-lot1-ev', 'e2e-lot1-labo', 'Atelier Lot Un', 'travaux-pratiques', now() + interval '20 days', 'PRESENTIEL', 'Lyon', now())`);
+    const m = await session();
+    await login(m.page, "julie.lemoine@demo.kolbase.local");
+    await m.page.goto(`${BASE}/organisations/e2e-lot1-labo`);
+    check("Prise en main : ligne « Abonnement » (gratuit puis 599 € HT par mois)", /Abonnement : création, équipe, annuaire et brouillons gratuits ; 599\s€ HT par mois/.test(await text(m.page)));
+    await m.page.goto(`${BASE}/organisations/e2e-lot1-labo/evenements/e2e-lot1-ev`);
+    const bannerLink = m.page.locator('a[href="/organisations/e2e-lot1-labo/abonnement?motif=evenement&objet=e2e-lot1-ev"]');
+    check("Publication sans abonnement : bandeau avec lien direct, bouton désactivé", (await bannerLink.count()) === 1 && (await m.page.locator('button:has-text("Publier dans l\'agenda")').isDisabled()));
+    await bannerLink.click();
+    await m.page.waitForURL(/abonnement\?motif=evenement/);
+    await m.page.click('button:has-text("Activer l\'abonnement mensuel")');
+    await m.page.waitForURL(/\/abonnement\?session=cs_/, { timeout: 15000 });
+    check("Retour de paiement : « Abonnement activé », motif et objet conservés", m.page.url().includes("motif=evenement&objet=e2e-lot1-ev") && (await text(m.page)).includes("Abonnement activé"), m.page.url());
+    await Promise.all([m.page.waitForURL(/\?publie=1/), m.page.click('button:has-text("Publier maintenant")')]);
+    check("Retour de paiement : « Publier maintenant » publie l'événement", !!(await q1(`select "publishedAt" from "Event" where id = 'e2e-lot1-ev'`)).publishedAt);
+    await m.ctx.close();
+  }
   await pgc.end();
 }
 

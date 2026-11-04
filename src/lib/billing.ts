@@ -1,7 +1,7 @@
 import "server-only";
 import { db } from "@/lib/db";
 import { stripe, stripeEnabled, type StripeSubscription } from "@/lib/stripe";
-import { asInterval, canEngage, ENGAGING, fromStripeStatus, planFor, planPrice, PLANS, TRIAL_DAYS, type Interval, type Motive } from "@/lib/billing-plans";
+import { asInterval, asObjectId, canEngage, ENGAGING, fromStripeStatus, planFor, planPrice, PLANS, TRIAL_DAYS, type Interval, type Motive } from "@/lib/billing-plans";
 
 export { stripeEnabled };
 
@@ -12,8 +12,14 @@ export async function engagementAllowed(orgId: string) {
   return canEngage(sub);
 }
 
-/** Message d'une action refusée faute d'abonnement (l'adresse de la page d'abonnement est donnée en clair). */
-export const gateMessage = (motive: Motive) => `Pour ${ENGAGING[motive]}, un administrateur de l'organisation active l'abonnement (premier mois offert) : Membres et réglages › Abonnement.`;
+/** Message d'une action refusée faute d'abonnement (chemin de la page d'abonnement donné en clair). */
+export const gateMessage = (motive: Motive) => `Pour ${ENGAGING[motive]}, un administrateur de l'organisation active l'abonnement (premier mois offert) : menu du compte › Abonnement.`;
+
+/** L'action engageante est-elle bloquée faute d'abonnement ? (prestataire : réponse à une nouvelle demande) */
+export async function billingBlocked(orgId: string, motive: Motive) {
+  if (!stripeEnabled()) return false;
+  return motive === "reponse" ? !(await supplierCanQuote(orgId)) : !(await engagementAllowed(orgId));
+}
 
 /** Un prestataire peut-il répondre à de nouvelles demandes ? Gratuit jusqu'à son premier devis retenu. */
 export async function supplierCanQuote(supplierId: string) {
@@ -52,7 +58,7 @@ export async function applyStripeSubscription(orgId: string, s: StripeSubscripti
 }
 
 /** Page de paiement Stripe (mensuel ou annuel, premier mois offert si jamais utilisé). */
-export async function checkoutUrl(orgId: string, adminEmail: string, interval: Interval = "month") {
+export async function checkoutUrl(orgId: string, adminEmail: string, interval: Interval = "month", back: { motive?: Motive | null; objet?: string | null } = {}) {
   const org = await db.organization.findUniqueOrThrow({ where: { id: orgId }, include: { subscription: true } });
   const plan = PLANS[planFor(org.kind)];
   const amount = planPrice(planFor(org.kind), interval);
@@ -75,7 +81,8 @@ export async function checkoutUrl(orgId: string, adminEmail: string, interval: I
     line_items: [{ quantity: 1, price_data: { currency: "eur", unit_amount: amount, recurring: { interval }, tax_behavior: "exclusive", product_data: { name: `KolBase — ${plan.label}${interval === "year" ? " (annuel)" : ""}` } } }],
     subscription_data: { metadata: { orgId, interval }, ...(org.subscription?.trialUsed ? {} : { trial_period_days: TRIAL_DAYS }), ...(taxRate ? { default_tax_rates: [taxRate] } : {}) },
     metadata: { orgId, interval },
-    success_url: `${app}/organisations/${orgId}/abonnement?session={CHECKOUT_SESSION_ID}`,
+    // Retour : message « Abonnement activé » et, si une action attendait, lien pour la reprendre.
+    success_url: `${app}/organisations/${orgId}/abonnement?session={CHECKOUT_SESSION_ID}${back.motive ? `&motif=${back.motive}` : ""}${back.motive && asObjectId(back.objet) ? `&objet=${back.objet}` : ""}`,
     cancel_url: `${app}/organisations/${orgId}/abonnement?annule=1`,
   });
   return session.url;

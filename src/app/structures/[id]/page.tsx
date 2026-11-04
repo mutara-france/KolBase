@@ -9,7 +9,7 @@ import { Avatar } from "@/components/Avatar";
 import { CallCard, EventCard } from "@/components/PublicCards";
 import { db } from "@/lib/db";
 import { getCurrentUser } from "@/lib/auth";
-import { ORG_KIND_LABEL } from "@/lib/orgs";
+import { ORG_KIND_LABEL, orgIsPublic } from "@/lib/orgs";
 import { canSee, companyVisibility, type Viewer } from "@/lib/visibility";
 import { ProposeForm } from "@/components/DossierForms";
 import { FollowButton } from "@/components/FollowButton";
@@ -57,7 +57,7 @@ export default async function Page({ params }: { params: Promise<{ id: string }>
     : [null, [], []];
   const caps = readCapacities(o.capacities);
   const lock = (label: string) => (
-    <p className="hidden-note"><Lock size={13} /> {t("{label} : réservé aux membres connectés.", { label })} {viewer === "public" && <Link href="/connexion">{t("Se connecter")}</Link>}</p>
+    <p className="hidden-note"><Lock size={13} /> {t("{label} : réservé aux membres connectés.", { label })} {viewer === "public" && <Link href={`/connexion?next=${encodeURIComponent(`/structures/${o.id}`)}`}>{t("Se connecter")}</Link>}</p>
   );
 
   return (
@@ -66,6 +66,15 @@ export default async function Page({ params }: { params: Promise<{ id: string }>
       <main className={user ? "" : "landing"}>
         <div className={user ? "stack" : "public-section stack"}>
           <Link href="/structures" className="back-link"><ArrowLeft size={14} /> {t("Toutes les organisations")}</Link>
+          {/* Aperçu par un membre : la page n'est pas encore (ou plus) visible du public. */}
+          {isMember && !orgIsPublic(o) && (
+            <p className="notice warn" role="status">
+              {o.verification !== "VERIFIED"
+                ? t("Cette page n'est pas visible du public : elle le sera dès que KolBase aura validé l'organisation.")
+                : t("Cette page n'est pas visible du public : l'organisation est retirée de l'annuaire.")}{" "}
+              {!isSupplier && o.verification === "VERIFIED" && <Link href={`/organisations/${o.id}/membres?onglet=organisation`}>{t("La rendre visible")}</Link>}
+            </p>
+          )}
           <section className="card profile-hero">
             <Avatar name={o.name} size={76} square src={logoSrc(o)} />
             <div className="grow">

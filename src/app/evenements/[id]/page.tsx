@@ -14,6 +14,7 @@ import { fmtDate, fmtEur, intlLocale, type Locale } from "@/lib/i18n";
 import { getT } from "@/lib/i18n/server";
 import { appUrl } from "@/lib/ics";
 import { jsonLd } from "@/lib/jsonld";
+import { orgIsPublic } from "@/lib/org-roles";
 
 /** « lundi 3 novembre 2026 à 14:00 » / « Monday, 3 November 2026 at 14:00 » (heure de Paris). */
 const dateTime = (locale: Locale, d: Date) => fmtDate(locale, d, { weekday: "long", day: "numeric", month: "long", year: "numeric", hour: "2-digit", minute: "2-digit" });
@@ -38,6 +39,8 @@ export default async function Page({ params }: { params: Promise<{ id: string }>
   const [event, user] = await Promise.all([
     db.event.findFirst({
       where: { id, publishedAt: { not: null }, organization: { verification: "VERIFIED" } },
+      // Le lien de connexion n'est lu que pour une personne inscrite (plus bas).
+      omit: { onlineUrl: true },
       include: {
         organization: true, benefits: true, _count: { select: { registrations: true } },
         calls: { where: { status: "open" }, include: { _count: { select: { applications: { where: { status: "retained" } } } } }, orderBy: { createdAt: "asc" } },
@@ -50,6 +53,7 @@ export default async function Page({ params }: { params: Promise<{ id: string }>
   const reg = user
     ? await db.registration.findUnique({ where: { eventId_userId: { eventId: id, userId: user.id } }, include: { benefits: { include: { benefit: true } }, survey: { select: { id: true } } } })
     : null;
+  const onlineUrl = reg && event.format !== "PRESENTIEL" ? (await db.event.findUnique({ where: { id }, select: { onlineUrl: true } }))?.onlineUrl ?? null : null;
   const full = event.capacity != null && event._count.registrations >= event.capacity;
   const past = event.startsAt < new Date();
   const back = encodeURIComponent(`/evenements/${id}`);
@@ -82,7 +86,7 @@ export default async function Page({ params }: { params: Promise<{ id: string }>
       ? { "@type": "VirtualLocation", url: `${base}/evenements/${id}` }
       : { "@type": "Place", name: event.venue ?? event.city ?? undefined, address: { "@type": "PostalAddress", addressLocality: event.city ?? undefined, addressCountry: "FR" } },
     image: [`${base}/evenements/${id}/opengraph-image`],
-    organizer: { "@type": "Organization", name: event.organization.name, url: `${base}/structures/${event.organization.id}` },
+    organizer: { "@type": "Organization", name: event.organization.name, url: orgIsPublic(event.organization) ? `${base}/structures/${event.organization.id}` : undefined },
     offers: { "@type": "Offer", price: 0, priceCurrency: "EUR", url: `${base}/evenements/${id}`, availability: `https://schema.org/${full || !event.registrationOpen ? "SoldOut" : "InStock"}`, validFrom: event.publishedAt?.toISOString() },
     maximumAttendeeCapacity: event.capacity ?? undefined,
   };
@@ -142,6 +146,12 @@ export default async function Page({ params }: { params: Promise<{ id: string }>
               {reg ? (
                 <>
                   <p className="notice ok">{t("Vous êtes inscrit à cet événement.")}</p>
+                  {/* Lien de connexion : affiché aux seuls inscrits, jusqu'à la fin de l'événement. */}
+                  {event.format !== "PRESENTIEL" && !eventEnded(event) && (
+                    onlineUrl
+                      ? <p className="online-link text-sm">{t("Lien de connexion :")} <a href={onlineUrl} target="_blank" rel="noopener noreferrer">{onlineUrl}</a></p>
+                      : <p className="muted text-sm">{t("Le lien de connexion vous sera communiqué par l'organisateur avant l'événement.")}</p>
+                  )}
                   <p className="muted text-sm">
                     {reg.benefits.length === 0
                       ? t("Vous n'avez accepté aucune prestation.")
@@ -181,7 +191,7 @@ export default async function Page({ params }: { params: Promise<{ id: string }>
             <section className="card stack-sm">
               <h2 className="section-title">{event.organization.name}</h2>
               {event.organization.about && <p className="text-sm clamp-4">{event.organization.about}</p>}
-              <Link className="link" href={`/structures/${event.organizationId}`}>{t("Voir la page de l'organisation")}</Link>
+              {orgIsPublic(event.organization) && <Link className="link" href={`/structures/${event.organizationId}`}>{t("Voir la page de l'organisation")}</Link>}
             </section>
           </aside>
         </div>

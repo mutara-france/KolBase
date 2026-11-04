@@ -24,7 +24,8 @@ export default async function Page() {
         ]}</P>],
         ["Hébergement", <P key="h">{[
           `Application et base de données : ${legal("host")}. Les serveurs sont situés à ${legal("hostRegion")}.`,
-          `Documents déposés dans les dossiers : ${legal("storageProvider")}.`,
+          // Hébergeur des documents pas encore choisi : ligne omise (l'alerte reste dans l'onglet Lancement de /admin).
+          ...(LEGAL.storageProvider ? [`Documents déposés dans les dossiers : ${LEGAL.storageProvider}.`] : []),
         ]}</P>],
         ["Prestataires techniques", <L key="t" items={[
           `Envoi des e-mails : ${legal("emailProvider")}.`,

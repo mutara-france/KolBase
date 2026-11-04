@@ -6,6 +6,7 @@ import { audit } from "@/lib/auth";
 import { str } from "@/lib/form";
 import { sirenFields } from "@/lib/orgs";
 import { requirePlatformAdmin } from "@/lib/platform";
+import { notifyIdentityDecision, notifyOrgDecision } from "@/lib/notifications";
 
 const refresh = () => {
   revalidatePath("/admin");
@@ -21,9 +22,12 @@ export async function reviewOrganization(form: FormData) {
   const org = await db.organization.findUnique({ where: { id: orgId } });
   if (!org) return;
   if (decision === "verify") {
-    await db.organization.update({ where: { id: orgId }, data: { verification: "VERIFIED", verifiedAt: new Date(), verifiedById: admin.id, verificationNote: note } });
+    // Validée : la page publique est activée (l'organisation peut se retirer de l'annuaire dans Membres et réglages).
+    // Un prestataire n'est référencé que s'il a choisi ses catégories de prestation.
+    const listed = org.kind !== "PRESTATAIRE" || org.supplierCategories.length > 0;
+    await db.organization.update({ where: { id: orgId }, data: { verification: "VERIFIED", verifiedAt: new Date(), verifiedById: admin.id, verificationNote: note, listed } });
   } else if (decision === "reject" || decision === "suspend") {
-    if (decision === "reject" && !note) return; // un refus est toujours motivé
+    if (!note) return; // un refus ou une suspension est toujours motivé
     // Une organisation refusée ou suspendue cesse aussi de recevoir des candidatures.
     await db.$transaction([
       db.organization.update({
@@ -34,6 +38,7 @@ export async function reviewOrganization(form: FormData) {
     ]);
   } else return;
   await audit(admin.id, `platform.org_${decision}`, "Organization", orgId, { note: note ?? undefined });
+  notifyOrgDecision(orgId, decision, note);
   refresh();
 }
 
@@ -64,6 +69,9 @@ export async function reviewRpps(form: FormData) {
     // Un identifiant refusé retire aussi le praticien de l'annuaire public (il pourra se référencer à nouveau avec un numéro corrigé).
     data: { rppsVerified: decision === "verify", rppsCheckedAt: new Date(), rppsCheckNote: decision === "reject" ? note : null, ...(decision === "reject" ? { listed: false, listedAt: null } : {}) },
   });
-  if (count) await audit(admin.id, `platform.rpps_${decision}`, "PractitionerProfile", practitionerId, { identifier, note: note ?? undefined });
+  if (count) {
+    await audit(admin.id, `platform.rpps_${decision}`, "PractitionerProfile", practitionerId, { identifier, note: note ?? undefined });
+    notifyIdentityDecision(practitionerId, decision === "verify", note);
+  }
   refresh();
 }
