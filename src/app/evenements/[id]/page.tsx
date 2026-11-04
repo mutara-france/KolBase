@@ -58,12 +58,16 @@ export default async function Page({ params, searchParams }: { params: Promise<{
   const canReview = !!reg && !reg.survey && eventEnded(event) && (await attended(reg));
   const onlineUrl = reg && event.format !== "PRESENTIEL" ? (await db.event.findUnique({ where: { id }, select: { onlineUrl: true } }))?.onlineUrl ?? null : null;
   const full = event.capacity != null && event._count.registrations >= event.capacity;
+  // Commencé (inscriptions closes) puis terminé : le badge reste utile aux retardataires pendant l'événement.
   const past = event.startsAt < new Date();
+  const ended = eventEnded(event);
   const back = encodeURIComponent(`/evenements/${id}`);
 
   const left = event.capacity != null ? Math.max(0, event.capacity - event._count.registrations) : null;
-  const status = past
+  const status = ended
     ? { label: t("Événement passé"), tone: "done" }
+    : past
+      ? { label: t("En cours"), tone: "done" }
     : !event.registrationOpen
       ? { label: t("Inscriptions closes"), tone: "done" }
       : full
@@ -151,7 +155,7 @@ export default async function Page({ params, searchParams }: { params: Promise<{
                 <>
                   <p className="notice ok">{t("Vous êtes inscrit à cet événement.")}</p>
                   {/* Lien de connexion : affiché aux seuls inscrits, jusqu'à la fin de l'événement. */}
-                  {event.format !== "PRESENTIEL" && !eventEnded(event) && (
+                  {event.format !== "PRESENTIEL" && !ended && (
                     onlineUrl
                       ? <p className="online-link text-sm">{t("Lien de connexion :")} <a href={onlineUrl} target="_blank" rel="noopener noreferrer">{onlineUrl}</a></p>
                       : <p className="muted text-sm">{t("Le lien de connexion vous sera communiqué par l'organisateur avant l'événement.")}</p>
@@ -161,8 +165,8 @@ export default async function Page({ params, searchParams }: { params: Promise<{
                       ? t("Vous n'avez accepté aucune prestation.")
                       : t("Prestations acceptées : {list} ({total}).", { list: reg.benefits.map((b) => t(b.benefit.label)).join(", "), total: fmtEur(locale, reg.benefits.reduce((s, b) => s + b.valueCents, 0)) })}
                   </p>
-                  {!past && event.format !== "DISTANCIEL" && <Link className="btn secondary" href={`/inscriptions/${reg.id}/badge`}>{t("Mon badge d'accueil")}</Link>}
-                  {eventEnded(event) && reg.checkedInAt && <a className="btn secondary" href={`/inscriptions/${reg.id}/attestation`}>{t("Mon attestation de présence")}</a>}
+                  {!ended && event.format !== "DISTANCIEL" && <Link className="btn secondary" href={`/inscriptions/${reg.id}/badge`}>{t("Mon badge d'accueil")}</Link>}
+                  {ended && reg.checkedInAt && <a className="btn secondary" href={`/inscriptions/${reg.id}/attestation`}>{t("Mon attestation de présence")}</a>}
                   {canReview && <Link className="btn ghost" href={`/evenements/${id}/avis`}>{t("Donner mon avis")}</Link>}
                   {!reg.declared && !past && (
                     <form action={cancelRegistration}>
@@ -174,7 +178,7 @@ export default async function Page({ params, searchParams }: { params: Promise<{
                   )}
                 </>
               ) : past ? (
-                <p className="muted">{t("Cet événement a eu lieu.")}</p>
+                <p className="muted">{ended ? t("Cet événement a eu lieu.") : t("Cet événement a commencé : les inscriptions sont closes.")}</p>
               ) : !event.registrationOpen ? (
                 <p className="muted">{t("Les inscriptions sont closes.")}</p>
               ) : full ? (

@@ -19,7 +19,7 @@ import { costHeadcount } from "@/lib/indicators";
 import { complianceSettings, hospitalityRegime, REGIME_LABEL } from "@/lib/compliance";
 import { drPrefix } from "@/lib/professions";
 import { checkinOpen } from "@/lib/checkin";
-import { eventEnded, fmtRating, surveySummary } from "@/lib/event-followup";
+import { eventEnd, eventEnded, fmtRating, surveySummary } from "@/lib/event-followup";
 import { ServiceOffers } from "@/components/ServiceForms";
 import { cancelServiceOrder } from "@/lib/service-actions";
 import { featuredUntil, newsletterAudienceCount, ORDER_STATUS, orderStats } from "@/lib/services";
@@ -99,7 +99,9 @@ export default async function Page({ params, searchParams }: { params: Promise<{
   const engagedTtc = rfqs.reduce((s, r) => { const k = r.quotes.find((q) => q.status === "retained"); return s + (k ? withVat(k.amountCents, k.vatBp) : 0); }, 0);
   // Accueil et bilan : présence au pointage, coût réel, hospitalités à déclarer.
   const now = new Date();
+  // Commencé n'est pas terminé : pointage pendant l'événement ; absents, bilan, attestations et avis après la fin.
   const isPast = event.startsAt < now;
+  const ended = eventEnded(event, now);
   const canPoint = !event.internal && checkinOpen(event.startsAt, now);
   const present = event.registrations.filter((r) => r.checkedInAt);
   const pointed = present.length > 0;
@@ -109,7 +111,6 @@ export default async function Page({ params, searchParams }: { params: Promise<{
   const realCost = hospConsumed + engagedTtc;
   const isCompliance = roles.some((r) => COMPLIANCE_ROLES.includes(r));
   // Rappel de la veille, puis remerciement (attestation, questionnaire) : automatiques, ou envoyés d'un clic.
-  const ended = eventEnded(event, now);
   const reminded = event.registrations.filter((r) => r.reminderSentAt);
   const followed = event.registrations.filter((r) => r.followUpSentAt);
   const lastSent = (rs: typeof event.registrations, k: "reminderSentAt" | "followUpSentAt") => rs.reduce<Date | null>((m, r) => (r[k] && (!m || r[k]! > m) ? r[k] : m), null);
@@ -251,7 +252,7 @@ export default async function Page({ params, searchParams }: { params: Promise<{
           </p>
         )}
 
-        {isPast && !event.internal && (
+        {ended && !event.internal && (
           <section className="card stack-sm bilan" aria-labelledby="bilan">
             <div className="card-head">
               <div>
@@ -292,7 +293,7 @@ export default async function Page({ params, searchParams }: { params: Promise<{
           </section>
         )}
 
-        {isPast && !event.internal && (
+        {ended && !event.internal && (
           <section className="card stack-sm" aria-labelledby="avis">
             <h2 id="avis"><Star size={18} /> Avis des participants</h2>
             {survey.count === 0 ? (
@@ -353,7 +354,7 @@ export default async function Page({ params, searchParams }: { params: Promise<{
                     const ref = kept ?? r.quotes[0];
                     const ttc = ref ? withVat(ref.amountCents, ref.vatBp) : 0;
                     // Après l'événement pointé, le coût se rapporte aux présents.
-                    const basis = costHeadcount(r.headcount ?? expected, present.length, isPast);
+                    const basis = costHeadcount(r.headcount ?? expected, present.length, ended);
                     const pp = ref ? perParticipant(r.category, ttc, basis.n, settings) : null;
                     return (
                       <li key={r.id}>
@@ -574,9 +575,10 @@ export default async function Page({ params, searchParams }: { params: Promise<{
               )}
             </section>
 
-            {!event.internal && !isPast && (
+            {!event.internal && !ended && (
               <section className="card stack-sm">
-                <h2 className="section-title"><QrCode size={15} /> Accueil le jour J</h2>
+                <h2 className="section-title"><QrCode size={15} /> {isPast ? "Événement en cours" : "Accueil le jour J"}</h2>
+                {isPast && <p className="notice">{present.length} présent{present.length > 1 ? "s" : ""} sur {event.registrations.length} inscrit{event.registrations.length > 1 ? "s" : ""}. Les retardataires peuvent encore être pointés ; les absents, le bilan et les attestations viennent après la fin, le {formatDate(eventEnd(event))} à {formatTime(eventEnd(event))}.</p>}
                 <p className="muted text-sm">Chaque inscrit a un badge (QR code) dans « Mes inscriptions ». Scannez-le avec l&apos;appareil photo du téléphone, ou cherchez son nom dans la liste.</p>
                 <div className="transitions-stack">
                   <Link className={canPoint ? "btn" : "btn ghost"} href={`/organisations/${id}/evenements/${eventId}/pointage`}>{canPoint ? "Ouvrir le pointage" : "Préparer le pointage"}</Link>
@@ -588,7 +590,7 @@ export default async function Page({ params, searchParams }: { params: Promise<{
                     ? `Rappel envoyé le ${formatDate(lastSent(reminded, "reminderSentAt")!)} à ${formatTime(lastSent(reminded, "reminderSentAt")!)} (${reminded.length} inscrit${reminded.length > 1 ? "s" : ""}).`
                     : "Rappel envoyé automatiquement la veille aux inscrits : date, lieu, programme et badge."}
                 </p>
-                {event.registrations.length > reminded.length && <SendNowButton kind="reminders" orgId={id} eventId={eventId} label={reminded.length ? "Prévenir les nouveaux inscrits" : "Envoyer le rappel maintenant"} />}
+                {!isPast && event.registrations.length > reminded.length && <SendNowButton kind="reminders" orgId={id} eventId={eventId} label={reminded.length ? "Prévenir les nouveaux inscrits" : "Envoyer le rappel maintenant"} />}
               </section>
             )}
 
@@ -645,7 +647,7 @@ export default async function Page({ params, searchParams }: { params: Promise<{
                           <td>{r.benefits.map((b) => b.benefit.label).join(", ") || "Aucune"}</td>
                           <td>{formatEUR(r.benefits.reduce((s, b) => s + b.valueCents, 0))} TTC</td>
                           <td>{formatDate(r.createdAt)}</td>
-                          {canPoint && <td>{r.checkedInAt ? <><span className="pill ok">{formatTime(r.checkedInAt)}</span>{ended && <> <a className="link" href={`/organisations/${id}/evenements/${eventId}/attestations?inscription=${r.id}`}>attestation</a></>}</> : isPast && pointed ? <span className="pill wait">Absent</span> : "—"}</td>}
+                          {canPoint && <td>{r.checkedInAt ? <><span className="pill ok">{formatTime(r.checkedInAt)}</span>{ended && <> <a className="link" href={`/organisations/${id}/evenements/${eventId}/attestations?inscription=${r.id}`}>attestation</a></>}</> : ended && pointed ? <span className="pill wait">Absent</span> : "—"}</td>}
                         </tr>
                       ))}
                     </tbody>

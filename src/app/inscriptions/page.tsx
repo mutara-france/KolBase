@@ -34,17 +34,18 @@ export default async function Page({ searchParams }: { searchParams: Promise<{ a
   // Absent au pointage d'un événement passé : les prestations acceptées n'ont pas été consommées, ni déclarées.
   const pointed = await pointedPastEvents(regs.map((r) => r.eventId), now);
   const absent = new Set(regs.filter((r) => r.benefits.length > 0 && !r.declared && isAbsent(r, pointed.has(r.eventId))).map((r) => r.id));
-  const upcoming = regs.filter((r) => r.event.startsAt >= now);
-  const past = regs.filter((r) => r.event.startsAt < now);
+  // Un événement en cours reste « à venir » jusqu'à sa fin : badge et lien de connexion encore utiles.
+  const upcoming = regs.filter((r) => !eventEnded(r.event, now));
+  const past = regs.filter((r) => eventEnded(r.event, now));
 
   const Row = ({ r }: { r: (typeof regs)[number] }) => {
     const total = r.benefits.reduce((s, b) => s + b.valueCents, 0);
-    const badge = r.event.startsAt >= now && r.event.format !== "DISTANCIEL";
+    const badge = !eventEnded(r.event, now) && r.event.format !== "DISTANCIEL";
     return (
       <div className="card tile reg-tile">
         <Link href={`/evenements/${r.eventId}`} className="reg-tile-link">
           <strong>{r.event.title}</strong>
-          <span className="muted">{formatDateTime(r.event.startsAt)} · {r.event.organization.name}</span>
+          <span className="muted">{formatDateTime(r.event.startsAt)} · {r.event.organization.name}{r.event.startsAt <= now && !eventEnded(r.event, now) && ` · ${t("en cours")}`}</span>
           <span className="muted">
             {total === 0 ? t("Aucune prestation acceptée") : `${r.benefits.map((b) => t(b.benefit.label)).join(", ")} · ${fmtEur(locale, total)}`}
             {r.declared && ` · ${t("déclaré")}`}

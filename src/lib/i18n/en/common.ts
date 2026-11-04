@@ -162,4 +162,6 @@ export const COMMON: Record<string, string> = {
   "Revenir": "Go back",
   "Inscription confirmée. Un e-mail de confirmation vous est envoyé, avec l'événement pour votre agenda.": "Registration confirmed. A confirmation email is on its way, with the event for your calendar.",
   "Candidature envoyée. Un e-mail de confirmation vous est envoyé.": "Application sent. A confirmation email is on its way.",
+  "En cours": "Ongoing",
+  "Cet événement a commencé : les inscriptions sont closes.": "This event has started: registration is closed.",
 };

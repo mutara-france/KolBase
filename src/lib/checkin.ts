@@ -2,13 +2,18 @@ import "server-only";
 import { randomBytes } from "node:crypto";
 import QRCode from "qrcode";
 import { db } from "@/lib/db";
-import { EVENT_MANAGER_ROLES, eventScope } from "@/lib/events";
+import { EVENT_MANAGER_ROLES, eventEnded, eventScope } from "@/lib/events";
 
-/** Événements passés dont le pointage a été fait (au moins un présent) : un inscrit non pointé y est absent. */
+/**
+ * Événements terminés dont le pointage a été fait (au moins un présent) : un inscrit non pointé y est absent.
+ * Pendant l'événement, les retardataires ne sont pas encore absents.
+ */
 export async function pointedPastEvents(eventIds: string[], now = new Date()) {
   if (eventIds.length === 0) return new Set<string>();
   const g = await db.registration.groupBy({ by: ["eventId"], where: { eventId: { in: [...new Set(eventIds)] }, checkedInAt: { not: null }, event: { startsAt: { lt: now } } } });
-  return new Set(g.map((x) => x.eventId));
+  if (g.length === 0) return new Set<string>();
+  const events = await db.event.findMany({ where: { id: { in: g.map((x) => x.eventId) } }, select: { id: true, startsAt: true, durationMinutes: true } });
+  return new Set(events.filter((e) => eventEnded(e, now)).map((e) => e.id));
 }
 
 /** Le pointage ouvre la veille de l'événement et reste possible ensuite (régularisation). */

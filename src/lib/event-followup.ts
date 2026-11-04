@@ -11,8 +11,7 @@ export const REMINDER_WINDOW_MS = 30 * 3600 * 1000; // rappel envoyé dans les 3
 export const FOLLOWUP_DELAY_MS = 3600 * 1000; // une heure après la fin
 export const FOLLOWUP_MAX_AGE_MS = 14 * 24 * 3600 * 1000; // au-delà, plus d'envoi automatique
 
-export const eventEnd = (e: { startsAt: Date; durationMinutes: number | null }) => new Date(e.startsAt.getTime() + (e.durationMinutes ?? 120) * 60000);
-export const eventEnded = (e: { startsAt: Date; durationMinutes: number | null }, now = new Date()) => eventEnd(e) <= now;
+export { eventEnd, eventEnded } from "@/lib/events";
 
 /**
  * Présent au sens du questionnaire : pointé, ou inscrit à un événement où personne n'a été pointé
