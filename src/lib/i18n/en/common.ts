@@ -231,4 +231,5 @@ export const COMMON: Record<string, string> = {
   "L'entreprise {name} est fermée selon le répertoire des entreprises.": "According to the business register, the company {name} has closed.",
   "E-mail de contact": "Contact email",
   "Créer l'organisation": "Create the organisation",
+  "N° RPPS : non renseigné, à indiquer dans Informations personnelles pour le badge « Identité vérifiée ».": "RPPS number: not provided; add it under Personal information to get the “Verified identity” badge.",
 };

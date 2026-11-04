@@ -141,6 +141,7 @@ export function ListingForm({ listed, eligible, idMissing, rpps }: {
       {rpps && !rpps.value && !listed && (
         <label>{t("N° RPPS (prérequis, vérifié par KolBase)")}<input name="rpps" inputMode="numeric" pattern="[0-9 ]{11,14}" title={t("11 chiffres")} /></label>
       )}
+      {rpps && !rpps.value && listed && <p className="text-sm">{t("N° RPPS : non renseigné, à indiquer dans Informations personnelles pour le badge « Identité vérifiée ».")}</p>}
       {rpps?.value && (
         <p className="text-sm">
           {t("N° RPPS : {rpps}", { rpps: rpps.value })} ·{" "}
