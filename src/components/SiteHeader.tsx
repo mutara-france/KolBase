@@ -81,8 +81,9 @@ export async function SiteHeader({ variant = "app", section }: { variant?: "app"
       color: avatarColor(o.name),
       square: true,
       home: `/organisations/${id}`,
-      items: orgNavItems(id, o.roles, o.kind).map((i) => (i.key === "accueil" ? i : { ...i, badge: countFor(i, hrefs) })),
-      links: orgMenuLinks(id, o.roles, o.kind),
+      // Navigation de l'espace organisation traduite (les pages de l'espace restent en français).
+      items: orgNavItems(id, o.roles, o.kind).map((i) => ({ ...i, label: t(i.label), short: i.short && t(i.short), ...(i.key === "accueil" ? {} : { badge: countFor(i, hrefs) }) })),
+      links: orgMenuLinks(id, o.roles, o.kind).map((l) => ({ ...l, label: t(l.label) })),
     });
   }
 

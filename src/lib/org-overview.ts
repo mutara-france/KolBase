@@ -13,6 +13,7 @@ import { toDeclare } from "@/lib/indicators";
 import { subscribeHref } from "@/lib/billing-plans";
 import { activeMandate } from "@/lib/mandates";
 import { de } from "@/lib/elision";
+import { getT } from "@/lib/i18n/server";
 
 
 const DAY = 864e5;
@@ -201,7 +202,9 @@ export async function orgTabs(section: OrgSectionKey, orgId: string): Promise<Se
   const o = await orgOverview(orgId);
   if (!o) return [];
   const tabs = orgSectionTabs(section, orgId, o.roles, o.org.kind);
-  return tabs.map((t) => ({ ...t, count: tabCount(t, tabs, o.todos) }));
+  // Onglets traduits comme la navigation de l'espace (nav.ts).
+  const { t } = await getT();
+  return tabs.map((tab) => ({ ...tab, label: t(tab.label), count: tabCount(tab, tabs, o.todos) }));
 }
 
 /**

@@ -9,26 +9,28 @@ import { useT } from "@/components/I18nProvider";
 
 type Opt = { value: string; label: string };
 
+/** Création d'une organisation : traduite (le reste de l'espace organisation est en français). */
 export function NewOrgForm({ kinds }: { kinds: Opt[] }) {
   const [state, action, pending] = useActionState(createOrganization, undefined);
+  const t = useT();
   return (
     <ActionForm action={action} className="card form">
-      <h1>Créer une organisation</h1>
-      <p className="muted">Vous en serez l&apos;administrateur et pourrez ensuite inviter vos collègues.</p>
+      <h1>{t("Créer une organisation")}</h1>
+      <p className="muted">{t("Vous en serez l'administrateur et pourrez ensuite inviter vos collègues.")}</p>
       <Notice state={state} />
-      <label>Nom de l&apos;organisation<input name="name" maxLength={120} required /></label>
-      <label>Type
+      <label>{t("Nom de l'organisation")}<input name="name" maxLength={120} required /></label>
+      <label>{t("Type")}
         <select name="kind" defaultValue="INDUSTRIEL">{kinds.map((k) => <option key={k.value} value={k.value}>{k.label}</option>)}</select>
       </label>
       <div className="row">
-        <label>Secteur<input name="sector" placeholder="Dispositifs médicaux…" /></label>
-        <label>Siège<input name="headquarters" placeholder="Lyon, France" /></label>
+        <label>{t("Secteur")}<input name="sector" placeholder={t("Dispositifs médicaux…")} /></label>
+        <label>{t("Siège")}<input name="headquarters" placeholder={t("Lyon, France")} /></label>
       </div>
-      <label>SIREN, SIRET ou RNA<input name="siren" placeholder="9 ou 14 chiffres, ou W suivi de 9 chiffres" />
-        <span className="hint">SIREN obligatoire pour un industriel, un organisme de formation ou un prestataire. Facultatif pour une société savante ou une association, qui peut aussi indiquer son numéro RNA. KolBase le contrôle, puis valide l&apos;organisation avant qu&apos;elle puisse solliciter des praticiens ou publier.</span>
+      <label>{t("SIREN, SIRET ou RNA")}<input name="siren" placeholder={t("9 ou 14 chiffres, ou W suivi de 9 chiffres")} />
+        <span className="hint">{t("SIREN obligatoire pour un industriel, un organisme de formation ou un prestataire. Facultatif pour une société savante ou une association, qui peut aussi indiquer son numéro RNA. KolBase le contrôle, puis valide l'organisation avant qu'elle puisse solliciter des praticiens ou publier.")}</span>
       </label>
-      <label>E-mail de contact<input name="contactEmail" type="email" /></label>
-      <button className="btn" disabled={pending}>{pending ? "Création…" : "Créer l'organisation"}</button>
+      <label>{t("E-mail de contact")}<input name="contactEmail" type="email" /></label>
+      <button className="btn" disabled={pending}>{pending ? t("Création…") : t("Créer l'organisation")}</button>
     </ActionForm>
   );
 }

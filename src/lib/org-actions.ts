@@ -25,20 +25,22 @@ export type InviteState = { error?: string; ok?: string; link?: string } | undef
 
 export async function createOrganization(_: FormState, form: FormData): Promise<FormState> {
   const user = await requireUser();
+  // Création traduite (comme la page /organisations/nouvelle).
+  const { t } = await getT();
   const name = str(form, "name", MAX_NAME);
   const kind = str(form, "kind") as OrgKind;
-  if (!name) return { error: "Indiquez le nom de l'organisation." };
-  if (!Object.values(OrgKind).includes(kind)) return { error: "Type d'organisation invalide." };
+  if (!name) return { error: t("Indiquez le nom de l'organisation.") };
+  if (!Object.values(OrgKind).includes(kind)) return { error: t("Type d'organisation invalide.") };
   const sirenInput = str(form, "siren");
   // Société savante ou association : SIREN facultatif, numéro RNA accepté à la place.
   const rna = sirenInput && rnaAccepted(kind) ? parseRna(sirenInput) : null;
   const siren = sirenInput && !rna ? parseSiren(sirenInput) : null;
-  if (!sirenInput && SIREN_REQUIRED.includes(kind)) return { error: "Indiquez le SIREN (ou le SIRET) de l'organisation : KolBase le vérifie avant d'ouvrir les sollicitations." };
+  if (!sirenInput && SIREN_REQUIRED.includes(kind)) return { error: t("Indiquez le SIREN (ou le SIRET) de l'organisation : KolBase le vérifie avant d'ouvrir les sollicitations.") };
   if (sirenInput && !rna && (!siren || !sirenKeyOk(siren)))
-    return { error: rnaAccepted(kind) ? "Identifiant invalide : SIREN (9 chiffres), SIRET (14 chiffres) ou numéro RNA (W suivi de 9 chiffres), vérifiez la saisie." : "SIREN invalide : 9 chiffres (ou SIRET de 14 chiffres), vérifiez la saisie." };
+    return { error: rnaAccepted(kind) ? t("Identifiant invalide : SIREN (9 chiffres), SIRET (14 chiffres) ou numéro RNA (W suivi de 9 chiffres), vérifiez la saisie.") : t("SIREN invalide : 9 chiffres (ou SIRET de 14 chiffres), vérifiez la saisie.") };
   const check = siren ? await sirenFields(siren) : null;
-  if (check?.lookup && !check.lookup.found) return { error: "Ce SIREN est introuvable dans le répertoire des entreprises." };
-  if (check?.lookup?.found && check.lookup.active === false) return { error: `L'entreprise ${check.lookup.name} est fermée selon le répertoire des entreprises.` };
+  if (check?.lookup && !check.lookup.found) return { error: t("Ce SIREN est introuvable dans le répertoire des entreprises.") };
+  if (check?.lookup?.found && check.lookup.active === false) return { error: t("L'entreprise {name} est fermée selon le répertoire des entreprises.", { name: check.lookup.name }) };
   const { lookup: _lookup, ...sirenData } = check ?? { lookup: null };
   const org = await db.organization.create({
     data: {
