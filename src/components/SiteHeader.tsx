@@ -27,16 +27,28 @@ export async function SiteHeader({ variant = "app", section }: { variant?: "app"
 
   if (!user || variant === "public") return <PublicNav loggedIn={!!user} />;
 
-  const { t } = await getT();
   const fullName = `${user.firstName} ${user.lastName}`;
   const p = user.practitioner;
   const spaces: ShellSpace[] = [];
 
-  if (p) {
-    const pending = p.listed
+  const orgs = new Map<string, { name: string; kind: OrgKind; roles: OrgRole[] }>();
+  for (const m of user.memberships) {
+    const o = orgs.get(m.organizationId) ?? { name: m.organization.name, kind: m.organization.kind, roles: [] };
+    o.roles.push(m.role);
+    orgs.set(m.organizationId, o);
+  }
+  // En-tête de chaque page de l'espace connecté : toutes les pastilles sont calculées en parallèle, pas l'une après l'autre.
+  const [{ t }, pending, overviews, follows] = await Promise.all([
+    getT(),
+    p?.listed
       // Même règle que l'accueil et la liste : réponse attendue, recrutement ouvert (pas une contre-proposition envoyée).
-      ? await db.projectExpert.count({ where: { practitionerId: p.id, status: "ATT_EXPERTS", desiredFeeCents: null, project: { status: { in: RECRUITING_STATUSES } } } })
-      : 0;
+      ? db.projectExpert.count({ where: { practitionerId: p.id, status: "ATT_EXPERTS", desiredFeeCents: null, project: { status: { in: RECRUITING_STATUSES } } } })
+      : 0,
+    Promise.all([...orgs.keys()].map((id) => orgOverview(id))),
+    db.follow.count({ where: { userId: user.id } }),
+  ]);
+
+  if (p) {
     const items: ShellItem[] = [
       { key: "accueil", href: "/tableau-de-bord", label: t("Accueil"), icon: "House" },
       ...(p.listed
@@ -66,15 +78,8 @@ export async function SiteHeader({ variant = "app", section }: { variant?: "app"
     });
   }
 
-  const orgs = new Map<string, { name: string; kind: OrgKind; roles: OrgRole[] }>();
-  for (const m of user.memberships) {
-    const o = orgs.get(m.organizationId) ?? { name: m.organization.name, kind: m.organization.kind, roles: [] };
-    o.roles.push(m.role);
-    orgs.set(m.organizationId, o);
-  }
-  for (const [id, o] of orgs) {
-    const overview = await orgOverview(id);
-    const hrefs = (overview?.todos ?? []).map((todo) => todo.href);
+  for (const [i, [id, o]] of [...orgs].entries()) {
+    const hrefs = (overviews[i]?.todos ?? []).map((todo) => todo.href);
     spaces.push({
       key: id,
       title: o.name,
@@ -92,7 +97,6 @@ export async function SiteHeader({ variant = "app", section }: { variant?: "app"
 
   const sourcing = user.memberships.some((m) => SOURCING_ROLES.includes(m.role) && m.organization.kind !== "PRESTATAIRE");
   // Cloche des suivis : dès qu'on suit un profil (« Suivre »), quel que soit le compte.
-  const follows = await db.follow.count({ where: { userId: user.id } });
   const showBell = sourcing || !!p?.listed || follows > 0;
   const followCount = follows ? await unseenFollowCount(user.id, user.followsSeenAt) : 0;
   const initialSpace = (await cookies()).get("kb_espace")?.value;

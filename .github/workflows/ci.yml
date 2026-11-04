@@ -68,6 +68,9 @@ jobs:
 
       - name: Types
         run: npm run lint
+      # Fichiers, exports et dépendances inutilisés (configuration : knip.json).
+      - name: Code mort
+        run: npm run deadcode
       - name: Tests unitaires
         run: npm test
 
@@ -99,3 +102,60 @@ jobs:
       - name: Journal du serveur (en cas d'échec)
         if: failure()
         run: tail -n 200 next.log || true
+
+  # Mise à jour d'une base en service, comme au déploiement : la version précédente (base de la pull request, ou
+  # commit précédent sur main) est installée et remplie avec la démo, puis cette version y applique ses migrations
+  # avec le même script que Render (scripts/predeploy.sh). Le job « verifier » part d'une base vide : il n'aurait pas
+  # vu l'échec du 4 novembre (calcul TVA en entiers 32 bits, « integer out of range » sur des montants réels).
+  montee-de-version:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_USER: kolbase
+          POSTGRES_PASSWORD: kolbase
+          POSTGRES_DB: kolbase
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd pg_isready --health-interval 5s --health-timeout 5s --health-retries 12
+    env:
+      DATABASE_URL: postgresql://kolbase:kolbase@localhost:5432/kolbase
+      DEMO_PASSWORD: demo-ci-mot-de-passe-1
+      SEED_DEMO: "1"
+      NEXT_TELEMETRY_DISABLED: "1"
+      PRECEDENTE: ${{ github.event.pull_request.base.sha || github.event.before }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      # Une migration ajoutée doit passer après toutes celles déjà en service : « prisma migrate deploy » appliquerait
+      # sans rien dire une migration classée avant, dans un ordre différent de celui des bases neuves.
+      - name: Nouvelles migrations après celles en service
+        run: |
+          derniere=$(git ls-tree --name-only "$PRECEDENTE" prisma/migrations/ | xargs -n1 basename | grep -E '^[0-9]' | sort | tail -1)
+          echo "Dernière migration en service : $derniere"
+          fautives=$(comm -13 <(git ls-tree --name-only "$PRECEDENTE" prisma/migrations/ | xargs -n1 basename | sort) <(ls prisma/migrations | sort) | grep -E '^[0-9]' | awk -v d="$derniere" '$0 <= d')
+          if [ -n "$fautives" ]; then echo "Migrations classées avant $derniere (renommer avec un horodatage plus récent) :"; echo "$fautives"; exit 1; fi
+
+      - name: Version précédente, base remplie comme en production
+        run: |
+          git worktree add "$RUNNER_TEMP/precedente" "$PRECEDENTE"
+          cd "$RUNNER_TEMP/precedente"
+          npm ci
+          npx prisma generate
+          sh scripts/predeploy.sh
+
+      - name: Cette version, appliquée à cette base (script de déploiement)
+        run: |
+          npm ci
+          npx prisma generate
+          sh scripts/predeploy.sh
+      - name: Base conforme au schéma Prisma
+        run: npx prisma migrate diff --from-config-datasource --to-schema prisma/schema.prisma --exit-code

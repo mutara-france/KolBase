@@ -14,7 +14,7 @@ export const metadata = { title: "Revue documentaire — KolBase" };
 export default async function Page({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: Promise<{ onglet?: string }> }) {
   const { id } = await params;
   const { onglet = "a-relire" } = await searchParams;
-  const { org, roles } = await requireMembership(id, REVIEW_ROLES);
+  const { roles } = await requireMembership(id, REVIEW_ROLES);
   const canOpenDossier = roles.some((r) => PROJECT_VIEW_ROLES.includes(r));
 
   const projects = await db.project.findMany({

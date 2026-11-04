@@ -61,7 +61,7 @@ export const STATUS_LABEL: Record<ProjectStatus, string> = {
 };
 
 /** Libellés vus par l'expert sollicité (de son point de vue) : sa réponse est attendue, pas « les experts ». */
-export const EXPERT_STATUS_LABEL: Partial<Record<ProjectStatus, string>> = { ATT_EXPERTS: "Votre réponse est attendue" };
+const EXPERT_STATUS_LABEL: Partial<Record<ProjectStatus, string>> = { ATT_EXPERTS: "Votre réponse est attendue" };
 export const statusLabel = (status: ProjectStatus, viewer: "organisation" | "expert" = "organisation") =>
   (viewer === "expert" ? EXPERT_STATUS_LABEL[status] : undefined) ?? STATUS_LABEL[status];
 /** Frise vue par l'expert : l'étape de la sollicitation, toujours franchie quand la frise s'affiche (il est engagé). */

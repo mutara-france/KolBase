@@ -5,7 +5,7 @@ import { audit, requireUser } from "@/lib/auth";
 import { requireMembership } from "@/lib/orgs";
 import { aiComplete, aiEnabled } from "@/lib/ai";
 import { blockedFor, hit } from "@/lib/rate-limit";
-import { COMPLIANCE_ROLES, EVENT_MANAGER_ROLES, EVENT_ORGANIZER_ROLES, eventScope, eventTypeLabel, FORMAT_LABEL } from "@/lib/events";
+import { COMPLIANCE_ROLES, EVENT_MANAGER_ROLES, eventScope, eventTypeLabel, FORMAT_LABEL } from "@/lib/events";
 import { collabType, fmvCheck, SOURCING_ROLES } from "@/lib/projects";
 import { complianceSettings, projectRegime, REGIME_LABEL } from "@/lib/compliance";
 import { detectConflicts } from "@/lib/conflicts";

@@ -128,7 +128,7 @@ export function practitionerSectionTabs(section: PractitionerSectionKey): Sectio
 }
 
 /** Barre du bas (mobile) : cinq entrées au plus ; les secondaires d'abord écartées, le reste passe dans le menu du compte. */
-export const BOTTOM_BAR_MAX = 5;
+const BOTTOM_BAR_MAX = 5;
 export function bottomBar<T extends Pick<ShellItem, "key" | "secondary">>(items: T[]) {
   const primary = items.length <= BOTTOM_BAR_MAX ? items : items.filter((i) => !i.secondary);
   const bar = primary.slice(0, BOTTOM_BAR_MAX);

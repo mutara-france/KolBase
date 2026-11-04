@@ -10,7 +10,7 @@ export const PROFESSIONS = [
 ] as const;
 
 /** Praticiens diplômés : seuls à pouvoir se référencer comme experts et à porter le titre de docteur. */
-export const EXPERT_PROFESSIONS: readonly string[] = PROFESSIONS.slice(0, 4);
+const EXPERT_PROFESSIONS: readonly string[] = PROFESSIONS.slice(0, 4);
 
 export const canBeExpert = (profession: string | null | undefined) => !!profession && EXPERT_PROFESSIONS.includes(profession);
 

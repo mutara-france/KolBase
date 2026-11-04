@@ -29,7 +29,7 @@ export const LEGAL = {
   aiProvider: "Anthropic PBC, San Francisco (États-Unis)" as string | null,
 };
 
-export const LEGAL_LABEL: Record<keyof typeof LEGAL, string> = {
+const LEGAL_LABEL: Record<keyof typeof LEGAL, string> = {
   editor: "nom de l'éditeur",
   legalForm: "forme sociale",
   capital: "capital social",

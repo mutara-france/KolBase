@@ -2,6 +2,8 @@
  * Offres et règles de facturation (module pur, testé).
  * - Organisation : 599 € HT/mois, à partir de la première action qui engage un tiers (sollicitation envoyée,
  *   appel à candidatures ou événement publié, demande de devis envoyée).
+ * - Sociétés savantes, associations professionnelles et organismes de formation : publier un événement dans l'agenda
+ *   reste gratuit (l'agenda public est le produit d'appel) ; leurs autres actions engageantes restent sur abonnement.
  * - Prestataire : référencement gratuit ; 249 € HT/mois à partir du premier devis retenu via KolBase.
  * - Premier mois offert (une fois), sans engagement ; gratuités accordées par KolBase.
  * - Formule annuelle : dix mois payés pour douze (deux mois offerts).
@@ -62,6 +64,11 @@ export const ENGAGING = {
   proposition: "accepter le projet proposé par un expert",
 } as const;
 export type Motive = keyof typeof ENGAGING;
+
+/** Organisations qui publient leurs événements gratuitement : sociétés savantes, associations, organismes de formation. */
+export const FREE_EVENT_KINDS: readonly string[] = ["SOCIETE_SAVANTE", "ASSOCIATION_PRO", "ORGANISME_FORMATION"];
+/** Cette action engageante demande-t-elle l'abonnement pour ce type d'organisation ? */
+export const needsSubscription = (kind: string, motive: Motive) => !(motive === "evenement" && FREE_EVENT_KINDS.includes(kind));
 export const asMotive = (v: unknown): Motive | null => (typeof v === "string" && Object.hasOwn(ENGAGING, v) ? (v as Motive) : null);
 /** Identifiant d'objet (événement, dossier, demande de devis) passé dans une adresse : sinon ignoré. */
 export const asObjectId = (v: unknown): string | null => (typeof v === "string" && /^[A-Za-z0-9_-]{1,64}$/.test(v) ? v : null);
@@ -109,5 +116,7 @@ export function billingInfo(kind: string, s: SubLike, now = new Date()) {
   if (status === "impayee") return "Abonnement : paiement en attente, vérifiez votre moyen de paiement.";
   return kind === "PRESTATAIRE"
     ? `Abonnement : référencement gratuit ; ${formatPrice(PLANS.prestataire.cents)} seulement après un premier devis retenu, pour répondre à de nouvelles demandes (premier mois offert).`
-    : `Abonnement : création, équipe, annuaire et brouillons gratuits ; ${formatPrice(PLANS.organisation.cents)} (ou ${formatPrice(PLANS.organisation.yearCents, "year")}) dès la première action qui engage un tiers, premier mois offert.`;
+    : FREE_EVENT_KINDS.includes(kind)
+      ? `Abonnement : création, équipe, annuaire, brouillons et publication d'événements gratuits ; ${formatPrice(PLANS.organisation.cents)} (ou ${formatPrice(PLANS.organisation.yearCents, "year")}) dès la première sollicitation, le premier appel à candidatures ou la première demande de devis, premier mois offert.`
+      : `Abonnement : création, équipe, annuaire et brouillons gratuits ; ${formatPrice(PLANS.organisation.cents)} (ou ${formatPrice(PLANS.organisation.yearCents, "year")}) dès la première action qui engage un tiers, premier mois offert.`;
 }

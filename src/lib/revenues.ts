@@ -10,7 +10,7 @@ import { isAbsent } from "@/lib/indicators";
  * Données visibles du seul praticien. Une hospitalité d'un absent au pointage (non consommée) est signalée
  * « absent : non déclaré » et ne compte ni dans les totaux ni dans les liens d'intérêts.
  */
-export const SIGNED = ["SIGNE", "TERMINE"] as const;
+const SIGNED = ["SIGNE", "TERMINE"] as const;
 export const INTEREST_YEARS = 5;
 
 export async function practitionerLedger(userId: string, practitionerId: string) {

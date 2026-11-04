@@ -1,6 +1,7 @@
 import { drPrefix } from "@/lib/professions";
 import { conventionClause, country, licenseRule, practicesInFrance } from "@/lib/countries";
 import { fmtDate, intlLocale, makeT, type Locale, type T } from "@/lib/i18n";
+import type { SignatureBox } from "@/lib/yousign";
 import "server-only";
 import { readFile } from "node:fs/promises";
 import path from "node:path";
@@ -165,8 +166,6 @@ export type CollabConventionInput = {
 /** Titre « Dr » selon la langue. */
 const dr = (t: T, profession: string) => (drPrefix(profession) ? `${t("Dr")} ` : "");
 
-/** Cadre de signature : page (à partir de 1), position et taille en points, repère PDF (origine en bas à gauche). */
-export type SignatureBox = { page: number; x: number; y: number; width: number; height: number; pageHeight: number };
 
 export async function buildCollaborationConvention(i: CollabConventionInput, locale: Locale = "fr") {
   return (await buildCollaborationConventionForSignature(i, locale)).bytes;

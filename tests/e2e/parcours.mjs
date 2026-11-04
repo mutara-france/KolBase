@@ -709,10 +709,17 @@ async function submitNewOrg(page, siren) {
   check("En-têtes de sécurité", h["x-frame-options"] === "DENY" && (h["content-security-policy"] ?? "").includes("frame-ancestors 'none'") && h["x-content-type-options"] === "nosniff", JSON.stringify({ xfo: h["x-frame-options"] }));
   await page.goto(`${BASE}/experts/demo-p-martin`);
   check("Fiche expert : titre de page descriptif", (await page.title()).startsWith("Dr Antoine Martin — Chirurgie orale"), await page.title());
+  const demoRobots = (await page.locator('meta[name="robots"]').first().getAttribute("content").catch(() => null)) ?? "";
+  check("Démonstration : fiche d'expert fictif non indexée", demoRobots.includes("noindex"), demoRobots);
+  await page.goto(`${BASE}/evenements/demo-ev-tp-endo`);
+  const demoEventRobots = (await page.locator('meta[name="robots"]').first().getAttribute("content").catch(() => null)) ?? "";
+  check("Démonstration : événement fictif non indexé", demoEventRobots.includes("noindex"), demoEventRobots);
+  await page.goto(`${BASE}/structures/septodont`);
+  check("Organisation réelle : indexable", (await page.locator('meta[name="robots"]').count()) === 0);
   const robots = await (await page.request.get(`${BASE}/robots.txt`)).text();
   check("robots.txt : espaces privés exclus", robots.includes("Disallow: /admin") && robots.includes("Disallow: /organisations") && robots.includes("sitemap.xml"));
   const sitemap = await (await page.request.get(`${BASE}/sitemap.xml`)).text();
-  check("Plan du site : experts référencés et événements publiés", sitemap.includes("/experts/demo-p-martin") && sitemap.includes("/evenements/demo-ev-tp-endo") && !sitemap.includes("demo-p-lambert"));
+  check("Plan du site : pages publiques et organisations réelles, sans les données de démonstration", sitemap.includes("/experts</loc>") && sitemap.includes("/structures/septodont") && !sitemap.includes("demo-"));
   await ctx.close();
 }
 
@@ -3166,6 +3173,10 @@ async function submitNewOrg(page, siren) {
     await anon.page.goto(`${BASE}/evenements`);
     const listHref = await anon.page.locator('.event-card:has-text("Soirée implantologie") h3 a').first().getAttribute("href");
     check("Mise à la une : lien suivi depuis l'accueil seulement", homeHref?.startsWith("/r/") && listHref === "/evenements/demo-ev-soiree-implanto", `${homeHref} | ${listHref}`);
+    // Filtres de l'agenda : la discipline a sa propre adresse, et le filtre reste visible et retirable.
+    await anon.page.goto(`${BASE}/evenements?discipline=Endodontie&periode=90j`);
+    const endo = await anon.page.locator(".event-card").allInnerTexts();
+    check("Agenda : filtre par discipline et période", endo.length > 0 && endo.every((c) => c.includes("Endodontie")) && (await anon.page.locator('.chips a.chip.active:has-text("Endodontie")').count()) === 1 && (await anon.page.locator('select[name="periode"]').inputValue()) === "90j", endo.join(" | ").slice(0, 200));
     await jul.page.goto(`${BASE}/organisations/demo-org-dentalys/evenements/demo-ev-soiree-implanto`);
     check("Mise à la une : « En cours jusqu'au … » tant qu'elle dure", (await jul.page.locator('li.service-order:has-text("À la une de la page")').first().innerText()).includes("En cours jusqu'au"));
     // E-mails de réalisation : « prochaine facture » seulement si la ligne est sur la facture Stripe.

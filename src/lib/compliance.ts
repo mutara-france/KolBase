@@ -51,11 +51,11 @@ export const SETTING_FIELDS: { key: keyof ComplianceSettings; label: string; uni
  * Seuils fixés par l'arrêté du 7 août 2020 et délais du dispositif : une organisation peut les rendre plus stricts
  * (seuils plus bas, délais plus longs), jamais plus souples. Les valeurs par défaut sont les valeurs réglementaires.
  */
-export const LEGAL_CEILINGS: (keyof ComplianceSettings)[] = [
+const LEGAL_CEILINGS: (keyof ComplianceSettings)[] = [
   "remunerationConventionMax", "remunerationHourlyMax", "remunerationHalfDayMax",
   "hospitalityNightMax", "hospitalityMealMax", "hospitalityCollationMax", "hospitalityTotalMax",
 ];
-export const LEGAL_FLOORS: (keyof ComplianceSettings)[] = ["declarationDays", "authorizationDays"];
+const LEGAL_FLOORS: (keyof ComplianceSettings)[] = ["declarationDays", "authorizationDays"];
 
 export function complianceSettings(raw: unknown): ComplianceSettings {
   const r = (raw && typeof raw === "object" ? raw : {}) as Record<string, unknown>;
@@ -127,7 +127,6 @@ export function benefitLimit(s: HospitalityLimits, catalogId: string): { max: nu
 }
 
 /** Libellé du régime d'une hospitalité (convention, fiche de l'événement, saisie). */
-export const HOSPITALITY_REGIME_LABEL: Record<Regime, string> = { declaration: "déclarée", autorisation: "soumise à autorisation", hors_france: "hors France" };
 
 /** Régime d'une hospitalité : autorisation si nuitée, repas ou total dépassent les seuils. Une prestation seule : son seuil et le total. */
 export function hospitalityRegime(s: HospitalityLimits, benefits: { catalogId: string; valueCents: number }[]): { regime: Regime; reason: string } {
