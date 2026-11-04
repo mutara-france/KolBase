@@ -272,7 +272,8 @@ const linkIn = (mail) => mail?.text.match(/https?:\/\/\S+/g)?.find((u) => !u.end
   await page.click('button:has-text("Convention signée")');
   await page.waitForTimeout(1500);
   await page.reload();
-  const signed = await page.locator('li:has-text("convention-roux-signée.pdf")').innerText();
+  // Liste des pièces (l'historique du dossier nomme aussi le fichier depuis le lot 4).
+  const signed = await page.locator('li.flex-between:has-text("convention-roux-signée.pdf")').innerText();
   check("Dossier signé : la convention signée ne peut plus être retirée", !signed.includes("Retirer") && (await text(page)).includes("Signé"));
   await ctx.close();
 }
@@ -3187,27 +3188,27 @@ async function submitNewOrg(page, siren) {
 
   // 1. Inscription : e-mail de confirmation (lieu, badge, prestations, .ics), carte « Inscrit », annulation en deux temps.
   {
-    await emma.page.goto(`${BASE}/evenements/demo-ev-live-surgery`);
-    await emma.page.check('input[name="accept_demo-ev-live-surgery-b-cafe"]');
+    await emma.page.goto(`${BASE}/evenements/demo-ev-tp-endo`);
+    await emma.page.check('input[name="accept_demo-ev-tp-endo-b-cafe"]');
     await emma.page.check('input[name="ackHcp"]');
     await emma.page.click('button:has-text("M\'inscrire")');
     await emma.page.locator("text=Inscription confirmée").first().waitFor({ timeout: 8000 }).catch(() => {});
     const mail = await waitMail(EMMA, "Inscription confirmée");
     const ics = mail?.attachments?.find((a) => a.filename?.endsWith(".ics"));
-    check("Inscription : e-mail de confirmation (date, lieu, prestations, badge)", !!mail && mail.text.includes("Clinique du Port") && mail.text.includes("Pause café") && /\/inscriptions\/\S+\/badge/.test(mail.text) && mail.text.includes("Mes inscriptions"), mail?.text.slice(0, 200));
-    check("Inscription : invitation d'agenda (.ics) jointe", !!ics && unfold(ics.content).includes("SUMMARY:Live surgery") && ics.content.includes("BEGIN:VEVENT"), ics?.filename ?? "aucune pièce jointe");
+    check("Inscription : e-mail de confirmation (date, lieu, prestations, badge)", !!mail && mail.text.includes("Centre de formation Académie") && mail.text.includes("Pause café") && /\/inscriptions\/\S+\/badge/.test(mail.text) && mail.text.includes("Mes inscriptions"), mail?.text.slice(0, 200));
+    check("Inscription : invitation d'agenda (.ics) jointe", !!ics && unfold(ics.content).includes("SUMMARY:Travaux pratiques") && ics.content.includes("BEGIN:VEVENT"), ics?.filename ?? "aucune pièce jointe");
     await emma.page.goto(`${BASE}/evenements`);
-    const card = await emma.page.locator('article.event-card:has-text("Live surgery")').innerText();
+    const card = await emma.page.locator('article.event-card:has-text("endodontie sous microscope")').innerText();
     check("Carte d'événement : « Inscrit » au lieu de « S'inscrire »", card.includes("Inscrit") && !card.includes("S'inscrire"), card.replace(/\s+/g, " ").slice(-80));
     await emma.page.goto(`${BASE}/inscriptions`);
-    const tile = emma.page.locator('.reg-tile:has-text("Live surgery")');
+    const tile = emma.page.locator('.reg-tile:has-text("endodontie sous microscope")');
     await tile.locator('button:has-text("Annuler mon inscription")').click();
     const armed = await tile.locator('button:has-text("Confirmer : annuler mon inscription")').isVisible();
-    const still = await q1(`select count(*)::int n from "Registration" r join "User" u on u.id = r."userId" where u.email = $1 and r."eventId" = 'demo-ev-live-surgery'`, [EMMA]);
+    const still = await q1(`select count(*)::int n from "Registration" r join "User" u on u.id = r."userId" where u.email = $1 and r."eventId" = 'demo-ev-tp-endo'`, [EMMA]);
     check("Mes inscriptions : annulation en deux temps (premier clic sans effet)", armed && still.n === 1);
     await tile.locator('button:has-text("Confirmer : annuler mon inscription")').click();
     await emma.page.waitForURL(/annulee=1/, { timeout: 8000 }).catch(() => {});
-    const gone = await until(async () => (await q1(`select count(*)::int n from "Registration" r join "User" u on u.id = r."userId" where u.email = $1 and r."eventId" = 'demo-ev-live-surgery'`, [EMMA])).n === 0);
+    const gone = await until(async () => (await q1(`select count(*)::int n from "Registration" r join "User" u on u.id = r."userId" where u.email = $1 and r."eventId" = 'demo-ev-tp-endo'`, [EMMA])).n === 0);
     const cancelMail = await waitMail(EMMA, "Inscription annulée");
     check("Mes inscriptions : annulation confirmée, message et e-mail", gone && (await text(emma.page)).includes("Inscription annulée") && !!cancelMail && cancelMail.text.includes("prestations que vous aviez acceptées"), cancelMail?.subject ?? "aucun e-mail");
 
@@ -3229,12 +3230,16 @@ async function submitNewOrg(page, siren) {
 
   // 1 et 7. Candidature : e-mail de confirmation ; appel aux places pourvues « Complet ».
   {
-    await pgc.query(`insert into "OpenCall" (id, "organizationId", title, "typeId", status, slots, "createdById") values ('e2e-lot4-call', 'demo-org-dentalys', 'Relecture lot quatre', 'advisory', 'open', 1, 'demo-u-julien')`);
-    await emma.page.goto(`${BASE}/opportunites/e2e-lot4-call`);
-    check("Appel : « un dossier s'ouvre ; il avance après votre accord »", (await text(emma.page)).includes("un dossier de collaboration s'ouvre") && (await text(emma.page)).includes("il avance après votre accord"));
-    await emma.page.fill('textarea[name="message"]', "Je relis volontiers vos supports, avec un retour sous huit jours.");
-    await emma.page.click('button:has-text("Candidater")');
-    const sent = await waitMail(EMMA, "Candidature envoyée : Relecture lot quatre");
+    await pgc.query(`insert into "OpenCall" (id, "organizationId", title, "typeId", status, slots, "createdById") values ('e2e-lot4-call', 'demo-org-dentalys', 'Relecture lot quatre', 'advisory', 'open', 1, 'demo-u-julien') on conflict do nothing`);
+    // Expert référencé (Emma Simon n'est plus référencée à ce stade du parcours).
+    const GIRARD = "olivier.girard@demo.kolbase.local";
+    const gi = await session();
+    await login(gi.page, GIRARD);
+    await gi.page.goto(`${BASE}/opportunites/e2e-lot4-call`);
+    check("Appel : « un dossier s'ouvre ; il avance après votre accord »", (await text(gi.page)).includes("un dossier de collaboration s'ouvre") && (await text(gi.page)).includes("il avance après votre accord"));
+    await gi.page.fill('textarea[name="message"]', "Je relis volontiers vos supports, avec un retour sous huit jours.");
+    await gi.page.click('button:has-text("Candidater")');
+    const sent = await waitMail(GIRARD, "Candidature envoyée : Relecture lot quatre");
     check("Candidature : e-mail de confirmation avec le message et la suite", !!sent && sent.text.includes("Votre message") && sent.text.includes("retour sous huit jours") && sent.text.includes("retirer votre candidature"));
     await pgc.query(`update "Application" set status = 'retained' where "openCallId" = 'e2e-lot4-call'`);
     const jul = await session();
@@ -3242,15 +3247,16 @@ async function submitNewOrg(page, siren) {
     await jul.page.goto(`${BASE}/organisations/demo-org-dentalys/opportunites/e2e-lot4-call`);
     const pill = await jul.page.locator(".page-hero .pill").first().innerText().catch(() => "");
     check("Appel aux places pourvues : « Complet » (organisation)", pill.includes("Complet") && (await text(jul.page)).includes("toutes les places sont pourvues"), pill);
-    await emma.page.goto(`${BASE}/opportunites/e2e-lot4-call`);
-    check("Appel aux places pourvues : « Complet » (praticien)", (await emma.page.locator(".page-hero .pill").first().innerText()).includes("Complet"));
+    await gi.page.goto(`${BASE}/opportunites/e2e-lot4-call`);
+    check("Appel aux places pourvues : « Complet » (praticien)", (await gi.page.locator(".page-hero .pill").first().innerText()).includes("Complet"));
+    await gi.ctx.close();
     await pgc.query(`delete from "Application" where "openCallId" = 'e2e-lot4-call'`);
     await pgc.query(`delete from "OpenCall" where id = 'e2e-lot4-call'`);
 
     // 2. Événement en cours : pointage visible, ni bilan ni absents ni attestations ; après la fin, le bilan.
     const orig = await q1(`select "startsAt" from "Event" where id = 'demo-ev-soiree-implanto'`);
-    await pgc.query(`update "Event" set "startsAt" = now() - interval '30 minutes' where id = 'demo-ev-soiree-implanto'`);
-    await pgc.query(`update "Registration" set "checkedInAt" = now(), "checkedInById" = 'demo-u-julien' where "eventId" = 'demo-ev-soiree-implanto' and "userId" = 'demo-u-lambert'`);
+    await pgc.query(`update "Event" set "startsAt" = (now() at time zone 'utc') - interval '30 minutes' where id = 'demo-ev-soiree-implanto'`);
+    await pgc.query(`update "Registration" set "checkedInAt" = (now() at time zone 'utc'), "checkedInById" = 'demo-u-julien' where "eventId" = 'demo-ev-soiree-implanto' and "userId" = 'demo-u-lambert'`);
     const evUrl = `${BASE}/organisations/demo-org-dentalys/evenements/demo-ev-soiree-implanto`;
     await jul.page.goto(evUrl);
     let t = await text(jul.page);
@@ -3261,7 +3267,7 @@ async function submitNewOrg(page, siren) {
     await ines.page.goto(`${BASE}/inscriptions`);
     const inesTile = await ines.page.locator('.reg-tile:has-text("Soirée implantologie")').innerText();
     check("Participant pendant l'événement : « en cours », badge encore affiché", inesTile.includes("en cours") && inesTile.includes("Mon badge d'accueil"));
-    await pgc.query(`update "Event" set "startsAt" = now() - interval '4 hours' where id = 'demo-ev-soiree-implanto'`);
+    await pgc.query(`update "Event" set "startsAt" = (now() at time zone 'utc') - interval '4 hours' where id = 'demo-ev-soiree-implanto'`);
     await jul.page.goto(evUrl);
     t = await text(jul.page);
     check("Événement terminé : bilan et absents", t.includes("Bilan de l'événement") && (await jul.page.locator('table .pill:has-text("Absent")').count()) > 0);
@@ -3314,6 +3320,7 @@ async function submitNewOrg(page, siren) {
 
   // 3. Vocabulaire : menu praticien, statut vu par l'expert, « Candidater », /structures, experts vérifiés d'abord.
   {
+    await emma.page.goto(`${BASE}/tableau-de-bord`);
     check("Menu praticien : « Mes inscriptions » et « Mon compte »", (await emma.page.locator('aside a[href="/inscriptions"]').first().innerText()).includes("Mes inscriptions") && (await emma.page.locator('aside a[href="/compte"]').first().innerText()).includes("Mon compte"));
     await emma.page.goto(`${BASE}/appels`);
     check("Appels publics connecté : « Candidater »", (await emma.page.locator('article.dossier-card a:has-text("Candidater")').count()) > 0 && (await emma.page.locator('text=Se connecter pour candidater').count()) === 0);
@@ -3411,7 +3418,7 @@ async function submitNewOrg(page, siren) {
     await hu.page.selectOption('select[name="kind"]', "SOCIETE_SAVANTE");
     await hu.page.fill('input[name="siren"]', "W751234567");
     await hu.page.click('button:has-text("Créer l\'organisation")');
-    await hu.page.waitForURL(/\/organisations\/[^/]+$/, { timeout: 10000 }).catch(() => {});
+    await hu.page.waitForURL((u) => /^\/organisations\/[^/]+$/.test(u.pathname) && !u.pathname.endsWith("/nouvelle"), { timeout: 10000 }).catch(() => {});
     const org = await q1(`select id, rna, "verificationRequestedAt" from "Organization" where name = 'Société Lot Quatre'`);
     const adminMail = await waitMail("anne.chevalier@demo.kolbase.local", "Organisation à valider : Société Lot Quatre");
     check("Association : SIREN facultatif, RNA accepté", org?.rna === "W751234567" && !!org.verificationRequestedAt && !!adminMail && adminMail.text.includes("RNA W751234567"));
@@ -3429,8 +3436,8 @@ async function submitNewOrg(page, siren) {
   // 8. Anglais : navigation de l'espace organisation et création d'organisation.
   {
     const en = await session();
-    await en.ctx.addCookies([{ name: "kb_lang", value: "en", url: BASE }]);
     await login(en.page, "julien.faure@demo.kolbase.local");
+    await en.ctx.addCookies([{ name: "kb_lang", value: "en", url: BASE }]);
     await en.page.goto(`${BASE}/organisations/demo-org-dentalys`);
     const side = await en.page.locator("aside").first().innerText().catch(() => "");
     check("Anglais : navigation de l'espace organisation traduite", side.includes("Files") && side.includes("Events") && !side.includes("Dossiers"), side.replace(/\s+/g, " ").slice(0, 120));
