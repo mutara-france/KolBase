@@ -7,11 +7,12 @@ export async function generateMetadata() {
   return { title: `${t("Mot de passe oublié")} — KolBase` };
 }
 
-export default function Page() {
+export default async function Page({ searchParams }: { searchParams: Promise<{ next?: string }> }) {
+  const { next } = await searchParams;
   return (
     <>
       <SiteHeader variant="public" />
-      <main className="narrow"><ForgotPasswordForm /></main>
+      <main className="narrow"><ForgotPasswordForm next={next} /></main>
     </>
   );
 }

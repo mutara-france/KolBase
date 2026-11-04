@@ -3848,6 +3848,141 @@ async function submitNewOrg(page, siren) {
   await pgc.end();
 }
 
+// ── Lot 5b : entrée, chiffres de l'événement, administration, finitions ──
+{
+  const pgc = new pg.Client({ connectionString: process.env.DATABASE_URL });
+  await pgc.connect();
+  const q1 = async (sql, args = []) => (await pgc.query(sql, args)).rows[0];
+  const until = async (fn, ms = 6000) => {
+    for (const end = Date.now() + ms; Date.now() < end; await new Promise((r) => setTimeout(r, 150))) if (await fn()) return true;
+    return false;
+  };
+  const confirmClick = async (scope, label) => {
+    await scope.locator(`button:has-text("${label}")`).first().click();
+    const ok = scope.locator('button:has-text("Confirmer")').first();
+    await ok.waitFor({ timeout: 3000 });
+    await ok.click();
+  };
+  const CLAIRE = "claire.morel@demo.kolbase.local";
+  /** Création de compte depuis la page ouverte (formulaire déjà affiché). */
+  const signUpHere = async (page, first, last, email, password = "lot5b-mot-de-passe-1") => {
+    await page.fill('input[name="firstName"]', first);
+    await page.fill('input[name="lastName"]', last);
+    if (email) await page.fill('input[name="email"]', email);
+    await page.fill('input[name="password"]', password);
+    await page.check('input[name="cgu"]');
+    await page.click('button:has-text("Créer mon compte")');
+    await Promise.race([
+      page.waitForURL((u) => u.pathname !== "/inscription", { timeout: 15000 }),
+      page.locator("main .notice.error").waitFor({ timeout: 15000 }),
+    ]).catch(() => {});
+    await page.waitForTimeout(300);
+  };
+
+  // 1. Entrée : page d'origine gardée par l'en-tête, le mot de passe oublié et l'invitation ; profil et saisie gardés.
+  {
+    const a = await session();
+    await a.page.goto(`${BASE}/evenements`);
+    check("En-tête public : « Se connecter » et « Se référencer » gardent la page courante",
+      (await a.page.locator('header.public-nav .nav-actions a:has-text("Se connecter")').getAttribute("href")) === "/connexion?next=%2Fevenements" &&
+      (await a.page.locator('header.public-nav .nav-actions a:has-text("Se référencer")').getAttribute("href")) === "/inscription?next=%2Fevenements");
+    await a.page.goto(`${BASE}/connexion?next=%2Fevenements`);
+    check("En-tête public sur la connexion : pas de retour vers une page d'authentification", (await a.page.locator('header.public-nav .nav-actions a:has-text("Se connecter")').getAttribute("href")) === "/connexion");
+    // Mot de passe oublié → retour à la connexion → page d'origine après le nouveau mot de passe.
+    const forgot = await a.page.locator('main a:has-text("Mot de passe oublié")').getAttribute("href");
+    check("Connexion : « Mot de passe oublié » garde next", forgot === "/mot-de-passe-oublie?next=%2Fevenements", forgot);
+    await a.page.goto(`${BASE}${forgot}`);
+    check("Mot de passe oublié : « Retour à la connexion » garde next", (await a.page.locator('main a:has-text("Retour à la connexion")').getAttribute("href")) === "/connexion?next=%2Fevenements");
+    await a.ctx.close();
+    const m = await session();
+    await m.page.goto(`${BASE}/inscription`);
+    await signUpHere(m.page, "Romane", "Lot5b", "romane.lot5b@exemple.fr");
+    await m.ctx.close();
+    const r = await session();
+    await r.page.goto(`${BASE}/mot-de-passe-oublie?next=%2Fevenements`);
+    await r.page.fill('input[name="email"]', "romane.lot5b@exemple.fr");
+    await r.page.click('button:has-text("Recevoir le lien")');
+    const reset = await waitMail("romane.lot5b@exemple.fr", "Réinitialiser votre mot de passe");
+    await r.page.goto(linkIn(reset));
+    await r.page.fill('input[name="password"]', "lot5b-mot-de-passe-2");
+    await r.page.fill('input[name="confirm"]', "lot5b-mot-de-passe-2");
+    await Promise.all([r.page.waitForURL((u) => !u.pathname.startsWith("/mot-de-passe"), { timeout: 15000 }).catch(() => {}), r.page.click('button:has-text("Enregistrer et me connecter")')]);
+    check("Nouveau mot de passe : retour à la page d'origine", r.page.url() === `${BASE}/evenements`, r.page.url());
+    await r.ctx.close();
+    // Mauvais mot de passe : l'adresse reste saisie.
+    const w = await session();
+    await login(w.page, "romane.lot5b@exemple.fr", "mauvais-mot-de-passe-5b");
+    check("Connexion refusée : l'adresse saisie reste", (await w.page.inputValue('input[name="email"]')) === "romane.lot5b@exemple.fr" && (await text(w.page)).includes("E-mail ou mot de passe incorrect"));
+    // Lettre d'information : réservée aux praticiens (inscription organisation, Mon compte d'un compte organisation).
+    await w.page.goto(`${BASE}/inscription?profil=organisation`);
+    const orgNews = await w.page.locator('input[name="newsletter"]').count();
+    await w.page.selectOption('select[name="profession"]', "Chirurgien-dentiste");
+    check("Inscription : lettre d'information proposée au praticien seulement", orgNews === 0 && (await w.page.locator('input[name="newsletter"]').count()) === 1);
+    await w.ctx.close();
+    const cl = await session();
+    await login(cl.page, CLAIRE);
+    await cl.page.goto(`${BASE}/compte`);
+    check("Mon compte sans profil praticien : pas de case pour la lettre", (await cl.page.locator('#notifications input[name="newsletter"]').count()) === 0);
+    // Invitation nominative : profil gardé, adresse préremplie, acceptation qui confirme l'adresse.
+    await cl.page.goto(`${BASE}/organisations/demo-org-dentalys/membres`);
+    const form = 'form:has(h2:has-text("Inviter un membre"))';
+    const invite = async (email) => {
+      await cl.page.fill(`${form} input[name="email"]`, email);
+      await cl.page.click(`${form} button:has-text("Générer le lien")`);
+      const mail = await waitMail(email, "vous invite à rejoindre");
+      return linkIn(mail);
+    };
+    const linkA = await invite("lot5b.invitee@exemple.fr");
+    const linkB = await invite("lot5b.confirmee@exemple.fr");
+    await cl.ctx.close();
+    const inv = await session();
+    await inv.page.goto(linkA);
+    await inv.page.click('main a:has-text("Se connecter pour accepter")');
+    await inv.page.waitForURL(/\/connexion/);
+    const toSignUp = await inv.page.locator('main a:has-text("Créer un compte")').getAttribute("href");
+    check("Invitation → connexion → « Créer un compte » : profil organisation gardé", toSignUp.startsWith("/inscription?profil=organisation&next=%2Finvitation%2F"), toSignUp);
+    await inv.page.goto(`${BASE}${toSignUp}`);
+    check("Invitation : adresse invitée préremplie", (await inv.page.inputValue('input[name="email"]')) === "lot5b.invitee@exemple.fr" && (await inv.page.locator('input[name="newsletter"]').count()) === 0);
+    await signUpHere(inv.page, "Inès", "Invitée", "");
+    check("Invitation : retour à l'invitation après la création du compte, acceptation possible", inv.page.url().includes("/invitation/") && (await inv.page.locator('button:has-text("Accepter l\'invitation")').count()) === 1 && !(await text(inv.page)).includes("Confirmez d'abord"), inv.page.url());
+    const verifyA = await waitMail("lot5b.invitee@exemple.fr", "Confirmez votre adresse");
+    check("E-mail de confirmation d'un compte organisation : pas de lettre d'information", !!verifyA && !verifyA.text.includes("lettre d'information") && verifyA.text.includes("C'est à cette adresse que KolBase vous écrit"), verifyA?.text.slice(0, 200));
+    await Promise.all([inv.page.waitForURL(/\/organisations\/demo-org-dentalys/), inv.page.click('button:has-text("Accepter l\'invitation")')]);
+    const ua = await q1(`select u."emailVerifiedAt" v, (select count(*)::int from "Membership" m where m."userId" = u.id and m."organizationId" = 'demo-org-dentalys') n from "User" u where email = 'lot5b.invitee@exemple.fr'`);
+    check("Invitation nominative acceptée : membre et adresse confirmée", ua?.n === 1 && !!ua?.v, JSON.stringify(ua));
+    await inv.ctx.close();
+    // Autre invité : le lien de confirmation ramène à l'invitation.
+    const b = await session();
+    await b.page.goto(linkB);
+    await b.page.goto(`${BASE}${await b.page.locator('main a:has-text("Créer un compte")').getAttribute("href")}`);
+    await signUpHere(b.page, "Basile", "Confirmé", "");
+    const verifyB = await waitMail("lot5b.confirmee@exemple.fr", "Confirmez votre adresse");
+    await b.page.goto(`${BASE}/compte`);
+    await b.page.goto(linkIn(verifyB));
+    check("Lien de confirmation : retour à l'invitation", b.page.url().includes("/invitation/") && (await b.page.locator('button:has-text("Accepter l\'invitation")').count()) === 1, b.page.url());
+    await b.ctx.close();
+    // Création de comptes : limite par adresse e-mail (essais répétés), la limite par adresse IP laisse passer un congrès.
+    const s = await session();
+    let last = "";
+    for (let i = 0; i < 6; i++) {
+      await s.page.goto(`${BASE}/inscription`);
+      await signUpHere(s.page, "Romane", "Lot5b", "romane.lot5b@exemple.fr");
+      last = await text(s.page);
+    }
+    check("Création de comptes : essais répétés sur une même adresse limités", last.includes("Trop de tentatives"), last.match(/Trop de tentatives[^.]*\.|Un compte existe[^.]*\./)?.[0]);
+    await s.ctx.close();
+    // Mobile : « Se connecter » visible sans défilement.
+    const mob = await browser.newContext({ locale: "fr-FR", viewport: { width: 390, height: 844 } });
+    const mp = await mob.newPage();
+    await mp.goto(`${BASE}/experts`);
+    const box = await mp.locator('header.public-nav nav a:has-text("Se connecter")').boundingBox();
+    check("Mobile : « Se connecter » visible sans défiler, avec la page d'origine", !!box && box.x >= 0 && box.x + box.width <= 390 && (await mp.locator('header.public-nav nav a:has-text("Se connecter")').getAttribute("href")) === "/connexion?next=%2Fexperts", JSON.stringify(box));
+    await mob.close();
+  }
+
+  await pgc.end();
+}
+
 // ── 4. Limitation des tentatives ───────────────────────────────────────────
 {
   const { ctx, page } = await session();

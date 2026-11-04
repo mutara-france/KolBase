@@ -11,10 +11,13 @@ export const TOKEN_TTL_MS: Record<AuthTokenPurpose, number> = {
   TWO_FACTOR: 10 * 60 * 1000, // 10 minutes : saisie du code après le mot de passe
 };
 
-/** Crée un jeton à usage unique (seul son hash est stocké) et renvoie la valeur à mettre dans le lien. */
-export async function issueToken(userId: string, purpose: AuthTokenPurpose) {
+/**
+ * Crée un jeton à usage unique (seul son hash est stocké) et renvoie la valeur à mettre dans le lien. `next` : page où
+ * revenir après le lien (déjà passée par safeNext).
+ */
+export async function issueToken(userId: string, purpose: AuthTokenPurpose, next?: string | null) {
   const token = randomBytes(32).toString("base64url");
-  await db.authToken.create({ data: { userId, purpose, tokenHash: sha256(token), expiresAt: new Date(Date.now() + TOKEN_TTL_MS[purpose]) } });
+  await db.authToken.create({ data: { userId, purpose, tokenHash: sha256(token), expiresAt: new Date(Date.now() + TOKEN_TTL_MS[purpose]), next: next || null } });
   return token;
 }
 

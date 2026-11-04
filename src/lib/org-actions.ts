@@ -7,7 +7,6 @@ import { db } from "@/lib/db";
 import { audit, requireUser } from "@/lib/auth";
 import { invitableRoles, isVerifiedOrg, requireMembership, roleLabel, SIREN_REQUIRED, sirenFields } from "@/lib/orgs";
 import { blockedFor, hit } from "@/lib/rate-limit";
-import { mailEnabled } from "@/lib/mail";
 import { LOGO_MAX_BYTES, sniffLogo } from "@/lib/logos";
 import { parseRna, parseSiren, sirenKeyOk } from "@/lib/siren";
 import { rnaAccepted } from "@/lib/org-roles";
@@ -195,8 +194,9 @@ export async function acceptInvitation(form: FormData) {
   const token = str(form, "token");
   const inv = await db.invitation.findUnique({ where: { tokenHash: sha256(token) } });
   if (!inv || inv.acceptedAt || inv.revokedAt || inv.expiresAt < new Date()) redirect(`/invitation/${token}`);
-  // Invitation nominative : réservée au compte de l'adresse invitée (adresse confirmée dès que les e-mails sont configurés).
-  if (inv.email && (inv.email.toLowerCase() !== user.email.toLowerCase() || (mailEnabled() && !user.emailVerifiedAt))) redirect(`/invitation/${token}`);
+  // Invitation nominative : réservée au compte de l'adresse invitée. Le lien, reçu à cette adresse, prouve l'accès à la
+  // boîte : l'accepter confirme l'adresse du compte.
+  if (inv.email && inv.email.toLowerCase() !== user.email.toLowerCase()) redirect(`/invitation/${token}`);
   // Usage unique garanti même en cas d'acceptations simultanées : seule la première « consomme » le jeton.
   const accepted = await db.$transaction(async (tx) => {
     const { count } = await tx.invitation.updateMany({
@@ -213,6 +213,10 @@ export async function acceptInvitation(form: FormData) {
   });
   if (!accepted) redirect(`/invitation/${token}`);
   await audit(user.id, "org.invite_accept", "Invitation", inv.id);
+  if (inv.email && !user.emailVerifiedAt) {
+    await db.user.update({ where: { id: user.id }, data: { emailVerifiedAt: new Date() } });
+    await audit(user.id, "user.email_verified", "User", user.id, { source: "invitation" });
+  }
   redirect(`/organisations/${inv.organizationId}`);
 }
 

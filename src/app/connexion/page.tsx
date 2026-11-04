@@ -2,7 +2,7 @@ import { redirect } from "next/navigation";
 import { SiteHeader } from "@/components/SiteHeader";
 import { SignInForm } from "@/components/AuthForms";
 import { getCurrentUser } from "@/lib/auth";
-import { safeNext } from "@/lib/safe-redirect";
+import { organisationOrigin, safeNext } from "@/lib/safe-redirect";
 import { getT } from "@/lib/i18n/server";
 
 export async function generateMetadata() {
@@ -17,8 +17,8 @@ const EMAIL_NOTICE = {
   "lien-invalide": ["error", "Ce lien de confirmation n'est plus valable (déjà utilisé ou expiré). Connectez-vous : si votre adresse n'est pas confirmée, vous pourrez demander un nouveau lien depuis « Mon compte »."],
 } as const;
 
-export default async function Page({ searchParams }: { searchParams: Promise<{ next?: string; email?: string }> }) {
-  const { next, email } = await searchParams;
+export default async function Page({ searchParams }: { searchParams: Promise<{ next?: string; email?: string; profil?: string }> }) {
+  const { next, email, profil } = await searchParams;
   // Déjà connecté : on va directement là où le lien menait.
   if (await getCurrentUser()) redirect(safeNext(next, "/compte"));
   const { t } = await getT();
@@ -28,7 +28,7 @@ export default async function Page({ searchParams }: { searchParams: Promise<{ n
       <SiteHeader variant="public" />
       <main className="narrow">
         {notice && <p className={`notice ${notice[0]}`} role="status">{t(notice[1])}</p>}
-        <SignInForm next={next} />
+        <SignInForm next={next} organisation={profil === "organisation" || organisationOrigin(next)} />
       </main>
     </>
   );

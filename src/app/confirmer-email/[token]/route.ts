@@ -3,18 +3,22 @@ import { createHash } from "node:crypto";
 import { audit, getCurrentUser } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { consumeToken, findToken } from "@/lib/tokens";
+import { safeNext } from "@/lib/safe-redirect";
 
 /**
  * Lien reçu par e-mail : confirme l'adresse du compte. Le résultat est annoncé sur « Mon compte » si la personne est
  * connectée avec ce compte, sinon sur la page de connexion (lien ouvert sur un autre appareil, déconnecté). Un lien
- * déjà utilisé pour une adresse confirmée le dit, au lieu d'un « lien plus valable ».
+ * déjà utilisé pour une adresse confirmée le dit, au lieu d'un « lien plus valable ». Un lien qui garde une page d'origine
+ * (invitation à rejoindre une organisation) y ramène.
  */
 export async function GET(_: Request, { params }: { params: Promise<{ token: string }> }) {
   const { token } = await params;
   const t = await findToken(token, "VERIFY_EMAIL");
   let outcome: "confirme" | "deja-confirme" | "lien-invalide";
   let userId: string | null = null;
+  let next = "";
   if (t && (await consumeToken(t.id, t.userId, "VERIFY_EMAIL"))) {
+    next = safeNext(t.next, "");
     if (!t.user.emailVerifiedAt) await db.user.update({ where: { id: t.userId }, data: { emailVerifiedAt: new Date() } });
     await audit(t.userId, "user.email_verified", "User", t.userId);
     outcome = "confirme";
@@ -28,8 +32,9 @@ export async function GET(_: Request, { params }: { params: Promise<{ token: str
     userId = used?.userId ?? null;
   }
   const current = await getCurrentUser();
+  if (current && next && current.id === userId) redirect(next);
   if (current && (!userId || current.id === userId)) redirect(`/compte?email=${outcome}`);
   // Connecté avec un autre compte : le résultat concerne l'autre adresse.
   if (current) redirect(`/compte?email=${outcome === "confirme" ? "autre-compte" : outcome}`);
-  redirect(`/connexion?email=${outcome}&next=${encodeURIComponent("/compte")}`);
+  redirect(`/connexion?email=${outcome}&next=${encodeURIComponent(next || "/compte")}`);
 }

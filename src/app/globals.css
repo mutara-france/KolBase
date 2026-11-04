@@ -1121,3 +1121,5 @@ p.service-stats { color: var(--ink-soft); }
 .account-toc { display: flex; flex-wrap: wrap; gap: 6px 14px; font-size: 14px; padding: 10px 14px; border-radius: 12px; background: var(--bg-subtle); border: 1px solid var(--line); }
 .account-toc a { white-space: nowrap; }
 main [id] { scroll-margin-top: 80px; }
+/* En-tête public, mobile : « Se connecter » en tête de la rangée défilante, distingué des rubriques. */
+.public-nav .nav-signin { color: var(--outremer); }
