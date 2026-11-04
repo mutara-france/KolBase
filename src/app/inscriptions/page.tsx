@@ -11,13 +11,16 @@ import { fmtEur, intlLocale } from "@/lib/i18n";
 import { getT } from "@/lib/i18n/server";
 import { pointedPastEvents } from "@/lib/checkin";
 import { isAbsent } from "@/lib/indicators";
+import { cancelRegistration } from "@/lib/event-actions";
+import { ConfirmButton } from "@/components/ConfirmButton";
 
 export async function generateMetadata() {
   const { t } = await getT();
   return { title: `${t("Mes inscriptions")} — KolBase` };
 }
 
-export default async function Page() {
+export default async function Page({ searchParams }: { searchParams: Promise<{ annulee?: string }> }) {
+  const { annulee } = await searchParams;
   const user = await requireUser();
   const { t, locale } = await getT();
   const formatDateTime = (d: Date) =>
@@ -55,6 +58,16 @@ export default async function Page() {
             ? <p className="online-link text-sm"><Video size={14} /> {t("Lien de connexion :")} <a href={r.event.onlineUrl} target="_blank" rel="noopener noreferrer">{r.event.onlineUrl}</a></p>
             : <p className="muted text-sm"><Video size={14} /> {t("Le lien de connexion vous sera communiqué par l'organisateur avant l'événement.")}</p>
         )}
+        {/* Annulation (deux temps) : avant le début de l'événement, tant que l'inscription n'est pas déclarée. */}
+        {!r.declared && r.event.startsAt > now && (
+          <form action={cancelRegistration} className="reg-actions">
+            <input type="hidden" name="eventId" value={r.eventId} />
+            <input type="hidden" name="from" value="inscriptions" />
+            <ConfirmButton localized className="btn small ghost" confirm={t("annuler mon inscription")} summary={r.benefits.length > 0 ? t("Votre place est libérée et les prestations acceptées sont retirées. Un e-mail vous confirme l'annulation.") : t("Votre place est libérée. Un e-mail vous confirme l'annulation.")}>
+              {t("Annuler mon inscription")}
+            </ConfirmButton>
+          </form>
+        )}
         {/* Attestation et avis : réservés aux présents (pointés à l'accueil). */}
         {eventEnded(r.event, now) && (r.checkedInAt || (!r.survey && !pointed.has(r.eventId))) && (
           <div className="actions reg-actions">
@@ -76,6 +89,7 @@ export default async function Page() {
           <a className="btn ghost small" href="/inscriptions/calendrier">{t("Exporter vers mon agenda (.ics)")}</a>
         </div>
         <p className="muted">{t("Les événements auxquels vous assistez. Les avantages que vous acceptez sont conventionnés et déclarés par l'organisateur.")}</p>
+        {annulee && <p className="notice ok">{t("Inscription annulée. Un e-mail vous le confirme.")}</p>}
         {regs.length === 0 && <p className="muted">{t("Aucune inscription.")} <Link href="/evenements">{t("Voir l'agenda")}</Link></p>}
         {upcoming.length > 0 && <h2>{t("À venir")}</h2>}
         {upcoming.map((r) => <Row key={r.id} r={r} />)}

@@ -153,4 +153,13 @@ export const COMMON: Record<string, string> = {
   "Cette page n'est pas visible du public : l'organisation est suspendue par KolBase.": "This page is not visible to the public: the organisation is suspended by KolBase.",
   "Vous êtes abonné à la lettre d'information de KolBase : l'envoi commencera après la confirmation de votre adresse {email}.": "You are subscribed to the KolBase newsletter: sending will start once your address {email} is confirmed.",
   "La lettre d'information de KolBase est adressée aux praticiens inscrits.": "The KolBase newsletter is sent to registered practitioners.",
+  "Inscription annulée. Un e-mail vous le confirme.": "Registration cancelled. An email confirms it.",
+  "annuler mon inscription": "cancel my registration",
+  "Votre place est libérée et les prestations acceptées sont retirées. Un e-mail vous confirme l'annulation.": "Your place is released and the hospitality you accepted is withdrawn. An email confirms the cancellation.",
+  "Votre place est libérée. Un e-mail vous confirme l'annulation.": "Your place is released. An email confirms the cancellation.",
+  "Un instant…": "One moment…",
+  "Confirmer : {action}": "Confirm: {action}",
+  "Revenir": "Go back",
+  "Inscription confirmée. Un e-mail de confirmation vous est envoyé, avec l'événement pour votre agenda.": "Registration confirmed. A confirmation email is on its way, with the event for your calendar.",
+  "Candidature envoyée. Un e-mail de confirmation vous est envoyé.": "Application sent. A confirmation email is on its way.",
 };

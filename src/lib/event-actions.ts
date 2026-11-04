@@ -12,7 +12,7 @@ import { eurToCents, intOrNull, str } from "@/lib/form";
 import { getT } from "@/lib/i18n/server";
 import { engagementGate } from "@/lib/billing";
 import type { GateLink } from "@/lib/billing-plans";
-import { notifyEventChanged, notifyEventConfided, notifyEventWithdrawn, notifyMandateEnded } from "@/lib/notifications";
+import { notifyEventChanged, notifyEventConfided, notifyEventWithdrawn, notifyMandateEnded, notifyRegistration, notifyRegistrationCancelled } from "@/lib/notifications";
 import { activeMandate } from "@/lib/mandates";
 import { SOURCE_COOKIE } from "@/lib/services";
 import { deletableDraft, DRAFT_COUNTS } from "@/lib/event-drafts";
@@ -260,22 +260,29 @@ export async function registerToEvent(_: ActionState, form: FormData): Promise<A
     totalCents: accepted.reduce((s, b) => s + b.valueCents, 0),
     sourceOrderId: source?.id,
   });
+  // Confirmation par e-mail : date, lieu ou lien de connexion, badge, invitation d'agenda.
+  notifyRegistration(reg.id);
   revalidatePath(`/evenements/${eventId}`);
-  return { ok: t("Inscription confirmée.") };
+  return { ok: t("Inscription confirmée. Un e-mail de confirmation vous est envoyé, avec l'événement pour votre agenda.") };
 }
 
+/** Annulation par la personne inscrite (confirmée en deux temps), depuis l'événement ou « Mes inscriptions ». */
 export async function cancelRegistration(form: FormData) {
   const user = await requireUser();
   const eventId = str(form, "eventId");
-  const reg = await db.registration.findUnique({ where: { eventId_userId: { eventId, userId: user.id } }, include: { event: { select: { startsAt: true } } } });
+  const reg = await db.registration.findUnique({ where: { eventId_userId: { eventId, userId: user.id } }, include: { event: { select: { startsAt: true } }, _count: { select: { benefits: true } } } });
   // Une inscription déjà déclarée, ou dont l'événement a commencé, ne peut plus être annulée en ligne :
   // les avantages éventuellement reçus doivent rester traçables (correction par l'organisateur).
+  let cancelled = false;
   if (reg && !reg.declared && reg.event.startsAt > new Date()) {
     await db.registration.delete({ where: { id: reg.id } });
     await audit(user.id, "registration.cancel", "Registration", reg.id, { eventId });
+    notifyRegistrationCancelled(user.id, eventId, reg._count.benefits);
+    cancelled = true;
   }
   revalidatePath(`/evenements/${eventId}`);
   revalidatePath("/inscriptions");
+  if (cancelled) redirect(str(form, "from") === "inscriptions" ? "/inscriptions?annulee=1" : `/evenements/${eventId}?annulee=1`);
 }
 
 /** La conformité marque une inscription comme déclarée (avec la référence de déclaration). */

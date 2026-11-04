@@ -9,7 +9,7 @@ import { createHmac, randomUUID } from "node:crypto";
 import { SMTPServer } from "smtp-server";
 import { simpleParser } from "mailparser";
 
-/** E-mails reçus par le faux serveur SMTP (port 2525) : { to, subject, text }. */
+/** E-mails reçus par le faux serveur SMTP (port 2525) : { to, subject, text, attachments }. */
 export const mails = [];
 
 const json = (res, body, status = 200) => {
@@ -52,7 +52,8 @@ export function startFakes() {
     logger: false,
     onData(stream, session, done) {
       simpleParser(stream).then((m) => {
-        for (const to of session.envelope.rcptTo) mails.push({ to: to.address, subject: m.subject ?? "", text: m.text ?? "" });
+        const attachments = (m.attachments ?? []).map((a) => ({ filename: a.filename, contentType: a.contentType, content: a.content.toString("utf8") }));
+        for (const to of session.envelope.rcptTo) mails.push({ to: to.address, subject: m.subject ?? "", text: m.text ?? "", attachments });
         done();
       }, done);
     },

@@ -15,6 +15,7 @@ import { getT } from "@/lib/i18n/server";
 import { appUrl } from "@/lib/ics";
 import { jsonLd } from "@/lib/jsonld";
 import { orgIsPublic } from "@/lib/org-roles";
+import { ConfirmButton } from "@/components/ConfirmButton";
 
 /** « lundi 3 novembre 2026 à 14:00 » / « Monday, 3 November 2026 at 14:00 » (heure de Paris). */
 const dateTime = (locale: Locale, d: Date) => fmtDate(locale, d, { weekday: "long", day: "numeric", month: "long", year: "numeric", hour: "2-digit", minute: "2-digit" });
@@ -34,8 +35,9 @@ export async function generateMetadata({ params }: { params: Promise<{ id: strin
   };
 }
 
-export default async function Page({ params }: { params: Promise<{ id: string }> }) {
+export default async function Page({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: Promise<{ annulee?: string }> }) {
   const { id } = await params;
+  const { annulee } = await searchParams;
   const [event, user] = await Promise.all([
     db.event.findFirst({
       where: { id, publishedAt: { not: null }, organization: { verification: "VERIFIED" } },
@@ -144,6 +146,7 @@ export default async function Page({ params }: { params: Promise<{ id: string }>
           <aside className="page-aside">
             <section className="card next-step">
               <span className="eyebrow-sm">{t("Inscription")}</span>
+              {annulee && !reg && <p className="notice ok">{t("Inscription annulée. Un e-mail vous le confirme.")}</p>}
               {reg ? (
                 <>
                   <p className="notice ok">{t("Vous êtes inscrit à cet événement.")}</p>
@@ -162,7 +165,12 @@ export default async function Page({ params }: { params: Promise<{ id: string }>
                   {eventEnded(event) && reg.checkedInAt && <a className="btn secondary" href={`/inscriptions/${reg.id}/attestation`}>{t("Mon attestation de présence")}</a>}
                   {canReview && <Link className="btn ghost" href={`/evenements/${id}/avis`}>{t("Donner mon avis")}</Link>}
                   {!reg.declared && !past && (
-                    <form action={cancelRegistration}><input type="hidden" name="eventId" value={id} /><button className="btn ghost">{t("Annuler mon inscription")}</button></form>
+                    <form action={cancelRegistration}>
+                      <input type="hidden" name="eventId" value={id} />
+                      <ConfirmButton localized className="btn ghost" confirm={t("annuler mon inscription")} summary={reg.benefits.length > 0 ? t("Votre place est libérée et les prestations acceptées sont retirées. Un e-mail vous confirme l'annulation.") : t("Votre place est libérée. Un e-mail vous confirme l'annulation.")}>
+                        {t("Annuler mon inscription")}
+                      </ConfirmButton>
+                    </form>
                   )}
                 </>
               ) : past ? (

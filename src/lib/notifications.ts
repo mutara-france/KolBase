@@ -6,6 +6,7 @@ import { platformAdminEmails } from "@/lib/platform";
 import { drPrefix } from "@/lib/professions";
 import { COMPLIANCE_ROLES, EVENT_ORGANIZER_ROLES, FORMAT_LABEL, formatEUR, type EventChange } from "@/lib/events";
 import { de } from "@/lib/elision";
+import { appUrl, eventIcsEntry, toIcs } from "@/lib/ics";
 import { withVat } from "@/lib/quotes";
 import { fmtEur, isLocale, makeT, type Locale, type T } from "@/lib/i18n";
 import { collabType, PROJECT_ROLES, SOURCING_ROLES, STATUS_LABEL } from "@/lib/projects";
@@ -202,6 +203,30 @@ export function notifyApplication(callId: string, practitionerId: string) {
       text: `Bonjour,\n\n${expertName(prac)} a candidaté à votre appel « ${call.title} ».`,
       cta: { label: "Voir la candidature", href: `/organisations/${call.organizationId}/opportunites/${call.id}` },
     });
+  });
+}
+
+/** Candidature envoyée : confirmation au praticien (e-mail de service), avec son message et la suite. */
+export function notifyApplicationSent(applicationId: string) {
+  later(async () => {
+    const a = await db.application.findUnique({
+      where: { id: applicationId },
+      include: { openCall: { include: { organization: { select: { name: true } } } }, practitioner: { include: { user: { select: { ...userSelect, firstName: true } } } } },
+    });
+    if (!a) return;
+    const call = a.openCall;
+    const message = a.message ?? "";
+    const excerpt = message.length > 600 ? `${message.slice(0, 600).trimEnd()}…` : message;
+    await sendService([a.practitioner.user], (t) => ({
+      subject: t("Candidature envoyée : {titre}", { titre: call.title }),
+      text: [
+        t("Bonjour {name},", { name: a.practitioner.user.firstName }),
+        t("Votre candidature à « {titre} » ({org}) est transmise.", { titre: call.title, org: call.organization.name }),
+        excerpt ? `${t("Votre message")} :\n${excerpt}` : null,
+        t("Vous recevrez un e-mail dès que l'organisation aura répondu. Tant qu'elle ne l'a pas fait, vous pouvez retirer votre candidature depuis « Mes candidatures »."),
+      ].filter(Boolean).join("\n\n"),
+      cta: { label: t("Voir ma candidature"), href: `/opportunites/${call.id}` },
+    }));
   });
 }
 
@@ -638,6 +663,71 @@ export async function sendEventReminders(eventId: string, now = new Date()) {
     await db.registration.update({ where: { id: r.id }, data: { reminderSentAt: now } });
   }
   return ev.registrations.length;
+}
+
+/** Date et heure d'un événement dans la langue du destinataire (heure de Paris). */
+const eventWhen = (d: Date, locale: Locale) =>
+  d.toLocaleString(locale === "en" ? "en-GB" : "fr-FR", { timeZone: "Europe/Paris", weekday: "long", day: "numeric", month: "long", year: "numeric", hour: "2-digit", minute: "2-digit" });
+
+/**
+ * Inscription confirmée (e-mail de service, envoyé quelle que soit la préférence de notifications) : date, lieu ou
+ * lien de connexion, prestations acceptées, badge d'accueil et invitation d'agenda (.ics) jointe.
+ */
+export function notifyRegistration(registrationId: string) {
+  later(async () => {
+    const r = await db.registration.findUnique({
+      where: { id: registrationId },
+      include: { user: { select: { ...userSelect, firstName: true } }, benefits: { include: { benefit: true } }, event: { include: { organization: { select: { name: true } } } } },
+    });
+    if (!r) return;
+    const ev = r.event;
+    const inPerson = ev.format !== "DISTANCIEL";
+    await sendService([r.user], (t, locale) => {
+      const total = r.benefits.reduce((sum, b) => sum + b.valueCents, 0);
+      return {
+        subject: t("Inscription confirmée : « {title} »", { title: ev.title }),
+        text: [
+          t("Bonjour {name},", { name: r.user.firstName }),
+          t("Votre inscription à « {title} » ({org}) est confirmée.", { title: ev.title, org: ev.organization.name }),
+          [
+            t("Date : {when}", { when: eventWhen(ev.startsAt, locale) }),
+            inPerson ? t("Lieu : {place}", { place: [ev.venue, ev.city].filter(Boolean).join(", ") || t("à préciser par l'organisateur") }) : null,
+            // Lien de connexion (en ligne, hybride) : réservé aux inscrits.
+            ev.format === "PRESENTIEL" ? null : ev.onlineUrl ? t("Lien de connexion : {url}", { url: ev.onlineUrl }) : t("En ligne : le lien de connexion vous est communiqué par l'organisateur."),
+          ].filter(Boolean).join("\n"),
+          r.benefits.length > 0
+            ? t("Prestations acceptées : {list} ({total}).", { list: r.benefits.map((b) => t(b.benefit.label)).join(", "), total: fmtEur(locale, total) })
+            : null,
+          inPerson ? t("À l'accueil, présentez votre badge : le lien ci-dessous l'affiche sur votre téléphone.") : null,
+          t("L'événement est joint à cet e-mail pour votre agenda (fichier .ics)."),
+          t("Un empêchement ? Annulez votre inscription depuis « Mes inscriptions » : {url}", { url: `${appUrl()}/inscriptions` }),
+        ].filter(Boolean).join("\n\n"),
+        cta: inPerson ? { label: t("Mon badge d'accueil"), href: `/inscriptions/${r.id}/badge` } : { label: t("Voir l'événement"), href: `/evenements/${ev.id}` },
+        attachments: [{ filename: "evenement.ics", contentType: "text/calendar; charset=utf-8; method=PUBLISH", content: toIcs(ev.title, [eventIcsEntry(ev, ev.organization.name, true, t)]) }],
+      };
+    });
+  });
+}
+
+/** Inscription annulée par la personne inscrite (e-mail de service). */
+export function notifyRegistrationCancelled(userId: string, eventId: string, benefits: number) {
+  later(async () => {
+    const [u, ev] = await Promise.all([
+      db.user.findUnique({ where: { id: userId }, select: { ...userSelect, firstName: true } }),
+      db.event.findUnique({ where: { id: eventId }, include: { organization: { select: { name: true } } } }),
+    ]);
+    if (!u || !ev) return;
+    await sendService([u], (t, locale) => ({
+      subject: t("Inscription annulée : « {title} »", { title: ev.title }),
+      text: [
+        t("Bonjour {name},", { name: u.firstName }),
+        t("Votre inscription à « {title} » ({org}), {when}, est annulée.", { title: ev.title, org: ev.organization.name, when: eventWhen(ev.startsAt, locale) }),
+        benefits > 0 ? t("Les prestations que vous aviez acceptées sont retirées.") : null,
+        t("Vous pouvez vous réinscrire tant que les inscriptions sont ouvertes."),
+      ].filter(Boolean).join("\n\n"),
+      cta: { label: t("Voir l'événement"), href: `/evenements/${ev.id}` },
+    }));
+  });
 }
 
 /** Événement modifié (date, heure, lieu, format ou lien de connexion) : chaque inscrit reçoit les nouvelles informations. */

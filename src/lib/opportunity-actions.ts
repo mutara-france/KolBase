@@ -8,7 +8,7 @@ import { isVerifiedOrg, notVerified, requireMembership } from "@/lib/orgs";
 import { parseParisDateTime } from "@/lib/events";
 import { collabType, SOURCING_ROLES } from "@/lib/projects";
 import { eurToCents, str, unitsOrNull, UNITS_INVALID } from "@/lib/form";
-import { notifyApplication, notifyNotRetained, notifySolicitations } from "@/lib/notifications";
+import { notifyApplication, notifyApplicationSent, notifyNotRetained, notifySolicitations } from "@/lib/notifications";
 import { engagementGate } from "@/lib/billing";
 import type { GateLink } from "@/lib/billing-plans";
 import { getT } from "@/lib/i18n/server";
@@ -90,8 +90,9 @@ export async function applyToCall(_: ActionState, form: FormData): Promise<Actio
   const app = await db.application.create({ data: { openCallId: callId, practitionerId: user.practitioner.id, message } });
   await audit(user.id, "application.create", "Application", app.id, { callId });
   notifyApplication(callId, user.practitioner.id);
+  notifyApplicationSent(app.id);
   revalidatePath(`/opportunites/${callId}`);
-  return { ok: t("Candidature envoyée.") };
+  return { ok: t("Candidature envoyée. Un e-mail de confirmation vous est envoyé.") };
 }
 
 export async function withdrawApplication(form: FormData) {
