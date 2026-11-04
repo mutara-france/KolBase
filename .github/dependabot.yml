@@ -1,0 +1,17 @@
+# Mises à jour des dépendances : une PR groupée par semaine (le lundi), fusionnée seulement si la CI passe.
+version: 2
+updates:
+  - package-ecosystem: npm
+    directory: /
+    schedule: { interval: weekly, day: monday, time: "06:00", timezone: Europe/Paris }
+    open-pull-requests-limit: 3
+    groups:
+      correctifs:
+        update-types: [minor, patch]
+    # Montées de version majeures (Next, Prisma, TypeScript…) : à décider à la main, une à la fois.
+    ignore:
+      - dependency-name: "*"
+        update-types: ["version-update:semver-major"]
+  - package-ecosystem: github-actions
+    directory: /
+    schedule: { interval: monthly }

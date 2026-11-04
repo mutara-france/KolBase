@@ -68,11 +68,15 @@ jobs:
 
       - name: Types
         run: npm run lint
+      # Lint : erreurs de hooks React, variables inutilisées, pièges courants (configuration : biome.json).
+      - name: Lint
+        run: npm run check
       # Fichiers, exports et dépendances inutilisés (configuration : knip.json).
       - name: Code mort
         run: npm run deadcode
+      # Tests unitaires, avec une couverture minimale des modules de règles (vitest.config.mts).
       - name: Tests unitaires
-        run: npm test
+        run: npm run test:coverage
 
       - name: Migrations
         run: npx prisma migrate deploy

@@ -140,7 +140,7 @@ export async function issueFeeNote(_: FormState, form: FormData): Promise<FormSt
   };
   const vatBp = vatBpOf(prof.vatRegime);
   const year = new Date().getFullYear();
-  let note;
+  let note: Awaited<ReturnType<typeof db.feeNote.create>> | undefined;
   for (let attempt = 0; attempt < 3 && !note; attempt++) {
     const existing = await db.feeNote.findMany({ where: { practitionerId: p.id, number: { startsWith: `NH-${year}-` } }, select: { number: true } });
     try {

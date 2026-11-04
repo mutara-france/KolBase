@@ -1,0 +1,41 @@
+{
+  "$schema": "https://biomejs.dev/schemas/2.6.5/schema.json",
+  "vcs": { "enabled": true, "clientKind": "git", "useIgnoreFile": true },
+  "files": { "includes": ["src/**", "tests/**", "scripts/**", "prisma/*.ts", "*.ts", "*.mjs", "!src/generated", "!**/*.css"] },
+  "formatter": { "enabled": false },
+  "assist": { "enabled": false },
+  "linter": {
+    "enabled": true,
+    "rules": {
+      "preset": "recommended",
+      "a11y": {
+        "useButtonType": "off",
+        "noAutofocus": "off",
+        "noNoninteractiveTabindex": "warn",
+        "useSemanticElements": "warn",
+        "useAriaPropsSupportedByRole": "warn",
+        "useFocusableInteractive": "warn",
+        "useKeyWithClickEvents": "warn",
+        "noStaticElementInteractions": "warn"
+      },
+      "correctness": { "noComponentHookFactories": "off", "useExhaustiveDependencies": "error", "noUnusedVariables": "error" },
+      "performance": { "useDomNodeTextContent": "off", "noImgElement": "off", "noAccumulatingSpread": "warn" },
+      "security": { "noDangerouslySetInnerHtml": "warn" },
+      "style": { "noNonNullAssertion": "off", "useTemplate": "off", "useImportType": "warn", "useConst": "error" },
+      "suspicious": {
+        "noArrayIndexKey": "off",
+        "noControlCharactersInRegex": "off",
+        "noDocumentCookie": "off",
+        "noShadowRestrictedNames": "off",
+        "noFocusedTests": "off",
+        "noAssignInExpressions": "warn",
+        "useIterableCallbackReturn": "warn",
+        "noImplicitAnyLet": "error"
+      },
+      "complexity": { "useOptionalChain": "warn" }
+    }
+  },
+  "overrides": [
+    { "includes": ["tests/**"], "linter": { "rules": { "suspicious": { "noFocusedTests": "error" } } } }
+  ]
+}
