@@ -7,7 +7,8 @@ import { requirePlatformAdmin } from "@/lib/platform";
 import { aiEnabled } from "@/lib/ai";
 import { formatDate, formatEUR, formatTime } from "@/lib/events";
 import { updateServiceOrder } from "@/lib/service-actions";
-import { trackedPath } from "@/lib/services";
+import { newsletterAudienceCount, newsletterSendsThisMonth, trackedPath } from "@/lib/services";
+import { NEWSLETTER_MONTHLY_MAX, parisMonthLabel } from "@/lib/newsletter";
 
 export const metadata = { title: "Service — KolBase" };
 
@@ -17,7 +18,7 @@ export default async function Page({ params }: { params: Promise<{ orderId: stri
   const { orderId } = await params;
   const o = await db.serviceOrder.findUnique({ where: { id: orderId }, include: { event: true, organization: { select: { name: true } }, offer: true } });
   if (!o) notFound();
-  const audience = await db.user.count({ where: { notifyPrefs: { path: ["newsletter"], equals: true }, emailVerifiedAt: { not: null } } });
+  const [audience, sends] = await Promise.all([newsletterAudienceCount(), newsletterSendsThisMonth()]);
   const e = o.event;
   const where = e.format === "DISTANCIEL" ? "en ligne" : [e.venue, e.city].filter(Boolean).join(", ");
   const defaultBody = `${o.organization.name} organise « ${e.title} », le ${formatDate(e.startsAt)} à ${formatTime(e.startsAt)}${where ? `, ${where}` : ""}.\n\n${e.description ?? "[présentation à compléter]"}\n\nInscription gratuite et nominative sur KolBase.`;
@@ -30,7 +31,7 @@ export default async function Page({ params }: { params: Promise<{ orderId: stri
         <p className="muted">{o.organization.name} · « <Link href={`/evenements/${e.id}`}>{e.title}</Link> » du {formatDate(e.startsAt)} · {formatEUR(o.priceCents)} HT</p>
         {o.brief && <p className="notice">Consignes : « {o.brief} »</p>}
         {o.offer.kind === "newsletter" ? (
-          <NewsletterForm orderId={o.id} subject={`${e.title} — ${formatDate(e.startsAt)}`} body={defaultBody} audience={audience} ai={aiEnabled()} />
+          <NewsletterForm orderId={o.id} advertiser={o.organization.name} subject={`${e.title} — ${formatDate(e.startsAt)}`} body={defaultBody} audience={audience} ai={aiEnabled()} sends={sends} max={NEWSLETTER_MONTHLY_MAX} month={parisMonthLabel()} />
         ) : (
           <section className="card stack-sm">
             <h2>Post à publier</h2>

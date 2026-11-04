@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { de } from "@/lib/elision";
 import { notFound, redirect } from "next/navigation";
 import { Briefcase, CalendarDays, Euro, Mic, Users } from "lucide-react";
 import { SiteHeader } from "@/components/SiteHeader";
@@ -41,7 +42,8 @@ export default async function Page({ params }: { params: Promise<{ id: string }>
   const mine = call.applications[0];
   const type = collabType(call.typeId);
   const full = call.slots != null && call._count.applications >= call.slots;
-  const closed = call.status !== "open" || (call.deadline != null && call.deadline < new Date()) || (call.event != null && call.event.startsAt < new Date()) || full;
+  // Organisation suspendue (ou plus validée) : l'appel est masqué, il ne reçoit plus de candidature.
+  const closed = call.status !== "open" || call.organization.verification !== "VERIFIED" || (call.deadline != null && call.deadline < new Date()) || (call.event != null && call.event.startsAt < new Date()) || full;
   const { t, locale } = await getT();
   const num = (n: number) => n.toLocaleString(intlLocale(locale));
 
@@ -75,7 +77,7 @@ export default async function Page({ params }: { params: Promise<{ id: string }>
                 {call.event.publishedAt && <Link className="link" href={`/evenements/${call.event.id}`}>{t("Voir la page de l'événement")}</Link>}
               </section>
             )}
-            {call.organization.policy && <section className="card"><h2>{t("Politique de collaboration de {org}", { org: call.organization.name })}</h2><p>{call.organization.policy}</p></section>}
+            {call.organization.policy && <section className="card"><h2>{t("Politique de collaboration {de_org}", { org: call.organization.name, de_org: de(call.organization.name) })}</h2><p>{call.organization.policy}</p></section>}
             <section className="card stack-sm">
               <h2 className="section-title">{call.organization.name}</h2>
               {call.organization.about && <p className="text-sm">{call.organization.about}</p>}

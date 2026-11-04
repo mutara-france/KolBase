@@ -4,7 +4,7 @@ import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import { db } from "@/lib/db";
 import { audit, requireUser } from "@/lib/auth";
-import { ORG_NOT_VERIFIED, isVerifiedOrg, requireMembership } from "@/lib/orgs";
+import { isVerifiedOrg, notVerified, requireMembership } from "@/lib/orgs";
 import { COMPLIANCE_ROLES } from "@/lib/events";
 import { collabType, PROJECT_ROLES, projectEditable, RECRUITING_STATUSES, recruitmentOpen, SOURCING_ROLES, PROJECT_VIEW_ROLES, termsChanged, TRANSITIONS, type TransitionKey } from "@/lib/projects";
 import { storageEnabled } from "@/lib/storage";
@@ -24,7 +24,7 @@ export type ActionState = { error?: string; ok?: string; fix?: GateLink } | unde
 export async function createProject(_: ActionState, form: FormData): Promise<ActionState> {
   const orgId = str(form, "orgId");
   const { user, org } = await requireMembership(orgId, SOURCING_ROLES);
-  if (!isVerifiedOrg(org)) return { error: ORG_NOT_VERIFIED };
+  if (!isVerifiedOrg(org)) return { error: notVerified(org) };
   const gate = await engagementGate(orgId, "sollicitation");
   if (gate) return gate;
   const title = str(form, "title");
@@ -272,7 +272,7 @@ export async function addProjectExpert(_: ActionState, form: FormData): Promise<
   const projectId = str(form, "projectId");
   const { user, org, project, error } = await editableProject(orgId, projectId);
   if (!project) return { error: error ?? "Dossier introuvable." };
-  if (!isVerifiedOrg(org)) return { error: ORG_NOT_VERIFIED };
+  if (!isVerifiedOrg(org)) return { error: notVerified(org) };
   const gate = await engagementGate(orgId, "sollicitation", projectId);
   if (gate) return gate;
   const practitionerId = str(form, "expertId");

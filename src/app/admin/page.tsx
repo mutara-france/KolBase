@@ -19,14 +19,17 @@ import { asInterval, displayStatus, exempt, monthlyCents, PLANS, planFor, STATUS
 import { stripeEnabled } from "@/lib/billing";
 import { setExemption } from "@/lib/billing-actions";
 import { saveServiceOffer, updateServiceOrder } from "@/lib/service-actions";
-import { ORDER_STATUS, orderStats, trackedPath } from "@/lib/services";
+import { featuredUntil, newsletterAudienceCount, newsletterSendsThisMonth, ORDER_STATUS, orderStats, trackedPath } from "@/lib/services";
+import { groupOrders, packStatus } from "@/lib/service-pack";
+import { NEWSLETTER_MONTHLY_MAX, parisMonthLabel } from "@/lib/newsletter";
 import { reportLine } from "@/lib/service-report";
 import { country, licenseRule, practicesInFrance, registryLink } from "@/lib/countries";
+import { ConfirmButton } from "@/components/ConfirmButton";
 
 export const metadata = { title: "Administration — KolBase" };
 export const dynamic = "force-dynamic";
 
-const TONE = { PENDING: "wait", VERIFIED: "ok", REJECTED: "bad" } as const;
+const TONE = { PENDING: "wait", VERIFIED: "ok", REJECTED: "bad", SUSPENDED: "bad" } as const;
 /** Messageries grand public : un administrateur d'entreprise s'inscrit d'ordinaire avec l'adresse de la société. */
 const PERSONAL_MAIL = /@(gmail|googlemail|hotmail|outlook|live|msn|yahoo|ymail|icloud|me|aol|gmx|laposte|orange|wanadoo|free|sfr|neuf|bbox|protonmail|proton)\./i;
 
@@ -59,6 +62,7 @@ export default async function Page({ searchParams }: { searchParams: Promise<{ o
   for (const o of orgs) if (o.siren) bySiren.set(o.siren, [...(bySiren.get(o.siren) ?? []), o]);
   const groups = [
     ["À valider", pending],
+    ["Suspendues", orgs.filter((o) => o.verification === "SUSPENDED")],
     ["Refusées", orgs.filter((o) => o.verification === "REJECTED")],
     ["Validées", orgs.filter((o) => o.verification === "VERIFIED")],
   ] as const;
@@ -129,17 +133,26 @@ export default async function Page({ searchParams }: { searchParams: Promise<{ o
                       </dd>
                       {o.contactEmail && (<><dt>Contact</dt><dd>{o.contactEmail}</dd></>)}
                       <dt>Page publique</dt>
-                      <dd>{o.listed && o.verification === "VERIFIED" ? "oui" : "non"}{o.listed && o.verification !== "VERIFIED" ? " (activée à la validation)" : ""}</dd>
-                      {o.verificationNote && (<><dt>Note</dt><dd>{o.verificationNote}</dd></>)}
+                      <dd>{o.listed && o.verification === "VERIFIED" ? "oui" : "non"}{o.listed && o.verification === "SUSPENDED" ? " (masquée pendant la suspension)" : o.listed && o.verification !== "VERIFIED" ? " (activée à la validation)" : ""}</dd>
+                      {o.verificationNote && (<><dt>{o.verification === "SUSPENDED" ? "Motif de la suspension" : "Note"}</dt><dd>{o.verificationNote}</dd></>)}
                     </dl>
                     <div className="actions wrap">
+                      {o.verification === "SUSPENDED" && (
+                        <form action={reviewOrganization} className="inline wrap">
+                          <input type="hidden" name="orgId" value={o.id} />
+                          <button className="btn small" name="decision" value="reactivate">Réactiver</button>
+                          <span className="hint">Page publique, événements et appels réapparaissent tels quels ; les administrateurs sont prévenus.</span>
+                        </form>
+                      )}
                       {o.verification !== "VERIFIED" && (
                         <>
-                          <form action={reviewOrganization} className="inline wrap">
-                            <input type="hidden" name="orgId" value={o.id} />
-                            <input name="note" placeholder="Note (facultatif)" aria-label="Note de validation (facultatif)" />
-                            <button className="btn small" name="decision" value="verify">Valider</button>
-                          </form>
+                          {o.verification !== "SUSPENDED" && (
+                            <form action={reviewOrganization} className="inline wrap">
+                              <input type="hidden" name="orgId" value={o.id} />
+                              <input name="note" placeholder="Note (facultatif)" aria-label="Note de validation (facultatif)" />
+                              <button className="btn small" name="decision" value="verify">Valider</button>
+                            </form>
+                          )}
                           {o.verification !== "REJECTED" && (
                             <form action={reviewOrganization} className="inline wrap">
                               <input type="hidden" name="orgId" value={o.id} />
@@ -153,7 +166,9 @@ export default async function Page({ searchParams }: { searchParams: Promise<{ o
                         <form action={reviewOrganization} className="inline wrap">
                           <input type="hidden" name="orgId" value={o.id} />
                           <input name="note" placeholder="Motif de la suspension (obligatoire)" aria-label="Motif de la suspension" required />
-                          <button className="btn ghost small" name="decision" value="suspend">Suspendre</button>
+                          <ConfirmButton className="btn ghost small" name="decision" value="suspend" confirm={`suspendre ${o.name}`} summary={<>Page publique, événements et appels à candidatures masqués, aucune nouvelle action ; rien n&apos;est supprimé et « Réactiver » rétablit tout. Les administrateurs sont prévenus par e-mail, avec le motif.</>}>
+                            Suspendre
+                          </ConfirmButton>
                         </form>
                       )}
                       {o.siren && (
@@ -241,10 +256,16 @@ export default async function Page({ searchParams }: { searchParams: Promise<{ o
 
 /** État de la configuration en production (lecture seule) : ce qui reste à faire avant l'ouverture. */
 async function ServicesAdmin() {
-  const [orders, offers, audience] = await Promise.all([
+  const [orders, offers, audience, sends, campaigns] = await Promise.all([
     db.serviceOrder.findMany({ include: { event: { select: { id: true, title: true, startsAt: true } }, organization: { select: { name: true } }, offer: { select: { kind: true } } }, orderBy: { createdAt: "desc" }, take: 100 }),
     db.serviceOffer.findMany({ orderBy: { position: "asc" } }),
-    db.user.count({ where: { notifyPrefs: { path: ["newsletter"], equals: true }, emailVerifiedAt: { not: null } } }),
+    newsletterAudienceCount(),
+    newsletterSendsThisMonth(),
+    db.newsletterCampaign.findMany({
+      include: { order: { select: { label: true, organization: { select: { name: true } }, event: { select: { id: true, title: true } } } } },
+      orderBy: { createdAt: "desc" },
+      take: 50,
+    }),
   ]);
   const open = orders.filter((o) => ["demandee", "planifiee"].includes(o.status));
   const done = orders.filter((o) => !["demandee", "planifiee"].includes(o.status));
@@ -252,16 +273,43 @@ async function ServicesAdmin() {
   const realized = orders.filter((o) => o.status === "realisee");
   const stats = await orderStats(orders.filter((o) => o.status !== "refusee" && o.status !== "annulee"));
   const app = process.env.APP_URL ?? "http://localhost:3000";
+  const now = new Date();
+  // Services d'un même pack regroupés : « Pack visibilité — 990 € HT », détail repliable (actions par service).
+  const groups = groupOrders(orders);
+  const isOpen = (o: (typeof orders)[number]) => ["demandee", "planifiee"].includes(o.status);
+  const openGroups = groups.filter((g) => g.orders.some(isOpen));
+  const doneGroups = groups.filter((g) => !g.orders.some(isOpen));
+  const Group = ({ g, unfold }: { g: (typeof groups)[number]; unfold: boolean }) => {
+    if (!g.pack) return <Row o={g.orders[0]} />;
+    const first = g.orders[0];
+    const ps = packStatus(g.orders.map((o) => (featuredUntil(o, now) ? "en_cours" : o.status)));
+    return (
+      <li className="card stack-sm service-pack-group">
+        <div>
+          <strong>{g.pack} — {formatEUR(g.orders.reduce((n, o) => n + o.priceCents, 0))} HT</strong> ·{" "}
+          <span className={`pill ${ps.status === "en_cours" ? "electric" : ORDER_STATUS[ps.status]?.tone ?? ""}`}>{ps.status === "en_cours" ? `En cours (${ps.done} sur ${ps.total} réalisé${ps.done > 1 ? "s" : ""})` : ORDER_STATUS[ps.status]?.label}</span>
+          <div className="text-sm muted">{first.organization.name} · « <Link href={`/evenements/${first.event.id}`}>{first.event.title}</Link> » du {formatDate(first.event.startsAt)} · commandé le {formatDate(first.createdAt)}</div>
+          {first.brief && <p className="text-sm">« {first.brief} »</p>}
+        </div>
+        <details className="older" open={unfold}>
+          <summary>Détail des {g.orders.length} services du pack</summary>
+          <ul className="plain stack-sm">{g.orders.map((o) => <Row key={o.id} o={o} />)}</ul>
+        </details>
+      </li>
+    );
+  };
   const Row = ({ o }: { o: (typeof orders)[number] }) => (
     <li className="card stack-sm">
       <div className="actions spread">
         <div>
-          <strong>{o.label}</strong> · {formatEUR(o.priceCents)} HT · <span className={`pill ${ORDER_STATUS[o.status]?.tone ?? ""}`}>{ORDER_STATUS[o.status]?.label}</span>
+          <strong>{o.label}</strong> · {formatEUR(o.priceCents)} HT{o.packLabel ? <span className="text-xs muted"> (part du pack)</span> : null} ·{" "}
+          {featuredUntil(o, now) ? <span className="pill electric">En cours jusqu&apos;au {formatDate(featuredUntil(o, now)!)}</span> : <span className={`pill ${ORDER_STATUS[o.status]?.tone ?? ""}`}>{ORDER_STATUS[o.status]?.label}</span>}
           <div className="text-sm muted">{o.organization.name} · « <Link href={`/evenements/${o.event.id}`}>{o.event.title}</Link> » du {formatDate(o.event.startsAt)} · commandé le {formatDate(o.createdAt)}{o.wishedAt ? ` · souhaité le ${formatDate(o.wishedAt)}` : ""}</div>
           {o.brief && <p className="text-sm">« {o.brief} »</p>}
           {o.adminNote && <p className="text-xs muted">{o.adminNote}</p>}
           {o.status === "realisee" && <p className="text-xs muted">{o.invoicedAt ? `Facturé (${o.invoiceRef})` : o.invoiceRef ?? "À facturer"}</p>}
-          {o.trackCode && o.offer.kind !== "newsletter" && ["demandee", "planifiee"].includes(o.status) && <p className="text-xs">Lien suivi à utiliser : <code>{app}{trackedPath(o.trackCode)}</code></p>}
+          {/* Lien à placer soi-même (post) ; l'e-mailing et la mise à la une de l'accueil l'utilisent d'eux-mêmes. */}
+          {o.trackCode && o.offer.kind === "social" && ["demandee", "planifiee"].includes(o.status) && <p className="text-xs">Lien suivi à utiliser : <code>{app}{trackedPath(o.trackCode)}</code></p>}
           {stats.get(o.id) && (o.status === "realisee" || stats.get(o.id)!.clicks > 0) && (
             <p className="text-xs service-stats">Bilan : {reportLine(stats.get(o.id)!, o.offer.kind)}{o.reportSentAt ? ` · bilan envoyé le ${formatDate(o.reportSentAt)}` : ""}</p>
           )}
@@ -288,12 +336,37 @@ async function ServicesAdmin() {
             <h2>Commandes à traiter ({open.length})</h2>
             <p className="text-sm muted">{realized.length} service{realized.length > 1 ? "s" : ""} réalisé{realized.length > 1 ? "s" : ""} pour {formatEUR(realized.reduce((n, o) => n + o.priceCents, 0))} HT.</p>
           </div>
-          <Link className="btn ghost small" href="/admin/services/lettre">Lettre d&apos;information libre ({audience} abonné{audience > 1 ? "s" : ""})</Link>
+          <Link className="btn ghost small" href="/admin/services/lettre">Lettre d&apos;information libre ({audience} praticien{audience > 1 ? "s" : ""} abonné{audience > 1 ? "s" : ""})</Link>
         </div>
-        {open.length === 0 ? <p className="muted">Aucune commande en attente.</p> : <ul className="plain stack-sm">{open.map((o) => <Row key={o.id} o={o} />)}</ul>}
+        {open.length === 0 ? <p className="muted">Aucune commande en attente.</p> : <ul className="plain stack-sm">{openGroups.map((g) => <Group key={g.orders[0].id} g={g} unfold />)}</ul>}
         {toInvoice.length > 0 && <p className="notice warn">{toInvoice.length} service{toInvoice.length > 1 ? "s" : ""} réalisé{toInvoice.length > 1 ? "s" : ""} à facturer hors Stripe.</p>}
         {done.length > 0 && (
-          <details className="older"><summary>Commandes traitées ({done.length})</summary><ul className="plain stack-sm">{done.map((o) => <Row key={o.id} o={o} />)}</ul></details>
+          <details className="older"><summary>Commandes traitées ({done.length})</summary><ul className="plain stack-sm">{doneGroups.map((g) => <Group key={g.orders[0].id} g={g} unfold={false} />)}</ul></details>
+        )}
+      </section>
+      <section className="card stack-sm" id="lettre">
+        <div className="actions spread">
+          <h2>Lettre d&apos;information</h2>
+          <span className={`pill ${sends >= NEWSLETTER_MONTHLY_MAX ? "bad" : "ok"}`}>{sends} envoi{sends > 1 ? "s" : ""} sur {NEWSLETTER_MONTHLY_MAX} en {parisMonthLabel()}</span>
+        </div>
+        <p className="muted">
+          {audience} praticien{audience > 1 ? "s" : ""} abonné{audience > 1 ? "s" : ""} (compte praticien, lettre acceptée, adresse confirmée). Au plus {NEWSLETTER_MONTHLY_MAX} envois par mois civil,
+          e-mailings commandés et lettres libres confondus : au-delà, l&apos;envoi est refusé.
+        </p>
+        {campaigns.length === 0 ? <p className="muted">Aucun envoi pour l&apos;instant.</p> : (
+          <table className="table" tabIndex={0}>
+            <thead><tr><th>Date</th><th>Objet</th><th>Destinataires</th><th>Commande liée</th></tr></thead>
+            <tbody>
+              {campaigns.map((c) => (
+                <tr key={c.id}>
+                  <td>{c.sentAt ? formatDate(c.sentAt) : "envoi en cours"}</td>
+                  <td>{c.subject}</td>
+                  <td>{c.recipients}</td>
+                  <td>{c.order ? <>{c.order.label} · {c.order.organization.name} · <Link href={`/evenements/${c.order.event.id}`}>{c.order.event.title}</Link></> : "Lettre libre"}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
         )}
       </section>
       <section className="card stack-sm">
@@ -336,7 +409,7 @@ async function ServicesAdmin() {
 }
 
 async function BillingAdmin() {
-  const orgs = await db.organization.findMany({ where: { verification: "VERIFIED" }, select: { id: true, name: true, kind: true, subscription: true }, orderBy: { name: "asc" } });
+  const orgs = await db.organization.findMany({ where: { verification: { in: ["VERIFIED", "SUSPENDED"] } }, select: { id: true, name: true, kind: true, subscription: true }, orderBy: { name: "asc" } });
   const now = new Date();
   const paying = orgs.filter((o) => ["essai", "active", "impayee"].includes(o.subscription?.status ?? "") && !exempt(o.subscription, now));
   // Revenu mensuel récurrent : une formule annuelle compte pour un douzième.
@@ -363,7 +436,13 @@ async function BillingAdmin() {
                   <form action={setExemption} className="inline wrap">
                     <input type="hidden" name="orgId" value={o.id} />
                     {exempt(o.subscription, now) ? (
-                      <><span className="text-xs">jusqu&apos;au {formatDate(o.subscription!.exemptUntil!)}{o.subscription!.exemptNote ? ` · ${o.subscription!.exemptNote}` : ""}</span><input type="hidden" name="remove" value="1" /><button className="link">retirer</button></>
+                      <>
+                        <span className="text-xs">jusqu&apos;au {formatDate(o.subscription!.exemptUntil!)}{o.subscription!.exemptNote ? ` · ${o.subscription!.exemptNote}` : ""}</span>
+                        <input type="hidden" name="remove" value="1" />
+                        <ConfirmButton className="link" confirm="retirer la gratuité" summary={<>{o.name} est prévenue par e-mail ; {o.subscription?.stripeSubscriptionId && ["active", "essai", "impayee"].includes(o.subscription.status) ? "la facturation de son abonnement Stripe reprend." : "pour continuer à agir, un administrateur devra activer l'abonnement."}</>}>
+                          retirer
+                        </ConfirmButton>
+                      </>
                     ) : (
                       <><input type="date" name="until" aria-label="Offert jusqu'au" required /><input name="note" placeholder="Motif" aria-label="Motif" /><button className="link">offrir</button></>
                     )}

@@ -252,6 +252,18 @@ export function startFakeStripe(port = 3993) {
       const sub = stripeState.subscriptions.get(m[1]);
       return sub ? json(res, sub) : json(res, { error: { message: "introuvable" } }, 404);
     }
+    // Mise en pause de la facturation (gratuité) : pause_collection[behavior] (+ resumes_at), ou "" pour reprendre.
+    if (req.method === "POST" && m) {
+      const sub = stripeState.subscriptions.get(m[1]);
+      if (!sub) return json(res, { error: { message: "introuvable" } }, 404);
+      if (form.get("pause_collection") === "") sub.pause_collection = null;
+      else if (form.has("pause_collection[behavior]")) {
+        const behavior = form.get("pause_collection[behavior]");
+        if (!["void", "keep_as_draft", "mark_uncollectible"].includes(behavior)) return json(res, { error: { message: "behavior invalide" } }, 400);
+        sub.pause_collection = { behavior, resumes_at: form.has("pause_collection[resumes_at]") ? Number(form.get("pause_collection[resumes_at]")) : null };
+      }
+      return json(res, sub);
+    }
     if (req.method === "POST" && url.pathname === "/v1/billing_portal/sessions") return json(res, { url: `http://localhost:${port}/portal?back=${encodeURIComponent(get("return_url"))}` });
     if (req.method === "POST" && url.pathname === "/v1/invoiceitems") {
       const it = { id: `ii_${randomUUID().slice(0, 8)}`, customer: get("customer"), amount: Number(get("amount")), currency: get("currency"), description: get("description"), metadata: Object.fromEntries([...form.entries()].filter(([k]) => k.startsWith("metadata[")).map(([k, v]) => [k.slice(9, -1), v])) };

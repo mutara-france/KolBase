@@ -9,12 +9,14 @@ import { EVENT_ORGANIZER_ROLES, formatDate, formatTime } from "@/lib/events";
 import { eurToCents, str } from "@/lib/form";
 import { sendMail } from "@/lib/mail";
 import { allocate } from "@/lib/service-pack";
-import { invoiceOrder, newsletterAudience, newTrackCode, OPEN_ORDER, trackedPath, unsubscribeToken } from "@/lib/services";
+import { invoiceOrder, newsletterAudience, newsletterAudienceCount, newsletterSendsThisMonth, newTrackCode, OPEN_ORDER, trackedPath, unsubscribeToken } from "@/lib/services";
+import { monthlyCapMessage, NEWSLETTER_MONTHLY_MAX } from "@/lib/newsletter";
+import { de } from "@/lib/elision";
 import { notifyPlatformAdmins, notifyServiceOrder } from "@/lib/notifications";
 import { aiComplete, aiEnabled } from "@/lib/ai";
 import { blockedFor, hit } from "@/lib/rate-limit";
 
-export type FormState = { error?: string; ok?: string } | undefined;
+export type FormState = { error?: string; ok?: string; test?: boolean; sent?: boolean } | undefined;
 const app = () => process.env.APP_URL ?? "http://localhost:3000";
 const refresh = (orgId: string, eventId: string) => {
   revalidatePath(`/organisations/${orgId}/evenements/${eventId}`);
@@ -37,6 +39,9 @@ export async function orderService(_: FormState, form: FormData): Promise<FormSt
   // Pack : un service par élément compris, prix du pack réparti au prorata (facturé au fil des réalisations).
   const items = offer.kind === "pack" ? await db.serviceOffer.findMany({ where: { code: { in: offer.includes }, active: true, kind: { not: "pack" } }, orderBy: { position: "asc" } }) : [offer];
   if (items.length === 0 || (offer.kind === "pack" && items.length !== offer.includes.length)) return { error: "Service indisponible." };
+  // E-mailing : sans praticien abonné à la lettre, il n'atteindrait personne.
+  if (items.some((i) => i.kind === "newsletter") && (await newsletterAudienceCount()) === 0)
+    return { error: "Aucun praticien n'est abonné à la lettre d'information pour l'instant : l'e-mailing ne peut pas être commandé." };
   if (await db.serviceOrder.findFirst({ where: { eventId: event.id, offerId: { in: items.map((i) => i.id) }, status: { in: OPEN_ORDER } } }))
     return { error: offer.kind === "pack" ? "Un des services du pack est déjà commandé pour cet événement." : "Ce service est déjà commandé pour cet événement." };
   const wishedRaw = str(form, "wishedAt");
@@ -117,7 +122,14 @@ export async function saveServiceOffer(form: FormData) {
   revalidatePath("/admin");
 }
 
-/** Lettre d'information : envoi aux membres consentants (désinscription en un clic), puis service réalisé et facturé. */
+/** Texte envoyé : pour un e-mailing commandé, l'annonceur est nommé (communication commerciale identifiée). */
+const newsletterText = (body: string, advertiser: string | null) => (advertiser ? `${body}\n\nCommunication ${de(advertiser)}, diffusée par KolBase.` : body);
+
+/**
+ * Lettre d'information : envoi aux praticiens consentants (désinscription en un clic), puis service réalisé et
+ * facturé. « M'envoyer un test » (intent=test) l'adresse au seul administrateur. Deux envois au plus par mois
+ * civil ; l'envoi est réservé d'abord (verrou), si bien qu'un double clic ne part pas deux fois.
+ */
 export async function sendNewsletter(_: FormState, form: FormData): Promise<FormState> {
   const admin = await requirePlatformAdmin();
   const subject = str(form, "subject").slice(0, 160);
@@ -126,35 +138,49 @@ export async function sendNewsletter(_: FormState, form: FormData): Promise<Form
   const orderId = str(form, "orderId") || null;
   const order = orderId ? await db.serviceOrder.findUnique({ where: { id: orderId }, include: { event: true, organization: { select: { name: true } } } }) : null;
   if (orderId && (!order || !OPEN_ORDER.includes(order.status))) return { error: "Commande introuvable ou déjà traitée." };
-  if (order && (await db.newsletterCampaign.findUnique({ where: { orderId: order.id } }))?.sentAt) return { error: "Lettre déjà envoyée." };
+  const text = newsletterText(body, order?.organization.name ?? null);
+  const cta = order ? { label: "Voir l'événement et s'inscrire", href: order.trackCode ? trackedPath(order.trackCode) : `/evenements/${order.eventId}` } : { label: "Ouvrir KolBase", href: "/" };
+
+  // Envoi de test : à l'administrateur seul, ni compté ni enregistré (le lien suivi n'est pas utilisé).
+  if (str(form, "intent") === "test") {
+    const ok = await sendMail({ to: admin.email, subject: `[Test] ${subject}`, text, cta: order ? { ...cta, href: `/evenements/${order.eventId}` } : cta }).catch(() => false);
+    return ok ? { ok: `Test envoyé à ${admin.email}.`, test: true } : { error: "Le test n'a pas pu être envoyé (configuration des e-mails)." };
+  }
+
   const audience = await newsletterAudience();
-  if (audience.length === 0) return { error: "Aucun membre n'a accepté de recevoir la lettre d'information." };
-  // Communication commerciale identifiée comme telle (annonceur nommé).
-  const text = order ? `${body}\n\nCommunication de ${order.organization.name}, diffusée par KolBase.` : body;
+  if (audience.length === 0) return { error: "Aucun praticien n'a accepté de recevoir la lettre d'information (adresse confirmée)." };
+  // Réservation de l'envoi, une à la fois : plafond mensuel, envoi déjà fait pour la commande, double clic.
+  const reserved = await db.$transaction(async (tx) => {
+    await tx.$executeRaw`SELECT pg_advisory_xact_lock(4207001)`; // verrou propre aux envois de la lettre
+    if (order && (await tx.newsletterCampaign.findUnique({ where: { orderId: order.id } }))) return { error: "Lettre déjà envoyée pour cette commande." };
+    if (await tx.newsletterCampaign.findFirst({ where: { orderId: null, subject, body, createdAt: { gte: new Date(Date.now() - 10 * 60e3) } } }))
+      return { error: "Cette lettre vient d'être envoyée." };
+    if ((await newsletterSendsThisMonth(new Date(), tx)) >= NEWSLETTER_MONTHLY_MAX) return { error: monthlyCapMessage() };
+    return { id: (await tx.newsletterCampaign.create({ data: { orderId: order?.id ?? null, subject, body, recipients: 0, sentAt: null, createdById: admin.id } })).id };
+  });
+  if ("error" in reserved) return { error: reserved.error };
+
   let sent = 0;
   for (const u of audience) {
     const token = await unsubscribeToken(u.id, u.unsubscribeToken);
     const ok = await sendMail({
       to: u.email, subject, text, locale: u.locale === "en" ? "en" : "fr",
       // Lien suivi : visites et inscriptions comptées dans le bilan envoyé à l'organisateur.
-      cta: order ? { label: "Voir l'événement et s'inscrire", href: order.trackCode ? trackedPath(order.trackCode) : `/evenements/${order.eventId}` } : { label: "Ouvrir KolBase", href: "/" },
+      cta,
       unsubscribe: { page: `${app()}/desinscription/${token}`, oneClick: `${app()}/api/desinscription/${token}` },
     }).catch((e) => { console.error("[lettre d'information]", u.email, e); return false; });
     if (ok) sent++;
   }
-  await db.newsletterCampaign.upsert({
-    where: { orderId: order?.id ?? "__aucune__" },
-    update: { subject, body, recipients: sent, sentAt: new Date() },
-    create: { orderId: order?.id ?? null, subject, body, recipients: sent, sentAt: new Date(), createdById: admin.id },
-  });
-  await audit(admin.id, "newsletter.send", "NewsletterCampaign", order?.id ?? "libre", { recipients: sent });
+  await db.newsletterCampaign.update({ where: { id: reserved.id }, data: { recipients: sent, sentAt: new Date() } });
+  await audit(admin.id, "newsletter.send", "NewsletterCampaign", reserved.id, { recipients: sent, orderId: order?.id });
   if (order) {
-    await db.serviceOrder.update({ where: { id: order.id }, data: { status: "realisee", doneAt: new Date(), adminNote: `Lettre envoyée à ${sent} membre${sent > 1 ? "s" : ""}.` } });
+    await db.serviceOrder.update({ where: { id: order.id }, data: { status: "realisee", doneAt: new Date(), adminNote: `Lettre envoyée à ${sent} praticien${sent > 1 ? "s" : ""}.` } });
     await invoiceOrder(order.id).catch((e) => console.error("[facturation du service]", e));
     notifyServiceOrder(order.id);
     refresh(order.organizationId, order.eventId);
   }
-  return { ok: `Lettre envoyée à ${sent} membre${sent > 1 ? "s" : ""}.` };
+  revalidatePath("/admin");
+  return { ok: `Lettre envoyée à ${sent} membre${sent > 1 ? "s" : ""}.`, sent: true };
 }
 
 /** Brouillon d'e-mailing ou de post pour un événement commandé (assistant d'IA). */

@@ -30,8 +30,19 @@ async function login(page, email, password = PW, next = "") {
   await page.goto(`${BASE}/connexion${next ? `?next=${encodeURIComponent(next)}` : ""}`);
   await page.fill('input[name="email"]', email);
   await page.fill('input[name="password"]', password);
-  await Promise.all([page.waitForLoadState("networkidle"), page.click('button:has-text("Se connecter")')]);
-  await page.waitForTimeout(800);
+  await page.click('button:has-text("Se connecter")');
+  // Connexion terminée : page de connexion quittée (accueil, page d'origine, double authentification) ou refus
+  // affiché. Attente sur l'événement plutôt qu'un délai fixe : le parcours tient sous le plafond de e2e.sh.
+  await Promise.race([
+    page.waitForURL((u) => u.pathname !== "/connexion", { timeout: 10000 }),
+    page.locator("main .notice.error").waitFor({ timeout: 10000 }),
+  ]).catch(() => {});
+  // Redirections enchaînées (tableau de bord → espace de l'organisation) : l'adresse doit rester stable 300 ms.
+  for (let last = page.url(), stable = 0; stable < 3; ) {
+    await page.waitForTimeout(100);
+    stable = page.url() === last ? stable + 1 : 0;
+    last = page.url();
+  }
 }
 const text = (page) => page.locator("main").innerText();
 /** Attend un e-mail (envoyé après la réponse du serveur) correspondant au destinataire et au sujet. */
@@ -1008,6 +1019,10 @@ async function submitNewOrg(page, siren) {
   const sud = page.locator('section#rfq-demo-rfq-cocktail .quote:has-text("Les Tables du Sud")');
   check("Devis expiré : non retenable", (await sud.locator('button:has-text("Retenir")').count()) === 0 && (await sud.innerText()).includes("Offre expirée"));
   await page.locator('section#rfq-demo-rfq-cocktail .quote:has-text("Traiteur Belleville") button:has-text("Retenir")').click();
+  // Confirmation en deux temps : récapitulatif (HT, TTC, devis écartés), puis « Confirmer : … ».
+  const recap = await page.locator('section#rfq-demo-rfq-cocktail .quote:has-text("Traiteur Belleville") .confirm-step').innerText();
+  check("Retenir : récapitulatif avant confirmation", /HT, soit .* TTC/.test(recap) && recap.includes("Devis écartés : Les Tables du Sud"), recap);
+  await page.locator('section#rfq-demo-rfq-cocktail .quote:has-text("Traiteur Belleville") button:has-text("Confirmer : retenir le devis")').click();
   await page.waitForTimeout(1200);
   check("E-mail au prestataire retenu", !!(await waitMail("ludovic.perrin@demo.kolbase.local", "Votre devis est retenu")));
   // Le prestataire retenu voit la décision et le fil reste ouvert.
@@ -1036,6 +1051,7 @@ async function submitNewOrg(page, siren) {
   check("Réunion interne : ni publication ni inscriptions", t.includes("Réunion interne") && (await page.locator('button:has-text("Publier dans l\'agenda")').count()) === 0 && t.includes("Participants"));
   await page.goto(`${BASE}/organisations/demo-org-dentalys/prestataires`);
   await page.locator('section#rfq-demo-rfq-board-salle .quote:has-text("Espace Confluence") button:has-text("Retenir")').click();
+  await page.locator('section#rfq-demo-rfq-board-salle .quote:has-text("Espace Confluence") button:has-text("Confirmer")').click();
   await page.waitForTimeout(1200);
   await page.goto(`${BASE}/organisations/demo-org-dentalys/dossiers/demo-prj-board`);
   t = await text(page);
@@ -1765,6 +1781,7 @@ async function submitNewOrg(page, siren) {
   await login(org.page, "julien.faure@demo.kolbase.local");
   await org.page.goto(`${BASE}/organisations/demo-org-dentalys/prestataires`);
   await org.page.locator('section#rfq-e2e-rfq-trigger .quote:has-text("Les Tables du Sud") button:has-text("Retenir")').click();
+  await org.page.locator('section#rfq-e2e-rfq-trigger .quote:has-text("Les Tables du Sud") button:has-text("Confirmer")').click();
   await org.page.waitForTimeout(1200);
   const trig = (await pgc.query(`select "triggeredBy" from "Subscription" where "organizationId" = 'demo-sup-tablesdusud'`)).rows[0]?.triggeredBy ?? "";
   check("Prestataire : premier devis retenu, abonnement déclenché", trig.includes("Premier devis retenu par Dentalys"), trig);
@@ -1865,6 +1882,7 @@ async function submitNewOrg(page, siren) {
   await adm.page.click('button:has-text("Proposer un texte avec l\'IA")');
   await adm.page.waitForFunction(() => document.querySelector('textarea[name="body"]')?.value.includes("PROPOSITION IA"), null, { timeout: 15000 });
   await adm.page.click('button:has-text("Envoyer à")');
+  await adm.page.click('button:has-text("Confirmer : envoyer à")');
   await adm.page.waitForTimeout(2000);
   check("E-mailing : envoyé aux membres consentants", /Lettre envoyée à \d+ membre/.test(await text(adm.page)));
   const nl = await waitMail("ines.lambert@demo.kolbase.local", /^Soirée implantologie.* — /);
@@ -1872,7 +1890,8 @@ async function submitNewOrg(page, siren) {
   check("E-mailing : pas d'envoi sans consentement", !mails.some((m) => m.to === "olivier.girard@demo.kolbase.local" && /^Soirée implantologie.* — /.test(m.subject)));
   check("Organisateur prévenu de la réalisation", !!(await waitMail("julien.faure@demo.kolbase.local", "Service KolBase : E-mailing dédié")));
   await page.goto(`${BASE}/organisations/demo-org-dentalys/evenements/demo-ev-soiree-implanto`);
-  check("Événement : services réalisés affichés", ((await text(page)).match(/Réalisée/g) ?? []).length >= 2);
+  // La mise à la une réalisée reste « En cours jusqu'au … » pendant sa durée (lot 3) ; l'e-mailing est « Réalisée ».
+  check("Événement : services réalisés affichés", ((await text(page)).match(/Réalisée/g) ?? []).length >= 1 && (await text(page)).includes("En cours jusqu'au"));
   // Désinscription depuis le lien reçu, et en un clic.
   const link = nl.text.match(/https?:\/\/\S+\/desinscription\/[A-Za-z0-9_-]+/)[0].replace(/^https?:\/\/[^/]+/, BASE);
   const un = await session();
@@ -1985,9 +2004,10 @@ async function submitNewOrg(page, siren) {
   check("Pack : équipe KolBase prévenue", !!(await waitMail("anne.chevalier@demo.kolbase.local", "Service commandé : Pack visibilité")));
   await page.goto(evUrl);
   const after = await text(page);
-  check("Pack : plus commandable, services listés", after.includes("(Pack visibilité)") && (await page.locator('.service-list li.service-pack button:has-text("Commander")').count()) === 0 && !after.includes("Votre événement est en ligne"));
-  // Annuler un service du pack annule le pack entier.
-  await page.locator('li.service-order:has-text("Publication sur les réseaux sociaux") button:has-text("Annuler")').click();
+  check("Pack : plus commandable, regroupé sous son prix", /Pack visibilité — 990\s€ HT/.test(after) && (await page.locator('.service-list li.service-pack button:has-text("Commander")').count()) === 0 && !after.includes("Votre événement est en ligne"));
+  // Un pack s'annule en entier, explicitement et après confirmation.
+  await page.locator('li.service-pack-order button:has-text("Annuler le pack")').click();
+  await page.locator('li.service-pack-order button:has-text("Confirmer : annuler le pack")').click();
   await page.waitForTimeout(1000);
   const st = (await pgc.query(`select distinct status from "ServiceOrder" where "eventId" = 'demo-ev-tp-endo'`)).rows.map((r) => r.status);
   check("Pack : annulation de l'ensemble", st.length === 1 && st[0] === "annulee", st.join(","));
@@ -2268,7 +2288,8 @@ async function submitNewOrg(page, siren) {
     await org.page.fill('input[name="startsAt"]', parisInput(30, "09:00"));
     await Promise.all([org.page.waitForURL(/\/evenements\/(?!nouveau)[^/?]+$/), org.page.click('button:has-text("Créer l\'événement")')]);
     const draftId = org.page.url().split("/").at(-1);
-    await Promise.all([org.page.waitForURL(/\/evenements$/), org.page.click('button:has-text("Supprimer le brouillon")')]);
+    await org.page.click('button:has-text("Supprimer le brouillon")');
+    await Promise.all([org.page.waitForURL(/\/evenements$/), org.page.click('button:has-text("Confirmer : supprimer le brouillon")')]);
     check("Brouillon jamais publié : supprimé", !(await q1(`select id from "Event" where id = $1`, [draftId])));
     await prac.ctx.close();
     await org.ctx.close();
@@ -2421,6 +2442,7 @@ async function submitNewOrg(page, siren) {
     check("Admin : motif de la suspension obligatoire", (await refus().locator('form:has(button:has-text("Suspendre")) input[name="note"][required]').count()) === 1);
     await refus().locator('form:has(button:has-text("Suspendre")) input[name="note"]').fill("Activité sans lien avec le secteur dentaire");
     await refus().locator('button:has-text("Suspendre")').click();
+    await refus().locator('button:has-text("Confirmer : suspendre")').click();
     await adm.page.waitForTimeout(1200);
     const susp = await waitMail("hugo.robert@demo.kolbase.local", "Société Lot Refus est suspendue sur KolBase");
     check("E-mail : suspension, avec le motif", !!susp && susp.text.includes("Motif : Activité sans lien avec le secteur dentaire"));
@@ -2837,6 +2859,314 @@ async function submitNewOrg(page, siren) {
     await pgc.query(`UPDATE "Event" SET "startsAt" = $1 WHERE id = 'demo-ev-webinaire-aligneurs'`, [was]);
   }
 
+  await pgc.end();
+}
+
+// ── Lot 3 : agences, services de visibilité, administration ────────────────
+{
+  const pgc = new pg.Client({ connectionString: process.env.DATABASE_URL });
+  await pgc.connect();
+  const q1 = async (sql, args = []) => (await pgc.query(sql, args)).rows[0];
+  /** Attend qu'une condition (souvent un état en base) soit vraie, au lieu d'un délai fixe. */
+  const until = async (fn, ms = 6000) => {
+    for (const end = Date.now() + ms; Date.now() < end; await new Promise((r) => setTimeout(r, 150))) if (await fn()) return true;
+    return false;
+  };
+  // Sessions partagées par les vérifications du lot : équipe KolBase, visiteur, organisateur.
+  const adm = await session();
+  await login(adm.page, "anne.chevalier@demo.kolbase.local");
+  const anon = await session();
+  const jul = await session();
+  await login(jul.page, "julien.faure@demo.kolbase.local");
+  /** Geste irréversible en deux temps : le bouton, puis « Confirmer : … ». */
+  const confirmClick = async (scope, label) => {
+    await scope.locator(`button:has-text("${label}")`).first().click();
+    const ok = scope.locator('button:has-text("Confirmer")').first();
+    await ok.waitFor({ timeout: 3000 });
+    await ok.click();
+  };
+
+  // 1. Agence mandatée dans le circuit des devis : prévenue, tâches, droit de retenir, ce qu'elle ne voit pas.
+  {
+    // Mandat actif de Dentalys pour l'Agence Médiane (sans droit de retenir), « Live surgery » confié.
+    await pgc.query(`insert into "Mandate" (id, "mandatorId", "agencyId", scope) select 'e2e-l3-mandat', 'demo-org-dentalys', 'demo-org-mediane', 'Événements confiés'
+      where not exists (select 1 from "Mandate" where "mandatorId" = 'demo-org-dentalys' and "agencyId" = 'demo-org-mediane' and ("endsAt" is null or "endsAt" > now()))`);
+    await pgc.query(`update "Mandate" set "canAward" = false where "mandatorId" = 'demo-org-dentalys' and "agencyId" = 'demo-org-mediane'`);
+    await pgc.query(`update "Event" set "agencyId" = 'demo-org-mediane' where id = 'demo-ev-live-surgery'`);
+    // Demande créée par l'agence (Karim) : deux traiteurs consultés, deux devis reçus.
+    await pgc.query(`insert into "Rfq" (id, "organizationId", "eventId", category, needs, status, "sentAt", "createdById", headcount)
+      select 'e2e-l3-rfq', 'demo-org-dentalys', 'demo-ev-live-surgery', 'restauration', 'Déjeuner opératoire des participants de la chirurgie en direct, 80 couverts.', 'sent', now(), id, 80 from "User" where email = 'karim.benali@demo.kolbase.local'`);
+    await pgc.query(`insert into "RfqSupplier" ("rfqId", "supplierId") values ('e2e-l3-rfq', 'demo-sup-belleville'), ('e2e-l3-rfq', 'demo-sup-tablesdusud')`);
+    await pgc.query(`insert into "Quote" (id, "rfqId", "supplierId", "amountCents", "vatBp", "updatedAt") values ('e2e-l3-q1', 'e2e-l3-rfq', 'demo-sup-belleville', 240000, 1000, now()), ('e2e-l3-q2', 'e2e-l3-rfq', 'demo-sup-tablesdusud', 280000, 1000, now())`);
+
+    // Question du traiteur : l'agence qui a créé la demande est prévenue (appartenance par le mandat).
+    const sup = await session();
+    await login(sup.page, "ludovic.perrin@demo.kolbase.local");
+    await sup.page.goto(`${BASE}/organisations/demo-sup-belleville/devis`);
+    const card = sup.page.locator('section.card:has-text("Déjeuner opératoire")');
+    await card.locator('summary:has-text("Questions et échanges")').click();
+    await card.locator('textarea[name="body"]').first().fill("Faut-il prévoir des plateaux-repas en salle ?");
+    await card.locator('button:has-text("Envoyer")').first().click();
+    check("Agence : question d'un prestataire envoyée à l'agence qui a créé la demande", !!(await waitMail("karim.benali@demo.kolbase.local", "Question de Traiteur Belleville")));
+    await sup.ctx.close();
+
+    const ag = await session();
+    await login(ag.page, "karim.benali@demo.kolbase.local");
+    await ag.page.goto(`${BASE}/organisations/demo-org-mediane`);
+    let at = await text(ag.page);
+    check("Accueil de l'agence : devis et questions des événements confiés", at.includes("Devis à comparer : Live surgery") && at.includes("Question de Traiteur Belleville"), at.slice(0, 400));
+    await ag.page.goto(`${BASE}/organisations/demo-org-dentalys`);
+    at = await text(ag.page);
+    check("Espace du client (agence) : tâches de devis et de questions", at.includes("Devis à comparer : Live surgery") && at.includes("Question de Traiteur Belleville"), at.slice(0, 400));
+    await ag.page.goto(`${BASE}/organisations/demo-org-dentalys/prestataires`);
+    const mine = ag.page.locator("section#rfq-e2e-l3-rfq");
+    check("Agence sans droit de retenir : « Proposer à l'organisation », pas « Retenir »", (await mine.locator('button:has-text("Proposer à l")').count()) === 2 && (await mine.locator('button:has-text("Retenir")').count()) === 0);
+    const capt = ag.page.locator("section#rfq-demo-rfq-captation");
+    check("Agence consultée sur son événement : « À retenir par l'organisation (conflit d'intérêts) »", (await capt.innerText()).includes("À retenir par l'organisation (conflit d'intérêts)"));
+    await ag.page.goto(`${BASE}/organisations/demo-org-dentalys/prestataires?onglet=nouvelle`);
+    await ag.page.locator('button.chip:has-text("Audiovisuel et captation")').click();
+    check("Nouvelle demande : l'agence ne peut pas se consulter elle-même", !(await text(ag.page)).includes("Agence Médiane Événements"));
+    // Ni l'abonnement, ni la gestion de la fiche, ni « Voir notre page publique » du client.
+    await ag.page.goto(`${BASE}/organisations/demo-org-dentalys/abonnement`);
+    check("Agence : pas d'accès à l'abonnement du client", !ag.page.url().includes("/abonnement"), ag.page.url());
+    await ag.page.click(".session-chip");
+    check("Agence : pas de « Voir notre page publique » pour le client", !(await ag.page.locator(".account-menu").innerText()).includes("Voir notre page publique"));
+    await ag.page.goto(`${BASE}/structures/demo-org-dentalys`);
+    check("Agence : pas de « Gérer l'organisation » sur la fiche publique du client", (await ag.page.locator('a:has-text("Gérer l\'organisation")').count()) === 0);
+    // L'agence propose : les organisateurs décident.
+    await ag.page.goto(`${BASE}/organisations/demo-org-dentalys/prestataires`);
+    await mine.locator('.quote:has-text("Traiteur Belleville") button:has-text("Proposer à l")').click();
+    await until(async () => (await q1(`select "proposedQuoteId" from "Rfq" where id = 'e2e-l3-rfq'`))?.proposedQuoteId === "e2e-l3-q1");
+    await mine.locator(':text("Proposé à l\'organisation, qui retient")').waitFor({ timeout: 4000 }).catch(() => {});
+    check("Agence : devis proposé à l'organisation", (await mine.innerText()).includes("Proposé à l'organisation, qui retient"));
+    check("E-mail aux organisateurs : devis proposé par l'agence", !!(await waitMail("claire.morel@demo.kolbase.local", "Devis à retenir : Agence Médiane Événements propose Traiteur Belleville")));
+
+    const org = await session();
+    await login(org.page, "claire.morel@demo.kolbase.local");
+    await org.page.goto(`${BASE}/organisations/demo-org-dentalys`);
+    check("Accueil de l'organisation : devis proposé par l'agence à retenir", (await text(org.page)).includes("Devis à retenir : Live surgery"));
+    await org.page.goto(`${BASE}/organisations/demo-org-dentalys/prestataires`);
+    const oc = await org.page.locator("section#rfq-e2e-l3-rfq").innerText();
+    check("Carte de demande : « Créée par … (agence) » et devis proposé", oc.includes("Créée par Karim Benali (Agence Médiane Événements, agence mandatée)") && oc.includes("Proposé par l'agence mandatée"), oc.slice(0, 400));
+    check("Carte de demande : l'agence mandatée signalée parmi les prestataires consultés", (await org.page.locator("section#rfq-demo-rfq-captation").innerText()).includes("Agence mandatée sur cet événement"));
+    // Droit de retenir accordé : l'agence retient, les organisateurs sont prévenus.
+    await org.page.goto(`${BASE}/organisations/demo-org-dentalys/prestataires?onglet=agences`);
+    await org.page.locator('section.card:has-text("Agence Médiane") button:has-text("Autoriser à retenir les devis")').click();
+    await until(async () => (await q1(`select "canAward" from "Mandate" where "mandatorId" = 'demo-org-dentalys' and "agencyId" = 'demo-org-mediane' and ("endsAt" is null or "endsAt" > now())`))?.canAward === true);
+    check("Mandat : droit de retenir les devis accordé", (await q1(`select "canAward" from "Mandate" where "mandatorId" = 'demo-org-dentalys' and "agencyId" = 'demo-org-mediane' and ("endsAt" is null or "endsAt" > now())`))?.canAward === true);
+    await ag.page.reload();
+    await confirmClick(mine.locator('.quote:has-text("Les Tables du Sud")'), "Retenir");
+    await until(async () => (await q1(`select status from "Quote" where id = 'e2e-l3-q2'`))?.status === "retained");
+    check("Agence avec droit : devis retenu", (await q1(`select status from "Quote" where id = 'e2e-l3-q2'`))?.status === "retained");
+    const won = await waitMail("claire.morel@demo.kolbase.local", "Agence Médiane Événements a retenu un devis");
+    check("E-mail aux organisateurs : devis retenu par l'agence (montants HT et TTC)", !!won && won.text.includes("devis des Tables du Sud") && /2\s800\s€ HT \(3\s080\s€ TTC\)/.test(won.text), won?.text);
+    // Événement repris, puis fin du mandat : l'agence est prévenue.
+    await org.page.goto(`${BASE}/organisations/demo-org-dentalys/evenements/demo-ev-live-surgery`);
+    await org.page.selectOption('select[name="agencyId"]', "");
+    await org.page.click('form:has(select[name="agencyId"]) button');
+    check("E-mail à l'agence : événement repris par l'organisation", !!(await waitMail("karim.benali@demo.kolbase.local", /Live surgery.*n'est plus confié à votre agence/)));
+    await org.page.goto(`${BASE}/organisations/demo-org-dentalys/prestataires?onglet=agences`);
+    await org.page.locator('section.card:has-text("Agence Médiane") button:has-text("Mettre fin au mandat")').click();
+    check("E-mail à l'agence : fin du mandat", !!(await waitMail("karim.benali@demo.kolbase.local", "Fin du mandat de Dentalys Implants")));
+    await org.ctx.close();
+    await ag.ctx.close();
+  }
+
+  // 6 et 7. Actualités : « Enregistrer et publier » publie ce qui est à l'écran ; suppression confirmée.
+  {
+    await adm.page.goto(`${BASE}/admin/actualites/nouveau`);
+    await adm.page.fill('input[name="title"]', "Lot trois : brouillon");
+    await adm.page.fill('textarea[name="excerpt"]', "Une actualité de test pour la publication depuis le formulaire.");
+    await adm.page.fill('textarea[name="body"]', "Premier jet.");
+    await Promise.all([adm.page.waitForURL(/\/admin\/actualites\/[^/?]+\?cree=1/), adm.page.click('button:has-text("Créer le brouillon")')]);
+    const artId = adm.page.url().split("/").at(-1).split("?")[0];
+    // Modifié à l'écran sans enregistrer, puis publié : c'est le texte à l'écran qui part en ligne.
+    await adm.page.fill('input[name="title"]', "Lot trois : version publiée");
+    await adm.page.fill('input[name="slug"]', "lot-trois-version-publiee");
+    await adm.page.fill('textarea[name="body"]', "Texte relu, publié tel quel.");
+    await adm.page.click('button:has-text("Enregistrer et publier")');
+    await until(async () => !!(await q1(`select "publishedAt" from "Article" where id = $1`, [artId]))?.publishedAt);
+    const pub = await anon.page.goto(`${BASE}/actualites/lot-trois-version-publiee`);
+    const pt = await text(anon.page);
+    check("Actualité : « Enregistrer et publier » publie le texte à l'écran", pub?.status() === 200 && pt.includes("Lot trois : version publiée") && pt.includes("Texte relu, publié tel quel."), pt.slice(0, 200));
+    await adm.page.goto(`${BASE}/admin/actualites/${artId}`);
+    await adm.page.click('button:has-text("Supprimer")');
+    check("Suppression d'une actualité : confirmation d'abord", (await adm.page.locator('button:has-text("Confirmer : supprimer définitivement")').count()) === 1 && !!(await q1(`select id from "Article" where id = $1`, [artId])));
+    await Promise.all([adm.page.waitForURL(/onglet=actualites/), adm.page.click('button:has-text("Confirmer : supprimer définitivement")')]);
+    check("Suppression d'une actualité : confirmée", !(await q1(`select id from "Article" where id = $1`, [artId])));
+  }
+
+  // 4. Suspension réversible : statut distinct, motif, confirmation, e-mail ; tout est masqué puis rendu.
+  {
+    const before = await q1(`select listed, (select count(*)::int from "OpenCall" where "organizationId" = 'demo-org-cdra' and status = 'open') calls from "Organization" where id = 'demo-org-cdra'`);
+    await adm.page.goto(`${BASE}/admin`);
+    const card = () => adm.page.locator('section.card:has-text("Collège Dentaire Rhône-Alpes")').first();
+    await card().locator('form:has(button:has-text("Suspendre")) input[name="note"]').fill("Contrôle de conformité en cours");
+    await card().locator('button:has-text("Suspendre")').click();
+    check("Suspension : confirmation avec ce qui est masqué", (await card().locator(".confirm-step").innerText()).includes("rien n'est supprimé"));
+    await card().locator('button:has-text("Confirmer : suspendre")').click();
+    await until(async () => (await q1(`select verification from "Organization" where id = 'demo-org-cdra'`)).verification === "SUSPENDED");
+    const sus = await q1(`select verification, listed, (select count(*)::int from "OpenCall" where "organizationId" = 'demo-org-cdra' and status = 'open') calls from "Organization" where id = 'demo-org-cdra'`);
+    check("Suspension : statut « suspendue », rien de détruit (page publique et appels conservés)", sus.verification === "SUSPENDED" && sus.listed === before.listed && sus.calls === before.calls, JSON.stringify(sus));
+    const mail = await waitMail("pierre.vidal@demo.kolbase.local", "Collège Dentaire Rhône-Alpes est suspendue sur KolBase");
+    check("E-mail : suspension avec motif, rien n'est supprimé", !!mail && mail.text.includes("Motif : Contrôle de conformité en cours") && mail.text.includes("Rien n'est supprimé"));
+    check("Organisation suspendue : page publique masquée", (await anon.page.goto(`${BASE}/structures/demo-org-cdra`))?.status() === 404);
+    check("Organisation suspendue : événements masqués", (await anon.page.goto(`${BASE}/evenements/demo-ev-journee-cdra`))?.status() === 404);
+    const own = await session();
+    await login(own.page, "pierre.vidal@demo.kolbase.local");
+    await own.page.goto(`${BASE}/organisations/demo-org-cdra`);
+    check("Organisation : « Organisation suspendue : motif »", (await text(own.page)).includes("Organisation suspendue : Contrôle de conformité en cours"));
+    await own.page.goto(`${BASE}/organisations/demo-org-cdra/membres?onglet=organisation`);
+    check("Organisation suspendue : pas de nouvelle demande de validation", (await own.page.locator('input[name="siren"]').count()) === 0 && (await text(own.page)).includes("Suspendue par KolBase"));
+    // Réactiver : tout réapparaît tel quel.
+    await adm.page.goto(`${BASE}/admin`);
+    await card().locator('button:has-text("Réactiver")').click();
+    await until(async () => (await q1(`select verification from "Organization" where id = 'demo-org-cdra'`)).verification === "VERIFIED");
+    check("Réactivation : organisation validée", (await q1(`select verification from "Organization" where id = 'demo-org-cdra'`)).verification === "VERIFIED");
+    check("Réactivation : page publique et événements rendus", (await anon.page.goto(`${BASE}/structures/demo-org-cdra`))?.status() === 200 && (await anon.page.goto(`${BASE}/evenements/demo-ev-journee-cdra`))?.status() === 200);
+    check("E-mail : réactivation", !!(await waitMail("pierre.vidal@demo.kolbase.local", "Collège Dentaire Rhône-Alpes est de nouveau active")));
+    await own.ctx.close();
+  }
+
+  // 2. Lettre d'information tenue : praticiens confirmés seulement, deux envois par mois, historique, test, élision.
+  {
+    // Les envois déjà faits par le parcours sont reportés au mois précédent : le compteur du mois repart de zéro.
+    await pgc.query(`update "NewsletterCampaign" set "sentAt" = "sentAt" - interval '40 days', "createdAt" = "createdAt" - interval '40 days'`);
+    // Une administratrice d'organisation (sans profil praticien) abonnée : elle ne reçoit pas la lettre.
+    await pgc.query(`update "User" set "notifyPrefs" = "notifyPrefs" || '{"newsletter": true}' where email = 'claire.morel@demo.kolbase.local'`);
+    // Deuxième onglet de l'administratrice, ouvert avant les envois (compteur périmé).
+    const stale = { page: await adm.ctx.newPage() };
+    await stale.page.goto(`${BASE}/admin/services/lettre`);
+    await adm.page.goto(`${BASE}/admin/services/lettre`);
+    const lt = await text(adm.page);
+    check("Lettre libre : audience des praticiens et compteur du mois", /Envoyé à \d+ praticiens? \(compte praticien/.test(lt) && lt.includes("Envois en ") && lt.includes(": 0 sur 2"), lt.slice(0, 300));
+    await adm.page.fill('input[name="subject"]', "Lot trois : lettre de novembre");
+    await adm.page.fill('textarea[name="body"]', "Les nouveautés du mois sur KolBase, pour les praticiens abonnés.");
+    check("Lettre libre : aperçu de l'e-mail", (await adm.page.locator(".mail-preview").innerText()).includes("Les nouveautés du mois sur KolBase"));
+    await adm.page.click('button:has-text("M\'envoyer un test")');
+    check("Lettre libre : envoi de test à l'administrateur seul", !!(await waitMail("anne.chevalier@demo.kolbase.local", "[Test] Lot trois : lettre de novembre")) && !mails.some((m) => m.subject === "Lot trois : lettre de novembre"));
+    check("Envoi de test : ni enregistré ni compté", !(await q1(`select id from "NewsletterCampaign" where subject = 'Lot trois : lettre de novembre'`)));
+    // Double clic sur la confirmation : un seul envoi.
+    await adm.page.click('button:has-text("Envoyer à")');
+    await adm.page.locator('button:has-text("Confirmer : envoyer à")').dblclick();
+    await until(async () => !!(await q1(`select "sentAt" from "NewsletterCampaign" where subject = 'Lot trois : lettre de novembre'`))?.sentAt);
+    await adm.page.waitForTimeout(300);
+    check("Lettre libre : envoyée une seule fois malgré le double clic", (await q1(`select count(*)::int n from "NewsletterCampaign" where subject = 'Lot trois : lettre de novembre'`)).n === 1);
+    const reader = (await q1(`select u.email from "User" u join "PractitionerProfile" p on p."userId" = u.id where u."notifyPrefs"->>'newsletter' = 'true' and u."emailVerifiedAt" is not null limit 1`))?.email;
+    check("Lettre : praticiens confirmés seulement (pas un membre d'organisation)", !!reader && !!(await waitMail(reader, "Lot trois : lettre de novembre")) && !mails.some((m) => m.to === "claire.morel@demo.kolbase.local" && m.subject === "Lot trois : lettre de novembre"), reader);
+    // Deuxième envoi du mois, puis le troisième (page ouverte avant) est refusé.
+    await adm.page.goto(`${BASE}/admin/services/lettre`);
+    await adm.page.fill('input[name="subject"]', "Lot trois : seconde lettre");
+    await adm.page.fill('textarea[name="body"]', "Deuxième et dernier envoi possible ce mois-ci.");
+    await adm.page.click('button:has-text("Envoyer à")');
+    await adm.page.click('button:has-text("Confirmer : envoyer à")');
+    await until(async () => !!(await q1(`select "sentAt" from "NewsletterCampaign" where subject = 'Lot trois : seconde lettre'`))?.sentAt);
+    await stale.page.fill('input[name="subject"]', "Lot trois : troisième lettre");
+    await stale.page.fill('textarea[name="body"]', "Cet envoi dépasse le plafond du mois et doit être refusé.");
+    await stale.page.click('button:has-text("Envoyer à")');
+    await stale.page.click('button:has-text("Confirmer : envoyer à")');
+    await stale.page.locator(':text("Plafond atteint : 2 envois")').waitFor({ timeout: 5000 }).catch(() => {});
+    check("Plafond : troisième envoi du mois refusé avec un message", (await text(stale.page)).includes("Plafond atteint : 2 envois") && !(await q1(`select id from "NewsletterCampaign" where subject = 'Lot trois : troisième lettre'`)));
+    await adm.page.goto(`${BASE}/admin/services/lettre`);
+    check("Plafond : envoi impossible depuis la page", (await text(adm.page)).includes("Plafond atteint pour") && (await adm.page.locator('button:has-text("Envoyer à")').isDisabled()));
+    await adm.page.goto(`${BASE}/admin?onglet=services`);
+    const hist = await adm.page.locator("section#lettre").innerText();
+    check("Admin : compteur et historique des envois (objet, destinataires, commande liée)", hist.includes("2 envois sur 2") && hist.includes("Lot trois : seconde lettre") && hist.includes("Lettre libre") && hist.includes("E-mailing dédié aux membres KolBase · Dentalys Implants"), hist.slice(0, 400));
+    // Élision : « Communication d'Académie Odonto Formation ».
+    await pgc.query(`insert into "ServiceOrder" (id, "organizationId", "eventId", "offerId", label, "priceCents", "orderedById", status, "updatedAt")
+      select 'e2e-l3-mailing', 'demo-org-academie', 'demo-ev-tp-endo', 'svc-newsletter', 'E-mailing dédié aux membres KolBase', 69000, id, 'demandee', now() from "User" where email = 'anne.chevalier@demo.kolbase.local'`);
+    await adm.page.goto(`${BASE}/admin/services/e2e-l3-mailing`);
+    check("E-mailing : « Communication d'Académie Odonto Formation »", (await adm.page.locator(".mail-preview").innerText()).includes("Communication d'Académie Odonto Formation, diffusée par KolBase."));
+    await pgc.query(`delete from "ServiceOrder" where id = 'e2e-l3-mailing'`);
+    await stale.page.close();
+    await pgc.query(`update "User" set "notifyPrefs" = "notifyPrefs" || '{"newsletter": false}' where email = 'claire.morel@demo.kolbase.local'`);
+
+    // Commande d'un e-mailing : audience affichée ; impossible quand elle est nulle.
+    await jul.page.goto(`${BASE}/organisations/demo-org-dentalys/evenements/demo-ev-soiree-implanto`);
+    const mailing = () => jul.page.locator('.service-list li:not(.service-pack):has-text("E-mailing dédié")');
+    check("Commande d'e-mailing : audience actuelle affichée", /\d+ praticiens? abonnés? à la lettre d'information aujourd'hui/.test(await mailing().innerText()));
+    const subs = (await pgc.query(`select id from "User" where "notifyPrefs"->>'newsletter' = 'true'`)).rows.map((r) => r.id);
+    await pgc.query(`update "User" set "notifyPrefs" = "notifyPrefs" || '{"newsletter": false}' where id = any($1)`, [subs]);
+    await jul.page.reload();
+    check("Commande d'e-mailing : impossible sans abonné (message)", (await mailing().innerText()).includes("aucun praticien n'est abonné") && (await mailing().locator('button:has-text("Commander")').count()) === 0);
+    await pgc.query(`update "User" set "notifyPrefs" = "notifyPrefs" || '{"newsletter": true}' where id = any($1)`, [subs]);
+
+    // Abonné dont l'adresse n'est pas confirmée : l'envoi commencera après la confirmation, lien renvoyé.
+    await pgc.query(`update "User" set "notifyPrefs" = "notifyPrefs" || '{"newsletter": true}', "emailVerifiedAt" = null where email = 'sarah.mercier@demo.kolbase.local'`);
+    const pr = await session();
+    await login(pr.page, "sarah.mercier@demo.kolbase.local");
+    await pr.page.goto(`${BASE}/actualites`);
+    check("Lettre : abonné non confirmé prévenu que l'envoi attend la confirmation", (await text(pr.page)).includes("l'envoi commencera après la confirmation de votre adresse"));
+    const sentBefore = mails.filter((m) => m.to === "sarah.mercier@demo.kolbase.local" && m.subject.startsWith("Confirmez votre adresse")).length;
+    await pr.page.locator('.newsletter-done button:has-text("Renvoyer le lien")').click();
+    for (let i = 0; i < 40 && mails.filter((m) => m.to === "sarah.mercier@demo.kolbase.local" && m.subject.startsWith("Confirmez votre adresse")).length === sentBefore; i++) await pr.page.waitForTimeout(200);
+    check("Lettre : lien de confirmation renvoyé depuis l'encart", mails.filter((m) => m.to === "sarah.mercier@demo.kolbase.local" && m.subject.startsWith("Confirmez votre adresse")).length > sentBefore);
+    await pgc.query(`update "User" set "emailVerifiedAt" = now(), "notifyPrefs" = "notifyPrefs" || '{"newsletter": false}' where email = 'sarah.mercier@demo.kolbase.local'`);
+    await pr.ctx.close();
+  }
+
+  // 5. Gratuité et Stripe : abonnement en cours mis en pause puis repris ; date de fin = fin de journée à Paris.
+  {
+    const subId = "sub_e2el3pause";
+    stripeState.subscriptions.set(subId, { id: subId, object: "subscription", customer: "cus_e2el3", status: "active", trial_end: null, current_period_end: Math.floor(Date.now() / 1000) + 20 * 86400, cancel_at_period_end: false, metadata: { orgId: "demo-org-orthonova" }, pause_collection: null });
+    await pgc.query(`insert into "Subscription" ("organizationId", plan, status, "stripeCustomerId", "stripeSubscriptionId", "updatedAt") values ('demo-org-orthonova', 'organisation', 'active', 'cus_e2el3', $1, now())
+      on conflict ("organizationId") do update set status = 'active', "stripeCustomerId" = 'cus_e2el3', "stripeSubscriptionId" = $1, "exemptUntil" = null, "exemptNote" = null`, [subId]);
+    const lastDay = new Date(Date.now() + 12 * 864e5).toLocaleDateString("sv-SE", { timeZone: "Europe/Paris" });
+    await adm.page.goto(`${BASE}/admin?onglet=abonnements`);
+    const row = () => adm.page.locator('tr:has-text("OrthoNova")');
+    await row().locator('input[name="until"]').fill(lastDay);
+    await row().locator('input[name="note"]').fill("Pilote lot trois");
+    await row().locator('button:has-text("offrir")').click();
+    await until(async () => !!(await q1(`select "exemptUntil" from "Subscription" where "organizationId" = 'demo-org-orthonova'`))?.exemptUntil);
+    await row().locator(':text("jusqu\'au")').waitFor({ timeout: 4000 }).catch(() => {});
+    const ex = await q1(`select to_char(("exemptUntil" at time zone 'UTC') at time zone 'Europe/Paris', 'YYYY-MM-DD HH24:MI') d from "Subscription" where "organizationId" = 'demo-org-orthonova'`);
+    check("Gratuité : fin de la journée saisie, heure de Paris", ex?.d === `${lastDay} 23:59`, ex?.d);
+    const shown = new Date(`${lastDay}T12:00:00Z`).toLocaleDateString("fr-FR", { timeZone: "Europe/Paris", day: "numeric", month: "short", year: "numeric" });
+    check("Gratuité : date affichée = date saisie (pas le lendemain)", (await row().innerText()).includes(`jusqu'au ${shown}`), await row().innerText());
+    const paused = stripeState.subscriptions.get(subId).pause_collection;
+    check("Gratuité : facturation Stripe en pause (void, reprise à la fin)", paused?.behavior === "void" && !!paused.resumes_at && new Date(paused.resumes_at * 1000).toLocaleDateString("sv-SE", { timeZone: "Europe/Paris" }) === lastDay, JSON.stringify(paused));
+    const offer = await waitMail("thomas.garnier@demo.kolbase.local", "KolBase vous offre l'abonnement jusqu'au");
+    check("E-mail : gratuité offerte, facturation suspendue", !!offer && offer.text.includes("est suspendue pendant cette période") && offer.text.includes("inclus"));
+    // Retirer : confirmation, puis la facturation reprend.
+    await row().locator('button:has-text("retirer")').click();
+    check("Retirer la gratuité : confirmation qui annonce la reprise de la facturation", (await row().locator(".confirm-step").innerText()).includes("la facturation de son abonnement Stripe reprend") && !!(await q1(`select "exemptUntil" from "Subscription" where "organizationId" = 'demo-org-orthonova'`))?.exemptUntil);
+    await row().locator('button:has-text("Confirmer : retirer la gratuité")').click();
+    await until(async () => !(await q1(`select "exemptUntil" from "Subscription" where "organizationId" = 'demo-org-orthonova'`))?.exemptUntil);
+    check("Gratuité retirée : facturation Stripe reprise", stripeState.subscriptions.get(subId).pause_collection === null && !(await q1(`select "exemptUntil" from "Subscription" where "organizationId" = 'demo-org-orthonova'`))?.exemptUntil);
+    const back = await waitMail("thomas.garnier@demo.kolbase.local", "gratuité de l'abonnement retirée");
+    check("E-mail : gratuité retirée, la facturation reprend", !!back && back.text.includes("la facturation de votre abonnement en cours reprend"));
+  }
+
+  // 3. Pack et mise à la une : regroupés côté admin, lien suivi depuis l'accueil seulement, factures annoncées justes.
+  {
+    await pgc.query(`insert into "ServiceOrder" (id, "organizationId", "eventId", "offerId", label, "priceCents", "orderedById", status, "packLabel", "trackCode", "createdAt", "updatedAt")
+      select x.id, 'demo-org-dentalys', 'demo-ev-live-surgery', x.offer, x.label, x.price, u.id, 'demandee', 'Pack visibilité', x.code, now(), now()
+      from "User" u, (values ('e2e-l3-p1', 'svc-newsletter', 'E-mailing dédié aux membres KolBase', 58477, 'l3pack1'), ('e2e-l3-p2', 'svc-reseaux', 'Publication sur les réseaux sociaux de KolBase', 24577, 'l3pack2'), ('e2e-l3-p3', 'svc-une', 'À la une de la page d''accueil (7 jours)', 15946, 'l3pack3')) as x(id, offer, label, price, code)
+      where u.email = 'julien.faure@demo.kolbase.local'`);
+    await adm.page.goto(`${BASE}/admin?onglet=services`);
+    const grp = adm.page.locator('li.service-pack-group:has-text("Live surgery")');
+    const gt = (await grp.innerText()).replace(/\s+/g, " ");
+    check("Admin : services d'un pack regroupés sous son prix, détail dépliable", /Pack visibilité — 990 € HT/.test(gt) && gt.includes("Détail des 3 services du pack") && gt.includes("Publication sur les réseaux sociaux"), gt.slice(0, 200));
+    check("Admin : pas de « lien à utiliser » pour la mise à la une", !(await grp.locator('li.card:has-text("À la une de la page")').innerText()).includes("Lien suivi à utiliser") && (await grp.locator('li.card:has-text("réseaux sociaux")').innerText()).includes("Lien suivi à utiliser"));
+    await pgc.query(`delete from "ServiceOrder" where id in ('e2e-l3-p1', 'e2e-l3-p2', 'e2e-l3-p3')`);
+    // Mise à la une réalisée (Soirée implantologie, plus haut) : lien suivi depuis l'accueil, direct depuis /evenements.
+    await anon.page.goto(`${BASE}/`);
+    const homeHref = await anon.page.locator('.event-card:has-text("Soirée implantologie") h3 a').getAttribute("href");
+    await anon.page.goto(`${BASE}/evenements`);
+    const listHref = await anon.page.locator('.event-card:has-text("Soirée implantologie") h3 a').first().getAttribute("href");
+    check("Mise à la une : lien suivi depuis l'accueil seulement", homeHref?.startsWith("/r/") && listHref === "/evenements/demo-ev-soiree-implanto", `${homeHref} | ${listHref}`);
+    await jul.page.goto(`${BASE}/organisations/demo-org-dentalys/evenements/demo-ev-soiree-implanto`);
+    check("Mise à la une : « En cours jusqu'au … » tant qu'elle dure", (await jul.page.locator('li.service-order:has-text("À la une de la page")').first().innerText()).includes("En cours jusqu'au"));
+    // E-mails de réalisation : « prochaine facture » seulement si la ligne est sur la facture Stripe.
+    const hors = mails.find((m) => m.to === "julien.faure@demo.kolbase.local" && m.subject.startsWith("Service KolBase : E-mailing dédié"));
+    const stripeMail = mails.find((m) => m.to === "pierre.vidal@demo.kolbase.local" && m.subject.startsWith("Service KolBase : Publication sur les réseaux sociaux"));
+    check("Réalisation hors Stripe : « facture à venir »", !!hors && hors.text.includes("facture à venir") && !hors.text.includes("prochaine facture"), hors?.text);
+    check("Réalisation facturée par Stripe : « sur votre prochaine facture »", !!stripeMail && stripeMail.text.includes("sur votre prochaine facture"), stripeMail?.text);
+  }
+
+  await jul.ctx.close();
+  await anon.ctx.close();
+  await adm.ctx.close();
   await pgc.end();
 }
 

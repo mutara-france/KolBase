@@ -40,6 +40,10 @@ export async function destroyOtherSessions(userId: string) {
   await db.session.deleteMany({ where: { userId, NOT: token ? { tokenHash: sha256(token) } : undefined } });
 }
 
+/** Appartenance déduite d'un mandat d'agence (et non d'une invitation) : identifiant préfixé. */
+const MANDATE_PREFIX = "mandat:";
+export const viaMandate = (m: { id: string }) => m.id.startsWith(MANDATE_PREFIX);
+
 export const getCurrentUser = cache(async () => {
   const token = (await cookies()).get(COOKIE)?.value;
   if (!token) return null;
@@ -51,7 +55,8 @@ export const getCurrentUser = cache(async () => {
   const user = session.user;
   // Agences mandatées : les membres d'une agence accèdent à chaque organisation qui la mandate (mandat actif),
   // avec le seul rôle « Agence mandatée » (événements confiés). Aucune invitation séparée : le mandat fait foi.
-  const agencyIds = user.memberships.filter((m) => m.organization.kind === "PRESTATAIRE").map((m) => m.organizationId);
+  // Une agence suspendue par KolBase n'agit plus pour ses clients le temps de la suspension.
+  const agencyIds = user.memberships.filter((m) => m.organization.kind === "PRESTATAIRE" && m.organization.verification !== "SUSPENDED").map((m) => m.organizationId);
   if (agencyIds.length > 0) {
     const mandates = await db.mandate.findMany({
       where: { agencyId: { in: agencyIds }, OR: [{ endsAt: null }, { endsAt: { gt: new Date() } }] },
@@ -59,7 +64,7 @@ export const getCurrentUser = cache(async () => {
     });
     for (const m of mandates) {
       if (user.memberships.some((x) => x.organizationId === m.mandatorId && x.role === "PRESTATAIRE")) continue;
-      user.memberships.push({ id: `mandat:${m.id}`, userId: user.id, organizationId: m.mandatorId, role: "PRESTATAIRE", createdAt: m.startsAt, organization: m.mandator });
+      user.memberships.push({ id: `${MANDATE_PREFIX}${m.id}`, userId: user.id, organizationId: m.mandatorId, role: "PRESTATAIRE", createdAt: m.startsAt, organization: m.mandator });
     }
   }
   return user;

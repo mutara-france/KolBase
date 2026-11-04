@@ -2,6 +2,9 @@ import "server-only";
 import { randomBytes } from "node:crypto";
 import { db } from "@/lib/db";
 import { stripe, stripeEnabled } from "@/lib/stripe";
+import { FEATURE_DAYS, featuredUntil } from "@/lib/service-pack";
+import { parisMonthStart } from "@/lib/newsletter";
+import type { Prisma } from "@/generated/prisma/client";
 
 /** Statuts d'une commande de service. */
 export const ORDER_STATUS: Record<string, { label: string; tone: string }> = {
@@ -12,7 +15,7 @@ export const ORDER_STATUS: Record<string, { label: string; tone: string }> = {
   annulee: { label: "Annulée", tone: "done" },
 };
 export const OPEN_ORDER = ["demandee", "planifiee"];
-export const FEATURE_DAYS = 7;
+export { FEATURE_DAYS, featuredUntil };
 
 /** Délai avant l'envoi du bilan d'un service réalisé (ou dès que l'événement a eu lieu). */
 export const REPORT_DELAY_DAYS = 7;
@@ -27,7 +30,7 @@ export const trackedPath = (code: string) => `/r/${code}`;
 /** Événements « à la une » : service réalisé depuis moins de sept jours, événement publié et à venir (lien suivi). */
 export async function featuredEvents(now = new Date()) {
   const orders = await db.serviceOrder.findMany({
-    where: { status: "realisee", offer: { kind: "une" }, doneAt: { gte: new Date(now.getTime() - FEATURE_DAYS * 86400e3) }, event: { publishedAt: { not: null }, startsAt: { gte: now } } },
+    where: { status: "realisee", offer: { kind: "une" }, doneAt: { gte: new Date(now.getTime() - FEATURE_DAYS * 86400e3) }, event: { publishedAt: { not: null }, startsAt: { gte: now }, organization: { verification: "VERIFIED" } } },
     select: { eventId: true, trackCode: true },
     orderBy: { doneAt: "desc" },
   });
@@ -67,12 +70,22 @@ export async function orderStats(orders: { id: string; eventId: string; doneAt: 
 /** Lecture des liens suivis par des robots (aperçus de liens, antivirus des messageries) : non comptée. */
 export const isBot = (ua: string) => !ua || /bot|crawl|spider|slurp|preview|facebookexternalhit|embedly|proofpoint|mimecast|barracuda|safelinks|scanner|curl|wget|python|headless/i.test(ua);
 
-/** Membres qui ont accepté de recevoir la lettre d'information (adresse confirmée). */
+/** Destinataires de la lettre d'information : praticiens (compte avec profil praticien) qui l'ont acceptée et ont confirmé leur adresse. */
+const AUDIENCE = { notifyPrefs: { path: ["newsletter"], equals: true }, emailVerifiedAt: { not: null }, practitioner: { isNot: null } } satisfies Prisma.UserWhereInput;
+
 export function newsletterAudience() {
-  return db.user.findMany({
-    where: { notifyPrefs: { path: ["newsletter"], equals: true }, emailVerifiedAt: { not: null } },
-    select: { id: true, email: true, firstName: true, locale: true, unsubscribeToken: true },
-  });
+  return db.user.findMany({ where: AUDIENCE, select: { id: true, email: true, firstName: true, locale: true, unsubscribeToken: true } });
+}
+export const newsletterAudienceCount = () => db.user.count({ where: AUDIENCE });
+
+/**
+ * Envois de la lettre sur le mois civil (heure de Paris) : lettres envoyées, et envoi en cours (réservé, pas encore
+ * terminé) depuis moins d'une heure. Sert au plafond de deux envois par mois.
+ */
+export function newsletterSendsThisMonth(now = new Date(), client: Pick<typeof db, "newsletterCampaign"> = db) {
+  const start = parisMonthStart(now);
+  const recent = new Date(Math.max(start.getTime(), now.getTime() - 3600e3));
+  return client.newsletterCampaign.count({ where: { OR: [{ sentAt: { gte: start } }, { sentAt: null, createdAt: { gte: recent } }] } });
 }
 
 /** Jeton de désinscription d'un membre (créé à la première lettre). */

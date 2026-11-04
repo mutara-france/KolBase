@@ -96,7 +96,7 @@ export const COMMON: Record<string, string> = {
   "Honoraires souhaités (€ HT, facultatif)": "Requested fee (€ excl. VAT, optional)",
   "Total pour la prestation": "Total for the engagement",
   "Si les honoraires proposés ne vous conviennent pas : l'organisation voit ce montant et peut vous faire une nouvelle proposition.": "If the proposed fee does not suit you: the organisation sees this amount and can make you a new offer.",
-  "Nouvelle proposition de {org}": "New offer from {org}",
+  "Nouvelle proposition {de_org}": "New offer from {org}",
   "{org} a modifié sa proposition pour « {titre} ».": "{org} has changed its offer for “{titre}”.",
   "Prestation : {n} {unit}.": "Engagement: {n} {unit}.",
   "Votre réponse précédente ne vaut plus pour ces nouvelles conditions : acceptez ou déclinez la proposition sur KolBase.": "Your previous answer no longer applies to these new terms: accept or decline the offer on KolBase.",
@@ -150,4 +150,7 @@ export const COMMON: Record<string, string> = {
   "Vos inscriptions aux événements.": "Your event registrations.",
   "Prérequis : renseignez votre {id}": "Prerequisite: enter your {id}",
   "numéro RPPS": "RPPS number",
+  "Cette page n'est pas visible du public : l'organisation est suspendue par KolBase.": "This page is not visible to the public: the organisation is suspended by KolBase.",
+  "Vous êtes abonné à la lettre d'information de KolBase : l'envoi commencera après la confirmation de votre adresse {email}.": "You are subscribed to the KolBase newsletter: sending will start once your address {email} is confirmed.",
+  "La lettre d'information de KolBase est adressée aux praticiens inscrits.": "The KolBase newsletter is sent to registered practitioners.",
 };

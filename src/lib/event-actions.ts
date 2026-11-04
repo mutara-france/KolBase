@@ -5,14 +5,15 @@ import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import { db } from "@/lib/db";
 import { audit, requireUser } from "@/lib/auth";
-import { ORG_NOT_VERIFIED, isVerifiedOrg, requireMembership } from "@/lib/orgs";
+import { isVerifiedOrg, notVerified, requireMembership } from "@/lib/orgs";
 import { BENEFIT_CATALOG, COMPLIANCE_ROLES, EVENT_MANAGER_ROLES, EVENT_ORGANIZER_ROLES, eventChanges, eventScope, EVENT_TYPES, ONLINE_URL_INVALID, parseOnlineUrl, parseParisDateTime } from "@/lib/events";
 import { EventFormat } from "@/generated/prisma/enums";
 import { eurToCents, intOrNull, str } from "@/lib/form";
 import { getT } from "@/lib/i18n/server";
 import { engagementGate } from "@/lib/billing";
 import type { GateLink } from "@/lib/billing-plans";
-import { notifyEventChanged, notifyEventConfided } from "@/lib/notifications";
+import { notifyEventChanged, notifyEventConfided, notifyEventWithdrawn, notifyMandateEnded } from "@/lib/notifications";
+import { activeMandate } from "@/lib/mandates";
 import { SOURCE_COOKIE } from "@/lib/services";
 import { deletableDraft, DRAFT_COUNTS } from "@/lib/event-drafts";
 
@@ -68,7 +69,7 @@ export async function createEvent(_: ActionState, form: FormData): Promise<Actio
   // Réunion interne (board, comité) : jamais publiée, sans inscriptions en ligne.
   const internal = form.get("internal") === "1";
   const publish = !internal && form.get("publish") === "1";
-  if (publish && !isVerifiedOrg(org)) return { error: `Publication impossible pour l'instant : ${ORG_NOT_VERIFIED} Enregistrez l'événement en brouillon.` };
+  if (publish && !isVerifiedOrg(org)) return { error: `Publication impossible pour l'instant : ${notVerified(org)} Enregistrez l'événement en brouillon.` };
   const gate = publish ? await engagementGate(orgId, "evenement") : null;
   if (gate) return { ...gate, error: `${gate.error} Vous pouvez l'enregistrer en brouillon.` };
   const event = await db.event.create({
@@ -198,7 +199,7 @@ export async function setEventAgency(form: FormData) {
     if (!agency) return;
     const mandate = await db.mandate.findFirst({ where: { mandatorId: orgId, agencyId, ...activeMandate() } });
     if (!mandate) {
-      if (!agency.listed) return;
+      if (!agency.listed || agency.verification !== "VERIFIED") return;
       const m = await db.mandate.create({ data: { mandatorId: orgId, agencyId, scope: "Événements confiés" } });
       await audit(user.id, "mandate.create", "Mandate", m.id, { agencyId, eventId });
     }
@@ -206,6 +207,8 @@ export async function setEventAgency(form: FormData) {
   await db.event.update({ where: { id: eventId }, data: { agencyId } });
   await audit(user.id, "event.agency", "Event", eventId, { agencyId });
   if (agencyId && agencyId !== event.agencyId) notifyEventConfided(eventId);
+  // L'agence précédente perd l'accès à l'événement : elle en est prévenue.
+  if (event.agencyId && agencyId !== event.agencyId) notifyEventWithdrawn(eventId, event.agencyId);
   revalidatePath(`/organisations/${orgId}/evenements/${eventId}`);
   revalidatePath(`/organisations/${orgId}/prestataires`);
 }
@@ -294,9 +297,6 @@ export async function markDeclared(form: FormData) {
 
 // ─── Mandats d'agence ──────────────────────────────────────────────────────
 
-/** Mandats en cours (non terminés) d'une organisation. */
-const activeMandate = (now = new Date()) => ({ OR: [{ endsAt: null }, { endsAt: { gt: now } }] });
-
 
 /** Fin de mandat : l'agence perd l'accès aux événements qui lui étaient confiés. */
 export async function endMandate(form: FormData) {
@@ -304,11 +304,25 @@ export async function endMandate(form: FormData) {
   const { user } = await requireMembership(orgId, EVENT_ORGANIZER_ROLES);
   const m = await db.mandate.findFirst({ where: { id: str(form, "mandateId"), mandatorId: orgId, ...activeMandate() } });
   if (!m) return;
+  const events = await db.event.findMany({ where: { organizationId: orgId, agencyId: m.agencyId }, select: { title: true }, orderBy: { startsAt: "asc" } });
   await db.$transaction([
     db.mandate.update({ where: { id: m.id }, data: { endsAt: new Date() } }),
     db.event.updateMany({ where: { organizationId: orgId, agencyId: m.agencyId }, data: { agencyId: null } }),
   ]);
   await audit(user.id, "mandate.end", "Mandate", m.id, { agencyId: m.agencyId });
+  notifyMandateEnded(m.id, events.map((e) => e.title));
+  revalidatePath(`/organisations/${orgId}/prestataires`);
+}
+
+/** Droit de l'agence de retenir un devis au nom de l'organisation (sinon elle propose, l'organisateur retient). */
+export async function setMandateAward(form: FormData) {
+  const orgId = str(form, "orgId");
+  const { user } = await requireMembership(orgId, EVENT_ORGANIZER_ROLES);
+  const m = await db.mandate.findFirst({ where: { id: str(form, "mandateId"), mandatorId: orgId, ...activeMandate() } });
+  if (!m) return;
+  const canAward = form.get("canAward") === "1";
+  await db.mandate.update({ where: { id: m.id }, data: { canAward } });
+  await audit(user.id, "mandate.award_right", "Mandate", m.id, { agencyId: m.agencyId, canAward });
   revalidatePath(`/organisations/${orgId}/prestataires`);
 }
 

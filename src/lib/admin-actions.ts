@@ -13,7 +13,11 @@ const refresh = () => {
   revalidatePath("/", "layout");
 };
 
-/** Valider, refuser ou suspendre une organisation. */
+/**
+ * Valider, refuser, suspendre ou réactiver une organisation. La suspension est réversible : statut à part
+ * (SUSPENDED), motif obligatoire ; la page publique, les événements et les appels sont masqués (requêtes publiques
+ * limitées aux organisations validées) sans rien modifier, et « Réactiver » rend tout tel quel.
+ */
 export async function reviewOrganization(form: FormData) {
   const admin = await requirePlatformAdmin();
   const orgId = str(form, "orgId");
@@ -21,19 +25,22 @@ export async function reviewOrganization(form: FormData) {
   const note = str(form, "note") || null;
   const org = await db.organization.findUnique({ where: { id: orgId } });
   if (!org) return;
-  if (decision === "verify") {
+  if (decision === "suspend") {
+    if (!note || org.verification !== "VERIFIED") return; // une suspension est toujours motivée
+    await db.organization.update({ where: { id: orgId }, data: { verification: "SUSPENDED", verifiedById: admin.id, verificationNote: note } });
+  } else if (decision === "reactivate") {
+    if (org.verification !== "SUSPENDED") return;
+    await db.organization.update({ where: { id: orgId }, data: { verification: "VERIFIED", verifiedAt: org.verifiedAt ?? new Date(), verifiedById: admin.id, verificationNote: null } });
+  } else if (decision === "verify") {
     // Validée : la page publique est activée (l'organisation peut se retirer de l'annuaire dans Membres et réglages).
     // Un prestataire n'est référencé que s'il a choisi ses catégories de prestation.
     const listed = org.kind !== "PRESTATAIRE" || org.supplierCategories.length > 0;
     await db.organization.update({ where: { id: orgId }, data: { verification: "VERIFIED", verifiedAt: new Date(), verifiedById: admin.id, verificationNote: note, listed } });
-  } else if (decision === "reject" || decision === "suspend") {
-    if (!note) return; // un refus ou une suspension est toujours motivé
-    // Une organisation refusée ou suspendue cesse aussi de recevoir des candidatures.
+  } else if (decision === "reject") {
+    if (!note) return; // un refus est toujours motivé
+    // Une organisation refusée cesse aussi de recevoir des candidatures.
     await db.$transaction([
-      db.organization.update({
-        where: { id: orgId },
-        data: { verification: decision === "reject" ? "REJECTED" : "PENDING", verifiedAt: null, verifiedById: admin.id, verificationNote: note, listed: false },
-      }),
+      db.organization.update({ where: { id: orgId }, data: { verification: "REJECTED", verifiedAt: null, verifiedById: admin.id, verificationNote: note, listed: false } }),
       db.openCall.updateMany({ where: { organizationId: orgId, status: "open" }, data: { status: "closed" } }),
     ]);
   } else return;

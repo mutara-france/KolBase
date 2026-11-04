@@ -88,7 +88,13 @@ export default async function Page({ params }: { params: Promise<{ id: string }>
       <SiteHeader />
       <main className="stack dash">
         <DashHead title={`Bonjour ${user.firstName}.`} lede={lede} action={<CreateMenu items={create} />} />
-        {org.verification !== "VERIFIED" && (
+        {org.verification === "SUSPENDED" && (
+          <p className="notice error" role="status">
+            Organisation suspendue{org.verificationNote ? ` : ${org.verificationNote}` : ""}. Votre page publique, vos événements et vos appels sont masqués,
+            et aucune nouvelle action n&apos;est possible jusqu&apos;à la réactivation par KolBase ; rien n&apos;est supprimé.
+          </p>
+        )}
+        {org.verification !== "VERIFIED" && org.verification !== "SUSPENDED" && (
           <p className={`notice ${org.verification === "REJECTED" ? "error" : "warn"}`}>
             {org.verification === "REJECTED"
               ? `KolBase n'a pas validé votre organisation${org.verificationNote ? ` : ${org.verificationNote}` : ""}.`

@@ -3,7 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { db } from "@/lib/db";
 import { audit, requireUser } from "@/lib/auth";
-import { ORG_NOT_VERIFIED, isVerifiedOrg, requireMembership } from "@/lib/orgs";
+import { isVerifiedOrg, notVerified, requireMembership } from "@/lib/orgs";
 import { fetchOrcidWorks, normTitle, ORCID_RE, orcidOAuth } from "@/lib/orcid";
 import { COMPANY_VIS_FIELDS, KOL_VIS_FIELDS, companyVisibility, kolVisibility } from "@/lib/visibility";
 import { str } from "@/lib/form";
@@ -27,7 +27,7 @@ export async function updateKolVisibility(_: ActionState, form: FormData): Promi
 export async function updateOrgVisibility(_: ActionState, form: FormData): Promise<ActionState> {
   const orgId = str(form, "orgId");
   const { user, org } = await requireMembership(orgId, ["ADMIN"]);
-  if (form.get("listed") === "1" && !isVerifiedOrg(org)) return { error: `Page publique indisponible pour l'instant : ${ORG_NOT_VERIFIED}` };
+  if (form.get("listed") === "1" && !isVerifiedOrg(org)) return { error: `Page publique indisponible pour l'instant : ${notVerified(org)}` };
   const raw: Record<string, string> = {};
   for (const f of COMPANY_VIS_FIELDS) raw[f.key] = str(form, f.key);
   const visibility = companyVisibility(raw);

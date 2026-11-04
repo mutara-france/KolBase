@@ -120,6 +120,20 @@ export async function syncCheckout(orgId: string, sessionId: string) {
   await applyStripeSubscription(orgId, s.subscription);
 }
 
+/**
+ * Gratuité accordée à une organisation qui a un abonnement Stripe en cours : la facturation est mise en pause
+ * (pause_collection « void » : rien n'est facturé pendant la pause), avec reprise automatique à la fin de la
+ * gratuité (resumes_at) ; gratuité retirée : la facturation reprend aussitôt. Renvoie ce qui a été fait.
+ */
+export async function pauseStripeBilling(orgId: string, until: Date | null): Promise<"paused" | "resumed" | null> {
+  const sub = await db.subscription.findUnique({ where: { organizationId: orgId }, select: { stripeSubscriptionId: true, status: true } });
+  if (!stripeEnabled() || !sub?.stripeSubscriptionId || !["essai", "active", "impayee"].includes(sub.status)) return null;
+  await stripe("POST", `/v1/subscriptions/${sub.stripeSubscriptionId}`, until
+    ? { pause_collection: { behavior: "void", resumes_at: Math.floor(until.getTime() / 1000) } }
+    : { pause_collection: "" });
+  return until ? "paused" : "resumed";
+}
+
 /** Espace client Stripe : moyen de paiement, factures, résiliation. */
 export async function portalUrl(orgId: string) {
   const sub = await db.subscription.findUnique({ where: { organizationId: orgId } });

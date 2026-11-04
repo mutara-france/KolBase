@@ -470,7 +470,7 @@ export const PRATICIEN: Record<string, string> = {
   "Spécialité": "Specialty",
   "Date limite": "Deadline",
   "Aucune": "None",
-  "Politique de collaboration de {org}": "{org}'s collaboration policy",
+  "Politique de collaboration {de_org}": "{org}'s collaboration policy",
   "Candidature": "Application",
   "Votre candidature est en cours d'examen.": "Your application is being reviewed.",
   "Votre candidature a été retenue : l'organisation vous propose des honoraires, à accepter ou décliner dans « Sollicitations ».": "Your application has been selected: the organisation is offering you fees, which you can accept or decline under “Requests”.",

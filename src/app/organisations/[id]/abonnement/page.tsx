@@ -1,8 +1,9 @@
 import Link from "next/link";
+import { redirect } from "next/navigation";
 import { CheckCircle2, CreditCard, Gift } from "lucide-react";
 import { SiteHeader } from "@/components/SiteHeader";
 import { db } from "@/lib/db";
-import { requireMembership } from "@/lib/orgs";
+import { isAgencyOnly, requireMembership } from "@/lib/orgs";
 import { stripeEnabled, syncCheckout } from "@/lib/billing";
 import { asInterval, asMotive, asObjectId, canEngage, displayStatus, ENGAGING, formatPrice, freeMonths, monthlyCents, planFor, planPrice, PLANS, resumeAction, STATUS_LABEL, TRIAL_DAYS } from "@/lib/billing-plans";
 import { openBillingPortal, startSubscription } from "@/lib/billing-actions";
@@ -14,7 +15,9 @@ export const metadata = { title: "Abonnement — KolBase" };
 export default async function Page({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: Promise<{ session?: string; motif?: string; objet?: string; annule?: string }> }) {
   const { id } = await params;
   const sp = await searchParams;
-  const { org, isAdmin } = await requireMembership(id);
+  const { org, isAdmin, roles } = await requireMembership(id);
+  // L'abonnement d'une organisation ne regarde pas l'agence qu'elle mandate.
+  if (isAgencyOnly(roles, org.kind)) redirect(`/organisations/${id}`);
   if (sp.session && stripeEnabled()) await syncCheckout(id, sp.session).catch((e) => console.error("[abonnement]", e));
   const sub = await db.subscription.findUnique({ where: { organizationId: id } });
   const admins = await db.membership.findMany({ where: { organizationId: id, role: "ADMIN" }, include: { user: { select: { firstName: true, lastName: true } } } });

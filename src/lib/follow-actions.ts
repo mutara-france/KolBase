@@ -20,7 +20,7 @@ export async function toggleFollow(form: FormData) {
     await db.follow.delete({ where: { id: existing.id } });
   } else {
     const target = type === "organization"
-      ? await db.organization.findFirst({ where: { id, listed: true } })
+      ? await db.organization.findFirst({ where: { id, listed: true, verification: "VERIFIED" } })
       : await db.practitionerProfile.findFirst({ where: { id, listed: true, NOT: { userId: user.id } } });
     if (!target) return;
     await db.follow.create({ data: { userId: user.id, ...(type === "organization" ? { organizationId: id } : { practitionerId: id }) } });

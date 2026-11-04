@@ -23,7 +23,7 @@ export default async function Home({ searchParams }: { searchParams: Promise<{ c
   const deleted = (await searchParams).compte === "supprime";
   const [{ t, locale }, user] = await Promise.all([getT(), getCurrentUser()]);
   const [events, experts, orgs, calls, n, specialties, news] = await Promise.all([
-    publicEvents(3), publicExperts(4), publicOrgs(), publicCalls(2), publicCounts(), publicSpecialties(), publishedArticles(3),
+    publicEvents(3, { tracked: true }), publicExperts(4), publicOrgs(), publicCalls(2), publicCounts(), publicSpecialties(), publishedArticles(3),
   ]);
   // Les prestataires (agences, logistique) ne sont pas mis en avant sur l'accueil.
   const ranked = orgs

@@ -40,12 +40,21 @@ export async function saveArticle(_: FormState, form: FormData): Promise<FormSta
     if (!type) return { error: "Image au format PNG, JPEG ou WebP." };
     cover = { coverData: bytes, coverType: type };
   }
-  const data = { title, excerpt, body, category, slug, ...(cover ?? {}), ...(form.get("removeCover") === "1" && !cover ? { coverData: null, coverType: null } : {}) };
+  // « Enregistrer et publier » : le texte envoyé est enregistré et mis en ligne d'un même geste.
+  const publish = !!id && str(form, "intent") === "publish";
+  const before = id ? await db.article.findUnique({ where: { id }, select: { slug: true, publishedAt: true } }) : null;
+  if (id && !before) return { error: "Actualité introuvable." };
+  const data = {
+    title, excerpt, body, category, slug, ...(cover ?? {}), ...(form.get("removeCover") === "1" && !cover ? { coverData: null, coverType: null } : {}),
+    ...(publish && !before?.publishedAt ? { publishedAt: new Date() } : {}),
+  };
   const a = id ? await db.article.update({ where: { id }, data }) : await db.article.create({ data: { ...data, authorId: admin.id } });
   await audit(admin.id, id ? "news.update" : "news.create", "Article", a.id);
+  if (publish && !before?.publishedAt) await audit(admin.id, "news.publish", "Article", a.id);
   refresh(a.slug);
+  if (before && before.slug !== a.slug) refresh(before.slug);
   if (!id) redirect(`/admin/actualites/${a.id}?cree=1`);
-  return { ok: "Enregistré." };
+  return { ok: publish ? "Enregistré et publié." : "Enregistré." };
 }
 
 /** Publication (date du jour) ou retour en brouillon. */
