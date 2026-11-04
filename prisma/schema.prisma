@@ -134,6 +134,7 @@ model PractitionerProfile {
   // Coordonnées de facturation (conventions et notes d'honoraires) : adresse, SIRET, TVA, IBAN. La société
   // d'exercice éventuelle est la structure de facturation (PractitionerStructure.isPayee), seule source.
   billingAddress String?
+  billingEntity  String? // ancienne « société d'exercice », reprise dans les structures : plus lue, à supprimer
   siret          String?
   vatRegime      String   @default("franchise") // franchise (art. 293 B du CGI) ou assujetti
   vatNumber      String?
