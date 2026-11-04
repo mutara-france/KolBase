@@ -9,7 +9,7 @@ import { db } from "@/lib/db";
 import { KolVisibilityForm, OrcidImportForm, PublicationForm, StructureForm } from "@/components/ProfileForms";
 import { kolVisibility } from "@/lib/visibility";
 import { canBeExpert } from "@/lib/professions";
-import { professionalId } from "@/lib/countries";
+import { practicesInFrance, professionalId } from "@/lib/countries";
 import { orcidOAuth } from "@/lib/orcid";
 import { wantsEmail } from "@/lib/notifications";
 import { removePublication, removeStructure } from "@/lib/profile-actions";
@@ -35,11 +35,13 @@ const ORCID_NOTICE = {
 
 const EMAIL_NOTICE = {
   confirme: ["ok", "Adresse e-mail confirmée. Merci !"],
-  "lien-invalide": ["error", "Ce lien de confirmation n'est plus valable. Demandez-en un nouveau ci-dessous."],
+  "deja-confirme": ["ok", "Votre adresse e-mail est déjà confirmée : ce lien a déjà servi, il n'y a rien d'autre à faire."],
+  "autre-compte": ["ok", "Ce lien confirmait l'adresse d'un autre compte KolBase que celui avec lequel vous êtes connecté : cette adresse est confirmée."],
+  "lien-invalide": ["error", "Ce lien de confirmation n'est plus valable (déjà utilisé ou expiré). Si votre adresse n'est pas confirmée, demandez un nouveau lien ci-dessous."],
 } as const;
 
-export default async function Page({ searchParams }: { searchParams: Promise<{ annuaire?: string; orcid?: string; email?: string; admin?: string; securite?: string }> }) {
-  const { annuaire, orcid, email, admin, securite } = await searchParams;
+export default async function Page({ searchParams }: { searchParams: Promise<{ annuaire?: string; candidater?: string; orcid?: string; email?: string; admin?: string; securite?: string }> }) {
+  const { annuaire, candidater, orcid, email, admin, securite } = await searchParams;
   const emailNotice = email && email in EMAIL_NOTICE ? EMAIL_NOTICE[email as keyof typeof EMAIL_NOTICE] : null;
   const orcidNotice = orcid && orcid in ORCID_NOTICE ? ORCID_NOTICE[orcid as keyof typeof ORCID_NOTICE] : null;
   const user = await requireUser();
@@ -71,26 +73,58 @@ export default async function Page({ searchParams }: { searchParams: Promise<{ a
         {annuaire && (
           <p className="notice error">{t("L'annuaire est réservé aux membres d'une organisation et aux experts référencés.")}</p>
         )}
+        {/* Appels à candidatures ouverts sans être référencé : la marche à suivre, pas le message de l'annuaire. */}
+        {candidater && (
+          <p className="notice warn" role="status">
+            {p && canBeExpert(p.profession)
+              ? t("Référencez-vous pour candidater : les appels à candidatures sont réservés aux experts référencés. C'est l'encart « Référencement » ci-dessous.")
+              : t("Les appels à candidatures sont réservés aux praticiens référencés comme experts (chirurgiens-dentistes, orthodontistes, chirurgiens oraux et stomatologues).")}
+          </p>
+        )}
         {orcidNotice && <p className={`notice ${orcidNotice[0]}`}>{t(orcidNotice[1])}</p>}
         {emailNotice && <p className={`notice ${emailNotice[0]}`}>{t(emailNotice[1])}</p>}
         {admin === "confirmer" && !user.emailVerifiedAt && <p className="notice warn">{t("Confirmez votre adresse e-mail pour accéder à l'administration KolBase.")}</p>}
         {!user.emailVerifiedAt && <EmailVerificationNotice email={user.email} />}
-        {p && <ListingForm listed={p.listed} eligible={canBeExpert(p.profession)} idMissing={professionalId(p).value ? null : professionalId(p).short} />}
+        {/* Sommaire : la page est longue, chaque encart a son ancre. */}
+        <nav className="account-toc" aria-label={t("Sommaire")}>
+          {[
+            p && ["#referencement", t("Référencement")],
+            p?.listed && ["#profil-expert", t("Profil expert")],
+            p && expertCapable && ["#publications", t("Publications")],
+            p && expertCapable && ["#structures", t("Structures juridiques")],
+            ["#informations", t("Informations personnelles")],
+            ["#notifications", t("Notifications")],
+            ["#identifiants", t("Mot de passe")],
+            ["#securite", t("Sécurité")],
+            ["#donnees", t("Mes données")],
+            ["#organisations", t("Organisations")],
+          ].filter((x): x is [string, string] => !!x).map(([href, label]) => <a key={href} href={href}>{label}</a>)}
+        </nav>
+        {p && (
+          <div id="referencement">
+            <ListingForm
+              listed={p.listed}
+              eligible={canBeExpert(p.profession)}
+              idMissing={professionalId(p).value ? null : professionalId(p).short}
+              rpps={practicesInFrance(p.country) && canBeExpert(p.profession) ? { value: p.rpps, status: !p.rpps ? "none" : p.rppsVerified ? "verified" : p.rppsCheckedAt ? "rejected" : "pending", note: p.rppsCheckNote } : null}
+            />
+          </div>
+        )}
         {p?.listed && (
           <div className="actions" style={{ marginTop: 0 }}>
             <Link className="btn secondary" href={`/experts/${p.id}`}>{t("Voir ma fiche publique")}</Link>
           </div>
         )}
         {p?.listed && (
-          <ExpertProfileForm
+          <div id="profil-expert"><ExpertProfileForm
             types={INTERVENTION_TYPES}
             p={{ bio: p.bio, hospital: p.hospital, subspecialty: p.subspecialty, orcid: p.orcid, languages: p.languages, interventionTypes: p.interventionTypes, dayRateCents: p.dayRateCents }}
-          />
+          /></div>
         )}
         {p?.listed && <KolVisibilityForm v={kolVisibility(p.visibility)} />}
         {/* Publications et structures juridiques : pour les professions qui peuvent être expertes. */}
         {p && expertCapable && (
-          <section className="card stack">
+          <section className="card stack" id="publications">
             <h2>{t("Publications ({n})", { n: pubs.length })}</h2>
             <OrcidImportForm
               orcid={p.orcid}
@@ -112,7 +146,7 @@ export default async function Page({ searchParams }: { searchParams: Promise<{ a
           </section>
         )}
         {p && expertCapable && (
-          <section className="card stack">
+          <section className="card stack" id="structures">
             <h2>{t("Structures juridiques ({n})", { n: structs.length })}</h2>
             <p className="muted">
               {t("Sociétés d'exercice, associations, fonctions déclarées.")}{" "}
@@ -132,7 +166,7 @@ export default async function Page({ searchParams }: { searchParams: Promise<{ a
             <StructureForm />
           </section>
         )}
-        <ProfileForm
+        <div id="informations"><ProfileForm
           user={{ firstName: user.firstName, lastName: user.lastName, email: user.email, phone: user.phone, locale: user.locale }}
           practitioner={
             p
@@ -143,9 +177,9 @@ export default async function Page({ searchParams }: { searchParams: Promise<{ a
                 }
               : null
           }
-        />
-        <NotificationsForm email={wantsEmail(user)} newsletter={subscribed(user)} />
-        <PasswordForm email={user.email} />
+        /></div>
+        <div id="notifications"><NotificationsForm email={wantsEmail(user)} newsletter={subscribed(user)} /></div>
+        <div id="identifiants"><PasswordForm email={user.email} /></div>
         <section className="card stack-sm" id="securite" aria-labelledby="securite-titre">
           <h2 id="securite-titre">{t("Sécurité : double authentification")}</h2>
           {securite && !user.totpEnabledAt && (
@@ -163,8 +197,8 @@ export default async function Page({ searchParams }: { searchParams: Promise<{ a
             locked={requiring.length > 0 || (isPlatformAdmin(user) && adminTwoFactorRequired())}
           />
         </section>
-        <MyDataCard keep={await retentionReasons(user.id)} />
-        <section className="card">
+        <div id="donnees"><MyDataCard keep={await retentionReasons(user.id)} /></div>
+        <section className="card" id="organisations">
           <h2>{t("Organisations")}</h2>
           <p className="muted">
             {user.memberships.length > 0

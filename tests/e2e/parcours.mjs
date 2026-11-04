@@ -581,7 +581,8 @@ async function submitNewOrg(page, siren) {
   await page.goto(linkIn(verify));
   check("Lien de confirmation : adresse confirmée", (await text(page)).includes("Adresse e-mail confirmée") && !(await text(page)).includes("Renvoyer le lien"));
   await page.goto(linkIn(verify));
-  check("Lien de confirmation : usage unique", (await text(page)).includes("n'est plus valable"));
+  // Lien réutilisé pour une adresse déjà confirmée : le dire (lot 4), plutôt qu'un « lien plus valable ».
+  check("Lien de confirmation : usage unique, adresse déjà confirmée annoncée", (await text(page)).includes("déjà confirmée") && (await text(page)).includes("ce lien a déjà servi"));
   await ctx.close();
 
   const anon = await session();

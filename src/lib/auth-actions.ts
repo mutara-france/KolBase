@@ -41,7 +41,7 @@ async function sendVerification(user: { id: string; email: string; firstName: st
   sendLater({
     to: user.email,
     subject: "Confirmez votre adresse e-mail — KolBase",
-    text: `Bonjour ${user.firstName},\n\nConfirmez votre adresse pour recevoir les sollicitations, messages et rappels de KolBase. Le lien est valable 7 jours.\n\nSi vous n'avez pas créé de compte, ignorez ce message.`,
+    text: `Bonjour ${user.firstName},\n\nConfirmez votre adresse e-mail en un clic. Le reste de KolBase fonctionne sans cette confirmation ; elle est nécessaire pour recevoir la lettre d'information. Le lien est valable 7 jours et ne sert qu'une fois.\n\nSi vous n'avez pas créé de compte, ignorez ce message.`,
     cta: { label: "Confirmer mon adresse", href: `/confirmer-email/${token}` },
   });
 }
@@ -222,14 +222,26 @@ export async function setListed(_: FormState, form: FormData): Promise<FormState
   if (listed && !canBeExpert(user.practitioner.profession))
     return { error: t("Le référencement comme expert est réservé aux chirurgiens-dentistes, orthodontistes, chirurgiens oraux et stomatologues.") };
   const p = user.practitioner;
-  const identifier = practicesInFrance(p.country) ? p.rpps : p.licenseNumber;
+  let identifier = practicesInFrance(p.country) ? p.rpps : p.licenseNumber;
+  // RPPS saisi dans l'encart de référencement (exercice en France, pas encore renseigné) : enregistré et soumis à
+  // la vérification de KolBase, puis le référencement suit.
+  const typedRpps = listed && practicesInFrance(p.country) && !p.rpps ? normalizeRpps(str(form, "rpps")) : "";
+  if (typedRpps) {
+    if (!isRpps(typedRpps)) return { error: t("Numéro RPPS invalide : 11 chiffres, le dernier étant une clé de contrôle. Vérifiez la saisie. Si vous exercez hors de France, choisissez votre pays d'exercice.") };
+    if (await db.practitionerProfile.findFirst({ where: { rpps: typedRpps, NOT: { id: p.id } } }))
+      return { error: t("Ce numéro RPPS est déjà associé à un autre compte. Contactez-nous s'il s'agit du vôtre.") };
+    if (!canBeExpert(p.profession)) return { error: t("Le référencement comme expert est réservé aux chirurgiens-dentistes, orthodontistes, chirurgiens oraux et stomatologues.") };
+    await db.practitionerProfile.update({ where: { userId: user.id }, data: { rpps: typedRpps, rppsVerified: false, rppsCheckedAt: null, rppsCheckNote: null } });
+    notifyPlatformAdmins(`Identité à vérifier : ${user.firstName} ${user.lastName}`, `${user.firstName} ${user.lastName} a renseigné : RPPS ${typedRpps}.`, "/admin?onglet=praticiens");
+    identifier = typedRpps;
+  }
   if (listed && !identifier)
     return {
       error: practicesInFrance(p.country)
-        ? t("Renseignez d'abord votre numéro RPPS dans « Informations personnelles » : KolBase le vérifie pour afficher le badge « Identité vérifiée ».")
+        ? t("Renseignez d'abord votre numéro RPPS ci-dessus : KolBase le vérifie pour afficher le badge « Identité vérifiée ».")
         : t("Renseignez d'abord votre {id} dans « Informations personnelles » : KolBase le vérifie pour afficher le badge « Identité vérifiée ».", { id: t(licenseRule(p.country).short) }),
     };
-  if (listed && !p.rppsVerified && p.rppsCheckedAt)
+  if (listed && !typedRpps && !p.rppsVerified && p.rppsCheckedAt)
     return { error: t("Votre identifiant professionnel n'a pas pu être vérifié : corrigez-le dans « Informations personnelles » pour vous référencer à nouveau.") };
   await db.practitionerProfile.update({
     where: { userId: user.id },

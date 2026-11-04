@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import { eventIcsEntry, toIcs } from "@/lib/ics";
 import { eventEnd, eventEnded } from "@/lib/events";
 import { orgSectionTabs, tabCount } from "@/lib/nav";
+import { statusLabel } from "@/lib/projects";
 
 const t = (fr: string, vars?: Record<string, string>) => (vars ? fr.replace(/\{(\w+)\}/g, (_, k: string) => vars[k] ?? "") : fr);
 const base = { id: "ev1", title: "Webinaire", startsAt: new Date("2026-12-01T19:00:00Z"), durationMinutes: 60, venue: null, city: null };
@@ -59,5 +60,13 @@ describe("pastilles des onglets de la conformité", () => {
     const ev = orgSectionTabs("evenements", "o", ["ADMIN"], "INDUSTRIEL");
     expect(tabCount(ev.find((t) => t.key === "prestataires")!, ev, [{ href: "/organisations/o/prestataires#rfq-1" }])).toBe(1);
     expect(tabCount(ev.find((t) => t.key === "evenements")!, ev, [{ href: "/organisations/o/evenements/e1" }])).toBe(1);
+  });
+});
+
+describe("statut d'un dossier vu par l'expert", () => {
+  it("l'expert ne lit pas « En attente des experts »", () => {
+    expect(statusLabel("ATT_EXPERTS", "expert")).toBe("Votre réponse est attendue");
+    expect(statusLabel("ATT_EXPERTS")).toBe("En attente des experts");
+    expect(statusLabel("SIGNE", "expert")).toBe("Signé");
   });
 });

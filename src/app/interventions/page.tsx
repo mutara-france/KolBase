@@ -56,7 +56,7 @@ export default async function Page({ searchParams }: { searchParams: Promise<{ o
     <>
       <SiteHeader section={group} />
       <main className="stack">
-        <SectionNav tabs={practitionerSectionTabs(group).map((tab) => ({ ...tab, label: t(tab.label) }))} active={onglet} label={t(group === "agenda" ? "Rubrique Agenda" : "Rubrique Opportunités")} />
+        <SectionNav tabs={practitionerSectionTabs(group).map((tab) => ({ ...tab, label: t(tab.label) }))} active={onglet} label={group === "agenda" ? t("Rubrique Mes inscriptions") : t("Rubrique Opportunités")} />
         <h1>{heading[0]}</h1>
         <p className="muted">{heading[1]}</p>
 

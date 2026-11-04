@@ -77,6 +77,13 @@ export default async function Page({ searchParams }: { searchParams: Promise<Par
             <button type="submit" className="btn lg"><Search size={16} aria-hidden /> {t("Rechercher")}</button>
             <Link href="/connexion?next=%2Fannuaire" className="btn ghost lg">{t("Recherche avancée")}</Link>
           </form>
+          {/* Filtres venus de la recherche de l'accueil (type, ville) : visibles et retirables un à un. */}
+          {(type || ville) && (
+            <div className="chips mb-4 active-filters" aria-label={t("Filtres actifs")}>
+              {type && <Link href={`/experts?${new URLSearchParams({ ...(q && { q }), ...(ville && { ville }), ...(specialite && { specialite }) })}`} className="chip active">{t("Type : {value}", { value: t(type) })} ×</Link>}
+              {ville && <Link href={`/experts?${new URLSearchParams({ ...(q && { q }), ...(type && { type }), ...(specialite && { specialite }) })}`} className="chip active">{t("Ville : {value}", { value: ville })} ×</Link>}
+            </div>
+          )}
           {specialties.length > 0 && (
             <div className="chips mb-4" aria-label={t("Spécialités")}>
               <Link href={chip("")} className={`chip${specialite ? "" : " active"}`}>{t("Toutes")}</Link>

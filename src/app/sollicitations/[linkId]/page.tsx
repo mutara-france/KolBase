@@ -68,7 +68,7 @@ export default async function Page({ params }: { params: Promise<{ linkId: strin
         <p className="muted"><Link href="/sollicitations">{t("Mes sollicitations")}</Link></p>
         <PageHero
           eyebrow={`${p.organization.name} · ${type ? t(type.label) : p.typeId}${p.therapeuticArea ? ` · ${t(p.therapeuticArea)}` : ""}`}
-          status={<StatusPill status={abandoned || closed ? "DECLINE" : p.status === "ATT_IND" ? "ATT_IND" : link.status} />}
+          status={<StatusPill viewer="expert" status={abandoned || closed ? "DECLINE" : p.status === "ATT_IND" ? "ATT_IND" : link.status} />}
           title={p.title}
           lead={p.description}
           facts={[
@@ -78,7 +78,7 @@ export default async function Page({ params }: { params: Promise<{ linkId: strin
             { icon: <Building2 size={13} />, label: t("Organisation"), value: p.organization.name, sub: p.organization.sector ?? undefined },
           ]}
         >
-          {engaged && <Pipeline status={link.status} />}
+          {engaged && <Pipeline viewer="expert" status={link.status} />}
         </PageHero>
 
         <div className="page-grid">

@@ -199,7 +199,7 @@ function AccountMenu({ user, space, spaces, admin }: { user: ShellUser; space?: 
           )}
           {space && space.links.length > 0 && (
             <>
-              <p className="account-label">{isPractitioner ? t("Mon profil") : space.title}</p>
+              <p className="account-label">{isPractitioner ? t("Mon compte") : space.title}</p>
               {space.links.map((l) => {
                 const Icon = ICONS[l.icon];
                 return (

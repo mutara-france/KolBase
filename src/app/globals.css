@@ -1109,3 +1109,8 @@ p.service-stats { color: var(--ink-soft); }
 /* Aperçu d'une lettre d'information avant l'envoi. */
 .mail-preview { border: 1px solid var(--line); border-radius: 12px; padding: 14px 16px; background: #fff; margin-top: 8px; }
 .mail-preview-body { white-space: pre-wrap; font-size: 14px; }
+
+/* Mon compte : sommaire des encarts (ancres). */
+.account-toc { display: flex; flex-wrap: wrap; gap: 6px 14px; font-size: 14px; padding: 10px 14px; border-radius: 12px; background: var(--bg-subtle); border: 1px solid var(--line); }
+.account-toc a { white-space: nowrap; }
+main [id] { scroll-margin-top: 80px; }

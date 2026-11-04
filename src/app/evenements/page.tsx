@@ -39,6 +39,12 @@ export default async function Page({ searchParams }: { searchParams: Promise<{ q
             <button type="submit" className="btn lg"><Search size={16} aria-hidden /> {t("Rechercher")}</button>
             {filtered && <Link href="/evenements" className="text-sm">{t("Effacer les filtres")}</Link>}
           </form>
+          {/* Ville choisie dans la recherche de l'accueil : visible et retirable. */}
+          {ville && (
+            <div className="chips mb-4 active-filters" aria-label={t("Filtres actifs")}>
+              <Link href={q ? `/evenements?${new URLSearchParams({ q })}` : "/evenements"} className="chip active">{t("Ville : {value}", { value: ville })} ×</Link>
+            </div>
+          )}
           {events.length === 0 && <p className="muted">{filtered ? t("Aucun événement ne correspond à cette recherche.") : t("Aucun événement à venir pour le moment.")}</p>}
           <div className="event-grid">{events.map((ev) => <EventCard key={ev.id} ev={ev} />)}</div>
         </section>

@@ -140,7 +140,7 @@ export default async function Page({ params, searchParams }: { params: Promise<{
                 </p>
                 {c.description && <p className="pre-line clamp-4">{c.description}</p>}
                 {user?.practitioner?.listed ? (
-                  <Link className="btn ghost small" href={`/opportunites/${c.id}`}>{t("Voir l'appel et candidater")}</Link>
+                  <Link className="btn ghost small" href={`/opportunites/${c.id}`}>{t("Candidater")}</Link>
                 ) : (
                   <p className="hint">{t("Réservé aux experts référencés.")}</p>
                 )}

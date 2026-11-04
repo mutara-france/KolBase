@@ -1,16 +1,16 @@
 import { Check } from "lucide-react";
 import type { ProjectStatus } from "@/generated/prisma/client";
-import { PIPELINE, STATUS_LABEL, STATUS_TONE, fmvCheck } from "@/lib/projects";
+import { PIPELINE, STATUS_TONE, fmvCheck, statusLabel } from "@/lib/projects";
 import { intlLocale } from "@/lib/i18n";
 import { getT } from "@/lib/i18n/server";
 
-/** Statut d'un dossier : libellé du glossaire, traduit à l'affichage. */
-export async function StatusPill({ status }: { status: ProjectStatus }) {
+/** Statut d'un dossier : libellé du glossaire (du point de vue de l'expert sur ses pages), traduit à l'affichage. */
+export async function StatusPill({ status, viewer }: { status: ProjectStatus; viewer?: "expert" }) {
   const { t } = await getT();
-  return <span className={`pill ${STATUS_TONE[status]}`}>{t(STATUS_LABEL[status])}</span>;
+  return <span className={`pill ${STATUS_TONE[status]}`}>{t(statusLabel(status, viewer))}</span>;
 }
 
-export async function Pipeline({ status }: { status: ProjectStatus }) {
+export async function Pipeline({ status, viewer }: { status: ProjectStatus; viewer?: "expert" }) {
   const { t } = await getT();
   const idx = PIPELINE.indexOf(status === "ORDRE" ? "VALIDE" : status === "BLOQUE" ? "EN_VALID" : status === "ATT_IND" ? "ATT_EXPERTS" : status);
   const blocked = status === "BLOQUE" || status === "REFUS_ORDRE";
@@ -24,7 +24,7 @@ export async function Pipeline({ status }: { status: ProjectStatus }) {
         return (
           <li key={s} className={done ? "done" : current ? `current${blocked ? " bad" : ""}` : ""} aria-current={current ? "step" : undefined}>
             <span className="dot" aria-hidden>{done ? <Check size={13} strokeWidth={3} /> : i + 1}</span>
-            <span className="lbl">{t(STATUS_LABEL[s])}</span>
+            <span className="lbl">{t(statusLabel(s, viewer))}</span>
           </li>
         );
       })}

@@ -8,7 +8,7 @@ import { requireUser } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { INTEREST_YEARS, interestLines, practitionerLedger } from "@/lib/revenues";
 import { removeDeclaredInterest } from "@/lib/revenue-actions";
-import { STATUS_LABEL } from "@/lib/projects";
+import { statusLabel } from "@/lib/projects";
 import { feeTotals } from "@/lib/indicators";
 import { fmtDate, fmtEur } from "@/lib/i18n";
 import { getT } from "@/lib/i18n/server";
@@ -47,7 +47,7 @@ export default async function Page({ searchParams }: { searchParams: Promise<{ o
       : billingOk ? <IssueNoteButton linkId={f.id} />
       : <Link className="text-xs" href="?onglet=facturation">{t("Compléter la facturation")}</Link>;
   const feeStatus = (f: (typeof ledger.fees)[number]) =>
-    f.paidAt ? t("Payé le {date}", { date: fmtDate(locale, f.paidAt) }) : f.signed ? t("Convention signée, paiement à venir") : t(STATUS_LABEL[f.status]);
+    f.paidAt ? t("Payé le {date}", { date: fmtDate(locale, f.paidAt) }) : f.signed ? t("Convention signée, paiement à venir") : t(statusLabel(f.status, "expert"));
 
   return (
     <>

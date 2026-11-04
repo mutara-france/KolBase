@@ -84,7 +84,7 @@ export default async function Page({ searchParams }: { searchParams: Promise<{ a
     <>
       <SiteHeader />
       <main className="narrow stack">
-        {user.practitioner?.listed && <SectionNav tabs={practitionerSectionTabs("agenda").map((tab) => ({ ...tab, label: t(tab.label) }))} active="inscriptions" label={t("Rubrique Agenda")} />}
+        {user.practitioner?.listed && <SectionNav tabs={practitionerSectionTabs("agenda").map((tab) => ({ ...tab, label: t(tab.label) }))} active="inscriptions" label={t("Rubrique Mes inscriptions")} />}
         <div className="actions spread">
           <h1>{t("Mes inscriptions")}</h1>
           <a className="btn ghost small" href="/inscriptions/calendrier">{t("Exporter vers mon agenda (.ics)")}</a>

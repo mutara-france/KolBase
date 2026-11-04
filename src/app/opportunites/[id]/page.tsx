@@ -29,7 +29,7 @@ const APP_STATUS: Record<ApplicationStatus, string> = {
 export default async function Page({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
   const user = await requireUser();
-  if (!user.practitioner?.listed) redirect("/compte?annuaire=1");
+  if (!user.practitioner?.listed) redirect("/compte?candidater=1#referencement");
   const call = await db.openCall.findUnique({
     where: { id },
     include: {

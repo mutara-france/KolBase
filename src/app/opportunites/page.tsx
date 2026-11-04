@@ -16,7 +16,7 @@ export async function generateMetadata() {
 
 export default async function Page({ searchParams }: { searchParams: Promise<{ type?: string; q?: string; evenement?: string }> }) {
   const user = await requireUser();
-  if (!user.practitioner?.listed) redirect("/compte?annuaire=1");
+  if (!user.practitioner?.listed) redirect("/compte?candidater=1#referencement");
   const { type = "", q = "", evenement = "" } = await searchParams;
   const { t, locale } = await getT();
   const now = new Date();
