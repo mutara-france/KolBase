@@ -536,6 +536,11 @@ body:has(.sidebar) .site-footer { padding: 24px 32px; }
 .filter-bar { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; margin: 0 0 24px; }
 .filter-bar input { flex: 1 1 280px; min-width: 0; font: inherit; font-size: 15px; padding: 12px 16px; border: 1px solid var(--line-strong); border-radius: 999px; background: #fff; color: var(--ink); }
 .filter-bar input:focus { outline: none; border-color: var(--outremer); box-shadow: 0 0 0 3px rgba(86, 56, 240, 0.18); }
+.filter-bar input.wide { flex-basis: 200px; }
+.filter-bar input.short { flex: 0 1 140px; }
+.filter-bar select { flex: 0 1 auto; min-width: 0; max-width: 200px; text-overflow: ellipsis; font: inherit; font-size: 15px; padding: 12px 36px 12px 16px; border: 1px solid var(--line-strong); border-radius: 999px; color: var(--ink); cursor: pointer; appearance: none; background: #fff url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'%3E%3Cpath d='M1 1l5 5 5-5' fill='none' stroke='%236b6787' stroke-width='1.6'/%3E%3C/svg%3E") no-repeat right 14px center; }
+.filter-bar select:focus { outline: none; border-color: var(--outremer); box-shadow: 0 0 0 3px rgba(86, 56, 240, 0.18); }
+@media (max-width: 640px) { .filter-bar input.wide { flex-basis: 100%; } .filter-bar input.short, .filter-bar select { flex: 1 1 40%; max-width: none; } }
 
 /* ─── Accueil ───────────────────────────────────────────────── */
 .home { font-size: 15px; }

@@ -129,6 +129,7 @@ export default async function Home({ searchParams }: { searchParams: Promise<{ c
                 <div>
                   <h3>{t("Vous organisez un congrès, une formation, un TP ?")}</h3>
                   <p>{t("Publiez-le sur KolBase et ouvrez les inscriptions aux praticiens, référencés ou non.")}</p>
+                  <p className="hint">{t("Publier vos événements est gratuit pour les sociétés savantes, associations et organismes de formation.")}</p>
                 </div>
                 <Link href={orgJoinHref(user, "evenement")} className="btn" style={{ background: "var(--ink)" }}>{t("Publier un événement")}</Link>
               </article>

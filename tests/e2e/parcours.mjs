@@ -3173,6 +3173,10 @@ async function submitNewOrg(page, siren) {
     await anon.page.goto(`${BASE}/evenements`);
     const listHref = await anon.page.locator('.event-card:has-text("Soirée implantologie") h3 a').first().getAttribute("href");
     check("Mise à la une : lien suivi depuis l'accueil seulement", homeHref?.startsWith("/r/") && listHref === "/evenements/demo-ev-soiree-implanto", `${homeHref} | ${listHref}`);
+    // Filtres de l'agenda : la discipline a sa propre adresse, et le filtre reste visible et retirable.
+    await anon.page.goto(`${BASE}/evenements?discipline=Endodontie&periode=90j`);
+    const endo = await anon.page.locator(".event-card").allInnerTexts();
+    check("Agenda : filtre par discipline et période", endo.length > 0 && endo.every((c) => c.includes("Endodontie")) && (await anon.page.locator('.chips a.chip.active:has-text("Endodontie")').count()) === 1 && (await anon.page.locator('select[name="periode"]').inputValue()) === "90j", endo.join(" | ").slice(0, 200));
     await jul.page.goto(`${BASE}/organisations/demo-org-dentalys/evenements/demo-ev-soiree-implanto`);
     check("Mise à la une : « En cours jusqu'au … » tant qu'elle dure", (await jul.page.locator('li.service-order:has-text("À la une de la page")').first().innerText()).includes("En cours jusqu'au"));
     // E-mails de réalisation : « prochaine facture » seulement si la ligne est sur la facture Stripe.

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { canEngage, displayStatus, fromStripeStatus, planFor, PLANS } from "@/lib/billing-plans";
+import { billingInfo, canEngage, displayStatus, fromStripeStatus, needsSubscription, planFor, PLANS } from "@/lib/billing-plans";
 import { encodeForm, signWebhook, verifyWebhook } from "@/lib/stripe-core";
 
 describe("facturation", () => {
@@ -19,6 +19,18 @@ describe("facturation", () => {
     expect(canEngage({ status: "resiliee", exemptUntil: new Date("2027-01-01") }, now)).toBe(true);
     expect(displayStatus({ status: "active", exemptUntil: new Date("2027-01-01") }, now)).toBe("offerte");
     expect(displayStatus({ status: "active", exemptUntil: new Date("2026-01-01") }, now)).toBe("active");
+  });
+  it("publication d'événements gratuite pour les sociétés savantes, associations et organismes de formation", () => {
+    for (const kind of ["SOCIETE_SAVANTE", "ASSOCIATION_PRO", "ORGANISME_FORMATION"]) {
+      expect(needsSubscription(kind, "evenement")).toBe(false);
+      // Leurs autres actions engageantes restent sur abonnement.
+      expect(needsSubscription(kind, "sollicitation")).toBe(true);
+      expect(needsSubscription(kind, "appel")).toBe(true);
+      expect(needsSubscription(kind, "devis")).toBe(true);
+    }
+    expect(needsSubscription("INDUSTRIEL", "evenement")).toBe(true);
+    expect(billingInfo("SOCIETE_SAVANTE", null, now)).toContain("publication d'événements gratuits");
+    expect(billingInfo("INDUSTRIEL", null, now)).not.toContain("publication d'événements");
   });
   it("traduit les statuts Stripe", () => {
     expect(fromStripeStatus("trialing")).toBe("essai");

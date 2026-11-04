@@ -19,7 +19,7 @@ const FAQ: [string, string, [string, string]?][] = [
   ["Que deviennent les avantages acceptés à un événement ?", "Chaque prestation acceptée (repas, nuitée, transport…) est valorisée et fait l'objet d'une convention d'hospitalité ; l'organisation la déclare ensuite sur Transparence Santé, à partir de l'export préparé par KolBase."],
   ["Comment une organisation sollicite-t-elle un expert ?", "Depuis l'annuaire ou une opportunité : elle ouvre un dossier, propose des honoraires comparés à un repère indicatif, puis le dossier suit le circuit de conformité."],
   ["Mes données sont-elles publiques ?", "Seuls les experts référencés apparaissent sur le site public, avec des informations limitées. Coordonnées et tarifs sont réservés aux membres connectés."],
-  ["Combien coûte KolBase ?", "Rien pour les praticiens. Pour une organisation, la création de l'espace, l'équipe, l'annuaire des experts et les brouillons sont gratuits ; l'abonnement (599 € HT par mois, ou 5 990 € HT par an) commence à la première action qui engage un tiers : sollicitation envoyée, événement ou appel publié, demande de devis envoyée. Le premier mois est offert. Pour un prestataire, le référencement est gratuit ; l'abonnement (249 € HT par mois, premier mois offert) n'est demandé qu'après un premier devis retenu, pour répondre à de nouvelles demandes.", ["Conditions de vente", "/conditions-de-vente"]],
+  ["Combien coûte KolBase ?", "Rien pour les praticiens. Pour une organisation, la création de l'espace, l'équipe, l'annuaire des experts et les brouillons sont gratuits ; l'abonnement (599 € HT par mois, ou 5 990 € HT par an) commence à la première action qui engage un tiers : sollicitation envoyée, événement ou appel publié, demande de devis envoyée. Le premier mois est offert. Les sociétés savantes, associations et organismes de formation publient leurs événements gratuitement. Pour un prestataire, le référencement est gratuit ; l'abonnement (249 € HT par mois, premier mois offert) n'est demandé qu'après un premier devis retenu, pour répondre à de nouvelles demandes.", ["Conditions de vente", "/conditions-de-vente"]],
 ];
 
 export default async function Page() {
@@ -55,6 +55,7 @@ export default async function Page() {
               </ol>
               <Link href={orgJoinHref(user, "organisation")} className="btn mt-3">{t("Référencer mon organisation")}</Link>
               <p className="hint mt-2">{t("Gratuit jusqu'à votre première action qui engage un tiers, puis sur abonnement (premier mois offert).")}</p>
+              <p className="hint">{t("Publier vos événements est gratuit pour les sociétés savantes, associations et organismes de formation.")}</p>
             </div>
           </div>
         </section>
