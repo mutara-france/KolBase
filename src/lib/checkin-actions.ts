@@ -16,6 +16,7 @@ export async function setPresence(_: FormState, form: FormData): Promise<FormSta
     include: { event: { select: { id: true, organizationId: true, agencyId: true, startsAt: true, internal: true } }, user: { select: { firstName: true, lastName: true } } },
   });
   if (!reg || !canCheckIn(user, reg.event)) return { error: "Inscription introuvable." };
+  if (reg.cancelledAt) return { error: "Inscription annulée avec l'événement." };
   const undo = form.get("undo") === "1";
   if (!undo && !checkinOpen(reg.event.startsAt)) return { error: "Le pointage ouvre la veille de l'événement." };
   if (!undo && reg.checkedInAt) return { ok: `${reg.user.firstName} ${reg.user.lastName} est déjà pointé(e).` };

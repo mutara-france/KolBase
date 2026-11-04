@@ -6,7 +6,7 @@ import { DashHead, MoreLink, Timeline, type TimelineItem } from "@/components/Da
 import { TodoList, type TodoItem } from "@/components/Todo";
 import { db } from "@/lib/db";
 import { requireUser } from "@/lib/auth";
-import { collabType, recruitmentOpen } from "@/lib/projects";
+import { awaitingExpert, collabType } from "@/lib/projects";
 import { speakerConfirmed } from "@/lib/indicators";
 import { billingComplete } from "@/lib/fee-notes";
 import { canBeExpert, drPrefix } from "@/lib/professions";
@@ -33,7 +33,7 @@ export default async function Page() {
 
   const [links, regs, calls, pubCount, apps] = await Promise.all([
     db.projectExpert.findMany({ where: { practitionerId: p.id }, include: { project: { include: { organization: { select: { name: true } } } } }, orderBy: { createdAt: "desc" } }),
-    db.registration.findMany({ where: { userId: user.id, event: { startsAt: { gte: now } } }, include: { event: { include: { organization: { select: { name: true } } } } }, orderBy: { event: { startsAt: "asc" } } }),
+    db.registration.findMany({ where: { userId: user.id, cancelledAt: null, event: { startsAt: { gte: now } } }, include: { event: { include: { organization: { select: { name: true } } } } }, orderBy: { event: { startsAt: "asc" } } }),
     p.listed
       ? db.openCall.findMany({
           where: { status: "open", OR: [{ deadline: null }, { deadline: { gte: now } }], applications: { none: { practitionerId: p.id } }, organization: { verification: "VERIFIED" } },
@@ -57,7 +57,7 @@ export default async function Page() {
   });
 
   const linkOf = (projectId: string) => links.find((l) => l.projectId === projectId)?.id;
-  const pending = links.filter((l) => l.status === "ATT_EXPERTS" && recruitmentOpen(l.project.status));
+  const pending = links.filter((l) => awaitingExpert(l, l.project.status));
   const toSign = links.filter((l) => l.status === "SIGNATURE");
   const spec = (p.specialty ?? "").toLowerCase();
   const matching = calls.filter((c) => spec && `${c.specialty ?? ""} ${c.title}`.toLowerCase().includes(spec.split(/[ ,]/)[0]));

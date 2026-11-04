@@ -1,9 +1,9 @@
 import Link from "next/link";
 import { SiteHeader } from "@/components/SiteHeader";
-import { StatusPill } from "@/components/ProjectBits";
+import { ExpertLinkPill } from "@/components/ProjectBits";
 import { db } from "@/lib/db";
 import { requireUser } from "@/lib/auth";
-import { collabType, recruitmentOpen } from "@/lib/projects";
+import { awaitingExpert, collabType, expertLinkState } from "@/lib/projects";
 import { fmtDate, fmtEur } from "@/lib/i18n";
 import { getT } from "@/lib/i18n/server";
 
@@ -22,7 +22,8 @@ export default async function Page() {
         orderBy: { createdAt: "desc" },
       })
     : [];
-  const pending = links.filter((l) => l.status === "ATT_EXPERTS" && recruitmentOpen(l.project.status));
+  // À traiter : la réponse de l'expert est attendue (pas une contre-proposition en attente de l'organisation).
+  const pending = links.filter((l) => awaitingExpert(l, l.project.status));
   const others = links.filter((l) => !pending.includes(l));
 
   const Tile = ({ l }: { l: (typeof links)[number] }) => {
@@ -32,7 +33,7 @@ export default async function Page() {
         <strong>{l.project.title}</strong>
         <span className="muted">{l.project.organization.name} · {label && t(label)} · {l.feeCents != null ? t("{amount} HT", { amount: fmtEur(locale, l.feeCents) }) : "—"}</span>
         <span className="muted">{t("Reçue le {date}", { date: fmtDate(locale, l.createdAt) })}</span>
-        <StatusPill viewer="expert" status={l.status === "ATT_EXPERTS" && !recruitmentOpen(l.project.status) ? "DECLINE" : l.status} />
+        <ExpertLinkPill state={expertLinkState(l, l.project)} status={l.status} />
       </Link>
     );
   };

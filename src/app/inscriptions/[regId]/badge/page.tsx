@@ -20,7 +20,7 @@ export default async function Page({ params }: { params: Promise<{ regId: string
   const user = await requireUser();
   const { t, locale } = await getT();
   const reg = await db.registration.findFirst({
-    where: { id: regId, userId: user.id },
+    where: { id: regId, userId: user.id, cancelledAt: null },
     include: { event: { select: { id: true, title: true, startsAt: true, venue: true, city: true, format: true, organization: { select: { name: true } } } } },
   });
   if (!reg) notFound();

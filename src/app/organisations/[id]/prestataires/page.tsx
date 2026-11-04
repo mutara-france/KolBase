@@ -127,7 +127,8 @@ export default async function Page({ params, searchParams }: { params: Promise<{
               const kept = r.quotes.find((q) => q.status === "retained");
               // Agence consultée : le prestataire retenu, s'il s'agit d'un concurrent, sans son montant.
               const keptElsewhere = r.conflicted && r.status === "awarded" && !kept ? rfqsRaw.find((x) => x.id === r.id)?.quotes.find((q) => q.status === "retained")?.supplier.name : null;
-              const pending = r.suppliers.filter((s) => !r.quotes.some((q) => q.supplierId === s.supplierId));
+              const pending = r.suppliers.filter((s) => !s.declined && !r.quotes.some((q) => q.supplierId === s.supplierId));
+              const declinedBy = r.suppliers.filter((s) => s.declined && !r.quotes.some((q) => q.supplierId === s.supplierId));
               const cancellable = (r.status === "draft" || r.status === "sent") && canCancelRfq({ organizer: isOrganizer, author: r.createdById === user.id, conflicted: r.conflicted });
               return (
                 <section key={r.id} id={`rfq-${r.id}`} className="card">
@@ -246,8 +247,11 @@ export default async function Page({ params, searchParams }: { params: Promise<{
                     </div>
                   )}
                   {r.status === "sent" && pending.length > 0 && !r.conflicted && (
-                    <p className="muted">En attente de réponse : {pending.map((s) => s.supplier.name + (agencyName.has(s.supplierId) ? " (agence mandatée)" : "") + (s.declined ? " (a décliné)" : "")).join(", ")}.</p>
+                    <p className="muted">En attente de réponse : {pending.map((s) => s.supplier.name + (agencyName.has(s.supplierId) ? " (agence mandatée)" : "")).join(", ")}.</p>
                   )}
+                  {(r.status === "sent" || r.status === "awarded") && !r.conflicted && declinedBy.map((s) => (
+                    <p key={s.supplierId} className="muted">{s.supplier.name} a décliné{s.declineNote ? ` : ${s.declineNote}` : "."}</p>
+                  ))}
                   {r.status === "draft" && !r.conflicted && <p className="muted">Prestataires sélectionnés : {r.suppliers.map((s) => s.supplier.name + (agencyName.has(s.supplierId) ? " (agence mandatée)" : "")).join(", ")}.</p>}
                   {r.status === "sent" && rightFor(r) === "propose" && <p className="hint">Votre mandat ne vous permet pas de retenir un devis : proposez-en un, l&apos;organisation décide.</p>}
                   {(r.status === "sent" || r.status === "awarded") && (

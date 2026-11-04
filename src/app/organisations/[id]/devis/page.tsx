@@ -16,6 +16,7 @@ import { declineRfq } from "@/lib/rfq-actions";
 import { readLines, withVat } from "@/lib/quotes";
 import { storageEnabled } from "@/lib/storage";
 import { BillingNotice } from "@/components/BillingNotice";
+import { ConfirmButton } from "@/components/ConfirmButton";
 import { billingBlocked } from "@/lib/billing";
 
 export const metadata = { title: "Demandes de devis — KolBase" };
@@ -184,10 +185,16 @@ export default async function Page({ params, searchParams }: { params: Promise<{
                         } : undefined}
                       />
                       {!q && !declined && (
-                        <form action={declineRfq}>
+                        <form action={declineRfq} className="stack-sm">
                           <input type="hidden" name="orgId" value={id} />
                           <input type="hidden" name="rfqId" value={r.id} />
-                          <button className="link danger">Décliner la demande</button>
+                          <details>
+                            <summary className="link danger">Décliner la demande</summary>
+                            <label>Motif (facultatif, transmis à {r.organization.name})<input name="note" maxLength={500} placeholder="Indisponible à cette date, hors de notre zone…" /></label>
+                            <ConfirmButton className="btn ghost small" confirm="décliner la demande" summary={<>{r.organization.name} est prévenue par e-mail ; vous pourrez encore envoyer un devis tant que la demande est ouverte.</>}>
+                              Décliner
+                            </ConfirmButton>
+                          </details>
                         </form>
                       )}
                     </>

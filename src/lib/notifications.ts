@@ -10,7 +10,7 @@ import { appUrl, eventIcsEntry, toIcs } from "@/lib/ics";
 import { withVat } from "@/lib/quotes";
 import { supplierCategoryLabel } from "@/lib/suppliers";
 import { fmtEur, isLocale, makeT, type Locale, type T } from "@/lib/i18n";
-import { collabType, PROJECT_ROLES, SOURCING_ROLES, STATUS_LABEL } from "@/lib/projects";
+import { collabType, PROJECT_ROLES, SOURCING_ROLES, STATUS_LABEL, type ExpertNotice } from "@/lib/projects";
 import { featuredUntil, orderStats } from "@/lib/services";
 import { conversion, reportParts } from "@/lib/service-report";
 import type { OrgRole } from "@/generated/prisma/client";
@@ -144,6 +144,51 @@ export function notifyMessage(linkId: string, authorId: string) {
   });
 }
 
+/**
+ * Étape du dossier qui concerne l'expert engagé ou sollicité : abandon (avec le motif), retour en accord de principe,
+ * passage en signature (convention à déposer à la main), dossier signé, recrutement clos sans sa réponse.
+ */
+export function notifyExpertNotice(linkIds: string[], notice: ExpertNotice, note?: string | null) {
+  later(async () => {
+    const links = await db.projectExpert.findMany({ where: { id: { in: linkIds } }, include: linkInclude });
+    for (const l of links) {
+      const org = l.project.organization.name;
+      const titre = l.project.title;
+      await send([l.practitioner.user], (t) => {
+        const body: Record<ExpertNotice, { subject: string; lines: (string | null)[] }> = {
+          abandon: {
+            subject: t("Dossier abandonné : {titre}", { titre }),
+            lines: [t("{org} a abandonné le dossier « {titre} ».", { org, titre }), note ? t("Motif : {note}", { note }) : null, t("La sollicitation est close : aucune suite n'est attendue de votre part.")],
+          },
+          retour_accord: {
+            subject: t("Conditions à revoir : {titre}", { titre }),
+            lines: [t("{org} remet le dossier « {titre} » en accord de principe pour en revoir les conditions. Il repassera par la conformité avant la signature ; vous serez prévenu de la suite.", { org, titre })],
+          },
+          signature: {
+            subject: t("Convention à signer : {titre}", { titre }),
+            lines: [t("Le dossier « {titre} » ({org}) passe en signature. Signez la convention, puis déposez-la signée dans KolBase (Documents de votre sollicitation) : l'organisation confirme ensuite la signature.", { org, titre })],
+          },
+          signe: {
+            subject: t("Dossier signé : {titre}", { titre }),
+            lines: [t("{org} confirme la signature de la convention pour « {titre} » : la prestation peut avoir lieu.", { org, titre })],
+          },
+          recrutement_clos: {
+            subject: t("Recrutement clos : {titre}", { titre }),
+            lines: [
+              l.desiredFeeCents != null
+                ? t("{org} a clos le recrutement du dossier « {titre} » sans donner suite à votre proposition d'honoraires.", { org, titre })
+                : t("{org} a clos le recrutement du dossier « {titre} » sans votre réponse : la sollicitation n'est plus ouverte.", { org, titre }),
+              t("Si l'organisation souhaite toujours travailler avec vous, elle vous sollicitera de nouveau."),
+            ],
+          },
+        };
+        const b = body[notice];
+        return { subject: b.subject, text: [t("Bonjour,"), ...b.lines].filter(Boolean).join("\n\n"), cta: { label: t("Voir la sollicitation"), href: `/sollicitations/${l.id}` } };
+      });
+    }
+  });
+}
+
 /** Candidature (opportunité ou intervention) non retenue. */
 export function notifyNotRetained(userId: string, title: string, orgName: string) {
   later(async () => {
@@ -172,6 +217,47 @@ export function notifyExpertAnswer(linkId: string, accepted: boolean) {
         + (l.desiredFeeCents != null ? `\n\nHonoraires souhaités : ${fmtEur("fr", l.desiredFeeCents)} HT (proposés : ${l.feeCents != null ? `${fmtEur("fr", l.feeCents)} HT` : "non indiqués"}). Vous pouvez modifier la proposition depuis le dossier.` : ""),
       cta: { label: "Ouvrir le dossier", href: `/organisations/${l.project.organizationId}/dossiers/${l.projectId}` },
     });
+  });
+}
+
+/** Convention signée déposée par l'expert lui-même : l'équipe Projets vérifie et confirme la signature du dossier. */
+export function notifyConventionDeposited(linkId: string) {
+  later(async () => {
+    const l = await db.projectExpert.findUnique({ where: { id: linkId }, include: linkInclude });
+    if (!l) return;
+    await send(await projectTeam(l.project), {
+      subject: `Convention signée déposée par ${expertName(l.practitioner)} — ${l.project.title}`,
+      text: `Bonjour,\n\n${expertName(l.practitioner)} a déposé sa convention signée pour « ${l.project.title} ». Vérifiez-la dans les documents du dossier, puis passez le dossier en « Signé » une fois toutes les conventions réunies.`,
+      cta: { label: "Ouvrir le dossier", href: `/organisations/${l.project.organizationId}/dossiers/${l.projectId}` },
+    });
+  });
+}
+
+/**
+ * Compte d'un expert supprimé : il est retiré des dossiers non signés où il était engagé ou sollicité, et de ses
+ * candidatures. L'équipe Projets de chaque organisation concernée est prévenue (nom figé avant l'anonymisation).
+ */
+export function notifyExpertRemoved(expert: string, projects: { id: string; organizationId: string; createdById: string | null; title: string; outcome: "reopened" | "closed" | null }[], calls: { id: string; organizationId: string; createdById: string | null; title: string }[]) {
+  later(async () => {
+    for (const p of projects) {
+      await send(await projectTeam(p), {
+        subject: `${expert} a supprimé son compte — ${p.title}`,
+        text: `Bonjour,\n\n${expert} a supprimé son compte KolBase : il est retiré du dossier « ${p.title} ».${
+          p.outcome === "reopened" ? " Plus aucun expert n'y est engagé : le dossier revient en attente des experts. Sollicitez un autre expert ou abandonnez le dossier."
+          : p.outcome === "closed" ? " Plus aucun expert n'y reste sollicité : le dossier est clos (décliné)."
+          : ""}`,
+        cta: { label: "Ouvrir le dossier", href: `/organisations/${p.organizationId}/dossiers/${p.id}` },
+      });
+    }
+    for (const c of calls) {
+      const team = await members(c.organizationId, SOURCING_ROLES);
+      const creator = team.find((u) => u.id === c.createdById);
+      await send(creator ? [creator] : team, {
+        subject: `${expert} a supprimé son compte — ${c.title}`,
+        text: `Bonjour,\n\n${expert} a supprimé son compte KolBase : sa candidature à « ${c.title} » est retirée.`,
+        cta: { label: "Voir l'appel", href: `/organisations/${c.organizationId}/opportunites/${c.id}` },
+      });
+    }
   });
 }
 
@@ -520,6 +606,23 @@ export function notifyProposalWithdrawn(rfqId: string, supplierId: string, propo
   });
 }
 
+/** Un prestataire décline une demande : les interlocuteurs de la demande sont prévenus, avec le motif s'il en donne un. */
+export function notifyRfqDeclined(rfqId: string, supplierId: string, actorId: string) {
+  later(async () => {
+    const [r, invite] = await Promise.all([
+      db.rfq.findUnique({ where: { id: rfqId }, include: { event: { select: { title: true, organizationId: true, agencyId: true } } } }),
+      db.rfqSupplier.findUnique({ where: { rfqId_supplierId: { rfqId, supplierId } }, include: { supplier: { select: { name: true } } } }),
+    ]);
+    if (!r || !invite) return;
+    const name = invite.supplier.name;
+    await send(await rfqContacts(r), {
+      subject: `${name} décline votre demande de devis${r.event ? ` (${r.event.title})` : ""}`,
+      text: `Bonjour,\n\n${name} ne répondra pas à votre demande de devis${r.event ? ` pour « ${r.event.title} »` : ""} (${supplierCategoryLabel(r.category)}).${invite.declineNote ? `\n\nMotif : ${invite.declineNote}` : ""}`,
+      cta: { label: "Voir la demande", href: `/organisations/${r.organizationId}/prestataires#rfq-${r.id}` },
+    }, actorId);
+  });
+}
+
 /** Question ou réponse sur une demande de devis : prévient l'autre partie du fil. */
 export function notifyRfqMessage(rfqId: string, supplierId: string, fromSupplier: boolean, authorId: string) {
   later(async () => {
@@ -674,7 +777,7 @@ export async function sendEventReminders(eventId: string, now = new Date()) {
     where: { id: eventId },
     include: { organization: { select: { name: true } }, registrations: { where: { reminderSentAt: null }, include: { user: { select: { ...userSelect, firstName: true } } } } },
   });
-  if (!ev || ev.internal || ev.startsAt <= now) return 0;
+  if (!ev || ev.internal || ev.cancelledAt || ev.startsAt <= now) return 0;
   const inPerson = ev.format !== "DISTANCIEL";
   const program = ev.program ? (ev.program.length > 700 ? `${ev.program.slice(0, 700).trimEnd()}…` : ev.program) : null;
   for (const r of ev.registrations) {
@@ -766,6 +869,29 @@ export function notifyRegistrationCancelled(userId: string, eventId: string, ben
   });
 }
 
+/** Événement annulé par l'organisation (e-mail de service) : chaque inscrit est prévenu, avec le motif. */
+export function notifyEventCancelled(eventId: string) {
+  later(async () => {
+    const ev = await db.event.findUnique({
+      where: { id: eventId },
+      include: { organization: { select: { name: true } }, registrations: { where: { cancelledAt: { not: null } }, include: { user: { select: { ...userSelect, firstName: true } } } } },
+    });
+    if (!ev?.cancelledAt) return;
+    for (const r of ev.registrations) {
+      await sendService([r.user], (t, locale) => ({
+        subject: t("Événement annulé : « {title} »", { title: ev.title }),
+        text: [
+          t("Bonjour {name},", { name: r.user.firstName }),
+          t("{org} annule « {title} », prévu {when}, auquel vous étiez inscrit.", { org: ev.organization.name, title: ev.title, when: eventWhen(ev.startsAt, locale) }),
+          ev.cancelReason ? t("Motif : {note}", { note: ev.cancelReason }) : null,
+          t("Votre inscription est annulée, ainsi que les prestations d'hospitalité prévues. Vous n'avez rien à faire."),
+        ].filter(Boolean).join("\n\n"),
+        cta: { label: t("Voir l'événement"), href: `/evenements/${ev.id}` },
+      }));
+    }
+  });
+}
+
 /** Événement modifié (date, heure, lieu, format ou lien de connexion) : chaque inscrit reçoit les nouvelles informations. */
 export function notifyEventChanged(eventId: string, changes: EventChange[]) {
   later(async () => {
@@ -810,7 +936,7 @@ export async function sendEventFollowUps(eventId: string, now = new Date()) {
     where: { id: eventId },
     include: { organization: { select: { name: true } }, registrations: { include: { user: { select: { ...userSelect, firstName: true } } } } },
   });
-  if (!ev || ev.internal) return 0;
+  if (!ev || ev.internal || ev.cancelledAt) return 0;
   const pointed = ev.registrations.some((r) => r.checkedInAt);
   const targets = ev.registrations.filter((r) => !r.followUpSentAt && (!pointed || r.checkedInAt));
   for (const r of targets) {

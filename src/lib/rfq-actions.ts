@@ -13,7 +13,7 @@ import { MAX_UPLOAD_BYTES, putObject, safeFileName, storageEnabled } from "@/lib
 import { engagementGate, gateMessage, markSupplierTriggered, stripeEnabled, supplierCanQuote } from "@/lib/billing";
 import type { GateLink } from "@/lib/billing-plans";
 import { awardRight } from "@/lib/mandates";
-import { notifyAward, notifyProposalWithdrawn, notifyQuote, notifyQuoteProposed, notifyRfqCancelled, notifyRfqMessage, notifyRfqSent, notifySupplierBilling } from "@/lib/notifications";
+import { notifyAward, notifyProposalWithdrawn, notifyQuote, notifyRfqDeclined, notifyQuoteProposed, notifyRfqCancelled, notifyRfqMessage, notifyRfqSent, notifySupplierBilling } from "@/lib/notifications";
 
 export type ActionState = { error?: string; ok?: string; fix?: GateLink } | undefined;
 
@@ -272,20 +272,23 @@ export async function submitQuote(_: ActionState, form: FormData): Promise<Actio
     await putObject(key, upload.bytes, "application/pdf");
     await db.quote.update({ where: { id: q.id }, data: { fileKey: key, fileName: upload.name } });
   }
-  if (invite.declined) await db.rfqSupplier.update({ where: { rfqId_supplierId: { rfqId, supplierId: orgId } }, data: { declined: false } });
+  if (invite.declined) await db.rfqSupplier.update({ where: { rfqId_supplierId: { rfqId, supplierId: orgId } }, data: { declined: false, declineNote: null, declinedAt: null } });
   await audit(user.id, existing ? "quote.revise" : "quote.submit", "Quote", q.id, { rfqId, amountCents, revision: existing ? existing.revision + 1 : 1 });
   notifyQuote(rfqId, orgId, !!existing);
   revalidatePath(`/organisations/${orgId}/devis`);
   return { ok: existing ? `Devis révisé (version ${existing.revision + 1}).` : "Devis transmis." };
 }
 
+/** Le prestataire décline une demande (motif facultatif, montré au client) : les interlocuteurs de la demande sont prévenus. */
 export async function declineRfq(form: FormData) {
   const orgId = str(form, "orgId");
   const { user } = await requireSupplier(orgId);
   const rfqId = str(form, "rfqId");
-  const { count } = await db.rfqSupplier.updateMany({ where: { rfqId, supplierId: orgId }, data: { declined: true } });
+  const declineNote = str(form, "note").slice(0, 500) || null;
+  const { count } = await db.rfqSupplier.updateMany({ where: { rfqId, supplierId: orgId, declined: false, rfq: { status: "sent" } }, data: { declined: true, declineNote, declinedAt: new Date() } });
   if (!count) return;
-  await audit(user.id, "rfq.decline", "Rfq", rfqId, { supplierId: orgId });
+  await audit(user.id, "rfq.decline", "Rfq", rfqId, { supplierId: orgId, note: declineNote ?? undefined });
+  notifyRfqDeclined(rfqId, orgId, user.id);
   revalidatePath(`/organisations/${orgId}/devis`);
 }
 

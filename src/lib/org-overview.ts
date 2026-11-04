@@ -118,11 +118,11 @@ export const orgOverview = cache(async (orgId: string) => {
     todos.push({ href: `${base}/relecture`, title: `Support à relire : ${v.material.title} (v${v.version})`, detail: v.material.project.title, icon: "CircleDot" });
   if (can.events) {
     for (const e of events)
-      if (!e.publishedAt && !e.internal && e.startsAt >= now)
+      if (!e.publishedAt && !e.internal && !e.cancelledAt && e.startsAt >= now)
         todos.push({ href: `${base}/evenements/${e.id}`, title: `Brouillon à publier : ${e.title}`, detail: formatDate(e.startsAt), icon: "CalendarClock", tone: "warn" });
     // Événement en ligne ou hybride à deux jours sans lien de connexion : les inscrits ne pourraient pas se connecter.
     for (const e of events)
-      if (needsOnlineLink(e, now))
+      if (!e.cancelledAt && needsOnlineLink(e, now))
         todos.push({ href: `${base}/evenements/${e.id}#modifier`, title: `Ajouter le lien de connexion : ${e.title}`, detail: `${formatDate(e.startsAt)} · ${e._count.registrations} inscrit${e._count.registrations > 1 ? "s" : ""}`, icon: "AlertTriangle", tone: "danger" });
   }
   // Organisateurs, et agence mandatée pour les événements qui lui sont confiés.

@@ -8,8 +8,8 @@ import { StatusPill } from "@/components/ProjectBits";
 import { db } from "@/lib/db";
 import { requireMembership } from "@/lib/orgs";
 import { BENEFIT_CATALOG, COMPLIANCE_ROLES, EVENT_MANAGER_ROLES, EVENT_ORGANIZER_ROLES, EVENT_TYPES, eventScope, eventTypeLabel, formatDate, formatEUR, formatTime, FORMAT_LABEL, needsOnlineLink, toParisInput } from "@/lib/events";
-import { deleteEventDraft, setEventAgency, setEventFlag } from "@/lib/event-actions";
-import { deletableDraft } from "@/lib/event-drafts";
+import { cancelEvent, deleteEventDraft, setEventAgency, setEventFlag } from "@/lib/event-actions";
+import { deletableDraft, everPublished } from "@/lib/event-drafts";
 import { BillingNotice } from "@/components/BillingNotice";
 import { engagementBlock } from "@/lib/billing";
 import { applyQuoteToBenefit } from "@/lib/rfq-actions";
@@ -170,15 +170,21 @@ export default async function Page({ params, searchParams }: { params: Promise<{
     );
   };
   const newRfq = (cat?: string) => `/organisations/${id}/prestataires?onglet=nouvelle&evenement=${eventId}${cat ? `&cat=${cat}` : ""}`;
-  const status = event.internal
-    ? { label: "Réunion interne", tone: "electric" }
-    : event.publishedAt
-      ? { label: event.registrationOpen ? "Publié · inscriptions ouvertes" : "Publié · inscriptions closes", tone: event.registrationOpen ? "ok" : "done" }
-      : { label: "Brouillon", tone: "wait" };
+  // Retiré de l'agenda après publication : ce n'est pas un brouillon.
+  const withdrawn = !event.publishedAt && !event.internal && !event.cancelledAt && (await everPublished(event.id));
+  const status = event.cancelledAt
+    ? { label: "Annulé", tone: "bad" }
+    : event.internal
+      ? { label: "Réunion interne", tone: "electric" }
+      : event.publishedAt
+        ? { label: event.registrationOpen ? "Publié · inscriptions ouvertes" : "Publié · inscriptions closes", tone: event.registrationOpen ? "ok" : "done" }
+        : withdrawn
+          ? { label: "Retiré de l'agenda", tone: "done" }
+          : { label: "Brouillon", tone: "wait" };
   // Modification : les hospitalités déjà acceptées par un inscrit sont figées ; un brouillon jamais publié se supprime.
   const frozenBenefits = event.benefits.some((b) => b._count.accepted > 0);
   const canDelete = isOrganizer && (await deletableDraft(event));
-  const missingLink = needsOnlineLink(event, now);
+  const missingLink = !event.cancelledAt && needsOnlineLink(event, now);
   const publishBlocked = !readOnly && !event.publishedAt && !event.internal ? await engagementBlock(id, "evenement") : null;
   const duration = event.durationMinutes ? (event.durationMinutes >= 60 ? `${Math.floor(event.durationMinutes / 60)} h${event.durationMinutes % 60 ? ` ${event.durationMinutes % 60}` : ""}` : `${event.durationMinutes} min`) : null;
 
@@ -255,7 +261,7 @@ export default async function Page({ params, searchParams }: { params: Promise<{
           </p>
         )}
 
-        {ended && !event.internal && (
+        {ended && !event.internal && !event.cancelledAt && (
           <section className="card stack-sm bilan" aria-labelledby="bilan">
             <div className="card-head">
               <div>
@@ -321,7 +327,7 @@ export default async function Page({ params, searchParams }: { params: Promise<{
 
         <div className="page-grid">
           <div className="page-main">
-            {!readOnly && <details className="card edit-block" id="modifier" open={missingLink}>
+            {!readOnly && !event.cancelledAt && <details className="card edit-block" id="modifier" open={missingLink}>
               <summary><h2>Modifier l&apos;événement</h2></summary>
               <EditEventForm
                 orgId={id}
@@ -551,7 +557,15 @@ export default async function Page({ params, searchParams }: { params: Promise<{
           <aside className="page-aside">
             <section className="card next-step">
               <span className="eyebrow-sm">Diffusion</span>
-              {event.internal ? (
+              {event.cancelledAt ? (
+                <>
+                  <p className="next-hint">
+                    Événement annulé le {formatDate(event.cancelledAt)}{event.cancelReason ? ` : ${event.cancelReason}` : ""}. Les inscrits ont été prévenus par e-mail ;
+                    la page de l&apos;événement reste lisible à son adresse avec la mention « Événement annulé », hors de l&apos;agenda.
+                  </p>
+                  <Link className="link" href={`/evenements/${event.id}`}>voir la page de l&apos;événement</Link>
+                </>
+              ) : event.internal ? (
                 <>
                   <p className="next-hint">Réunion interne : ni publication dans l&apos;agenda, ni inscriptions en ligne.{event.project ? " Les participants sont les experts du dossier." : ""}</p>
                   {isOrganizer && <div className="transitions-stack"><Flag flag="public" label="Ouvrir au public" ghost /></div>}
@@ -559,10 +573,27 @@ export default async function Page({ params, searchParams }: { params: Promise<{
               ) : (
                 <>
                   <p className="next-hint">
-                    {event.publishedAt ? <>Publié dans <Link href={`/evenements/${event.id}`}>l&apos;agenda</Link>. Inscriptions {event.registrationOpen ? "ouvertes" : "fermées"}.</> : "Brouillon : l'événement n'est pas encore visible des praticiens."}
+                    {event.publishedAt ? <>Publié dans <Link href={`/evenements/${event.id}`}>l&apos;agenda</Link>. Inscriptions {event.registrationOpen ? "ouvertes" : "fermées"}.</> : withdrawn ? "Retiré de l'agenda : l'événement n'est plus visible des praticiens." : "Brouillon : l'événement n'est pas encore visible des praticiens."}
                   </p>
                   {!readOnly && <div className="transitions-stack">
-                    {event.publishedAt ? <Flag flag="unpublish" label="Retirer de l'agenda" ghost /> : org.verification === "VERIFIED" ? <Flag flag="publish" label="Publier dans l'agenda" disabled={!!publishBlocked} /> : <span className="hint">Publication possible une fois l&apos;organisation validée par KolBase.</span>}
+                    {event.publishedAt ? (
+                      event.registrations.length === 0 ? <Flag flag="unpublish" label="Retirer de l'agenda" ghost />
+                      : ended ? null
+                      : isOrganizer ? (
+                        <form action={cancelEvent} className="stack-sm">
+                          <input type="hidden" name="orgId" value={id} />
+                          <input type="hidden" name="eventId" value={eventId} />
+                          <input name="reason" required maxLength={500} aria-label="Motif de l'annulation (obligatoire)" placeholder="Motif de l'annulation (obligatoire)" />
+                          <ConfirmButton
+                            className="btn ghost"
+                            confirm="annuler l'événement"
+                            summary={<>{event.registrations.length > 1 ? `Les ${event.registrations.length} inscrits reçoivent` : "L'inscrit reçoit"} un e-mail avec le motif ; les inscriptions et les hospitalités prévues sont annulées. L&apos;événement quitte l&apos;agenda et sa page affiche « Événement annulé ».</>}
+                          >
+                            Annuler l&apos;événement
+                          </ConfirmButton>
+                        </form>
+                      ) : <span className="hint">Événement avec des inscrits : son annulation relève de {org.name}.</span>
+                    ) : org.verification === "VERIFIED" ? <Flag flag="publish" label={withdrawn ? "Republier dans l'agenda" : "Publier dans l'agenda"} disabled={!!publishBlocked} /> : <span className="hint">Publication possible une fois l&apos;organisation validée par KolBase.</span>}
                     {event.registrationOpen ? <Flag flag="close" label="Fermer les inscriptions" ghost /> : <Flag flag="open" label="Rouvrir les inscriptions" ghost />}
                     {isOrganizer && !event.publishedAt && <Flag flag="internal" label="En faire une réunion interne" ghost />}
                   </div>}
@@ -578,7 +609,7 @@ export default async function Page({ params, searchParams }: { params: Promise<{
               )}
             </section>
 
-            {!event.internal && !ended && (
+            {!event.internal && !ended && !event.cancelledAt && (
               <section className="card stack-sm">
                 <h2 className="section-title"><QrCode size={15} /> {isPast ? "Événement en cours" : "Accueil le jour J"}</h2>
                 {isPast && <p className="notice">{present.length} présent{present.length > 1 ? "s" : ""} sur {event.registrations.length} inscrit{event.registrations.length > 1 ? "s" : ""}. Les retardataires peuvent encore être pointés ; les absents, le bilan et les attestations viennent après la fin, le {formatDate(eventEnd(event))} à {formatTime(eventEnd(event))}.</p>}

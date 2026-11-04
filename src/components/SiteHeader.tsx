@@ -7,7 +7,7 @@ import { PublicNav } from "@/components/PublicNav";
 import { ORG_KIND_LABEL, roleLabel } from "@/lib/orgs";
 import { countFor, orgMenuLinks, orgNavItems, type ShellItem, type ShellSpace } from "@/lib/nav";
 import { orgOverview } from "@/lib/org-overview";
-import { SOURCING_ROLES } from "@/lib/projects";
+import { RECRUITING_STATUSES, SOURCING_ROLES } from "@/lib/projects";
 import { unseenFollowCount } from "@/lib/follows";
 import { canBeExpert, drPrefix } from "@/lib/professions";
 import { isPlatformAdmin } from "@/lib/platform";
@@ -33,7 +33,8 @@ export async function SiteHeader({ variant = "app", section }: { variant?: "app"
 
   if (p) {
     const pending = p.listed
-      ? await db.projectExpert.count({ where: { practitionerId: p.id, status: "ATT_EXPERTS", project: { status: { not: "DECLINE" } } } })
+      // Même règle que l'accueil et la liste : réponse attendue, recrutement ouvert (pas une contre-proposition envoyée).
+      ? await db.projectExpert.count({ where: { practitionerId: p.id, status: "ATT_EXPERTS", desiredFeeCents: null, project: { status: { in: RECRUITING_STATUSES } } } })
       : 0;
     const items: ShellItem[] = [
       { key: "accueil", href: "/tableau-de-bord", label: t("Accueil"), icon: "House" },

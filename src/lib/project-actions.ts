@@ -6,14 +6,15 @@ import { db } from "@/lib/db";
 import { audit, requireUser } from "@/lib/auth";
 import { isVerifiedOrg, notVerified, requireMembership } from "@/lib/orgs";
 import { COMPLIANCE_ROLES } from "@/lib/events";
-import { collabType, PROJECT_ROLES, projectEditable, RECRUITING_STATUSES, recruitmentOpen, SOURCING_ROLES, PROJECT_VIEW_ROLES, termsChanged, TRANSITIONS, type TransitionKey } from "@/lib/projects";
+import { collabType, expertNotices, PROJECT_ROLES, projectEditable, RECRUITING_STATUSES, recruitmentOpen, SOURCING_ROLES, PROJECT_VIEW_ROLES, termsChanged, TRANSITIONS, type TransitionKey } from "@/lib/projects";
 import { storageEnabled } from "@/lib/storage";
 import { fourEyes, projectAuthors } from "@/lib/four-eyes";
 import type { ProjectStatus } from "@/generated/prisma/client";
 import { complianceSettings, projectRegime } from "@/lib/compliance";
 import { missingSignedConventions } from "@/lib/project-documents";
 import { eurToCents, str, unitsOrNull, UNITS_INVALID } from "@/lib/form";
-import { notifyCompliance, notifyExpertAnswer, notifyMessage, notifyNewProposal, notifySolicitations } from "@/lib/notifications";
+import { notifyCompliance, notifyExpertAnswer, notifyExpertNotice, notifyMessage, notifyNewProposal, notifySolicitations } from "@/lib/notifications";
+import { signatureEnabled } from "@/lib/yousign";
 import { engagementGate } from "@/lib/billing";
 import type { GateLink } from "@/lib/billing-plans";
 import { getT } from "@/lib/i18n/server";
@@ -176,11 +177,15 @@ export async function advanceProject(form: FormData) {
     if (rule === "blocked" || (rule === "justify" && !note)) return;
     selfValidated = rule === "justify";
   }
+  // Experts à prévenir, d'après leur situation avant le changement d'étape.
+  const engagedIds = project.experts.filter((e) => e.status !== "DECLINE" && e.status !== "ATT_EXPERTS").map((e) => e.id);
+  const waitingIds = project.experts.filter((e) => e.status === "ATT_EXPERTS").map((e) => e.id);
   await db.project.update({
     where: { id: projectId },
     data: {
       status: t.to,
       ...(key === "block" || key === "validate" ? { complianceNote: note || null } : {}),
+      ...(key === "abandon" ? { abandonNote: note } : {}),
       ...(key === "ordre" ? { ordreRef: note || null } : {}),
       ...(attest ? { signatureAttestedAt: new Date(), signatureAttestedById: user.id } : {}),
     },
@@ -192,6 +197,10 @@ export async function advanceProject(form: FormData) {
   if (key === "signed" || key === "abandon") await closeOpenSignatures({ projectId }, key === "signed" ? "dossier passé « Signé »" : "dossier abandonné");
   await audit(user.id, `project.${key}`, "Project", projectId, { from: project.status, to: t.to, note: note || undefined, ...(attest ? { attestation: "convention signée conservée hors KolBase" } : {}), ...(selfValidated ? { selfValidated: true } : {}) });
   if (key === "submit" || key === "validate" || key === "block") notifyCompliance(projectId, key, user.id);
+  for (const n of expertNotices(key, signatureEnabled())) {
+    const ids = n.who === "engages" ? engagedIds : n.who === "sollicites" ? waitingIds : [...engagedIds, ...waitingIds];
+    if (ids.length) notifyExpertNotice(ids, n.notice, key === "abandon" ? note : null);
+  }
   revalidatePath(`/organisations/${orgId}/dossiers/${projectId}`);
   // Reprise après blocage ou retour en arrière : on arrive sur la modification du dossier.
   if (key === "revise" || key === "back_to_accord") {

@@ -6,7 +6,7 @@ import { revalidatePath } from "next/cache";
 import { db } from "@/lib/db";
 import { audit, requireUser } from "@/lib/auth";
 import { requireMembership } from "@/lib/orgs";
-import { collabType, MATERIAL_KINDS, PROJECT_ROLES, REVIEW_ROLES } from "@/lib/projects";
+import { collabType, MATERIAL_KINDS, PROJECT_ROLES, PROPOSAL_ORIGIN, REVIEW_ROLES } from "@/lib/projects";
 import { eurToCents, str, unitsOrNull, UNITS_INVALID } from "@/lib/form";
 import { notifyProposal } from "@/lib/notifications";
 import { getT } from "@/lib/i18n/server";
@@ -162,7 +162,7 @@ export async function proposeCollaboration(_: ActionState, form: FormData): Prom
   const project = await db.project.create({
     data: {
       organizationId: orgId, title, typeId, therapeuticArea: str(form, "therapeuticArea") || user.practitioner.specialty, description: message,
-      origin: "Proposition de l'expert", status: "ATT_IND", createdById: user.id,
+      origin: PROPOSAL_ORIGIN, status: "ATT_IND", createdById: user.id,
       experts: { create: { practitionerId: user.practitioner.id, status: "ACCORD", feeCents: fee, days: units, respondedAt: new Date() } },
     },
     include: { experts: true },

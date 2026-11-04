@@ -11,7 +11,7 @@ import { canSee, kolVisibility } from "@/lib/visibility";
 import { db } from "@/lib/db";
 import { requireMembership } from "@/lib/orgs";
 import { COMPLIANCE_ROLES, formatDate, formatDateTime, formatEUR, parisToday } from "@/lib/events";
-import { collabType, needsMeeting, PROJECT_ROLES, PROJECT_VIEW_ROLES, projectEditable, recruitmentOpen, REVIEW_ROLES, STATUS_LABEL, TRANSITIONS, type TransitionKey } from "@/lib/projects";
+import { ACCOUNT_DELETED, collabType, needsMeeting, PROJECT_ROLES, PROJECT_VIEW_ROLES, projectEditable, recruitmentOpen, REVIEW_ROLES, STATUS_LABEL, TRANSITIONS, type TransitionKey } from "@/lib/projects";
 import { storageEnabled } from "@/lib/storage";
 import { advanceProject } from "@/lib/project-actions";
 import { markExpertPaid } from "@/lib/revenue-actions";
@@ -52,6 +52,7 @@ const ACTION_LABEL: Record<string, string> = {
   "project.revise": "Dossier repris après blocage",
   "project.back_to_accord": "Retour en accord de principe",
   "project.abandon": "Dossier abandonné",
+  "project.expert_removed": "Expert retiré du dossier (compte supprimé)",
   "project.edit": "Objet du dossier modifié",
   "project.terms": "Nouvelle proposition envoyée à un expert",
   "project.add_expert": "Expert ajouté au dossier",
@@ -277,7 +278,7 @@ export default async function Page({ params, searchParams }: { params: Promise<{
                         </div>
                       </div>
                       <span className={`pill ${e.status === "DECLINE" ? "done" : e.status === "ATT_EXPERTS" ? "wait" : "ok"}`}>
-                        {e.status === "ATT_EXPERTS" ? (closed ? "Sans réponse, recrutement clos" : "Réponse attendue") : e.status === "DECLINE" ? "A décliné" : STATUS_LABEL[e.status]}
+                        {e.status === "ATT_EXPERTS" ? (closed ? "Sans réponse, recrutement clos" : "Réponse attendue") : e.status === "DECLINE" ? (e.responseNote === ACCOUNT_DELETED ? "Retiré : compte supprimé" : "A décliné") : STATUS_LABEL[e.status]}
                       </span>
                     </div>
                     <div className="terms">

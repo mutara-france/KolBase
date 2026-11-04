@@ -3,11 +3,11 @@ import { notFound } from "next/navigation";
 import { Building2, CalendarDays, Euro, Scale } from "lucide-react";
 import { SiteHeader } from "@/components/SiteHeader";
 import { PageHero } from "@/components/PageHero";
-import { Pipeline, StatusPill, Thread } from "@/components/ProjectBits";
+import { ExpertLinkPill, Pipeline, Thread } from "@/components/ProjectBits";
 import { MessageForm, RespondForm } from "@/components/ProjectForms";
 import { db } from "@/lib/db";
 import { requireUser } from "@/lib/auth";
-import { collabType, recruitmentOpen } from "@/lib/projects";
+import { collabType, expertLinkState } from "@/lib/projects";
 import { orgIsPublic } from "@/lib/org-roles";
 import { DocumentsPanel, ExpertSignatureBlock, MaterialsPanel } from "@/components/DossierSections";
 import { fmtEur, intlLocale } from "@/lib/i18n";
@@ -34,9 +34,11 @@ export default async function Page({ params }: { params: Promise<{ linkId: strin
   if (!link) notFound();
   const p = link.project;
   const type = collabType(p.typeId);
-  const abandoned = p.status === "DECLINE";
+  const state = expertLinkState(link, p);
+  // Dossier abandonné par l'organisation (ou proposition spontanée déclinée) : plus rien à faire.
+  const abandoned = state === "abandonne" || state === "refuse";
   // Sollicitation restée sans réponse alors que le dossier a avancé : le recrutement est clos.
-  const closed = link.status === "ATT_EXPERTS" && !abandoned && !recruitmentOpen(p.status);
+  const closed = state === "clos";
   const { t, locale } = await getT();
   const num = (n: number) => n.toLocaleString(intlLocale(locale));
   // Unité de prestation (« journée », « séance »…) : le pluriel français ajoute un « s », l'anglais a sa propre clé.
@@ -50,7 +52,8 @@ export default async function Page({ params }: { params: Promise<{ linkId: strin
   const lastMsg = link.messages.at(-1);
   // Ce qu'on attend de l'expert, selon l'étape.
   const next =
-    abandoned ? t("Ce dossier a été abandonné par l'organisation.")
+    state === "abandonne" ? t("Ce dossier a été abandonné par l'organisation.")
+    : state === "refuse" ? t("L'organisation a décliné votre proposition.")
     : closed ? t("Le recrutement de ce dossier est clos : l'organisation doit vous solliciter de nouveau.")
     : link.status === "ATT_EXPERTS" ? t("Donnez votre réponse : accord de principe ou refus. Si les honoraires proposés ne vous conviennent pas, indiquez ceux que vous souhaitez.")
     : link.status === "DECLINE" ? t("Vous avez décliné cette sollicitation.")
@@ -68,7 +71,7 @@ export default async function Page({ params }: { params: Promise<{ linkId: strin
         <p className="muted"><Link href="/sollicitations">{t("Mes sollicitations")}</Link></p>
         <PageHero
           eyebrow={`${p.organization.name} · ${type ? t(type.label) : p.typeId}${p.therapeuticArea ? ` · ${t(p.therapeuticArea)}` : ""}`}
-          status={<StatusPill viewer="expert" status={abandoned || closed ? "DECLINE" : p.status === "ATT_IND" ? "ATT_IND" : link.status} />}
+          status={<ExpertLinkPill state={state} status={p.status === "ATT_IND" ? "ATT_IND" : link.status} />}
           title={p.title}
           lead={p.description}
           facts={[
@@ -92,7 +95,7 @@ export default async function Page({ params }: { params: Promise<{ linkId: strin
             <section className="card">
               <div className="exchanges-head">
                 <h2 style={{ margin: 0 }}>{t("Échanges avec {org}", { org: p.organization.name })}</h2>
-                {lastMsg && lastMsg.authorId !== user.id && !abandoned && <span className="pill electric">{t("À vous de répondre")}</span>}
+                {lastMsg && lastMsg.authorId !== user.id && !abandoned && !closed && <span className="pill electric">{t("À vous de répondre")}</span>}
               </div>
               <Thread messages={link.messages} meId={user.id} />
               {!abandoned && link.status !== "DECLINE" && <MessageForm linkId={link.id} />}
@@ -102,6 +105,7 @@ export default async function Page({ params }: { params: Promise<{ linkId: strin
             <section className={`card next-step`}>
               <span className="eyebrow-sm">{t("Prochaine étape")}</span>
               <p className="next-hint">{next}</p>
+              {state === "abandonne" && p.abandonNote && <p className="text-sm">{t("Motif : {note}", { note: p.abandonNote })}</p>}
               {engaged && (
                 <div className="transitions-stack">
                   {signedHref && <a className="btn secondary" href={signedHref}>{t("Convention signée (PDF)")}</a>}

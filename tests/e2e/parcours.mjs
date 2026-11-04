@@ -3588,6 +3588,166 @@ async function submitNewOrg(page, siren) {
     await ag.ctx.close();
   }
 
+  // 2. Tiers prévenus : experts (étapes du dossier, recrutement clos), équipe Projets, client d'une demande de devis.
+  {
+    const pdf = Buffer.from("%PDF-1.4\n1 0 obj << /Type /Catalog >> endobj\ntrailer << /Root 1 0 R >>\n%%EOF\n");
+    const MOREAU = "vincent.moreau@demo.kolbase.local";
+    const LEMOINE = "julie.lemoine@demo.kolbase.local";
+    const claireId = (await q1(`select id from "User" where email = $1`, [CLAIRE])).id;
+    await pgc.query(`update "User" set "notifyPrefs" = '{}' where email in ($1, $2)`, [MOREAU, LEMOINE]);
+    // Dossier en accord de principe : Moreau engagé, Lemoine sollicitée sans réponse.
+    await pgc.query(`insert into "Project" (id, "organizationId", title, "typeId", status, "createdById", "updatedAt") values ('e2e-5a-prj', 'demo-org-dentalys', 'Board 5a maintenance implantaire', 'advisory', 'ACCORD', $1, now())`, [claireId]);
+    await pgc.query(`insert into "ProjectExpert" (id, "projectId", "practitionerId", status, "feeCents", days, "respondedAt") values
+      ('e2e-5a-l-moreau', 'e2e-5a-prj', 'demo-p-moreau', 'ACCORD', 150000, 1, now()), ('e2e-5a-l-lemoine', 'e2e-5a-prj', 'demo-p-lemoine', 'ATT_EXPERTS', 150000, 1, null)`);
+    const org = await session();
+    await login(org.page, CLAIRE);
+    const dossier = `${BASE}/organisations/demo-org-dentalys/dossiers/e2e-5a-prj`;
+    await org.page.goto(dossier);
+    // Soumission : la réponse attendue de Lemoine est close, elle en est prévenue.
+    await confirmClick(org.page.locator('form:has(input[value="submit"])'), "Soumettre à la conformité");
+    await until(async () => (await q1(`select status from "Project" where id = 'e2e-5a-prj'`))?.status === "EN_VALID");
+    const clos = await waitMail(LEMOINE, "Recrutement clos : Board 5a maintenance implantaire");
+    check("Recrutement clos : e-mail à l'experte restée sans réponse", !!clos && clos.text.includes("sans votre réponse"), clos?.text);
+    const lem = await session();
+    await login(lem.page, LEMOINE);
+    await lem.page.goto(`${BASE}/sollicitations`);
+    const tile = await lem.page.locator('a.tile:has-text("Board 5a maintenance implantaire")').innerText();
+    check("Recrutement clos : « Recrutement clos » dans la liste, pas « Décliné / abandonné »", tile.includes("Recrutement clos") && !tile.includes("Décliné"), tile);
+    const expected = Number((await q1(`select count(*) as n from "ProjectExpert" pe join "Project" p on p.id = pe."projectId" where pe."practitionerId" = 'demo-p-lemoine' and pe.status = 'ATT_EXPERTS' and pe."desiredFeeCents" is null and p.status in ('ATT_EXPERTS', 'ACCORD')`)).n);
+    const badge = await lem.page.locator('a.side-link[href="/sollicitations"] .side-badge').innerText().catch(() => "0");
+    check("Menu « Sollicitations » : seulement les réponses attendues d'un recrutement ouvert", Number(badge) === expected, `${badge} affiché, ${expected} attendu`);
+    await lem.page.goto(`${BASE}/sollicitations/e2e-5a-l-lemoine`);
+    const lt = await text(lem.page);
+    check("Recrutement clos : la fiche le dit, sans « À vous de répondre »", lt.includes("Recrutement clos") && !lt.includes("Décliné / abandonné") && !lt.includes("À vous de répondre"));
+
+    // Signature : l'expert dépose sa convention (type présélectionné), l'équipe Projets est prévenue ; signé, l'expert l'est.
+    await pgc.query(`update "Project" set status = 'SIGNATURE' where id = 'e2e-5a-prj'`);
+    await pgc.query(`update "ProjectExpert" set status = 'SIGNATURE' where id = 'e2e-5a-l-moreau'`);
+    const mor = await session();
+    await login(mor.page, MOREAU);
+    await mor.page.goto(`${BASE}/sollicitations/e2e-5a-l-moreau`);
+    const tl = await mor.page.locator(".pipeline").innerText();
+    check("Frise de l'expert : « Sollicitation reçue » sur l'étape franchie", tl.includes("Sollicitation reçue") && !tl.includes("Votre réponse est attendue"), tl.replace(/\s+/g, " "));
+    const up = mor.page.locator('form:has(input[name="file"])');
+    check("En signature : « Convention signée » présélectionnée au dépôt", (await up.locator('select[name="kind"]').inputValue()) === "CONVENTION_SIGNEE");
+    await up.locator('input[name="file"]').setInputFiles({ name: "convention-moreau-signee.pdf", mimeType: "application/pdf", buffer: pdf });
+    await up.locator('button:has-text("Déposer")').click();
+    const dep = await waitMail(CLAIRE, "Convention signée déposée par Dr Vincent Moreau — Board 5a maintenance implantaire");
+    check("Convention déposée par l'expert : e-mail à l'équipe Projets", !!dep);
+    await org.page.goto(dossier);
+    await org.page.locator('form:has(input[value="signed"]) button').click();
+    await until(async () => (await q1(`select status from "Project" where id = 'e2e-5a-prj'`))?.status === "SIGNE");
+    check("Dossier signé : e-mail à l'expert", !!(await waitMail(MOREAU, "Dossier signé : Board 5a maintenance implantaire")));
+
+    // Retour en accord de principe puis abandon (motif) : l'expert est prévenu ; le motif figure sur sa sollicitation.
+    await pgc.query(`insert into "Project" (id, "organizationId", title, "typeId", status, "createdById", "updatedAt") values ('e2e-5a-prj2', 'demo-org-dentalys', 'Comité 5a occlusion', 'advisory', 'VALIDE', $1, now())`, [claireId]);
+    await pgc.query(`insert into "ProjectExpert" (id, "projectId", "practitionerId", status, "feeCents", days, "respondedAt") values ('e2e-5a-l2-moreau', 'e2e-5a-prj2', 'demo-p-moreau', 'VALIDE', 120000, 1, now())`);
+    await org.page.goto(`${BASE}/organisations/demo-org-dentalys/dossiers/e2e-5a-prj2`);
+    await Promise.all([org.page.waitForURL(/modifier=1/), org.page.locator('form:has(input[value="back_to_accord"]) button').click()]);
+    check("Retour en accord de principe : e-mail à l'expert engagé", !!(await waitMail(MOREAU, "Conditions à revoir : Comité 5a occlusion")));
+    await org.page.goto(`${BASE}/organisations/demo-org-dentalys/dossiers/e2e-5a-prj2`);
+    const ab = org.page.locator('form:has(input[value="abandon"])');
+    await ab.locator('input[name="note"]').fill("Budget reporté à l'an prochain");
+    await ab.locator("button").click();
+    await until(async () => (await q1(`select status from "Project" where id = 'e2e-5a-prj2'`))?.status === "DECLINE");
+    const abm = await waitMail(MOREAU, "Dossier abandonné : Comité 5a occlusion");
+    check("Abandon : e-mail à l'expert avec le motif", !!abm && abm.text.includes("Motif : Budget reporté à l'an prochain"), abm?.text);
+    await mor.page.goto(`${BASE}/sollicitations/e2e-5a-l2-moreau`);
+    const mt = await text(mor.page);
+    check("Abandon : motif affiché sur la sollicitation de l'expert", mt.includes("Abandonné par l'organisation") && mt.includes("Motif : Budget reporté à l'an prochain"), mt.slice(0, 300));
+    await mor.ctx.close();
+    await lem.ctx.close();
+
+    // Demande de devis déclinée (motif) : le client est prévenu, la carte le dit.
+    await pgc.query(`insert into "Rfq" (id, "organizationId", "eventId", category, needs, status, "sentAt", "createdById", headcount)
+      values ('e2e-5a-rfq4', 'demo-org-dentalys', 'e2e-5a-ev', 'salle', 'Salle de réception pour la remise des prix, 80 personnes.', 'sent', now(), $1, 80)`, [claireId]);
+    await pgc.query(`insert into "RfqSupplier" ("rfqId", "supplierId") values ('e2e-5a-rfq4', 'demo-sup-belleville'), ('e2e-5a-rfq4', 'demo-sup-tablesdusud')`);
+    const sup = await session();
+    await login(sup.page, "ludovic.perrin@demo.kolbase.local");
+    await sup.page.goto(`${BASE}/organisations/demo-sup-belleville/devis`);
+    const dc = sup.page.locator('section.card:has-text("Salle de réception pour la remise des prix")');
+    await dc.locator('summary:has-text("Décliner la demande")').click();
+    await dc.locator('input[name="note"]').fill("Pas de salle disponible à cette date");
+    await dc.locator('button:has-text("Décliner")').last().click();
+    check("Décliner : confirmation en deux temps", (await dc.locator('button:has-text("Confirmer : décliner la demande")').count()) === 1);
+    await dc.locator('button:has-text("Confirmer : décliner la demande")').click();
+    await until(async () => (await q1(`select declined from "RfqSupplier" where "rfqId" = 'e2e-5a-rfq4' and "supplierId" = 'demo-sup-belleville'`))?.declined === true);
+    const dm = await waitMail(CLAIRE, "Traiteur Belleville décline votre demande de devis");
+    check("Décliner : e-mail au client avec le motif", !!dm && dm.text.includes("Motif : Pas de salle disponible à cette date"), dm?.text);
+    await org.page.goto(`${BASE}/organisations/demo-org-dentalys/prestataires`);
+    const c4 = await org.page.locator("section#rfq-e2e-5a-rfq4").innerText();
+    check("Carte : « Traiteur Belleville a décliné : motif », plus « (a décliné) » dans l'attente",
+      c4.includes("Traiteur Belleville a décliné : Pas de salle disponible à cette date") && c4.includes("En attente de réponse : Les Tables du Sud") && !c4.includes("(a décliné)"), c4.slice(0, 400));
+    await sup.ctx.close();
+
+    // Annuler un événement qui a des inscrits : motif, e-mail, page lisible « Événement annulé », hors de l'agenda.
+    const EMMA = "emma.simon@demo.kolbase.local";
+    await pgc.query(`insert into "Event" (id, "organizationId", title, "typeId", "startsAt", city, venue, capacity, "publishedAt", "updatedAt")
+      values ('e2e-5a-ev2', 'demo-org-dentalys', 'Atelier occlusion 5a', 'symposium', now() + interval '20 days', 'Lyon', 'Salle B (fictive)', 30, now(), now()),
+             ('e2e-5a-ev3', 'demo-org-dentalys', 'Soirée retirée 5a', 'symposium', now() + interval '25 days', 'Lyon', 'Salle C (fictive)', 30, now(), now())`);
+    await pgc.query(`insert into "AuditLog" (id, "actorId", action, "entityType", "entityId") values ('e2e-5a-pub3', $1, 'event.publish', 'Event', 'e2e-5a-ev3')`, [claireId]);
+    await pgc.query(`insert into "EventBenefit" (id, "eventId", "catalogId", label, "valueCents") values ('e2e-5a-b2', 'e2e-5a-ev2', 'cafe', 'Pause café', 600)`);
+    await pgc.query(`insert into "Registration" (id, "eventId", "userId", profession) select 'e2e-5a-reg2', 'e2e-5a-ev2', id, 'Chirurgien-dentiste' from "User" where email = $1`, [EMMA]);
+    await pgc.query(`insert into "RegistrationBenefit" ("registrationId", "benefitId", "valueCents") values ('e2e-5a-reg2', 'e2e-5a-b2', 600)`);
+    const evUrl = `${BASE}/organisations/demo-org-dentalys/evenements/e2e-5a-ev2`;
+    await org.page.goto(evUrl);
+    check("Événement avec inscrits : « Annuler l'événement » au lieu de « Retirer de l'agenda »",
+      (await org.page.locator('button:has-text("Retirer de l")').count()) === 0 && (await org.page.locator('button:has-text("Annuler l\'événement")').count()) === 1);
+    const cf = org.page.locator('form:has(input[name="reason"])');
+    await cf.locator('input[name="reason"]').fill("Intervenant indisponible");
+    await cf.locator('button:has-text("Annuler l\'événement")').click();
+    check("Annuler l'événement : confirmation qui annonce l'e-mail aux inscrits", (await cf.innerText()).includes("L'inscrit reçoit un e-mail avec le motif"));
+    await cf.locator('button:has-text("Confirmer : annuler l\'événement")').click();
+    await until(async () => !!(await q1(`select "cancelledAt" from "Event" where id = 'e2e-5a-ev2'`))?.cancelledAt);
+    const ev = await q1(`select e."publishedAt", e."cancelReason", r."cancelledAt" as reg, (select count(*) from "RegistrationBenefit" where "registrationId" = 'e2e-5a-reg2') as benefits from "Event" e join "Registration" r on r."eventId" = e.id where e.id = 'e2e-5a-ev2'`);
+    check("Annuler l'événement : inscriptions annulées, hospitalités retirées, hors de l'agenda", !ev.publishedAt && ev.cancelReason === "Intervenant indisponible" && !!ev.reg && Number(ev.benefits) === 0, JSON.stringify(ev));
+    const em = await waitMail(EMMA, "Événement annulé : « Atelier occlusion 5a »");
+    check("Annuler l'événement : e-mail aux inscrits avec le motif", !!em && em.text.includes("Motif : Intervenant indisponible"), em?.text);
+    const anon = await session();
+    const pg5 = await anon.page.goto(`${BASE}/evenements/e2e-5a-ev2`);
+    const pt = await text(anon.page);
+    check("Événement annulé : lisible à son adresse avec la mention, sans inscription", pg5?.status() === 200 && pt.includes("Événement annulé") && pt.includes("Intervenant indisponible") && (await anon.page.locator('a:has-text("m\'inscrire"), button:has-text("M\'inscrire")').count()) === 0, pt.slice(0, 200));
+    await anon.page.goto(`${BASE}/evenements`);
+    check("Événement annulé : absent de l'agenda", !(await text(anon.page)).includes("Atelier occlusion 5a"));
+    await anon.ctx.close();
+    const emma = await session();
+    await login(emma.page, EMMA);
+    await emma.page.goto(`${BASE}/inscriptions`);
+    const it = await text(emma.page);
+    check("Mes inscriptions : rangée « Annulés par l'organisateur », avec le motif", /Annulés par l'organisateur[\s\S]*Atelier occlusion 5a[\s\S]*Événement annulé/.test(it) && it.includes("Intervenant indisponible"), it.slice(-400));
+    await emma.ctx.close();
+    await org.page.goto(evUrl);
+    check("Fiche de l'organisation : « Annulé », motif, plus d'action de diffusion", (await text(org.page)).includes("Événement annulé le") && (await org.page.locator('.page-hero .pill:has-text("Annulé")').count()) === 1 && (await org.page.locator('button:has-text("Publier dans l"), button:has-text("Annuler l\'événement")').count()) === 0);
+    // Sans inscrit : « Retirer de l'agenda » reste possible ; la fiche dit « Retiré de l'agenda », pas « Brouillon ».
+    await org.page.goto(`${BASE}/organisations/demo-org-dentalys/evenements/e2e-5a-ev3`);
+    await org.page.locator('button:has-text("Retirer de l")').click();
+    await until(async () => !(await q1(`select "publishedAt" from "Event" where id = 'e2e-5a-ev3'`))?.publishedAt);
+    await org.page.reload();
+    const wt = await org.page.locator(".page-hero .pill").first().innerText();
+    check("Retiré de l'agenda (sans inscrit) : « Retiré de l'agenda », pas « Brouillon »", wt.includes("Retiré de l'agenda") && !(await text(org.page)).includes("Brouillon :"), wt);
+
+    // Suppression du compte d'un expert : retiré du dossier non signé, équipe Projets prévenue, dossier non soumettable.
+    await pgc.query(`insert into "Project" (id, "organizationId", title, "typeId", status, "createdById", "updatedAt") values ('e2e-5a-prj3', 'demo-org-dentalys', 'Board 5a esthétique', 'advisory', 'ACCORD', $1, now())`, [claireId]);
+    await pgc.query(`insert into "ProjectExpert" (id, "projectId", "practitionerId", status, "feeCents", days, "respondedAt") values
+      ('e2e-5a-l3-blanc', 'e2e-5a-prj3', 'demo-p-blanc', 'ACCORD', 150000, 1, now()), ('e2e-5a-l3-moreau', 'e2e-5a-prj3', 'demo-p-moreau', 'ATT_EXPERTS', 150000, 1, null)`);
+    const bl = await session();
+    await login(bl.page, "nicolas.blanc@demo.kolbase.local");
+    await bl.page.goto(`${BASE}/compte`);
+    await bl.page.click('summary:has-text("Supprimer mon compte")');
+    const del = 'form:has(button:has-text("Supprimer définitivement"))';
+    await bl.page.fill(`${del} input[name="password"]`, PW);
+    await bl.page.check(`${del} input[name="confirm"]`);
+    await Promise.all([bl.page.waitForURL(/compte=supprime/), bl.page.click(`${del} button`)]);
+    await bl.ctx.close();
+    const gone = await q1(`select pe.status, pe."responseNote", p.status as project from "ProjectExpert" pe join "Project" p on p.id = pe."projectId" where pe.id = 'e2e-5a-l3-blanc'`);
+    check("Compte supprimé : expert retiré du dossier non signé, dossier en attente des experts", gone?.status === "DECLINE" && gone.responseNote === "Compte supprimé" && gone.project === "ATT_EXPERTS", JSON.stringify(gone));
+    const rm = await waitMail(CLAIRE, /Nicolas Blanc a supprimé son compte — Board 5a esthétique/);
+    check("Compte supprimé : e-mail à l'équipe Projets", !!rm && rm.text.includes("revient en attente des experts"), rm?.text);
+    await org.page.goto(`${BASE}/organisations/demo-org-dentalys/dossiers/e2e-5a-prj3`);
+    check("Compte supprimé : dossier plus soumettable, expert signalé", (await org.page.locator('form:has(input[value="submit"])').count()) === 0 && (await text(org.page)).includes("Retiré : compte supprimé"));
+    await org.ctx.close();
+  }
+
   await pgc.end();
 }
 
