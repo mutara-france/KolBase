@@ -7,7 +7,10 @@ import { TodoList, type TodoItem } from "@/components/Todo";
 import { db } from "@/lib/db";
 import { requireUser } from "@/lib/auth";
 import { collabType, recruitmentOpen } from "@/lib/projects";
-import { drPrefix } from "@/lib/professions";
+import { speakerConfirmed } from "@/lib/indicators";
+import { billingComplete } from "@/lib/fee-notes";
+import { canBeExpert, drPrefix } from "@/lib/professions";
+import { professionalId } from "@/lib/countries";
 import { fmtDate, fmtEur } from "@/lib/i18n";
 import { getT } from "@/lib/i18n/server";
 import { answerNewsletter } from "@/lib/auth-actions";
@@ -28,7 +31,7 @@ export default async function Page() {
   const plural = (n: number, one: string, many: string) => t(n > 1 ? many : one, { n });
   const now = new Date();
 
-  const [links, regs, calls, pubCount, structCount, apps] = await Promise.all([
+  const [links, regs, calls, pubCount, apps] = await Promise.all([
     db.projectExpert.findMany({ where: { practitionerId: p.id }, include: { project: { include: { organization: { select: { name: true } } } } }, orderBy: { createdAt: "desc" } }),
     db.registration.findMany({ where: { userId: user.id, event: { startsAt: { gte: now } } }, include: { event: { include: { organization: { select: { name: true } } } } }, orderBy: { event: { startsAt: "asc" } } }),
     p.listed
@@ -40,7 +43,6 @@ export default async function Page() {
         })
       : Promise.resolve([]),
     db.publication.count({ where: { practitionerId: p.id } }),
-    db.practitionerStructure.count({ where: { practitionerId: p.id, isPayee: true } }),
     p.listed
       ? db.application.findMany({
           where: { practitionerId: p.id, status: { in: ["pending", "retained"] }, openCall: { event: { startsAt: { gte: now } } } },
@@ -68,23 +70,30 @@ export default async function Page() {
       .map((c) => ({ href: `/sollicitations/${linkOf(c.material.project.id)}`, title: t("Modifier le support : {title}", { title: c.material.title }), detail: c.reviewComment ?? c.material.project.title, icon: "AlertTriangle" as const, tone: "danger" as const })),
     ...toSign.map((l) => ({ href: `/sollicitations/${l.id}`, title: t("Convention à signer"), detail: `${l.project.title} · ${l.project.organization.name}`, icon: "FileSignature" as const, tone: "warn" as const })),
   ];
+  const pid = professionalId(p);
   const profileTodos: TodoItem[] = p.listed
     ? [
         ...(!p.bio ? [{ href: "/compte", title: t("Ajouter une présentation"), detail: t("Les organisations la lisent en premier."), icon: "UserRound" as const }] : []),
-        ...(!p.rpps ? [{ href: "/compte", title: t("Renseigner votre n° RPPS"), detail: t("Nécessaire aux conventions et au badge « Identité vérifiée »."), icon: "ShieldCheck" as const }] : []),
-        ...(structCount === 0 ? [{ href: "/compte", title: t("Déclarer votre structure de facturation"), detail: t("Elle figurera sur vos conventions."), icon: "FileSignature" as const }] : []),
+        // Hors de France : l'identifiant du pays d'exercice (INAMI, NPI…), pas le RPPS.
+        ...(!pid.value ? [{ href: "/compte", title: t("Renseigner votre {id}", { id: t(pid.short) }), detail: t("Nécessaire aux conventions et au badge « Identité vérifiée »."), icon: "ShieldCheck" as const }] : []),
+        // Coordonnées de facturation (structure éventuelle, adresse, TVA) : reprises par les conventions et les notes d'honoraires.
+        ...(!billingComplete(p) ? [{ href: "/revenus?onglet=facturation#coordonnees", title: t("Compléter vos coordonnées de facturation"), detail: t("Structure de facturation éventuelle, adresse et TVA : reprises sur vos conventions et vos notes d'honoraires."), icon: "FileSignature" as const }] : []),
         ...(pubCount === 0 ? [{ href: "/compte", title: t("Ajouter vos publications"), detail: t("Elles apparaissent sur votre fiche publique."), icon: "CircleDot" as const }] : []),
       ]
     : [];
 
   const agenda: TimelineItem[] = [
-    ...apps.flatMap((a) => (a.openCall.event ? [{ ...a, event: a.openCall.event }] : [])).map((a) => ({
-      date: a.event.startsAt,
-      title: a.event.title,
-      detail: a.status === "retained" ? t("Vous intervenez · {org}", { org: a.event.organization.name }) : t("Candidature en attente de réponse"),
-      href: a.status === "retained" ? "/interventions?onglet=interventions" : "/interventions?onglet=candidatures",
-      strong: a.status === "retained",
-    })),
+    // « Vous intervenez » une fois les honoraires proposés acceptés ; avant, la proposition est à accepter.
+    ...apps.flatMap((a) => (a.openCall.event ? [{ ...a, event: a.openCall.event, link: links.find((l) => l.projectId === a.projectId) }] : [])).filter((a) => a.link?.status !== "DECLINE").map((a) => {
+      const confirmed = speakerConfirmed(a, a.link);
+      return {
+        date: a.event.startsAt,
+        title: a.event.title,
+        detail: confirmed ? t("Vous intervenez · {org}", { org: a.event.organization.name }) : a.status === "retained" ? t("Honoraires proposés, à accepter · {org}", { org: a.event.organization.name }) : t("Candidature en attente de réponse"),
+        href: confirmed ? "/interventions?onglet=interventions" : a.status === "retained" && a.link ? `/sollicitations/${a.link.id}` : "/interventions?onglet=candidatures",
+        strong: a.status === "retained",
+      };
+    }),
     ...regs.map((r) => ({ date: r.event.startsAt, title: r.event.title, detail: t("Inscrit · {org}", { org: r.event.organization.name }), href: `/evenements/${r.eventId}`, strong: true })),
   ]
     .sort((a, b) => a.date.getTime() - b.date.getTime())
@@ -96,7 +105,9 @@ export default async function Page() {
       ? undefined
       : p.listed
         ? t("Rien à traiter pour le moment.")
-        : t("Vos inscriptions aux événements. Référencez-vous comme expert pour être sollicité.");
+        : canBeExpert(p.profession)
+          ? t("Vos inscriptions aux événements. Référencez-vous comme expert pour être sollicité.")
+          : t("Vos inscriptions aux événements.");
 
   return (
     <>
@@ -104,7 +115,8 @@ export default async function Page() {
       <main className="stack dash">
         <DashHead title={t("Bonjour {name}.", { name: `${drPrefix(p.profession) || `${user.firstName} `}${user.lastName}` })} lede={lede} />
 
-        {!p.listed && (
+        {/* Référencement proposé aux seules professions qui peuvent être expertes. */}
+        {!p.listed && canBeExpert(p.profession) && (
           <section className="card highlight flex-between">
             <div>
               <h2>{t("Devenir expert référencé")}</h2>

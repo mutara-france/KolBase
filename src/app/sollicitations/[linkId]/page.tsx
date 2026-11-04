@@ -26,6 +26,8 @@ export default async function Page({ params }: { params: Promise<{ linkId: strin
     include: {
       project: { include: { organization: true } },
       signature: true,
+      // Convention signée déposée à la main (la plus récente).
+      documents: { where: { kind: "CONVENTION_SIGNEE" }, select: { id: true }, orderBy: { createdAt: "desc" }, take: 1 },
       messages: { include: { author: { select: { firstName: true, lastName: true } } }, orderBy: { createdAt: "asc" } },
     },
   });
@@ -42,6 +44,9 @@ export default async function Page({ params }: { params: Promise<{ linkId: strin
   const units = (link.days ?? 0) > 1 ? t(`${unit}s`) : t(unit);
 
   const engaged = link.status !== "ATT_EXPERTS" && link.status !== "DECLINE" && !abandoned;
+  // Convention signée : électroniquement (Yousign) ou déposée signée dans Documents.
+  const signedDocId = link.documents[0]?.id ?? null;
+  const signedHref = link.signature?.status === "done" ? `/signatures/${link.id}` : signedDocId ? `/documents/${signedDocId}` : null;
   const lastMsg = link.messages.at(-1);
   // Ce qu'on attend de l'expert, selon l'étape.
   const next =
@@ -49,6 +54,7 @@ export default async function Page({ params }: { params: Promise<{ linkId: strin
     : closed ? t("Le recrutement de ce dossier est clos : l'organisation doit vous solliciter de nouveau.")
     : link.status === "ATT_EXPERTS" ? t("Donnez votre réponse : accord de principe ou refus. Si les honoraires proposés ne vous conviennent pas, indiquez ceux que vous souhaitez.")
     : link.status === "DECLINE" ? t("Vous avez décliné cette sollicitation.")
+    : p.status === "SIGNATURE" && signedHref ? t("Convention signée déposée : l'organisation confirme la signature du dossier.")
     : p.status === "SIGNATURE" && link.signature?.status !== "done" ? t("Signez la convention : électroniquement si une demande vous a été envoyée, sinon déposez-la signée dans Documents.")
     : ["ATT_EXPERTS", "ACCORD", "EN_VALID", "BLOQUE", "VALIDE", "ORDRE"].includes(p.status) ? t("L'organisation prépare le dossier (validation, démarches). Vous pouvez relire le projet de convention et soumettre vos supports.")
     : p.status === "SIGNE" ? t("Convention signée : la prestation peut avoir lieu.")
@@ -80,7 +86,7 @@ export default async function Page({ params }: { params: Promise<{ linkId: strin
             {link.status === "ATT_EXPERTS" && !abandoned && !closed && (
               <section className="card highlight"><h2>{t("Votre réponse")}</h2><RespondForm linkId={link.id} /></section>
             )}
-            {engaged && <ExpertSignatureBlock linkId={link.id} signature={link.signature} email={user.email} />}
+            {engaged && <ExpertSignatureBlock linkId={link.id} signature={link.signature} email={user.email} projectStatus={p.status} signedDocId={signedDocId} />}
             {engaged && p.status !== "ATT_IND" && <MaterialsPanel orgId={p.organizationId} projectId={p.id} canSubmit canReview={false} />}
             {engaged && <DocumentsPanel projectId={p.id} linkId={link.id} canUpload openUpload={p.status === "SIGNATURE"} />}
             <section className="card">
@@ -98,6 +104,7 @@ export default async function Page({ params }: { params: Promise<{ linkId: strin
               <p className="next-hint">{next}</p>
               {engaged && (
                 <div className="transitions-stack">
+                  {signedHref && <a className="btn secondary" href={signedHref}>{t("Convention signée (PDF)")}</a>}
                   <a className="btn ghost" href={`/sollicitations/${link.id}/convention`} target="_blank" rel="noreferrer">{t("Projet de convention (PDF)")}</a>
                 </div>
               )}

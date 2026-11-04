@@ -12,6 +12,7 @@ import { PrismaPg } from "@prisma/adapter-pg";
 import { PrismaClient, type OrgKind, type OrgRole, type ProjectStatus, type EventFormat, type ExpenseStatus, type ApplicationStatus, type RfqStatus, type QuoteStatus } from "../src/generated/prisma/client";
 import { hashPassword } from "../src/lib/password";
 import { withLuhn } from "../src/lib/professions";
+import { DPA_VERSION } from "../src/lib/dpa";
 
 const db = new PrismaClient({ adapter: new PrismaPg({ connectionString: process.env.DATABASE_URL }) });
 const DAY = 864e5;
@@ -151,6 +152,13 @@ async function main() {
       });
     }
   }
+  // Contrat de sous-traitance (version en vigueur) accepté par l'administrateur de chaque organisation cliente de démo :
+  // il est exigé avant toute action qui engage un tiers, les parcours de démonstration restent ainsi possibles.
+  for (const o of ORGS.filter((x) => x.kind !== "PRESTATAIRE"))
+    await db.organization.updateMany({
+      where: { id: o.id, OR: [{ dpaVersion: null }, { dpaVersion: { not: DPA_VERSION } }] },
+      data: { dpaVersion: DPA_VERSION, dpaAcceptedAt: new Date(), dpaAcceptedById: STAFF.find((s) => s.org === o.id && s.roles.includes("ADMIN"))?.id ?? null },
+    });
   await db.mandate.upsert({
     where: { id: "demo-mandate-1" },
     update: {},

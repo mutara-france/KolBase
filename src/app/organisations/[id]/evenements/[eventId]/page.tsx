@@ -11,11 +11,12 @@ import { BENEFIT_CATALOG, COMPLIANCE_ROLES, EVENT_MANAGER_ROLES, EVENT_ORGANIZER
 import { deleteEventDraft, setEventAgency, setEventFlag } from "@/lib/event-actions";
 import { deletableDraft } from "@/lib/event-drafts";
 import { BillingNotice } from "@/components/BillingNotice";
-import { billingBlocked } from "@/lib/billing";
+import { engagementBlock } from "@/lib/billing";
 import { applyQuoteToBenefit } from "@/lib/rfq-actions";
 import { RFQ_STATUS, rfqDisplayStatus, SUPPLIER_CATEGORIES, supplierCategoryLabel } from "@/lib/suppliers";
 import { perParticipant, withVat } from "@/lib/quotes";
-import { complianceSettings } from "@/lib/compliance";
+import { costHeadcount } from "@/lib/indicators";
+import { complianceSettings, hospitalityRegime, REGIME_LABEL } from "@/lib/compliance";
 import { drPrefix } from "@/lib/professions";
 import { checkinOpen } from "@/lib/checkin";
 import { eventEnded, fmtRating, surveySummary } from "@/lib/event-followup";
@@ -121,7 +122,7 @@ export default async function Page({ params, searchParams }: { params: Promise<{
     return {
       id: o.id, label: o.label, description: o.description, price: `${formatEUR(o.priceCents)} HT`, pack: o.kind === "pack",
       compareAt: o.kind === "pack" && separate > o.priceCents ? `${formatEUR(separate)} HT` : undefined,
-      saving: o.kind === "pack" && separate > o.priceCents ? formatEUR(packSaving(items.map((x) => x.priceCents), o.priceCents)) : undefined,
+      saving: o.kind === "pack" && separate > o.priceCents ? `${formatEUR(packSaving(items.map((x) => x.priceCents), o.priceCents))} HT` : undefined,
       ordered: o.kind === "pack" ? items.length > 0 && items.every((x) => openFor(x.id)) : openFor(o.id),
       blocked: o.kind === "pack" && items.some((x) => openFor(x.id)),
     };
@@ -139,7 +140,7 @@ export default async function Page({ params, searchParams }: { params: Promise<{
   const frozenBenefits = event.benefits.some((b) => b._count.accepted > 0);
   const canDelete = isOrganizer && (await deletableDraft(event));
   const missingLink = needsOnlineLink(event, now);
-  const publishBlocked = !event.publishedAt && !event.internal && (await billingBlocked(id, "evenement"));
+  const publishBlocked = !event.publishedAt && !event.internal ? await engagementBlock(id, "evenement") : null;
   const duration = event.durationMinutes ? (event.durationMinutes >= 60 ? `${Math.floor(event.durationMinutes / 60)} h${event.durationMinutes % 60 ? ` ${event.durationMinutes % 60}` : ""}` : `${event.durationMinutes} min`) : null;
 
   const Flag = ({ flag, label, ghost, disabled }: { flag: string; label: string; ghost?: boolean; disabled?: boolean }) => (
@@ -180,7 +181,7 @@ export default async function Page({ params, searchParams }: { params: Promise<{
             {!event.internal && (
               <div>
                 <dt><Gift size={13} /> Hospitalités</dt>
-                <dd>{formatEUR(totalCents)}<small>{withBenefits} bénéficiaire{withBenefits > 1 ? "s" : ""} · valeur déclarée</small></dd>
+                <dd>{formatEUR(totalCents)} TTC<small>{withBenefits} bénéficiaire{withBenefits > 1 ? "s" : ""} · valeur déclarée</small></dd>
               </div>
             )}
             <div>
@@ -225,13 +226,13 @@ export default async function Page({ params, searchParams }: { params: Promise<{
             </div>
             <dl className="hero-facts">
               <div><dt><Users size={13} /> Présents</dt><dd>{pointed ? `${present.length} / ${event.registrations.length}` : "—"}<small>{pointed && event.registrations.length ? `${Math.round((present.length / event.registrations.length) * 100)} % des inscrits` : `${event.registrations.length} inscrit${event.registrations.length > 1 ? "s" : ""}`}</small></dd></div>
-              <div><dt><Euro size={13} /> Coût réel</dt><dd>{formatEUR(realCost)}<small>hospitalités et prestataires, TTC</small></dd></div>
-              <div><dt><Euro size={13} /> Par {pointed ? "présent" : "inscrit"}</dt><dd>{(pointed ? present.length : event.registrations.length) ? formatEUR(Math.round(realCost / (pointed ? present.length : event.registrations.length))) : "—"}<small>{pointed ? "coût réel rapporté aux présents" : "coût réel rapporté aux inscrits"}</small></dd></div>
-              <div><dt><Gift size={13} /> Hospitalités</dt><dd>{formatEUR(hospConsumed)}<small>{pointed ? "consommées par les présents" : "acceptées par les inscrits"}</small></dd></div>
+              <div><dt><Euro size={13} /> Coût réel</dt><dd>{formatEUR(realCost)} TTC<small>hospitalités et prestataires</small></dd></div>
+              <div><dt><Euro size={13} /> Par {pointed ? "présent" : "inscrit"}</dt><dd>{(pointed ? present.length : event.registrations.length) ? `${formatEUR(Math.round(realCost / (pointed ? present.length : event.registrations.length)))} TTC` : "—"}<small>{pointed ? "coût réel rapporté aux présents" : "coût réel rapporté aux inscrits"}</small></dd></div>
+              <div><dt><Gift size={13} /> Hospitalités</dt><dd>{formatEUR(hospConsumed)} TTC<small>{pointed ? "consommées par les présents" : "acceptées par les inscrits"}</small></dd></div>
             </dl>
             {absentsWithBenefits.length > 0 && (
               <p className="notice warn">
-                {absentsWithBenefits.length} inscrit{absentsWithBenefits.length > 1 ? "s" : ""} absent{absentsWithBenefits.length > 1 ? "s" : ""} au pointage avai{absentsWithBenefits.length > 1 ? "ent" : "t"} accepté des hospitalités ({formatEUR(hospOf(absentsWithBenefits))}) : vérifiez avant de les déclarer.
+                {absentsWithBenefits.length} inscrit{absentsWithBenefits.length > 1 ? "s" : ""} absent{absentsWithBenefits.length > 1 ? "s" : ""} au pointage avai{absentsWithBenefits.length > 1 ? "ent" : "t"} accepté des hospitalités ({formatEUR(hospOf(absentsWithBenefits))} TTC) : non consommées, elles ne sont pas déclarées.
                 {isCompliance && <> <Link href={`/organisations/${id}/hospitalites`}>Hospitalités à déclarer</Link></>}
               </p>
             )}
@@ -289,7 +290,8 @@ export default async function Page({ params, searchParams }: { params: Promise<{
                 formats={Object.entries(FORMAT_LABEL).map(([value, label]) => ({ value, label }))}
                 catalog={BENEFIT_CATALOG}
                 registrations={event.registrations.length}
-                frozen={frozenBenefits ? event.benefits.map((b) => ({ label: b.label, valueCents: b.valueCents })) : undefined}
+                frozen={frozenBenefits ? event.benefits.map((b) => ({ catalogId: b.catalogId, label: b.label, valueCents: b.valueCents })) : undefined}
+                limits={settings}
                 initial={{
                   title: event.title, typeId: event.typeId, therapeuticArea: event.therapeuticArea ?? "", description: event.description ?? "",
                   startsAt: toParisInput(event.startsAt), durationMinutes: event.durationMinutes != null ? String(event.durationMinutes) : "",
@@ -314,7 +316,9 @@ export default async function Page({ params, searchParams }: { params: Promise<{
                     const kept = r.quotes.find((q) => q.status === "retained");
                     const ref = kept ?? r.quotes[0];
                     const ttc = ref ? withVat(ref.amountCents, ref.vatBp) : 0;
-                    const pp = ref ? perParticipant(r.category, ttc, r.headcount ?? expected, settings) : null;
+                    // Après l'événement pointé, le coût se rapporte aux présents.
+                    const basis = costHeadcount(r.headcount ?? expected, present.length, isPast);
+                    const pp = ref ? perParticipant(r.category, ttc, basis.n, settings) : null;
                     return (
                       <li key={r.id}>
                         <div className="logistics-row">
@@ -324,7 +328,7 @@ export default async function Page({ params, searchParams }: { params: Promise<{
                               {r.quotes.length} devis sur {r._count.suppliers} prestataire{r._count.suppliers > 1 ? "s" : ""} consulté{r._count.suppliers > 1 ? "s" : ""}
                               {ref ? ` · ${kept ? `retenu : ${kept.supplier.name}` : "meilleure offre"} ${formatEUR(ttc)} TTC` : ""}
                             </div>
-                            {pp && <div className={`text-xs ${pp.over ? "warn-text" : "muted"}`}>≈ {pp.each.toLocaleString("fr-FR", { maximumFractionDigits: 2 })} € par participant{pp.limit ? (pp.over ? ` · au-dessus du seuil d'un ${pp.limit.what} (${pp.limit.max} €)` : ` · sous le seuil d'un ${pp.limit.what}`) : ""}</div>}
+                            {pp && <div className={`text-xs ${pp.over ? "warn-text" : "muted"}`}>≈ {pp.each.toLocaleString("fr-FR", { maximumFractionDigits: 2 })} € TTC par {basis.per}{pp.limit ? (pp.over ? ` · au-dessus du seuil d'un ${pp.limit.what} (${pp.limit.max} € TTC)` : ` · sous le seuil d'un ${pp.limit.what}`) : ""}</div>}
                           </div>
                           <span className={`pill ${st.tone}`}>{st.label}</span>
                           <Link className="btn ghost small" href={`/organisations/${id}/prestataires?onglet=demandes#rfq-${r.id}`}>{kept ? "Voir" : "Comparer"}</Link>
@@ -335,7 +339,7 @@ export default async function Page({ params, searchParams }: { params: Promise<{
                             <input type="hidden" name="quoteId" value={kept.id} />
                             <span className="text-sm">Reporter le coût réel dans la valeur déclarée</span>
                             <select name="benefitId" aria-label="Hospitalité concernée">
-                              {event.benefits.map((b) => <option key={b.id} value={b.id}>{b.label} (déclaré {formatEUR(b.valueCents)})</option>)}
+                              {event.benefits.map((b) => <option key={b.id} value={b.id}>{b.label} (déclaré {formatEUR(b.valueCents)} TTC)</option>)}
                             </select>
                             <input name="value" inputMode="decimal" defaultValue={pp.each.toFixed(2).replace(".", ",")} aria-label="Valeur par participant (€ TTC)" />
                             <span className="text-sm">€ TTC</span>
@@ -471,11 +475,28 @@ export default async function Page({ params, searchParams }: { params: Promise<{
             <section className="card">
               <h2>Hospitalités proposées</h2>
               {event.benefits.length === 0 ? <p className="muted">Aucune.</p> : (
-                <ul className="plain stack-sm">
-                  {event.benefits.map((b) => (
-                    <li key={b.id} className="flex-between"><span>{b.label}</span><span className="muted">{formatEUR(b.valueCents)} TTC par personne</span></li>
-                  ))}
-                </ul>
+                <>
+                  {/* Régime par prestation, avec les seuils de l'organisation (participant exerçant en France). */}
+                  <ul className="plain stack-sm">
+                    {event.benefits.map((b) => {
+                      const r = hospitalityRegime(settings, [b]);
+                      return (
+                        <li key={b.id} className="flex-between">
+                          <span>{b.label}</span>
+                          <span className="muted">{formatEUR(b.valueCents)} TTC par personne <span className={`pill ${r.regime === "autorisation" ? "wait" : "ok"}`} title={r.reason}>{REGIME_LABEL[r.regime]}</span></span>
+                        </li>
+                      );
+                    })}
+                  </ul>
+                  {(() => {
+                    const all = hospitalityRegime(settings, event.benefits);
+                    return (
+                      <p className={all.regime === "autorisation" ? "notice warn" : "hint"}>
+                        Participant qui accepte toutes les prestations : convention {all.regime === "autorisation" ? `soumise à autorisation de l'Ordre (${all.reason}), à demander au moins ${settings.authorizationDays} jours avant l'événement` : `déclarée à l'Ordre (sous les seuils d'autorisation)`}.
+                      </p>
+                    );
+                  })()}
+                </>
               )}
             </section>
           </div>
@@ -494,7 +515,7 @@ export default async function Page({ params, searchParams }: { params: Promise<{
                     {event.publishedAt ? <>Publié dans <Link href={`/evenements/${event.id}`}>l&apos;agenda</Link>. Inscriptions {event.registrationOpen ? "ouvertes" : "fermées"}.</> : "Brouillon : l'événement n'est pas encore visible des praticiens."}
                   </p>
                   <div className="transitions-stack">
-                    {event.publishedAt ? <Flag flag="unpublish" label="Retirer de l'agenda" ghost /> : org.verification === "VERIFIED" ? <Flag flag="publish" label="Publier dans l'agenda" disabled={publishBlocked} /> : <span className="hint">Publication possible une fois l&apos;organisation validée par KolBase.</span>}
+                    {event.publishedAt ? <Flag flag="unpublish" label="Retirer de l'agenda" ghost /> : org.verification === "VERIFIED" ? <Flag flag="publish" label="Publier dans l'agenda" disabled={!!publishBlocked} /> : <span className="hint">Publication possible une fois l&apos;organisation validée par KolBase.</span>}
                     {event.registrationOpen ? <Flag flag="close" label="Fermer les inscriptions" ghost /> : <Flag flag="open" label="Rouvrir les inscriptions" ghost />}
                     {isOrganizer && !event.publishedAt && <Flag flag="internal" label="En faire une réunion interne" ghost />}
                   </div>
@@ -571,7 +592,7 @@ export default async function Page({ params, searchParams }: { params: Promise<{
                   <p className="muted">Aucune inscription pour l&apos;instant.</p>
                 ) : (
                   <table className="table" tabIndex={0}>
-                    <thead><tr><th>Nom</th><th>Profession</th><th>Structure</th><th>Prestations acceptées</th><th>Valeur</th><th>Inscrit le</th>{canPoint && <th>Présence</th>}</tr></thead>
+                    <thead><tr><th>Nom</th><th>Profession</th><th>Structure</th><th>Prestations acceptées</th><th>Valeur TTC</th><th>Inscrit le</th>{canPoint && <th>Présence</th>}</tr></thead>
                     <tbody>
                       {event.registrations.map((r) => (
                         <tr key={r.id}>
@@ -579,7 +600,7 @@ export default async function Page({ params, searchParams }: { params: Promise<{
                           <td>{r.profession ?? "—"}</td>
                           <td>{r.structure ?? "—"}</td>
                           <td>{r.benefits.map((b) => b.benefit.label).join(", ") || "Aucune"}</td>
-                          <td>{formatEUR(r.benefits.reduce((s, b) => s + b.valueCents, 0))}</td>
+                          <td>{formatEUR(r.benefits.reduce((s, b) => s + b.valueCents, 0))} TTC</td>
                           <td>{formatDate(r.createdAt)}</td>
                           {canPoint && <td>{r.checkedInAt ? <><span className="pill ok">{formatTime(r.checkedInAt)}</span>{ended && <> <a className="link" href={`/organisations/${id}/evenements/${eventId}/attestations?inscription=${r.id}`}>attestation</a></>}</> : isPast && pointed ? <span className="pill wait">Absent</span> : "—"}</td>}
                         </tr>

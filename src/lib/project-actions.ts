@@ -14,16 +14,19 @@ import { complianceSettings, projectRegime } from "@/lib/compliance";
 import { missingSignedConventions } from "@/lib/project-documents";
 import { eurToCents, str, unitsOrNull, UNITS_INVALID } from "@/lib/form";
 import { notifyCompliance, notifyExpertAnswer, notifyMessage, notifyNewProposal, notifySolicitations } from "@/lib/notifications";
-import { engagementAllowed, gateMessage } from "@/lib/billing";
+import { engagementGate } from "@/lib/billing";
+import type { GateLink } from "@/lib/billing-plans";
 import { getT } from "@/lib/i18n/server";
+import { closeOpenSignatures } from "@/lib/signature";
 
-export type ActionState = { error?: string; ok?: string } | undefined;
+export type ActionState = { error?: string; ok?: string; fix?: GateLink } | undefined;
 
 export async function createProject(_: ActionState, form: FormData): Promise<ActionState> {
   const orgId = str(form, "orgId");
   const { user, org } = await requireMembership(orgId, SOURCING_ROLES);
   if (!isVerifiedOrg(org)) return { error: ORG_NOT_VERIFIED };
-  if (!(await engagementAllowed(orgId))) return { error: gateMessage("sollicitation") };
+  const gate = await engagementGate(orgId, "sollicitation");
+  if (gate) return gate;
   const title = str(form, "title");
   const typeId = str(form, "typeId");
   if (!title) return { error: "Le titre est obligatoire." };
@@ -185,6 +188,8 @@ export async function advanceProject(form: FormData) {
   // Les experts ayant donné leur accord suivent le statut du dossier.
   await db.projectExpert.updateMany({ where: { projectId, status: { notIn: ["DECLINE", "ATT_EXPERTS"] } }, data: { status: t.to } });
   if (key === "abandon") await db.projectExpert.updateMany({ where: { projectId, status: "ATT_EXPERTS" }, data: { status: "DECLINE" } });
+  // Dossier signé (conventions déposées ou attestées) ou abandonné : plus aucune signature électronique en attente.
+  if (key === "signed" || key === "abandon") await closeOpenSignatures({ projectId }, key === "signed" ? "dossier passé « Signé »" : "dossier abandonné");
   await audit(user.id, `project.${key}`, "Project", projectId, { from: project.status, to: t.to, note: note || undefined, ...(attest ? { attestation: "convention signée conservée hors KolBase" } : {}), ...(selfValidated ? { selfValidated: true } : {}) });
   if (key === "submit" || key === "validate" || key === "block") notifyCompliance(projectId, key, user.id);
   revalidatePath(`/organisations/${orgId}/dossiers/${projectId}`);
@@ -268,7 +273,8 @@ export async function addProjectExpert(_: ActionState, form: FormData): Promise<
   const { user, org, project, error } = await editableProject(orgId, projectId);
   if (!project) return { error: error ?? "Dossier introuvable." };
   if (!isVerifiedOrg(org)) return { error: ORG_NOT_VERIFIED };
-  if (!(await engagementAllowed(orgId))) return { error: gateMessage("sollicitation") };
+  const gate = await engagementGate(orgId, "sollicitation", projectId);
+  if (gate) return gate;
   const practitionerId = str(form, "expertId");
   const expert = await db.practitionerProfile.findFirst({ where: { id: practitionerId, listed: true }, select: { id: true } });
   if (!expert) return { error: "Choisissez un expert référencé." };

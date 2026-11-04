@@ -14,7 +14,7 @@ export async function GET(req: Request) {
   for (const f of ledger.fees.filter((x) => x.year === year))
     rows.push(["Honoraires", day(f.date), f.org.name, f.title, eur(f.feeCents), "HT", day(f.paidAt), eur(f.paidCents), f.declared ? "oui" : "non"]);
   for (const h of ledger.hospitality.filter((x) => x.year === year))
-    rows.push(["Hospitalité", day(h.date), h.org.name, `${h.title} : ${h.items.join(", ")}`, eur(h.valueCents), "TTC", "", "", h.declared ? "oui" : "non"]);
+    rows.push(["Hospitalité", day(h.date), h.org.name, `${h.title} : ${h.items.join(", ")}`, eur(h.valueCents), "TTC", "", "", h.declared ? "oui" : h.absent ? "absent : non déclaré" : "non"]);
   return new Response(toCSV(rows), {
     headers: { "Content-Type": "text/csv; charset=utf-8", "Content-Disposition": `attachment; filename="kolbase-revenus-${year}.csv"`, "Cache-Control": "private, no-store" },
   });

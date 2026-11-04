@@ -9,6 +9,7 @@ import { db } from "@/lib/db";
 import { KolVisibilityForm, OrcidImportForm, PublicationForm, StructureForm } from "@/components/ProfileForms";
 import { kolVisibility } from "@/lib/visibility";
 import { canBeExpert } from "@/lib/professions";
+import { professionalId } from "@/lib/countries";
 import { orcidOAuth } from "@/lib/orcid";
 import { wantsEmail } from "@/lib/notifications";
 import { removePublication, removeStructure } from "@/lib/profile-actions";
@@ -44,6 +45,7 @@ export default async function Page({ searchParams }: { searchParams: Promise<{ a
   const user = await requireUser();
   const { t, locale } = await getT();
   const p = user.practitioner;
+  const expertCapable = !!p && (canBeExpert(p.profession) || p.listed);
   // Double authentification en cours d'activation : QR code du secret (pas encore actif).
   const requiring = requiringOrgs(user);
   const twoFactorSetup = !user.totpEnabledAt && user.totpSecret
@@ -73,7 +75,7 @@ export default async function Page({ searchParams }: { searchParams: Promise<{ a
         {emailNotice && <p className={`notice ${emailNotice[0]}`}>{t(emailNotice[1])}</p>}
         {admin === "confirmer" && !user.emailVerifiedAt && <p className="notice warn">{t("Confirmez votre adresse e-mail pour accéder à l'administration KolBase.")}</p>}
         {!user.emailVerifiedAt && <EmailVerificationNotice email={user.email} />}
-        {p && <ListingForm listed={p.listed} eligible={canBeExpert(p.profession)} hasRpps={!!p.rpps} />}
+        {p && <ListingForm listed={p.listed} eligible={canBeExpert(p.profession)} idMissing={professionalId(p).value ? null : professionalId(p).short} />}
         {p?.listed && (
           <div className="actions" style={{ marginTop: 0 }}>
             <Link className="btn secondary" href={`/experts/${p.id}`}>{t("Voir ma fiche publique")}</Link>
@@ -86,7 +88,8 @@ export default async function Page({ searchParams }: { searchParams: Promise<{ a
           />
         )}
         {p?.listed && <KolVisibilityForm v={kolVisibility(p.visibility)} />}
-        {p && (
+        {/* Publications et structures juridiques : pour les professions qui peuvent être expertes. */}
+        {p && expertCapable && (
           <section className="card stack">
             <h2>{t("Publications ({n})", { n: pubs.length })}</h2>
             <OrcidImportForm
@@ -108,15 +111,19 @@ export default async function Page({ searchParams }: { searchParams: Promise<{ a
             <PublicationForm />
           </section>
         )}
-        {p && (
+        {p && expertCapable && (
           <section className="card stack">
             <h2>{t("Structures juridiques ({n})", { n: structs.length })}</h2>
-            <p className="muted">{t("Sociétés d'exercice, associations, fonctions déclarées. La structure de facturation figure sur vos conventions.")}</p>
+            <p className="muted">
+              {t("Sociétés d'exercice, associations, fonctions déclarées.")}{" "}
+              {t("La structure de facturation, reprise par vos conventions et vos notes d'honoraires, se règle avec vos coordonnées de facturation :")}{" "}
+              <Link href="/revenus?onglet=facturation#coordonnees">{t("Mes revenus › Notes d'honoraires")}</Link>
+            </p>
             {structs.length > 0 && (
               <ul className="pub-list">
                 {structs.map((x) => (
                   <li key={x.id} className="flex-between">
-                    <span><strong>{x.name}</strong><br /><span className="text-xs">{t(x.legalForm)}{x.siren ? ` · SIREN ${x.siren}` : ""}{x.role ? ` · ${t(x.role)}` : ""}{x.isPayee ? ` · ${t("facturation")}` : ""}</span></span>
+                    <span><strong>{x.name}</strong><br /><span className="text-xs">{t(x.legalForm)}{x.siren ? ` · SIREN ${x.siren}` : ""}{x.role ? ` · ${t(x.role)}` : ""}{x.isPayee ? ` · ${t("structure de facturation")}` : ""}</span></span>
                     <form action={removeStructure}><input type="hidden" name="id" value={x.id} /><button className="link danger">{t("Retirer")}</button></form>
                   </li>
                 ))}

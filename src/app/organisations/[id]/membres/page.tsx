@@ -7,6 +7,8 @@ import { db } from "@/lib/db";
 import { ORG_KIND_LABEL, invitableRoles, requireMembership, roleLabel } from "@/lib/orgs";
 import { ROLE_DESC } from "@/lib/org-roles";
 import { acceptDpa, revokeInvitation } from "@/lib/org-actions";
+import { setEventFlag } from "@/lib/event-actions";
+import { asMotive, asObjectId, ENGAGING, resumeAction } from "@/lib/billing-plans";
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { OrgVisibilityForm } from "@/components/ProfileForms";
@@ -20,9 +22,10 @@ export const metadata = { title: "Membres et réglages — KolBase" };
 
 const fmt = (d: Date) => d.toLocaleDateString("fr-FR", { day: "numeric", month: "short", year: "numeric" });
 
-export default async function Page({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: Promise<{ onglet?: string }> }) {
+export default async function Page({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: Promise<{ onglet?: string; motif?: string; objet?: string }> }) {
   const { id } = await params;
-  const onglet = (await searchParams).onglet === "organisation" ? "organisation" : "equipe";
+  const sp = await searchParams;
+  const onglet = sp.onglet === "organisation" ? "organisation" : "equipe";
   const { org, roles, isAdmin, user } = await requireMembership(id);
   const dpaBy = org.dpaAcceptedById ? await db.user.findUnique({ where: { id: org.dpaAcceptedById }, select: { firstName: true, lastName: true } }).then((u) => (u ? `${u.firstName} ${u.lastName}` : null)) : null;
   // Un prestataire mandaté (externe) ne voit pas l'équipe ni les réglages de l'organisation.
@@ -51,6 +54,10 @@ export default async function Page({ params, searchParams }: { params: Promise<{
   }, new Map<string, { userId: string; user: (typeof members)[number]["user"]; roles: OrgRole[]; since: Date }>()).values()];
   const adminCount = people.filter((p) => p.roles.includes("ADMIN")).length;
   const isSupplier = org.kind === "PRESTATAIRE";
+  // Arrivée depuis une action refusée faute de contrat : rappel du motif, puis reprise de l'action une fois accepté.
+  const motive = asMotive(sp.motif);
+  const dpaOk = org.dpaVersion === DPA_VERSION && !!org.dpaAcceptedAt;
+  const resume = motive && dpaOk ? resumeAction(id, motive, asObjectId(sp.objet)) : null;
 
   const tabs = [["equipe", `Équipe (${people.length})`], ["organisation", "Organisation"]] as const;
   return (
@@ -159,8 +166,9 @@ export default async function Page({ params, searchParams }: { params: Promise<{
                   Votre organisation est responsable des données qu&apos;elle traite dans KolBase (experts, inscrits, conventions) ; l&apos;éditeur de KolBase agit comme sous-traitant.{" "}
                   <Link href="/sous-traitance" target="_blank">Lire le contrat (version {DPA_VERSION})</Link>
                 </p>
-                {org.dpaVersion === DPA_VERSION && org.dpaAcceptedAt ? (
-                  <p className="pill ok">Accepté le {formatDate(org.dpaAcceptedAt)}{dpaBy ? ` par ${dpaBy}` : ""}</p>
+                {motive && !dpaOk && <p className="notice warn">Pour {ENGAGING[motive]}, ce contrat doit d&apos;abord être accepté{isAdmin ? "" : " par un administrateur de l'organisation"}.</p>}
+                {dpaOk ? (
+                  <p className="pill ok">Accepté le {formatDate(org.dpaAcceptedAt!)}{dpaBy ? ` par ${dpaBy}` : ""}</p>
                 ) : isAdmin ? (
                   <form action={acceptDpa} className="inline wrap">
                     <input type="hidden" name="orgId" value={id} />
@@ -169,6 +177,19 @@ export default async function Page({ params, searchParams }: { params: Promise<{
                   </form>
                 ) : (
                   <p className="hint">À accepter par un administrateur de l&apos;organisation.</p>
+                )}
+                {resume && (
+                  <div className="notice ok inline wrap" role="status">
+                    <span>Contrat accepté : vous pouvez reprendre votre action.</span>
+                    {resume.publish ? (
+                      <form action={setEventFlag}>
+                        <input type="hidden" name="orgId" value={id} />
+                        <input type="hidden" name="eventId" value={resume.publish} />
+                        <input type="hidden" name="flag" value="publish" />
+                        <button className="btn small">{resume.label}</button>
+                      </form>
+                    ) : <Link className="btn small" href={resume.href}>{resume.label}</Link>}
+                  </div>
                 )}
               </section>
             )}

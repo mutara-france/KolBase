@@ -9,6 +9,8 @@ import { requireUser } from "@/lib/auth";
 import { TZ } from "@/lib/events";
 import { fmtEur, intlLocale } from "@/lib/i18n";
 import { getT } from "@/lib/i18n/server";
+import { pointedPastEvents } from "@/lib/checkin";
+import { isAbsent } from "@/lib/indicators";
 
 export async function generateMetadata() {
   const { t } = await getT();
@@ -26,6 +28,9 @@ export default async function Page() {
     orderBy: { event: { startsAt: "asc" } },
   });
   const now = new Date();
+  // Absent au pointage d'un événement passé : les prestations acceptées n'ont pas été consommées, ni déclarées.
+  const pointed = await pointedPastEvents(regs.map((r) => r.eventId), now);
+  const absent = new Set(regs.filter((r) => r.benefits.length > 0 && !r.declared && isAbsent(r, pointed.has(r.eventId))).map((r) => r.id));
   const upcoming = regs.filter((r) => r.event.startsAt >= now);
   const past = regs.filter((r) => r.event.startsAt < now);
 
@@ -41,6 +46,7 @@ export default async function Page() {
             {total === 0 ? t("Aucune prestation acceptée") : `${r.benefits.map((b) => t(b.benefit.label)).join(", ")} · ${fmtEur(locale, total)}`}
             {r.declared && ` · ${t("déclaré")}`}
             {r.checkedInAt && ` · ${t("présence enregistrée")}`}
+            {absent.has(r.id) && ` · ${t("absent : non déclaré")}`}
           </span>
         </Link>
         {badge && <Link className="btn small secondary" href={`/inscriptions/${r.id}/badge`}><QrCode size={14} /> {t("Mon badge d'accueil")}</Link>}
@@ -49,7 +55,8 @@ export default async function Page() {
             ? <p className="online-link text-sm"><Video size={14} /> {t("Lien de connexion :")} <a href={r.event.onlineUrl} target="_blank" rel="noopener noreferrer">{r.event.onlineUrl}</a></p>
             : <p className="muted text-sm"><Video size={14} /> {t("Le lien de connexion vous sera communiqué par l'organisateur avant l'événement.")}</p>
         )}
-        {eventEnded(r.event, now) && (r.checkedInAt || !r.survey) && (
+        {/* Attestation et avis : réservés aux présents (pointés à l'accueil). */}
+        {eventEnded(r.event, now) && (r.checkedInAt || (!r.survey && !pointed.has(r.eventId))) && (
           <div className="actions reg-actions">
             {r.checkedInAt && <a className="btn small secondary" href={`/inscriptions/${r.id}/attestation`}><FileDown size={14} /> {t("Mon attestation de présence")}</a>}
             {!r.survey && <Link className="btn small ghost" href={`/evenements/${r.eventId}/avis`}><Star size={14} /> {t("Donner mon avis")}</Link>}

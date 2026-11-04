@@ -15,6 +15,7 @@ import { collabType, needsMeeting, PROJECT_ROLES, PROJECT_VIEW_ROLES, projectEdi
 import { storageEnabled } from "@/lib/storage";
 import { advanceProject } from "@/lib/project-actions";
 import { markExpertPaid } from "@/lib/revenue-actions";
+import { expertSplit } from "@/lib/indicators";
 import { BudgetPanel, ConflictsPanel, ConventionSignatureBlock, DocumentsPanel, MaterialsPanel } from "@/components/DossierSections";
 import { missingSignedConventions } from "@/lib/project-documents";
 import { FOUR_EYES_BLOCKED, FOUR_EYES_JUSTIFY, fourEyes, projectAuthors } from "@/lib/four-eyes";
@@ -25,7 +26,7 @@ import { country, foreignObligations, practicesInFrance } from "@/lib/countries"
 import { drPrefix } from "@/lib/professions";
 import { AiReview } from "@/components/AiReview";
 import { signatureEnabled } from "@/lib/yousign";
-import { billingBlocked } from "@/lib/billing";
+import { engagementBlock } from "@/lib/billing";
 
 export const metadata = { title: "Dossier — KolBase" };
 
@@ -85,6 +86,7 @@ export default async function Page({ params, searchParams }: { params: Promise<{
         include: {
           practitioner: { include: { user: { select: { firstName: true, lastName: true } } } },
           signature: true,
+          documents: { where: { kind: "CONVENTION_SIGNEE" }, select: { id: true }, take: 1 },
           feeNote: { select: { id: true, number: true, totalCents: true, vatBp: true, issuedAt: true } },
           messages: { include: { author: { select: { firstName: true, lastName: true } } }, orderBy: { createdAt: "asc" } },
         },
@@ -153,14 +155,12 @@ export default async function Page({ params, searchParams }: { params: Promise<{
   const needsNote = (k: TransitionKey) => k === "block" || k === "validate" || k === "ordre" || k === "abandon";
   const notePlaceholder = (k: TransitionKey) => (k === "ordre" ? "Référence de la demande" : k === "validate" && fourEyesRule === "justify" ? "Justification (obligatoire)" : k === "block" ? "Motif du blocage (obligatoire)" : k === "abandon" ? "Motif de l'abandon (obligatoire)" : "Commentaire (facultatif)");
 
-  // Engagé = experts ayant accepté ; les honoraires proposés sans réponse sont indiqués à part.
+  // Engagé = experts ayant accepté ; les honoraires proposés sans réponse sont indiqués à part (même définition
+  // dans le budget plus bas).
   const live = project.experts.filter((e) => e.status !== "DECLINE");
-  const engaged = live.filter((e) => e.status !== "ATT_EXPERTS");
-  const waiting = closed ? [] : live.filter((e) => e.status === "ATT_EXPERTS");
-  const total = engaged.reduce((s, e) => s + (e.feeCents ?? 0), 0);
-  const proposed = waiting.reduce((s, e) => s + (e.feeCents ?? 0), 0);
+  const { engaged, proposed: waiting, engagedCents: total, proposedCents: proposed } = expertSplit(project.experts, !closed);
   const supplierCents = project.events.flatMap((ev) => ev.rfqs.flatMap((r) => r.quotes)).filter((q) => q.status === "retained").reduce((s, q) => s + q.amountCents, 0);
-  const spent = live.reduce((s, e) => s + (e.feeCents ?? 0), 0) + project.expenses.reduce((s, e) => s + e.amountCents, 0) + supplierCents;
+  const spent = total + project.expenses.reduce((s, e) => s + e.amountCents, 0) + supplierCents;
   const showLogistics = needsMeeting(project.typeId) || project.events.length > 0;
   const budgetPct = project.budgetCents ? Math.round((spent / project.budgetCents) * 100) : null;
   const recent = history.slice(0, 8);
@@ -203,7 +203,7 @@ export default async function Page({ params, searchParams }: { params: Promise<{
             </div>
             <div>
               <dt><Wallet size={13} /> Budget</dt>
-              <dd>{project.budgetCents != null ? formatEUR(project.budgetCents) : "Non défini"}<small>{budgetPct != null ? `${budgetPct} % engagé ou proposé${supplierCents ? ", prestataires compris" : ""}` : "à renseigner plus bas"}</small></dd>
+              <dd>{project.budgetCents != null ? `${formatEUR(project.budgetCents)} HT` : "Non défini"}<small>{budgetPct != null ? `${budgetPct} % engagé${supplierCents ? ", prestataires compris" : ""}${proposed > 0 ? ` ; ${formatEUR(proposed)} HT proposés en plus` : ""}` : "à renseigner plus bas"}</small></dd>
             </div>
             <div>
               <dt><Scale size={13} /> Régime</dt>
@@ -263,7 +263,7 @@ export default async function Page({ params, searchParams }: { params: Promise<{
                             version anglaise
                           </a>
                         </span>
-                        <ConventionSignatureBlock orgId={id} linkId={e.id} signature={e.signature} projectStatus={project.status} canSend={isProject} />
+                        <ConventionSignatureBlock orgId={id} linkId={e.id} signature={e.signature} projectStatus={project.status} canSend={isProject} deposited={e.documents.length > 0} />
                       </div>
                     )}
                     {active && ["SIGNE", "TERMINE"].includes(e.status) && (
@@ -342,7 +342,7 @@ export default async function Page({ params, searchParams }: { params: Promise<{
                     <h3>Solliciter un autre expert</h3>
                     <AddExpertForm
                       orgId={id} projectId={projectId} unit={type?.unit ?? "unité"}
-                      blocked={await billingBlocked(id, "sollicitation")}
+                      blocked={await engagementBlock(id, "sollicitation")}
                       experts={candidates.map((c) => {
                         const v = kolVisibility(c.visibility);
                         return {

@@ -6,12 +6,13 @@ import { useActionState, useMemo, useState } from "react";
 import { createProject, postMessage, respondToSolicitation } from "@/lib/project-actions";
 import { Notice } from "@/components/AuthForms";
 import { ActionForm } from "@/components/ActionForm";
+import { BLOCKED_UNTIL, type Blocked } from "@/lib/billing-plans";
 import { useT } from "@/components/I18nProvider";
 
 type CType = { id: string; label: string; category: string; unit: string; fmv: readonly number[] };
 type Expert = { id: string; name: string; detail: string; dayRateCents: number | null };
 
-export function NewProjectForm({ orgId, types, experts, preselected, ai = false, blocked = false }: { orgId: string; types: readonly CType[]; experts: Expert[]; preselected: string[]; ai?: boolean; blocked?: boolean }) {
+export function NewProjectForm({ orgId, types, experts, preselected, ai = false, blocked = null }: { orgId: string; types: readonly CType[]; experts: Expert[]; preselected: string[]; ai?: boolean; blocked?: Blocked }) {
   const [state, action, pending] = useActionState(createProject, undefined);
   const [typeId, setTypeId] = useState(types[0].id);
   const [selected, setSelected] = useState<string[]>(preselected);
@@ -90,8 +91,8 @@ export function NewProjectForm({ orgId, types, experts, preselected, ai = false,
         </fieldset>
       )}
       <label>Message d&apos;accompagnement<textarea name="message" rows={3} placeholder="Message envoyé à chaque expert sollicité" /></label>
-      <button className="btn" disabled={pending || blocked}>{pending ? "Envoi…" : "Envoyer les sollicitations"}</button>
-      {blocked && <p className="hint">Envoi possible une fois l&apos;abonnement activé (voir le bandeau en haut de la page).</p>}
+      <button className="btn" disabled={pending || !!blocked}>{pending ? "Envoi…" : "Envoyer les sollicitations"}</button>
+      {blocked && <p className="hint">Envoi possible {BLOCKED_UNTIL[blocked]} (voir le bandeau en haut de la page).</p>}
     </ActionForm>
   );
 }

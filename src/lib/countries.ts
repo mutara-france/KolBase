@@ -126,3 +126,13 @@ export function conventionClause(code: string, t: (fr: string, vars?: Record<str
         : "";
   return [`${t("L'Expert exerce {pays}. La présente convention est conclue dans le respect des règles applicables dans son pays d'exercice, notamment en matière de transparence des liens d'intérêts.", { pays: t(c.in) })}${extra}`];
 }
+
+/**
+ * Identifiant professionnel à demander au praticien : le RPPS en France, sinon celui du pays d'exercice
+ * (INAMI, NPI, numéro d'inscription…). `label` et `short` sont des clés à traduire.
+ */
+export function professionalId(p: { country: string | null | undefined; rpps: string | null; licenseNumber: string | null }) {
+  if (practicesInFrance(p.country)) return { value: p.rpps, label: "N° RPPS", short: "numéro RPPS" };
+  const rule = licenseRule(p.country ?? "XX");
+  return { value: p.licenseNumber, label: rule.label, short: rule.short };
+}

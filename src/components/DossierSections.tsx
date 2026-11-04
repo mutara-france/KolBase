@@ -2,7 +2,8 @@ import { AlertTriangle, ExternalLink, FileSignature, FileText, Info, ShieldAlert
 import { db } from "@/lib/db";
 import { detectConflicts } from "@/lib/conflicts";
 import { formatDate, formatEUR } from "@/lib/events";
-import { MATERIAL_KINDS, MATERIAL_STATUS, REVIEW_ROLES } from "@/lib/projects";
+import { MATERIAL_KINDS, MATERIAL_STATUS, recruitmentOpen, REVIEW_ROLES } from "@/lib/projects";
+import { expertSplit } from "@/lib/indicators";
 import { supplierCategoryLabel } from "@/lib/suppliers";
 import { reviewMaterial, updateExpense } from "@/lib/dossier-actions";
 import { FOUR_EYES_BLOCKED, fourEyes } from "@/lib/four-eyes";
@@ -44,7 +45,8 @@ export async function BudgetPanel({ orgId, projectId, canEdit }: { orgId: string
     include: { supplier: { select: { name: true } }, rfq: { select: { category: true } } },
     orderBy: { updatedAt: "asc" },
   });
-  const fees = project.experts.reduce((s, e) => s + (e.feeCents ?? 0), 0);
+  // Même définition que l'en-tête du dossier : honoraires engagés (acceptés par l'expert), proposés à part.
+  const { engagedCents: fees, proposedCents: proposed } = expertSplit(project.experts, recruitmentOpen(project.status));
   const exp = project.expenses.reduce((s, e) => s + e.amountCents, 0);
   const sup = quotes.reduce((s, q) => s + q.amountCents, 0);
   const total = fees + exp + sup;
@@ -60,16 +62,17 @@ export async function BudgetPanel({ orgId, projectId, canEdit }: { orgId: string
       </div>
       <div className="stats-row" style={{ marginBottom: 12 }}>
         <div className="stat-card"><div className="stat-value">{budget != null ? formatEUR(budget) : "—"}</div><div className="stat-label">Budget prévu (HT)</div></div>
-        <div className="stat-card"><div className="stat-value">{formatEUR(fees)}</div><div className="stat-label">Honoraires des experts</div></div>
-        {sup > 0 && <div className="stat-card"><div className="stat-value">{formatEUR(sup)}</div><div className="stat-label">Prestataires (devis retenus)</div></div>}
-        <div className="stat-card"><div className="stat-value">{formatEUR(exp)}</div><div className="stat-label">Autres dépenses</div></div>
-        <div className="stat-card"><div className={`stat-value${over ? " tone-danger" : " tone-electric"}`}>{formatEUR(total)}</div><div className="stat-label">Total engagé{realPct != null ? ` · ${realPct} % du budget` : ""}</div></div>
+        <div className="stat-card"><div className="stat-value">{formatEUR(fees)}</div><div className="stat-label">Honoraires engagés (HT)</div></div>
+        {proposed > 0 && <div className="stat-card"><div className="stat-value muted">{formatEUR(proposed)}</div><div className="stat-label">Honoraires proposés, sans réponse (HT)</div></div>}
+        {sup > 0 && <div className="stat-card"><div className="stat-value">{formatEUR(sup)} HT</div><div className="stat-label">Prestataires (devis retenus)</div></div>}
+        <div className="stat-card"><div className="stat-value">{formatEUR(exp)}</div><div className="stat-label">Autres dépenses (HT)</div></div>
+        <div className="stat-card"><div className={`stat-value${over ? " tone-danger" : " tone-electric"}`}>{formatEUR(total)}</div><div className="stat-label">Total engagé (HT){realPct != null ? ` · ${realPct} % du budget` : ""}</div></div>
       </div>
       {pct != null && <div className="gauge-track"><div className={`gauge-fill${over ? " over" : ""}`} style={{ width: `${pct}%` }} /></div>}
       {over && <p className="notice error mt-2">Le total engagé dépasse le budget prévu de {formatEUR(total - budget!)}.</p>}
       {(project.expenses.length > 0 || quotes.length > 0) && (
         <table className="table mt-3">
-          <thead><tr><th>Date</th><th>Poste</th><th>Montant</th><th>Statut</th>{canEdit && <th />}</tr></thead>
+          <thead><tr><th>Date</th><th>Poste</th><th>Montant HT</th><th>Statut</th>{canEdit && <th />}</tr></thead>
           <tbody>
             {quotes.map((q) => (
               <tr key={q.id}>
@@ -241,13 +244,14 @@ const SIGNATURE_TONE = { draft: "wait", ongoing: "wait", done: "ok", declined: "
 /**
  * Signature électronique de la convention d'un expert, côté organisation : envoi (dossier « En signature »),
  * suivi, mise à jour du statut et téléchargement de la convention signée. Rien sans Yousign configuré ni demande passée.
+ * Une convention signée déposée à la main clôt la demande (plus d'envoi proposé).
  */
-export function ConventionSignatureBlock({ orgId, linkId, signature, projectStatus, canSend }: {
-  orgId: string; linkId: string; signature: ConventionSignature | null; projectStatus: ProjectStatus; canSend: boolean;
+export function ConventionSignatureBlock({ orgId, linkId, signature, projectStatus, canSend, deposited = false }: {
+  orgId: string; linkId: string; signature: ConventionSignature | null; projectStatus: ProjectStatus; canSend: boolean; deposited?: boolean;
 }) {
   const enabled = signatureEnabled();
   const s = signature;
-  const sendable = enabled && canSend && projectStatus === "SIGNATURE" && canSendAgain(s?.status);
+  const sendable = enabled && canSend && projectStatus === "SIGNATURE" && !deposited && canSendAgain(s?.status);
   if (!s && !sendable) return null;
   return (
     <div className="stack-sm mt-3">
@@ -265,7 +269,7 @@ export function ConventionSignatureBlock({ orgId, linkId, signature, projectStat
       )}
       {s?.status === "declined" && <p className="text-xs">Un signataire a refusé de signer{s.note ? ` : « ${s.note} »` : ""}.</p>}
       {s?.status === "expired" && <p className="text-xs">La demande a expiré sans être signée.</p>}
-      {s?.status === "canceled" && <p className="text-xs">La demande a été annulée chez Yousign.</p>}
+      {s?.status === "canceled" && <p className="text-xs">{s.note ?? "La demande a été annulée chez Yousign."}</p>}
       {s?.status === "draft" && <p className="text-xs">{s.note ? "L'envoi précédent a échoué." : "Envoi en cours ou interrompu."}</p>}
       {enabled && s?.status === "ongoing" && <RefreshSignatureForm linkId={linkId} />}
       {sendable && <SendSignatureForm orgId={orgId} linkId={linkId} again={!!s && s.status !== "draft"} />}
@@ -273,11 +277,21 @@ export function ConventionSignatureBlock({ orgId, linkId, signature, projectStat
   );
 }
 
-/** Côté expert : où en est la signature électronique de sa convention. */
-export async function ExpertSignatureBlock({ linkId, signature, email }: { linkId: string; signature: ConventionSignature | null; email: string }) {
+/**
+ * Côté expert : où en est la signature électronique de sa convention. Une fois la convention signée (dépôt de la
+ * convention signée, dossier « Signé »), plus de demande « en attente » : le lien vers la convention signée.
+ */
+export async function ExpertSignatureBlock({ linkId, signature, email, projectStatus, signedDocId = null }: { linkId: string; signature: ConventionSignature | null; email: string; projectStatus: ProjectStatus; signedDocId?: string | null }) {
   const s = signature;
-  if (!s || s.status === "draft") return null;
   const { t, locale } = await getT();
+  if (s?.status !== "done" && (signedDocId || ["SIGNE", "TERMINE"].includes(projectStatus)))
+    return (
+      <p className="notice ok">
+        {t("Convention signée.")}{" "}
+        {signedDocId && <a href={`/documents/${signedDocId}`}>{t("Convention signée (PDF)")}</a>}
+      </p>
+    );
+  if (!s || s.status === "draft") return null;
   if (s.status === "done")
     return (
       <p className="notice ok">

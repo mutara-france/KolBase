@@ -117,14 +117,14 @@ export function startFakeAnthropic(port = 3994) {
 export const signatureRequests = new Map();
 export const YOUSIGN_KEY = "test";
 
-/** Faux Yousign (port 3995 par défaut) : création, dépôt du PDF, signataires, activation, statut, téléchargement. */
+/** Faux Yousign (port 3995 par défaut) : création, dépôt du PDF, signataires, activation, annulation, statut, téléchargement. */
 export function startFakeYousign(port = 3995) {
   const read = (req) => new Promise((resolve) => { const c = []; req.on("data", (x) => c.push(x)); req.on("end", () => resolve(Buffer.concat(c))); });
   const server = http.createServer(async (req, res) => {
     const body = await read(req);
     if (req.headers.authorization !== `Bearer ${YOUSIGN_KEY}`) return json(res, { detail: "Unauthorized" }, 401);
     const path = new URL(req.url, "http://x").pathname;
-    const m = path.match(/^\/signature_requests(?:\/([^/]+))?(?:\/(documents|signers|activate))?(?:\/([^/]+))?(?:\/(download))?$/);
+    const m = path.match(/^\/signature_requests(?:\/([^/]+))?(?:\/(documents|signers|activate|cancel))?(?:\/([^/]+))?(?:\/(download))?$/);
     if (!m) return json(res, { detail: "Not found" }, 404);
     const [, id, sub, docId, dl] = m;
     if (!id && req.method === "POST") {
@@ -157,6 +157,15 @@ export function startFakeYousign(port = 3995) {
     if (sub === "activate" && req.method === "POST") {
       if (sr.status !== "draft" || !sr.documents.length || !sr.signers.length) return json(res, { detail: "Activation impossible" }, 400);
       sr.status = "ongoing";
+      return json(res, { id: sr.id, status: sr.status }, 201);
+    }
+    // Annulation : seule une demande en cours (ou en approbation) s'annule, avec une raison reconnue.
+    if (sub === "cancel" && req.method === "POST") {
+      const b = JSON.parse(body.toString() || "{}");
+      if (!["ongoing", "approval"].includes(sr.status)) return json(res, { detail: "Only ongoing or approval signature requests can be canceled" }, 400);
+      if (!["contractualization_aborted", "errors_in_document", "other"].includes(b.reason) || (b.reason === "other" && !b.custom_note)) return json(res, { detail: "reason invalide" }, 400);
+      sr.status = "canceled";
+      sr.cancelation = b;
       return json(res, { id: sr.id, status: sr.status }, 201);
     }
     if (sub === "documents" && docId && dl && req.method === "GET") {

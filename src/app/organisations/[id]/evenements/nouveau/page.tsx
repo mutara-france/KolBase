@@ -4,8 +4,9 @@ import { NewEventForm } from "@/components/EventForms";
 import { requireMembership } from "@/lib/orgs";
 import { db } from "@/lib/db";
 import { BillingNotice } from "@/components/BillingNotice";
-import { billingBlocked } from "@/lib/billing";
+import { engagementBlock } from "@/lib/billing";
 import { BENEFIT_CATALOG, EVENT_ORGANIZER_ROLES, EVENT_TYPES, FORMAT_LABEL } from "@/lib/events";
+import { complianceSettings } from "@/lib/compliance";
 
 export const metadata = { title: "Nouvel événement — KolBase" };
 
@@ -22,10 +23,11 @@ export default async function Page({ params, searchParams }: { params: Promise<{
         <p className="muted"><Link href={`/organisations/${id}`}>{org.name}</Link> / <Link href={`/organisations/${id}/evenements`}>Événements</Link></p>
         <NewEventForm
           orgId={id}
-          blocked={await billingBlocked(id, "evenement")}
+          blocked={await engagementBlock(id, "evenement")}
           types={EVENT_TYPES.map((t) => ({ value: t.id, label: t.label }))}
           formats={Object.entries(FORMAT_LABEL).map(([value, label]) => ({ value, label }))}
           catalog={BENEFIT_CATALOG}
+          limits={complianceSettings(org.complianceSettings)}
           project={project ? { id: project.id, title: project.title, area: project.therapeuticArea } : undefined}
         />
       </main>

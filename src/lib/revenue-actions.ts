@@ -10,6 +10,7 @@ import { parisToday, parseParisDateTime } from "@/lib/events";
 import { notifyFeeNote, notifyFeePaid, notifyTransparencyIssue } from "@/lib/notifications";
 import { billingComplete, formatIban, nextNumber, validIban, validSiret, vatBpOf, type FeeNoteData } from "@/lib/fee-notes";
 import { drPrefix } from "@/lib/professions";
+import { LEGAL_FORMS, payeeEntity, sirenOf } from "@/lib/structures";
 import { blockedFor, hit } from "@/lib/rate-limit";
 import { getT } from "@/lib/i18n/server";
 
@@ -89,12 +90,23 @@ export async function updateBilling(_: FormState, form: FormData): Promise<FormS
   if (siret && !validSiret(siret)) return { error: t("Numéro SIRET invalide (14 chiffres).") };
   if (iban && !validIban(iban)) return { error: t("IBAN invalide.") };
   if (vatRegime === "assujetti" && !/^[A-Z]{2}[A-Z0-9]{8,14}$/.test(vatNumber)) return { error: t("Indiquez votre numéro de TVA intracommunautaire.") };
-  await db.practitionerProfile.update({
-    where: { id: p.id },
-    data: { billingEntity: str(form, "billingEntity").slice(0, 120) || null, billingAddress, siret: siret || null, iban: iban || null, vatRegime, vatNumber: vatRegime === "assujetti" ? vatNumber : null },
+  // Structure de facturation (société d'exercice) : la structure juridique « de facturation », seule source,
+  // reprise par les conventions et les notes d'honoraires. Vide : facturation en nom propre.
+  const entity = str(form, "billingEntity", 120);
+  const legalForm = LEGAL_FORMS.includes(str(form, "billingLegalForm")) ? str(form, "billingLegalForm") : "Société d'exercice";
+  const payee = await db.practitionerStructure.findFirst({ where: { practitionerId: p.id, isPayee: true } });
+  await db.$transaction(async (tx) => {
+    await tx.practitionerProfile.update({
+      where: { id: p.id },
+      data: { billingAddress, siret: siret || null, iban: iban || null, vatRegime, vatNumber: vatRegime === "assujetti" ? vatNumber : null },
+    });
+    if (!entity) await tx.practitionerStructure.updateMany({ where: { practitionerId: p.id, isPayee: true }, data: { isPayee: false } });
+    else if (payee) await tx.practitionerStructure.update({ where: { id: payee.id }, data: { name: entity, legalForm, siren: sirenOf(siret) ?? payee.siren } });
+    else await tx.practitionerStructure.create({ data: { practitionerId: p.id, name: entity, legalForm, siren: sirenOf(siret), isPayee: true } });
   });
   await audit(user.id, "practitioner.billing", "PractitionerProfile", p.id);
   revalidatePath("/revenus");
+  revalidatePath("/compte");
   return { ok: t("Coordonnées de facturation enregistrées.") };
 }
 
@@ -104,7 +116,7 @@ export async function issueFeeNote(_: FormState, form: FormData): Promise<FormSt
   const { t } = await getT();
   const p = user.practitioner;
   if (!p) return { error: t("Réservé aux praticiens.") };
-  const prof = await db.practitionerProfile.findUnique({ where: { id: p.id } });
+  const prof = await db.practitionerProfile.findUnique({ where: { id: p.id }, include: { structures: { where: { isPayee: true }, take: 1 } } });
   if (!prof || !billingComplete(prof)) return { error: t("Complétez d'abord vos coordonnées de facturation.") };
   const link = await db.projectExpert.findFirst({
     where: { id: str(form, "linkId"), practitionerId: p.id, status: { in: ["SIGNE", "TERMINE"] } },
@@ -117,7 +129,7 @@ export async function issueFeeNote(_: FormState, form: FormData): Promise<FormSt
   const signedAt = link.signature?.completedAt ?? link.project.signatureAttestedAt ?? signedLog?.createdAt ?? null;
   const type = collabType(link.project.typeId);
   const data: FeeNoteData = {
-    issuer: { name: `${drPrefix(prof.profession)}${user.firstName} ${user.lastName}`, entity: prof.billingEntity, address: prof.billingAddress!, siret: prof.siret, vatNumber: prof.vatNumber, rpps: prof.rpps, iban: prof.iban ? formatIban(prof.iban) : null, vatRegime: prof.vatRegime },
+    issuer: { name: `${drPrefix(prof.profession)}${user.firstName} ${user.lastName}`, entity: payeeEntity(prof.structures[0]), address: prof.billingAddress!, siret: prof.siret, vatNumber: prof.vatNumber, rpps: prof.rpps, iban: prof.iban ? formatIban(prof.iban) : null, vatRegime: prof.vatRegime },
     recipient: { name: link.project.organization.name, siren: link.project.organization.siren, address: link.project.organization.headquarters },
     object: { title: link.project.title, type: type?.label ?? link.project.typeId, unit: type?.unit ?? null, units: link.days, signedAt: signedAt ? signedAt.toLocaleDateString("fr-FR", { timeZone: "Europe/Paris", day: "numeric", month: "long", year: "numeric" }) : null, projectRef: link.projectId.slice(-8).toUpperCase() },
   };

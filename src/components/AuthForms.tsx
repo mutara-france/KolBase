@@ -7,12 +7,14 @@ import { PROFESSIONS } from "@/lib/professions";
 import { COUNTRIES } from "@/lib/countries";
 import { useT } from "@/components/I18nProvider";
 import { ActionForm } from "@/components/ActionForm";
+import type { GateLink } from "@/lib/billing-plans";
 
 /** Lien entre connexion et création de compte : la page d'origine (`next`) suit. */
 const withNext = (path: string, next?: string) => (next ? `${path}?next=${encodeURIComponent(next)}` : path);
 
-export function Notice({ state }: { state: FormState }) {
-  if (state?.error) return <p className="notice error" role="alert">{state.error}</p>;
+/** Message d'un formulaire ; un refus peut porter le lien de la page qui lève le blocage (contrat, abonnement). */
+export function Notice({ state }: { state: (NonNullable<FormState> & { fix?: GateLink }) | undefined }) {
+  if (state?.error) return <p className="notice error" role="alert">{state.error}{state.fix && <> <Link href={state.fix.href}>{state.fix.label}</Link></>}</p>;
   if (state?.ok) return <p className="notice ok" role="status">{state.ok}</p>;
   return null;
 }

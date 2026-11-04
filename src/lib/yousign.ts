@@ -69,6 +69,9 @@ export const webhookStatus = (eventName: unknown): SignatureStatus | null =>
 /** Une demande signée est définitive : un événement en retard (ou rejoué) ne la fait pas revenir en arrière. */
 export const canApplyStatus = (current: SignatureStatus, next: SignatureStatus) => current !== "done" && current !== next;
 
+/** Demande encore ouverte (à clore quand la convention est signée par un autre moyen ou le dossier clos). */
+export const signatureOpen = (status: SignatureStatus | null | undefined) => status === "ongoing" || status === "draft";
+
 /** Une nouvelle demande peut être envoyée tant qu'aucune n'est en cours ni signée. */
 export const canSendAgain = (current: SignatureStatus | null | undefined) => !current || !["ongoing", "done"].includes(current);
 
@@ -187,6 +190,20 @@ export async function getSignatureRequest(requestId: string) {
     `/signature_requests/${encodeURIComponent(requestId)}`,
   );
   return { status: mapYousignStatus(r.status), completedAt: parseDate(r.completed_at), declineReason: r.decline_information?.reason ?? null };
+}
+
+/**
+ * Annule une demande encore en cours (POST /signature_requests/{id}/cancel) : la convention a été signée par un autre
+ * moyen ou le dossier est clos. Seule une demande « ongoing » ou « approval » s'annule ; elle ne peut plus être réactivée.
+ * Corps : raison (contractualization_aborted, errors_in_document ou other) et note libre
+ * (https://developers.yousign.com/reference/post-signature_requests-signaturerequestid-cancel).
+ */
+export async function cancelSignatureRequest(requestId: string, note: string) {
+  const r = await callJson<{ status?: string }>(`/signature_requests/${encodeURIComponent(requestId)}/cancel`, {
+    method: "POST",
+    json: { reason: "other", custom_note: note.slice(0, 255) },
+  });
+  return mapYousignStatus(r.status) ?? "canceled";
 }
 
 /**

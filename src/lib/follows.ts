@@ -1,6 +1,7 @@
 import { db } from "@/lib/db";
 import { canSee, companyVisibility, kolViewer, kolVisibility } from "@/lib/visibility";
 import { translate, type Vars } from "@/lib/i18n";
+import { speakerConfirmed } from "@/lib/indicators";
 
 /** `label` : libellé en français ; `msg` : sa clé de traduction et ses variables, pour l'afficher dans la langue de l'utilisateur. */
 export type FeedItem = { key: string; date: Date; subject: string; href: string; label: string; msg: { key: string; vars?: Vars }; kind: "practitioner" | "organization" };
@@ -29,6 +30,8 @@ export async function followFeed(userId: string): Promise<FeedItem[]> {
         user: { select: { firstName: true, lastName: true } },
         publications: { where: { createdAt: { gte: since } } },
         applications: { where: { status: "retained", createdAt: { gte: since }, openCall: { event: { publishedAt: { not: null } } } }, include: { openCall: { include: { event: true } } } },
+        // Dossiers ouverts par une candidature retenue : l'intervention n'est annoncée qu'une fois les honoraires acceptés.
+        projectLinks: { where: { status: { notIn: ["ATT_EXPERTS", "DECLINE"] }, createdAt: { gte: since } }, select: { projectId: true, status: true } },
       },
     });
     for (const p of pracs) {
@@ -41,7 +44,7 @@ export async function followFeed(userId: string): Promise<FeedItem[]> {
       // Une intervention retenue révèle un partenaire : seulement si le praticien affiche ses collaborations en détail.
       if (v.projets === "nominatif" && canSee(v.historique, viewer))
         for (const a of p.applications)
-          if (a.openCall.event) items.push({ key: `spk-${a.id}`, date: a.createdAt, subject: name, href: `/evenements/${a.openCall.event.id}`, kind: "practitioner", ...label("Intervient à « {title} »", { title: a.openCall.event.title }) });
+          if (a.openCall.event && speakerConfirmed(a, p.projectLinks.find((l) => l.projectId === a.projectId))) items.push({ key: `spk-${a.id}`, date: a.createdAt, subject: name, href: `/evenements/${a.openCall.event.id}`, kind: "practitioner", ...label("Intervient à « {title} »", { title: a.openCall.event.title }) });
       if (p.listedAt && p.listedAt >= since) items.push({ key: `lst-${p.id}`, date: p.listedAt, subject: name, href, kind: "practitioner", ...label("Référencé(e) comme expert") });
     }
   }

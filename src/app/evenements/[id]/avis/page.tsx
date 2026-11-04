@@ -4,7 +4,7 @@ import { SiteHeader } from "@/components/SiteHeader";
 import { SurveyForm } from "@/components/SurveyForm";
 import { db } from "@/lib/db";
 import { requireUser } from "@/lib/auth";
-import { eventEnded } from "@/lib/event-followup";
+import { attended, eventEnded } from "@/lib/event-followup";
 import { getT } from "@/lib/i18n/server";
 
 export async function generateMetadata() {
@@ -23,6 +23,7 @@ export default async function Page({ params }: { params: Promise<{ id: string }>
   });
   if (!reg) notFound();
   const ended = eventEnded(reg.event);
+  const present = await attended(reg);
   return (
     <>
       <SiteHeader />
@@ -36,6 +37,8 @@ export default async function Page({ params }: { params: Promise<{ id: string }>
           <p className="notice ok">{t("Merci : votre avis est transmis à l'organisateur, sans votre nom.")}</p>
         ) : !ended ? (
           <p className="notice">{t("Le questionnaire ouvre à la fin de l'événement.")}</p>
+        ) : !present ? (
+          <p className="notice">{t("Le questionnaire est réservé aux participants dont la présence a été enregistrée à l'accueil.")}</p>
         ) : (
           <SurveyForm eventId={id} />
         )}

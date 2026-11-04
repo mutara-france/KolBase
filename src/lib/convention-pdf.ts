@@ -206,6 +206,7 @@ export async function buildCollaborationConventionForSignature(i: CollabConventi
     [t("Volume"), `${units} ${unit}${units > 1 ? "s" : ""}`],
     [t("Honoraires"), i.link.feeCents != null ? t("{montant} HT, forfaitaires et définitifs", { montant: eur(locale, i.link.feeCents) }) : t("À définir")],
     // Le repère indicatif de KolBase n'a pas sa place dans le contrat : la juste contrepartie est documentée par l'organisation.
+    // Même délai que la note d'honoraires (PAYMENT_TERMS, src/lib/fee-notes.ts).
     [t("Paiement"), t("Par virement, à 30 jours après réalisation de la prestation et réception de la facture.")],
   ]);
   w.text(t("Les frais de déplacement et d'hébergement éventuellement pris en charge par l'Organisation sont limités au strict nécessaire à la prestation et font l'objet d'une déclaration distincte."), { color: MUTED });
@@ -238,12 +239,22 @@ export type HospitalityConventionInput = {
   benefits: { label: string; valueCents: number }[];
   declared: boolean;
   declarationRef: string | null;
+  /** Régime calculé avec les seuils de l'organisation (praticien exerçant en France). */
+  regime?: "declaration" | "autorisation" | "hors_france";
 };
+
+/** Clause d'une convention d'hospitalité (praticien exerçant en France) selon son régime : déclarée, ou soumise à autorisation. */
+export function hospitalityRegimeClause(t: T, regime: HospitalityConventionInput["regime"]) {
+  return regime === "autorisation"
+    ? t("Conformément aux articles L.1453-1 et suivants du Code de la santé publique, la présente convention, dont le montant dépasse un seuil fixé par arrêté, est soumise à l'autorisation préalable de l'instance ordinale compétente avant son exécution, et rendue publique sur la base Transparence Santé.")
+    : t("Conformément aux articles L.1453-1 et suivants du Code de la santé publique, la présente convention, sous les seuils d'autorisation, est déclarée à l'instance ordinale compétente avant son exécution et rendue publique sur la base Transparence Santé.");
+}
 
 export async function buildHospitalityConvention(i: HospitalityConventionInput, locale: Locale = "fr") {
   const t = makeT(locale);
   const { doc, w } = await setup(`${t("Convention d'hospitalité")} - ${i.event.title}`, t("KolBase - Convention d'hospitalité {ref}", { ref: i.ref }));
-  header(w, t, locale, t("Convention d'hospitalité"), i.ref, i.declared ? `${t("Déclarée")}${i.declarationRef ? ` (${i.declarationRef})` : ""}` : t("À déclarer"));
+  const authorization = i.regime === "autorisation";
+  header(w, t, locale, t("Convention d'hospitalité"), i.ref, i.declared ? `${t("Déclarée")}${i.declarationRef ? ` (${i.declarationRef})` : ""}` : authorization ? t("Soumise à autorisation") : t("À déclarer"));
 
   w.heading(t("Parties"));
   w.text(`${i.org.name}${i.org.headquarters ? `, ${i.org.headquarters}` : ""}, ${t("organisateur, et")}`);
@@ -264,7 +275,7 @@ export async function buildHospitalityConvention(i: HospitalityConventionInput, 
 
   w.heading(t("Engagements"));
   w.text(t("L'hospitalité offerte est d'un niveau raisonnable, strictement limitée à l'objet scientifique ou professionnel de la manifestation, et ne s'étend pas aux personnes accompagnant le bénéficiaire."));
-  if (practicesInFrance(b.country)) w.text(t("Conformément aux articles L.1453-1 et suivants du Code de la santé publique, la présente convention est déclarée à l'instance ordinale compétente et rendue publique sur la base Transparence Santé."));
+  if (practicesInFrance(b.country)) w.text(hospitalityRegimeClause(t, i.regime));
   else for (const line of conventionClause(b.country ?? "XX", t)) w.text(line.replace(t("L'Expert exerce"), t("Le bénéficiaire exerce")));
   w.text(t("Le bénéficiaire a accepté chacun de ces avantages individuellement lors de son inscription sur KolBase."), { color: MUTED });
 

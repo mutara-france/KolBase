@@ -9,6 +9,8 @@ import { useLocale, useT } from "@/components/I18nProvider";
 import { refreshSignatureStatus, sendConventionForSignature } from "@/lib/signature-actions";
 import { addProjectExpert, updateExpertTerms, updateProjectObject } from "@/lib/project-actions";
 import { ActionForm } from "@/components/ActionForm";
+import { BLOCKED_UNTIL, subscribeHref, type Blocked } from "@/lib/billing-plans";
+import { dpaHref } from "@/lib/dpa";
 
 type Hidden = { orgId: string; projectId: string };
 const H = ({ orgId, projectId }: Hidden) => (<><input type="hidden" name="orgId" value={orgId} /><input type="hidden" name="projectId" value={projectId} /></>);
@@ -211,7 +213,7 @@ export function ExpertTermsForm({ orgId, projectId, linkId, name, unit, units, f
 }
 
 /** Ajouter un expert référencé au dossier : il reçoit la sollicitation. */
-export function AddExpertForm({ orgId, projectId, unit, experts, blocked = false }: Hidden & { unit: string; experts: { id: string; name: string; detail: string; dayRateCents: number | null }[]; blocked?: boolean }) {
+export function AddExpertForm({ orgId, projectId, unit, experts, blocked = null }: Hidden & { unit: string; experts: { id: string; name: string; detail: string; dayRateCents: number | null }[]; blocked?: Blocked }) {
   const [state, action, pending] = useActionState(addProjectExpert, undefined);
   const [expertId, setExpertId] = useState("");
   const chosen = experts.find((e) => e.id === expertId);
@@ -231,8 +233,13 @@ export function AddExpertForm({ orgId, projectId, unit, experts, blocked = false
         <label>Honoraires totaux (€ HT)<input key={expertId} name="fee" inputMode="decimal" defaultValue={chosen?.dayRateCents != null ? String(chosen.dayRateCents / 100) : ""} required /></label>
       </div>
       <label>Message d&apos;accompagnement<textarea name="message" rows={2} placeholder="Message envoyé avec la sollicitation" /></label>
-      <button className="btn ghost small" disabled={pending || blocked}>{pending ? "Envoi…" : "Ajouter et solliciter l'expert"}</button>
-      {blocked && <p className="hint">Sollicitation possible une fois l&apos;abonnement activé : <a href={`/organisations/${orgId}/abonnement?motif=sollicitation&objet=${projectId}`}>activer l&apos;abonnement</a>.</p>}
+      <button className="btn ghost small" disabled={pending || !!blocked}>{pending ? "Envoi…" : "Ajouter et solliciter l'expert"}</button>
+      {blocked && (
+        <p className="hint">
+          Sollicitation possible {BLOCKED_UNTIL[blocked]} :{" "}
+          {blocked === "contrat" ? <a href={dpaHref(orgId, "sollicitation", projectId)}>accepter le contrat de sous-traitance</a> : <a href={subscribeHref(orgId, "sollicitation", projectId)}>activer l&apos;abonnement</a>}.
+        </p>
+      )}
     </ActionForm>
   );
 }

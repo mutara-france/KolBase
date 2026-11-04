@@ -115,8 +115,22 @@ export function projectRegime(s: ComplianceSettings, unit: string, experts: { st
   return regimes.find((r) => r.regime === "autorisation") ?? regimes[0] ?? null;
 }
 
-/** Régime d'une hospitalité : autorisation si nuitée, repas ou total dépassent les seuils. */
-export function hospitalityRegime(s: ComplianceSettings, benefits: { catalogId: string; valueCents: number }[]): { regime: Regime; reason: string } {
+/** Seuils d'hospitalité d'une organisation (€ TTC par personne), transmis aussi au formulaire d'événement. */
+export type HospitalityLimits = Pick<ComplianceSettings, "hospitalityNightMax" | "hospitalityMealMax" | "hospitalityCollationMax" | "hospitalityTotalMax" | "authorizationDays" | "declarationDays">;
+
+/** Seuil propre à une prestation du catalogue (€ TTC) ; le transport ne compte que dans le total. */
+export function benefitLimit(s: HospitalityLimits, catalogId: string): { max: number; per: string } | null {
+  if (catalogId === "nuitee") return { max: s.hospitalityNightMax, per: "par nuitée" };
+  if (catalogId === "dejeuner" || catalogId === "cocktail") return { max: s.hospitalityMealMax, per: "par repas" };
+  if (catalogId === "cafe") return { max: s.hospitalityCollationMax, per: "par collation" };
+  return null;
+}
+
+/** Libellé du régime d'une hospitalité (convention, fiche de l'événement, saisie). */
+export const HOSPITALITY_REGIME_LABEL: Record<Regime, string> = { declaration: "déclarée", autorisation: "soumise à autorisation", hors_france: "hors France" };
+
+/** Régime d'une hospitalité : autorisation si nuitée, repas ou total dépassent les seuils. Une prestation seule : son seuil et le total. */
+export function hospitalityRegime(s: HospitalityLimits, benefits: { catalogId: string; valueCents: number }[]): { regime: Regime; reason: string } {
   const total = benefits.reduce((x, b) => x + b.valueCents, 0) / 100;
   const night = benefits.find((b) => b.catalogId === "nuitee" && b.valueCents / 100 > s.hospitalityNightMax);
   if (night) return { regime: "autorisation", reason: `Nuitée ${night.valueCents / 100} € > ${s.hospitalityNightMax} €` };

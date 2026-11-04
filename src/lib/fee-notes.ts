@@ -9,7 +9,9 @@ export const VAT_REGIMES = { franchise: "Franchise en base de TVA (art. 293 B du
 export type VatRegime = keyof typeof VAT_REGIMES;
 export const vatBpOf = (regime: string) => (regime === "assujetti" ? 2000 : 0);
 
-export type Billing = { billingEntity: string | null; billingAddress: string | null; siret: string | null; vatRegime: string; vatNumber: string | null; iban: string | null };
+export type Billing = { billingAddress: string | null; siret: string | null; vatRegime: string; vatNumber: string | null; iban: string | null };
+/** Délai de paiement, le même dans la convention et dans la note d'honoraires. */
+export const PAYMENT_TERMS = "Par virement, à 30 jours après réalisation de la prestation et réception de la facture.";
 export const billingComplete = (b: Billing) => !!b.billingAddress?.trim() && (b.vatRegime !== "assujetti" || !!b.vatNumber?.trim());
 
 /** SIRET : 14 chiffres et clé de Luhn. */
@@ -117,7 +119,7 @@ export async function feeNotePdf(n: { number: string; issuedAt: Date; amountCent
   // Mentions.
   const mentions = [
     d.issuer.vatRegime === "assujetti" ? null : "TVA non applicable, article 293 B du CGI.",
-    "Paiement à réception, par virement.",
+    `Paiement : ${PAYMENT_TERMS.charAt(0).toLowerCase()}${PAYMENT_TERMS.slice(1)}`,
     d.issuer.iban ? `IBAN : ${d.issuer.iban}` : null,
     "En cas de retard de paiement : pénalités au taux de trois fois le taux d'intérêt légal et indemnité forfaitaire pour frais de recouvrement de 40 €.",
   ].filter(Boolean) as string[];

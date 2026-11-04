@@ -14,10 +14,11 @@ import { QUOTE_STATUS, RFQ_STATUS, rfqDisplayStatus, SUPPLIER_CATEGORIES, suppli
 import { awardQuote, cancelRfq, sendRfq } from "@/lib/rfq-actions";
 import { endMandate } from "@/lib/event-actions";
 import { lineTotal, perParticipant, readLines, vatLabel, withVat } from "@/lib/quotes";
+import { costHeadcount } from "@/lib/indicators";
 import { complianceSettings } from "@/lib/compliance";
 import { logoSrc } from "@/lib/logos";
 import { BillingNotice } from "@/components/BillingNotice";
-import { billingBlocked } from "@/lib/billing";
+import { engagementBlock } from "@/lib/billing";
 import { Thread } from "@/components/ProjectBits";
 
 export const metadata = { title: "Prestataires — KolBase" };
@@ -31,7 +32,7 @@ export default async function Page({ params, searchParams }: { params: Promise<{
   const scope = eventScope(user, roles);
   const scoped = Object.keys(scope).length > 0;
   const isOrganizer = roles.some((r) => EVENT_ORGANIZER_ROLES.includes(r));
-  const blocked = await billingBlocked(id, "devis");
+  const blocked = await engagementBlock(id, "devis");
 
   const [rfqs, suppliersRaw, events] = await Promise.all([
     db.rfq.findMany({
@@ -55,6 +56,10 @@ export default async function Page({ params, searchParams }: { params: Promise<{
         orderBy: { startsAt: "desc" },
       })
     : [];
+  // Présents des événements passés : le coût par participant d'un devis s'y rapporte après l'événement.
+  const now = new Date();
+  const pastEventIds = [...new Set(rfqs.filter((r) => r.event && r.event.startsAt < now).map((r) => r.event!.id))];
+  const presentBy = new Map((pastEventIds.length ? await db.registration.groupBy({ by: ["eventId"], where: { eventId: { in: pastEventIds }, checkedInAt: { not: null } }, _count: { _all: true } }) : []).map((g) => [g.eventId, g._count._all]));
   const ratings = await db.supplierReview.groupBy({ by: ["supplierId"], _avg: { rating: true }, _count: { _all: true } });
   const ratingOf = (sid: string) => ratings.find((r) => r.supplierId === sid);
   const suppliers = suppliersRaw.map((s) => ({
@@ -80,7 +85,7 @@ export default async function Page({ params, searchParams }: { params: Promise<{
         <div className="stats">
           <div className="card stat"><span className="muted">Devis à comparer</span><strong>{rfqs.filter((r) => r.status === "sent" && r.quotes.length > 0).length}</strong></div>
           <div className="card stat"><span className="muted">Prestations attribuées</span><strong>{awarded.length}</strong></div>
-          <div className="card stat"><span className="muted">Budget prestataires engagé</span><strong>{formatEUR(engaged)}</strong></div>
+          <div className="card stat"><span className="muted">Budget prestataires engagé</span><strong>{formatEUR(engaged)} HT</strong></div>
         </div>
         <nav className="tabs">
           {tabs.map(([k, l]) => <Link key={k} href={`?onglet=${k}`} className={k === onglet ? "active" : ""}>{l}</Link>)}
@@ -115,7 +120,8 @@ export default async function Page({ params, searchParams }: { params: Promise<{
                       {r.quotes.map((q) => {
                         const lines = readLines(q.lines);
                         const ttc = withVat(q.amountCents, q.vatBp);
-                        const pp = perParticipant(r.category, ttc, r.headcount, settings);
+                        const basis = costHeadcount(r.headcount, r.event ? presentBy.get(r.event.id) ?? 0 : 0, !!r.event && r.event.startsAt < now);
+                        const pp = perParticipant(r.category, ttc, basis.n, settings);
                         const expired = q.validUntil && q.validUntil < new Date();
                         return (
                         <div key={q.id} className={`quote${q.amountCents === best ? " best" : ""}`}>
@@ -136,7 +142,7 @@ export default async function Page({ params, searchParams }: { params: Promise<{
                             </div>
                             {pp && (
                               <div className={`text-xs ${pp.over ? "warn-text" : "muted"}`}>
-                                ≈ {pp.each.toLocaleString("fr-FR", { maximumFractionDigits: 2 })} € TTC par participant
+                                ≈ {pp.each.toLocaleString("fr-FR", { maximumFractionDigits: 2 })} € TTC par {basis.per}{basis.per === "présent" ? ` (${basis.n} présent${basis.n! > 1 ? "s" : ""} au pointage)` : ""}
                                 {pp.limit && (pp.over ? ` · au-dessus du seuil d'un ${pp.limit.what} (${pp.limit.max} € TTC) : autorisation de l'Ordre à prévoir pour les professionnels de santé` : ` · sous le seuil d'un ${pp.limit.what} (${pp.limit.max} € TTC)`)}
                               </div>
                             )}
@@ -144,7 +150,7 @@ export default async function Page({ params, searchParams }: { params: Promise<{
                               <details className="quote-detail">
                                 <summary>Détail de l&apos;offre{lines.length ? ` (${lines.length} ligne${lines.length > 1 ? "s" : ""})` : ""}</summary>
                                 {lines.length > 0 && (
-                                  <table><tbody>{lines.map((l, i) => <tr key={i}><td>{l.label}</td><td>{l.qty} × {formatEUR(l.unitCents)}</td><td>{formatEUR(lineTotal(l))}</td></tr>)}</tbody></table>
+                                  <table><tbody>{lines.map((l, i) => <tr key={i}><td>{l.label}</td><td>{l.qty} × {formatEUR(l.unitCents)} HT</td><td>{formatEUR(lineTotal(l))} HT</td></tr>)}</tbody></table>
                                 )}
                                 {q.note && <p>{q.note}</p>}
                                 {q.conditions && <p className="muted">Conditions : {q.conditions}</p>}
@@ -203,7 +209,7 @@ export default async function Page({ params, searchParams }: { params: Promise<{
                       <form action={sendRfq}>
                         <input type="hidden" name="orgId" value={id} />
                         <input type="hidden" name="rfqId" value={r.id} />
-                        <button className="btn" disabled={blocked}><Send size={14} /> {r.suppliers.length > 1 ? `Envoyer aux ${r.suppliers.length} prestataires` : "Envoyer au prestataire"}</button>
+                        <button className="btn" disabled={!!blocked}><Send size={14} /> {r.suppliers.length > 1 ? `Envoyer aux ${r.suppliers.length} prestataires` : "Envoyer au prestataire"}</button>
                       </form>
                     )}
                     {(r.status === "draft" || r.status === "sent") && (
@@ -213,7 +219,7 @@ export default async function Page({ params, searchParams }: { params: Promise<{
                         <button className="btn ghost small"><X size={13} /> Annuler la demande</button>
                       </form>
                     )}
-                    {kept && <span className="pill ok"><Check size={12} /> Attribué à {kept.supplier.name} — {formatEUR(kept.amountCents)}</span>}
+                    {kept && <span className="pill ok"><Check size={12} /> Attribué à {kept.supplier.name} — {formatEUR(kept.amountCents)} HT · {formatEUR(withVat(kept.amountCents, kept.vatBp))} TTC</span>}
                   </div>
                   {kept && r.status === "awarded" && isOrganizer && (!r.event || r.event.startsAt < new Date()) && (
                     r.review

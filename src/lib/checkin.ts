@@ -4,6 +4,13 @@ import QRCode from "qrcode";
 import { db } from "@/lib/db";
 import { EVENT_MANAGER_ROLES, eventScope } from "@/lib/events";
 
+/** Événements passés dont le pointage a été fait (au moins un présent) : un inscrit non pointé y est absent. */
+export async function pointedPastEvents(eventIds: string[], now = new Date()) {
+  if (eventIds.length === 0) return new Set<string>();
+  const g = await db.registration.groupBy({ by: ["eventId"], where: { eventId: { in: [...new Set(eventIds)] }, checkedInAt: { not: null }, event: { startsAt: { lt: now } } } });
+  return new Set(g.map((x) => x.eventId));
+}
+
 /** Le pointage ouvre la veille de l'événement et reste possible ensuite (régularisation). */
 export const CHECKIN_OPENS_MS = 24 * 3600 * 1000;
 export const checkinOpen = (startsAt: Date, now = new Date()) => now.getTime() >= startsAt.getTime() - CHECKIN_OPENS_MS;

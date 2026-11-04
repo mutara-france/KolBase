@@ -109,7 +109,8 @@ export function PasswordForm({ email }: { email: string }) {
   );
 }
 
-export function ListingForm({ listed, eligible, hasRpps }: { listed: boolean; eligible: boolean; hasRpps: boolean }) {
+/** Référencement comme expert ; `idMissing` : identifiant professionnel à renseigner d'abord (RPPS, ou celui du pays d'exercice). */
+export function ListingForm({ listed, eligible, idMissing }: { listed: boolean; eligible: boolean; idMissing: string | null }) {
   const [state, action, pending] = useActionState(setListed, undefined);
   const t = useT();
   if (!listed && !eligible)
@@ -130,7 +131,7 @@ export function ListingForm({ listed, eligible, hasRpps }: { listed: boolean; el
           <li>{t("Votre profil apparaît dans l'annuaire des experts et sur le site public.")}</li>
           <li>{t("Vous recevez des sollicitations et accédez aux opportunités.")}</li>
           <li>{t("Toute rémunération ou avantage reçu fera l'objet d'une convention, que l'organisation déclare sur Transparence Santé.")}</li>
-          {!hasRpps && <li><strong>{t("Prérequis : renseignez votre numéro RPPS")}</strong> {t("(Informations personnelles, plus bas).")}</li>}
+          {idMissing && <li><strong>{t("Prérequis : renseignez votre {id}", { id: t(idMissing) })}</strong> {t("(Informations personnelles, plus bas).")}</li>}
         </ul>
       )}
       <input type="hidden" name="listed" value={listed ? "0" : "1"} />
@@ -173,7 +174,7 @@ export function NotificationsForm({ email, newsletter = false }: { email: boolea
 }
 
 /** Mes données : export (portabilité) et suppression du compte (anonymisation). */
-export function MyDataCard({ keep }: { keep: { conventions: number; hospitalities: number } }) {
+export function MyDataCard({ keep }: { keep: { conventions: number; hospitalities: number; feeNotes: number } }) {
   const [state, action, pending] = useActionState(deleteAccount, undefined);
   const t = useT();
   const kept = keep.conventions + keep.hospitalities > 0;
@@ -185,17 +186,18 @@ export function MyDataCard({ keep }: { keep: { conventions: number; hospitalitie
   return (
     <section className="card form">
       <h2>{t("Mes données")}</h2>
-      <p className="muted">{t("Téléchargez l'ensemble des données de votre compte (profil, publications, inscriptions, collaborations, messages) au format JSON.")}</p>
+      <p className="muted">{t("Téléchargez l'ensemble des données de votre compte (profil, publications, inscriptions, collaborations, messages, liens d'intérêts déclarés, notes d'honoraires) au format JSON.")}</p>
       <div className="actions"><a className="btn ghost" href="/compte/export">{t("Télécharger mes données")}</a></div>
       <details>
         <summary>{t("Supprimer mon compte")}</summary>
         <form action={action} className="stack-sm">
           <p className="muted">
-            {t("La suppression est définitive : vous ne pourrez plus vous connecter, votre fiche est retirée, vos publications, coordonnées, suivis et candidatures en attente sont effacés, vos inscriptions à venir annulées et vos sollicitations en attente déclinées.")}
+            {t("La suppression est définitive : vous ne pourrez plus vous connecter, votre fiche est retirée ; vos publications, coordonnées, coordonnées de facturation (IBAN, adresse, SIRET, TVA), liens d'intérêts déclarés, suivis et candidatures en attente sont effacés, vos inscriptions à venir annulées et vos sollicitations en attente déclinées.")}
             {" "}
             {kept
-              ? t("Votre nom, votre profession, votre RPPS, votre ville et votre structure de facturation restent attachés à vos {items} : les organisations doivent les conserver (dispositif anti-cadeaux, Transparence Santé).", { items: keptItems })
-              : t("Aucune convention ni hospitalité n'est attachée à votre compte : votre nom est également effacé.")}
+              ? t("Votre nom, votre profession, votre RPPS, votre ville et votre structure de facturation restent attachés à vos {items} signées ou déclarées : les organisations doivent les conserver (dispositif anti-cadeaux, Transparence Santé).", { items: keptItems })
+              : t("Aucune convention signée ni hospitalité n'est attachée à votre compte : votre nom est également effacé.")}
+            {keep.feeNotes > 0 && <>{" "}{t("Vos notes d'honoraires déjà établies ({n}) restent chez les organisations, telles qu'émises (pièces comptables).", { n: keep.feeNotes })}</>}
           </p>
           <Notice state={state} />
           <label>{t("Mot de passe")}<input name="password" type="password" autoComplete="current-password" required /></label>

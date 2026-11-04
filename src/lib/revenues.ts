@@ -1,11 +1,14 @@
 import "server-only";
 import { db } from "@/lib/db";
 import { collabType } from "@/lib/projects";
+import { pointedPastEvents } from "@/lib/checkin";
+import { isAbsent } from "@/lib/indicators";
 
 /**
  * « Mes revenus » d'un praticien : honoraires des collaborations engagées, hospitalités reçues,
  * liens d'intérêts (KolBase + déclarés à la main) et état des déclarations Transparence Santé.
- * Données visibles du seul praticien.
+ * Données visibles du seul praticien. Une hospitalité d'un absent au pointage (non consommée) est signalée
+ * « absent : non déclaré » et ne compte ni dans les totaux ni dans les liens d'intérêts.
  */
 export const SIGNED = ["SIGNE", "TERMINE"] as const;
 export const INTEREST_YEARS = 5;
@@ -25,6 +28,7 @@ export async function practitionerLedger(userId: string, practitionerId: string)
     db.declaredInterest.findMany({ where: { practitionerId }, orderBy: [{ startYear: "desc" }, { createdAt: "desc" }] }),
   ]);
   const now = new Date();
+  const pointed = await pointedPastEvents(regs.filter((r) => r.event.startsAt < now).map((r) => r.eventId), now);
   // Année de rattachement : celle du paiement, sinon celle de l'accord de l'expert.
   const fees = links.map((l) => {
     const date = l.paidAt ?? l.respondedAt ?? l.createdAt;
@@ -41,6 +45,8 @@ export async function practitionerLedger(userId: string, practitionerId: string)
       id: r.id, date: r.event.startsAt, year: r.event.startsAt.getFullYear(), org: r.event.organization, eventId: r.eventId, title: r.event.title,
       items: r.benefits.map((b) => b.benefit.label), valueCents: r.benefits.reduce((s, b) => s + b.valueCents, 0),
       declared: r.declared, declarationRef: r.declarationRef,
+      // Déjà déclarée par l'organisation : elle reste comptée, même sans pointage.
+      absent: !r.declared && isAbsent(r, pointed.has(r.eventId)),
     }));
   return { fees, hospitality, declared };
 }
@@ -59,7 +65,7 @@ export function interestLines(ledger: Awaited<ReturnType<typeof practitionerLedg
     map.set(key, line);
   };
   for (const f of ledger.fees) if (f.signed && f.year >= since) add(f.org.name, `${f.type} (${f.year})`, "kolbase");
-  for (const h of ledger.hospitality) if (h.year >= since) add(h.org.name, `Hospitalité lors de « ${h.title} » (${h.year})`, "kolbase");
+  for (const h of ledger.hospitality) if (h.year >= since && !h.absent) add(h.org.name, `Hospitalité lors de « ${h.title} » (${h.year})`, "kolbase");
   for (const d of ledger.declared)
     if ((d.endYear ?? now.getFullYear()) >= since) add(d.organization, `${d.nature} (${d.startYear}${d.endYear ? (d.endYear === d.startYear ? "" : `–${d.endYear}`) : " – en cours"})`, "declare");
   return [...map.values()].sort((a, b) => a.org.localeCompare(b.org, "fr"));
