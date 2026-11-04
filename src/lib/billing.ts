@@ -1,7 +1,7 @@
 import "server-only";
 import { db } from "@/lib/db";
 import { stripe, stripeEnabled, type StripeSubscription } from "@/lib/stripe";
-import { asInterval, asObjectId, canEngage, ENGAGING, fromStripeStatus, planFor, planPrice, PLANS, stripePause, subscribeHref, TRIAL_DAYS, type Blocked, type GateLink, type Interval, type Motive } from "@/lib/billing-plans";
+import { asInterval, asObjectId, canEngage, ENGAGING, fromStripeStatus, needsSubscription, planFor, planPrice, PLANS, stripePause, subscribeHref, TRIAL_DAYS, type Blocked, type GateLink, type Interval, type Motive } from "@/lib/billing-plans";
 import { dpaCurrent, dpaHref, dpaMessage } from "@/lib/dpa";
 
 export { stripeEnabled };
@@ -16,10 +16,16 @@ async function engagementAllowed(orgId: string) {
 /** Message d'une action refusée faute d'abonnement (chemin de la page d'abonnement donné en clair). */
 export const gateMessage = (motive: Motive) => `Pour ${ENGAGING[motive]}, un administrateur de l'organisation active l'abonnement (premier mois offert) : menu du compte › Abonnement.`;
 
-/** L'action engageante est-elle bloquée faute d'abonnement ? (prestataire : réponse à une nouvelle demande) */
+/**
+ * L'action engageante est-elle bloquée faute d'abonnement ? (prestataire : réponse à une nouvelle demande ; société
+ * savante, association ou organisme de formation : la publication d'un événement reste gratuite)
+ */
 export async function billingBlocked(orgId: string, motive: Motive) {
   if (!stripeEnabled()) return false;
-  return motive === "reponse" ? !(await supplierCanQuote(orgId)) : !(await engagementAllowed(orgId));
+  if (motive === "reponse") return !(await supplierCanQuote(orgId));
+  const org = await db.organization.findUnique({ where: { id: orgId }, select: { kind: true } });
+  if (org && !needsSubscription(org.kind, motive)) return false;
+  return !(await engagementAllowed(orgId));
 }
 
 /** Contrat de sous-traitance (RGPD) accepté dans sa version en vigueur ? (toujours vrai pour un prestataire) */
@@ -35,7 +41,7 @@ export async function dpaAccepted(orgId: string) {
  */
 export async function engagementGate(orgId: string, motive: Motive, objet?: string | null): Promise<{ error: string; fix: GateLink } | null> {
   if (!(await dpaAccepted(orgId))) return { error: dpaMessage(motive), fix: { href: dpaHref(orgId, motive, objet), label: "Accepter le contrat de sous-traitance" } };
-  if (!(await engagementAllowed(orgId))) return { error: gateMessage(motive), fix: { href: subscribeHref(orgId, motive, objet), label: "Activer l'abonnement" } };
+  if (await billingBlocked(orgId, motive)) return { error: gateMessage(motive), fix: { href: subscribeHref(orgId, motive, objet), label: "Activer l'abonnement" } };
   return null;
 }
 

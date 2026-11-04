@@ -151,7 +151,9 @@ que personne ne soit prévenu.
 Abonnements mensuels sans engagement, payés par carte ou prélèvement SEPA via Stripe (`src/lib/billing.ts`) :
 
 - **organisation** : 599 € HT par mois, à activer par un administrateur à la première action qui engage un tiers
-  (sollicitation envoyée, appel à candidatures ou événement publié, demande de devis envoyée) ;
+  (sollicitation envoyée, appel à candidatures ou événement publié, demande de devis envoyée) ; les sociétés savantes,
+  associations professionnelles et organismes de formation publient leurs événements gratuitement
+  (`FREE_EVENT_KINDS`, `src/lib/billing-plans.ts`) ;
 - **prestataire** : référencement gratuit ; 249 € HT par mois pour répondre à de nouvelles demandes après le premier
   devis retenu (le prestataire est prévenu à ce moment-là).
 
