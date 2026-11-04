@@ -10,7 +10,7 @@ import { NewRfqForm, RfqMessageForm, SupplierLine } from "@/components/RfqForms"
 import { db } from "@/lib/db";
 import { requireMembership } from "@/lib/orgs";
 import { EVENT_MANAGER_ROLES, EVENT_ORGANIZER_ROLES, eventScope, formatDate, formatEUR } from "@/lib/events";
-import { QUOTE_STATUS, RFQ_STATUS, rfqDisplayStatus, SUPPLIER_CATEGORIES, supplierCategoryLabel } from "@/lib/suppliers";
+import { canCancelRfq, QUOTE_STATUS, RFQ_STATUS, rfqDisplayStatus, rfqView, SUPPLIER_CATEGORIES, supplierCategoryLabel } from "@/lib/suppliers";
 import { awardQuote, cancelRfq, proposeQuote, sendRfq } from "@/lib/rfq-actions";
 import { endMandate, setMandateAward } from "@/lib/event-actions";
 import { activeMandate, type AwardRight } from "@/lib/mandates";
@@ -37,7 +37,7 @@ export default async function Page({ params, searchParams }: { params: Promise<{
   const isOrganizer = roles.some((r) => EVENT_ORGANIZER_ROLES.includes(r));
   const blocked = await engagementBlock(id, "devis");
 
-  const [rfqs, suppliersRaw, events] = await Promise.all([
+  const [rfqsRaw, suppliersRaw, events] = await Promise.all([
     db.rfq.findMany({
       where: { organizationId: id, ...(scoped ? { event: scope } : {}) },
       include: {
@@ -61,13 +61,17 @@ export default async function Page({ params, searchParams }: { params: Promise<{
   });
   const agencyName = new Map(mandates.map((m) => [m.agencyId, m.agency.name]));
   const own = (orgId: string) => user.memberships.some((m) => m.organizationId === orgId);
-  const rightFor = (r: { event: { agencyId: string | null } | null }): AwardRight => {
+  const ownOrgIds = user.memberships.filter((m) => m.organization.kind === "PRESTATAIRE").map((m) => m.organizationId);
+  // Agence consultée sur une demande de l'événement qu'elle pilote : elle n'en voit que son devis et ses échanges.
+  const rfqs = rfqsRaw.map((r) => rfqView(r, ownOrgIds));
+  const rightFor = (r: { conflicted: boolean; event: { agencyId: string | null } | null }): AwardRight => {
+    if (r.conflicted) return "none";
     if (isOrganizer) return "award";
     const m = mandates.find((x) => x.agencyId === r.event?.agencyId && own(x.agencyId));
     return !m ? "none" : m.canAward ? "award" : "propose";
   };
   // Auteur de chaque demande, et son agence quand il agit par un mandat.
-  const creatorIds = [...new Set(rfqs.flatMap((r) => [r.createdById, r.proposedById]).filter((x): x is string => !!x))];
+  const creatorIds = [...new Set(rfqs.flatMap((r) => [r.createdById, r.proposedById, r.cancelledById]).filter((x): x is string => !!x))];
   const creators = new Map(
     (creatorIds.length
       ? await db.user.findMany({ where: { id: { in: creatorIds } }, select: { id: true, firstName: true, lastName: true, memberships: { where: { organization: { kind: "PRESTATAIRE" } }, select: { organizationId: true } } } })
@@ -89,6 +93,7 @@ export default async function Page({ params, searchParams }: { params: Promise<{
     rating: ratingOf(s.id)?._avg.rating ?? null, reviews: ratingOf(s.id)?._count._all ?? 0,
   }));
   const awarded = rfqs.filter((r) => r.status === "awarded");
+  // Montants retenus visibles seulement (une agence consultée ne voit pas celui d'un concurrent).
   const engaged = awarded.reduce((s, r) => s + (r.quotes.find((q) => q.status === "retained")?.amountCents ?? 0), 0);
   const list = cat ? suppliers.filter((s) => s.categories.includes(cat)) : suppliers;
   const tabs = [
@@ -105,7 +110,7 @@ export default async function Page({ params, searchParams }: { params: Promise<{
         <SectionNav tabs={sectionTabs} active="prestataires" label="Rubrique Événements" />
         <h1>Prestataires et devis</h1>
         <div className="stats">
-          <div className="card stat"><span className="muted">Devis à comparer</span><strong>{rfqs.filter((r) => r.status === "sent" && r.quotes.length > 0).length}</strong></div>
+          <div className="card stat"><span className="muted">Devis à comparer</span><strong>{rfqs.filter((r) => r.status === "sent" && r.quotes.length > 0 && !r.conflicted).length}</strong></div>
           <div className="card stat"><span className="muted">Prestations attribuées</span><strong>{awarded.length}</strong></div>
           <div className="card stat"><span className="muted">Budget prestataires engagé</span><strong>{formatEUR(engaged)} HT</strong></div>
         </div>
@@ -118,9 +123,12 @@ export default async function Page({ params, searchParams }: { params: Promise<{
             {rfqs.length === 0 && <div className="card empty"><Receipt size={22} /><p className="muted">Aucune demande de devis.</p></div>}
             {rfqs.map((r) => {
               const st = RFQ_STATUS[rfqDisplayStatus(r)];
-              const best = r.quotes.length > 1 ? r.quotes[0].amountCents : null;
+              const best = r.quotes.length > 1 && !r.conflicted ? r.quotes[0].amountCents : null;
               const kept = r.quotes.find((q) => q.status === "retained");
+              // Agence consultée : le prestataire retenu, s'il s'agit d'un concurrent, sans son montant.
+              const keptElsewhere = r.conflicted && r.status === "awarded" && !kept ? rfqsRaw.find((x) => x.id === r.id)?.quotes.find((q) => q.status === "retained")?.supplier.name : null;
               const pending = r.suppliers.filter((s) => !r.quotes.some((q) => q.supplierId === s.supplierId));
+              const cancellable = (r.status === "draft" || r.status === "sent") && canCancelRfq({ organizer: isOrganizer, author: r.createdById === user.id, conflicted: r.conflicted });
               return (
                 <section key={r.id} id={`rfq-${r.id}`} className="card">
                   <div className="card-head">
@@ -133,11 +141,24 @@ export default async function Page({ params, searchParams }: { params: Promise<{
                   </div>
                   <p>{r.needs}</p>
                   {r.createdById && creators.get(r.createdById) && <p className="text-sm muted">Créée par {creators.get(r.createdById)}</p>}
-                  <div className="kv">
-                    <div><span>Prestataires consultés</span><span>{r.suppliers.length}</span></div>
-                    <div><span>Devis reçus</span><span>{r.quotes.length}{r.quotes.length ? ` · dès ${formatEUR(r.quotes[0].amountCents)} HT` : ""}</span></div>
-                    <div><span>Réponse attendue</span><span>{r.deadline ? formatDate(r.deadline) : "à définir"}</span></div>
-                  </div>
+                  {r.status === "cancelled" && r.cancelledAt && (
+                    <p className="text-sm muted">Annulée{r.cancelledById && creators.get(r.cancelledById) ? ` par ${creators.get(r.cancelledById)}` : ""} le {formatDate(r.cancelledAt)}</p>
+                  )}
+                  {r.conflicted ? (
+                    <div className="info-note">
+                      <Info size={15} />
+                      <span>
+                        Votre organisation est consultée sur cette demande : l&apos;organisation la conduit seule. Vous n&apos;y voyez que votre devis et vos échanges ;
+                        répondez depuis <Link href={`/organisations/${r.suppliers[0]?.supplierId}/devis`}>vos demandes de devis</Link>.
+                      </span>
+                    </div>
+                  ) : (
+                    <div className="kv">
+                      <div><span>Prestataires consultés</span><span>{r.suppliers.length}</span></div>
+                      <div><span>Devis reçus</span><span>{r.quotes.length}{r.quotes.length ? ` · dès ${formatEUR(r.quotes[0].amountCents)} HT` : ""}</span></div>
+                      <div><span>Réponse attendue</span><span>{r.deadline ? formatDate(r.deadline) : "à définir"}</span></div>
+                    </div>
+                  )}
                   {r.quotes.length > 0 && (
                     <div className="quotes">
                       {r.quotes.map((q) => {
@@ -224,10 +245,10 @@ export default async function Page({ params, searchParams }: { params: Promise<{
                       })}
                     </div>
                   )}
-                  {r.status === "sent" && pending.length > 0 && (
+                  {r.status === "sent" && pending.length > 0 && !r.conflicted && (
                     <p className="muted">En attente de réponse : {pending.map((s) => s.supplier.name + (agencyName.has(s.supplierId) ? " (agence mandatée)" : "") + (s.declined ? " (a décliné)" : "")).join(", ")}.</p>
                   )}
-                  {r.status === "draft" && <p className="muted">Prestataires sélectionnés : {r.suppliers.map((s) => s.supplier.name + (agencyName.has(s.supplierId) ? " (agence mandatée)" : "")).join(", ")}.</p>}
+                  {r.status === "draft" && !r.conflicted && <p className="muted">Prestataires sélectionnés : {r.suppliers.map((s) => s.supplier.name + (agencyName.has(s.supplierId) ? " (agence mandatée)" : "")).join(", ")}.</p>}
                   {r.status === "sent" && rightFor(r) === "propose" && <p className="hint">Votre mandat ne vous permet pas de retenir un devis : proposez-en un, l&apos;organisation décide.</p>}
                   {(r.status === "sent" || r.status === "awarded") && (
                     <div className="rfq-threads">
@@ -244,7 +265,7 @@ export default async function Page({ params, searchParams }: { params: Promise<{
                               {toAnswer && <span className="pill electric">Nouveau message</span>}
                             </summary>
                             <Thread messages={msgs} meId={user.id} />
-                            {(r.status === "sent" || r.quotes.some((q) => q.supplierId === s.supplierId && q.status === "retained")) && (
+                            {!r.conflicted && (r.status === "sent" || r.quotes.some((q) => q.supplierId === s.supplierId && q.status === "retained")) && (
                               <RfqMessageForm orgId={id} rfqId={r.id} supplierId={s.supplierId} placeholder={`Écrire à ${s.supplier.name}…`} />
                             )}
                           </details>
@@ -253,21 +274,28 @@ export default async function Page({ params, searchParams }: { params: Promise<{
                     </div>
                   )}
                   <div className="actions">
-                    {r.status === "draft" && (
+                    {r.status === "draft" && !r.conflicted && (
                       <form action={sendRfq}>
                         <input type="hidden" name="orgId" value={id} />
                         <input type="hidden" name="rfqId" value={r.id} />
                         <button className="btn" disabled={!!blocked}><Send size={14} /> {r.suppliers.length > 1 ? `Envoyer aux ${r.suppliers.length} prestataires` : "Envoyer au prestataire"}</button>
                       </form>
                     )}
-                    {(r.status === "draft" || r.status === "sent") && (
+                    {cancellable && (
                       <form action={cancelRfq}>
                         <input type="hidden" name="orgId" value={id} />
                         <input type="hidden" name="rfqId" value={r.id} />
-                        <button className="btn ghost small"><X size={13} /> Annuler la demande</button>
+                        <ConfirmButton
+                          className="btn ghost small"
+                          confirm="annuler la demande"
+                          summary={<>{r.status === "sent" ? `${r.suppliers.length > 1 ? `Les ${r.suppliers.length} prestataires consultés sont prévenus` : "Le prestataire consulté est prévenu"} par e-mail ; aucun devis ne pourra plus être retenu sur cette demande.` : "Le brouillon n'a pas été envoyé : aucun prestataire n'est prévenu."}{!isOrganizer ? " Les organisateurs sont prévenus par e-mail." : ""}</>}
+                        >
+                          <X size={13} /> Annuler la demande
+                        </ConfirmButton>
                       </form>
                     )}
                     {kept && <span className="pill ok"><Check size={12} /> Attribué à {kept.supplier.name} — {formatEUR(kept.amountCents)} HT · {formatEUR(withVat(kept.amountCents, kept.vatBp))} TTC</span>}
+                    {keptElsewhere && <span className="pill done">Attribuée à {keptElsewhere}</span>}
                   </div>
                   {kept && r.status === "awarded" && isOrganizer && (!r.event || r.event.startsAt < new Date()) && (
                     r.review
@@ -287,7 +315,7 @@ export default async function Page({ params, searchParams }: { params: Promise<{
             ai={aiEnabled()}
             categories={SUPPLIER_CATEGORIES.map((c) => ({ id: c.id, label: c.label }))}
             suppliers={suppliers}
-            events={events.map((e) => ({ id: e.id, label: `${formatDate(e.startsAt)} — ${e.title}`, city: e.city, capacity: e.capacity }))}
+            events={events.map((e) => ({ id: e.id, label: `${formatDate(e.startsAt)} — ${e.title}`, city: e.city, capacity: e.capacity, agencyId: e.agencyId }))}
             defaultEventId={evenement}
             defaultCategory={cat}
           />

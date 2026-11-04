@@ -13,6 +13,7 @@ import { toDeclare } from "@/lib/indicators";
 import { subscribeHref } from "@/lib/billing-plans";
 import { activeMandate } from "@/lib/mandates";
 import { de } from "@/lib/elision";
+import { rfqConflict } from "@/lib/suppliers";
 import { getT } from "@/lib/i18n/server";
 
 
@@ -66,7 +67,7 @@ export const orgOverview = cache(async (orgId: string) => {
       ? db.materialVersion.findMany({ where: { status: "submitted", material: { project: { organizationId: orgId } } }, include: { material: { include: { project: { select: { id: true, title: true } } } } } })
       : Promise.resolve([]),
     can.events
-      ? db.rfq.findMany({ where: { organizationId: orgId, status: { in: ["draft", "sent"] }, ...rfqScope }, include: { event: { select: { title: true } }, _count: { select: { quotes: true, suppliers: true } } } })
+      ? db.rfq.findMany({ where: { organizationId: orgId, status: { in: ["draft", "sent"] }, ...rfqScope }, include: { event: { select: { title: true } }, suppliers: { select: { supplierId: true } }, _count: { select: { quotes: true, suppliers: true } } } })
       : Promise.resolve([]),
     org.kind === "PRESTATAIRE"
       ? db.rfqSupplier.findMany({
@@ -127,6 +128,8 @@ export const orgOverview = cache(async (orgId: string) => {
   // Organisateurs, et agence mandatée pour les événements qui lui sont confiés.
   if (can.events) {
     for (const r of rfqs) {
+      // Agence consultée sur la demande : l'organisation la conduit seule, rien à faire ici pour l'agence.
+      if (rfqConflict(r.suppliers.map((s) => s.supplierId), ownOrgs)) continue;
       const label = r.event?.title ?? "Demande de devis";
       if (r.status === "draft") todos.push({ href: `${base}/prestataires`, title: `Demande de devis à envoyer : ${label}`, icon: "Receipt" });
       else if (r.proposedQuoteId && can.organizer)
@@ -146,7 +149,11 @@ export const orgOverview = cache(async (orgId: string) => {
   if (isSupplier || can.events) {
     const msgs = await db.rfqMessage.findMany({
       where: {
-        rfq: { status: { in: ["sent", "awarded"] }, ...(isSupplier ? {} : { organizationId: orgId, ...rfqScope }) },
+        rfq: {
+          status: { in: ["sent", "awarded"] },
+          // Côté client, pas les demandes où l'organisation de l'utilisateur (agence) est elle-même consultée.
+          ...(isSupplier ? {} : { organizationId: orgId, ...rfqScope, ...(ownOrgs.length ? { suppliers: { none: { supplierId: { in: ownOrgs } } } } : {}) }),
+        },
         // Une agence ne se répond pas à elle-même : ses propres fils de prestataire sont dans son espace.
         ...(isSupplier ? { supplierId: orgId } : ownOrgs.length ? { supplierId: { notIn: ownOrgs } } : {}),
       },
@@ -169,7 +176,8 @@ export const orgOverview = cache(async (orgId: string) => {
   // Agence : les devis et questions des événements que ses clients lui confient (mandat actif), sans ses propres fils.
   if (isSupplier) {
     const confided = await db.rfq.findMany({
-      where: { status: "sent", event: { agencyId: orgId }, organization: { mandatesGiven: { some: { agencyId: orgId, ...activeMandate(now) } } } },
+      // Sauf les demandes où l'agence est elle-même consultée : elle y répond comme prestataire (« Devis demandé par… »).
+      where: { status: "sent", event: { agencyId: orgId }, suppliers: { none: { supplierId: orgId } }, organization: { mandatesGiven: { some: { agencyId: orgId, ...activeMandate(now) } } } },
       include: {
         organization: { select: { name: true } },
         event: { select: { title: true } },

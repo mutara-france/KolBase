@@ -564,6 +564,9 @@ model Rfq {
   proposedQuoteId String?
   proposedById    String?
   proposedAt      DateTime?
+  // Annulation : par qui et quand (l'organisation cliente ou l'auteur de la demande).
+  cancelledAt     DateTime?
+  cancelledById   String?
   createdAt      DateTime     @default(now())
 
   suppliers RfqSupplier[]
