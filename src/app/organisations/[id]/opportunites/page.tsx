@@ -66,7 +66,7 @@ export default async function Page({ params, searchParams }: { params: Promise<{
                     </span>
                   </span>
                   <span className="row-status">
-                    <span className={`pill ${closed ? "done" : "ok"}`}>{closed ? "Clôturé" : "Ouvert"}</span>
+                    <span className={`pill ${closed ? "done" : c.slots != null && retained >= c.slots ? "bad" : "ok"}`}>{closed ? "Clôturé" : c.slots != null && retained >= c.slots ? "Complet" : "Ouvert"}</span>
                     {pending > 0 && <span className="text-xs warn-text">{pending} candidature{pending > 1 ? "s" : ""} à examiner</span>}
                   </span>
                   <span className="row-figures">

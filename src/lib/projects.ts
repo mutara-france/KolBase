@@ -60,6 +60,11 @@ export const STATUS_LABEL: Record<ProjectStatus, string> = {
   DECLINE: "Décliné / abandonné",
 };
 
+/** Libellés vus par l'expert sollicité (de son point de vue) : sa réponse est attendue, pas « les experts ». */
+export const EXPERT_STATUS_LABEL: Partial<Record<ProjectStatus, string>> = { ATT_EXPERTS: "Votre réponse est attendue" };
+export const statusLabel = (status: ProjectStatus, viewer: "organisation" | "expert" = "organisation") =>
+  (viewer === "expert" ? EXPERT_STATUS_LABEL[status] : undefined) ?? STATUS_LABEL[status];
+
 export const STATUS_TONE: Record<ProjectStatus, "wait" | "ok" | "bad" | "done"> = {
   ATT_EXPERTS: "wait", ATT_IND: "wait", ACCORD: "ok", EN_VALID: "wait", BLOQUE: "bad", VALIDE: "ok",
   ORDRE: "wait", REFUS_ORDRE: "bad", SIGNATURE: "wait", SIGNE: "ok", TERMINE: "done", DECLINE: "done",

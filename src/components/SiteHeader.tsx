@@ -43,10 +43,11 @@ export async function SiteHeader({ variant = "app", section }: { variant?: "app"
             { key: "opportunites", href: "/opportunites", label: t("Opportunités"), icon: "Megaphone", match: ["/interventions"] },
           ] satisfies ShellItem[])
         : []),
-      { key: "agenda", href: "/inscriptions", label: t("Agenda"), icon: "CalendarDays", match: p.listed ? ["/interventions"] : [] },
+      { key: "agenda", href: "/inscriptions", label: t("Mes inscriptions"), short: t("Inscriptions"), icon: "CalendarDays", match: p.listed ? ["/interventions"] : [] },
       // Revenus (honoraires, notes, liens d'intérêts) : pour les professions qui peuvent être expertes.
       ...(canBeExpert(p.profession) || p.listed ? [{ key: "revenus", href: "/revenus", label: t("Revenus"), icon: "Wallet" } satisfies ShellItem] : []),
-      { key: "profil", href: "/compte", label: t("Mon profil"), short: t("Profil"), icon: "UserRound" },
+      // Mon compte : aussi dans le menu du compte ; cède sa place dans la barre du bas quand elle serait trop longue.
+      { key: "profil", href: "/compte", label: t("Mon compte"), short: t("Compte"), icon: "UserRound", secondary: true },
     ];
     spaces.push({
       key: "praticien",
@@ -80,14 +81,17 @@ export async function SiteHeader({ variant = "app", section }: { variant?: "app"
       color: avatarColor(o.name),
       square: true,
       home: `/organisations/${id}`,
-      items: orgNavItems(id, o.roles, o.kind).map((i) => (i.key === "accueil" ? i : { ...i, badge: countFor(i, hrefs) })),
-      links: orgMenuLinks(id, o.roles, o.kind),
+      // Navigation de l'espace organisation traduite (les pages de l'espace restent en français).
+      items: orgNavItems(id, o.roles, o.kind).map((i) => ({ ...i, label: t(i.label), short: i.short && t(i.short), ...(i.key === "accueil" ? {} : { badge: countFor(i, hrefs) }) })),
+      links: orgMenuLinks(id, o.roles, o.kind).map((l) => ({ ...l, label: t(l.label) })),
     });
   }
 
   const sourcing = user.memberships.some((m) => SOURCING_ROLES.includes(m.role) && m.organization.kind !== "PRESTATAIRE");
-  const showBell = sourcing || !!p?.listed;
-  const followCount = showBell && (await db.follow.count({ where: { userId: user.id } })) ? await unseenFollowCount(user.id, user.followsSeenAt) : 0;
+  // Cloche des suivis : dès qu'on suit un profil (« Suivre »), quel que soit le compte.
+  const follows = await db.follow.count({ where: { userId: user.id } });
+  const showBell = sourcing || !!p?.listed || follows > 0;
+  const followCount = follows ? await unseenFollowCount(user.id, user.followsSeenAt) : 0;
   const initialSpace = (await cookies()).get("kb_espace")?.value;
 
   return (

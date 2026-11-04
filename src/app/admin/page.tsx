@@ -111,6 +111,13 @@ export default async function Page({ searchParams }: { searchParams: Promise<{ o
                               Annuaire des entreprises <ExternalLink size={12} />
                             </a>
                           </>
+                        ) : o.rna ? (
+                          <>
+                            <span className="muted">non renseigné · RNA</span> {o.rna}{" "}
+                            <a href={`https://www.journal-officiel.gouv.fr/pages/associations-recherche/?q=${o.rna}`} target="_blank" rel="noreferrer">
+                              Journal officiel (associations) <ExternalLink size={12} />
+                            </a>
+                          </>
                         ) : (
                           <span className="muted">non renseigné</span>
                         )}

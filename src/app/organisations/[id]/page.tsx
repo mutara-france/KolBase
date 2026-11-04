@@ -8,15 +8,17 @@ import { formatEUR } from "@/lib/events";
 import { supplierCategoryLabel } from "@/lib/suppliers";
 import { orgBillingLine, orgOnboarding } from "@/lib/onboarding";
 import { CheckCircle2, Circle } from "lucide-react";
-import { STATS_ROLES } from "@/lib/org-roles";
+import { roleLabel, STATS_ROLES } from "@/lib/org-roles";
+import { de } from "@/lib/elision";
 
 export const metadata = { title: "Accueil — KolBase" };
 
 const plural = (n: number, one: string, many: string) => `${n} ${n > 1 ? many : one}`;
 
 /** Accueil d'une organisation : ce qui attend une action, puis ce qui arrive. Le reste est dans les rubriques. */
-export default async function Page({ params }: { params: Promise<{ id: string }> }) {
+export default async function Page({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: Promise<{ acces?: string }> }) {
   const { id } = await params;
+  const { acces } = await searchParams;
   const { user, isAdmin, roles } = await requireMembership(id);
   const o = await orgOverview(id);
   if (!o) notFound();
@@ -51,7 +53,8 @@ export default async function Page({ params }: { params: Promise<{ id: string }>
       detail: [e.city ?? (e.format === "DISTANCIEL" ? "En ligne" : null), e.internal ? "réunion interne" : `${plural(e._count.registrations, "inscrit", "inscrits")}${e.capacity ? ` sur ${e.capacity}` : ""}`, e.publishedAt || e.internal ? null : "brouillon"]
         .filter(Boolean)
         .join(" · "),
-      href: can.events ? `${base}/evenements/${e.id}` : `/evenements/${e.id}`,
+      // La conformité lit la fiche de l'événement (hospitalités, inscrits) sans la modifier.
+      href: can.events || can.compliance ? `${base}/evenements/${e.id}` : `/evenements/${e.id}`,
       strong: true,
     })),
     ...(can.organizer
@@ -88,6 +91,12 @@ export default async function Page({ params }: { params: Promise<{ id: string }>
       <SiteHeader />
       <main className="stack dash">
         <DashHead title={`Bonjour ${user.firstName}.`} lede={lede} action={<CreateMenu items={create} />} />
+        {acces === "refuse" && (
+          <p className="notice warn" role="alert">
+            La page demandée est réservée à d&apos;autres rôles {de(org.name)} (vos rôles : {roles.map((r) => roleLabel(r, org.kind)).join(", ")}).{" "}
+            {isAdmin ? <>Vous pouvez ajuster les rôles dans <Link href={`${base}/membres`}>Membres et réglages</Link>.</> : "Un administrateur de l'organisation peut vous donner le rôle nécessaire."}
+          </p>
+        )}
         {org.verification === "SUSPENDED" && (
           <p className="notice error" role="status">
             Organisation suspendue{org.verificationNote ? ` : ${org.verificationNote}` : ""}. Votre page publique, vos événements et vos appels sont masqués,

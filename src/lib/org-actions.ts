@@ -5,11 +5,12 @@ import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import { db } from "@/lib/db";
 import { audit, requireUser } from "@/lib/auth";
-import { invitableRoles, isVerifiedOrg, requireMembership, SIREN_REQUIRED, sirenFields } from "@/lib/orgs";
+import { invitableRoles, isVerifiedOrg, requireMembership, roleLabel, SIREN_REQUIRED, sirenFields } from "@/lib/orgs";
 import { blockedFor, hit } from "@/lib/rate-limit";
 import { mailEnabled } from "@/lib/mail";
 import { LOGO_MAX_BYTES, sniffLogo } from "@/lib/logos";
-import { parseSiren, sirenKeyOk } from "@/lib/siren";
+import { parseRna, parseSiren, sirenKeyOk } from "@/lib/siren";
+import { rnaAccepted } from "@/lib/org-roles";
 import type { FormState } from "@/lib/auth-actions";
 import { OrgKind, type OrgRole } from "@/generated/prisma/enums";
 import { eurToCents, MAX_NAME, str } from "@/lib/form";
@@ -24,23 +25,30 @@ export type InviteState = { error?: string; ok?: string; link?: string } | undef
 
 export async function createOrganization(_: FormState, form: FormData): Promise<FormState> {
   const user = await requireUser();
+  // Création traduite (comme la page /organisations/nouvelle).
+  const { t } = await getT();
   const name = str(form, "name", MAX_NAME);
   const kind = str(form, "kind") as OrgKind;
-  if (!name) return { error: "Indiquez le nom de l'organisation." };
-  if (!Object.values(OrgKind).includes(kind)) return { error: "Type d'organisation invalide." };
+  if (!name) return { error: t("Indiquez le nom de l'organisation.") };
+  if (!Object.values(OrgKind).includes(kind)) return { error: t("Type d'organisation invalide.") };
   const sirenInput = str(form, "siren");
-  const siren = sirenInput ? parseSiren(sirenInput) : null;
-  if (!sirenInput && SIREN_REQUIRED.includes(kind)) return { error: "Indiquez le SIREN (ou le SIRET) de l'organisation : KolBase le vérifie avant d'ouvrir les sollicitations." };
-  if (sirenInput && (!siren || !sirenKeyOk(siren))) return { error: "SIREN invalide : 9 chiffres (ou SIRET de 14 chiffres), vérifiez la saisie." };
+  // Société savante ou association : SIREN facultatif, numéro RNA accepté à la place.
+  const rna = sirenInput && rnaAccepted(kind) ? parseRna(sirenInput) : null;
+  const siren = sirenInput && !rna ? parseSiren(sirenInput) : null;
+  if (!sirenInput && SIREN_REQUIRED.includes(kind)) return { error: t("Indiquez le SIREN (ou le SIRET) de l'organisation : KolBase le vérifie avant d'ouvrir les sollicitations.") };
+  if (sirenInput && !rna && (!siren || !sirenKeyOk(siren)))
+    return { error: rnaAccepted(kind) ? t("Identifiant invalide : SIREN (9 chiffres), SIRET (14 chiffres) ou numéro RNA (W suivi de 9 chiffres), vérifiez la saisie.") : t("SIREN invalide : 9 chiffres (ou SIRET de 14 chiffres), vérifiez la saisie.") };
   const check = siren ? await sirenFields(siren) : null;
-  if (check?.lookup && !check.lookup.found) return { error: "Ce SIREN est introuvable dans le répertoire des entreprises." };
-  if (check?.lookup?.found && check.lookup.active === false) return { error: `L'entreprise ${check.lookup.name} est fermée selon le répertoire des entreprises.` };
+  if (check?.lookup && !check.lookup.found) return { error: t("Ce SIREN est introuvable dans le répertoire des entreprises.") };
+  if (check?.lookup?.found && check.lookup.active === false) return { error: t("L'entreprise {name} est fermée selon le répertoire des entreprises.", { name: check.lookup.name }) };
   const { lookup: _lookup, ...sirenData } = check ?? { lookup: null };
   const org = await db.organization.create({
     data: {
       name,
       kind,
       ...sirenData,
+      rna,
+      verificationRequestedAt: new Date(),
       sector: str(form, "sector") || null,
       headquarters: str(form, "headquarters") || null,
       contactEmail: str(form, "contactEmail") || null,
@@ -48,7 +56,7 @@ export async function createOrganization(_: FormState, form: FormData): Promise<
     },
   });
   await audit(user.id, "org.create", "Organization", org.id, { name, siren });
-  notifyPlatformAdmins(`Organisation à valider : ${name}`, `${user.firstName} ${user.lastName} a créé l'organisation « ${name} »${siren ? ` (SIREN ${siren}${check?.legalName ? `, ${check.legalName}` : ""})` : " sans SIREN"}.`, "/admin");
+  notifyPlatformAdmins(`Organisation à valider : ${name}`, `${user.firstName} ${user.lastName} a créé l'organisation « ${name} »${siren ? ` (SIREN ${siren}${check?.legalName ? `, ${check.legalName}` : ""})` : rna ? ` (RNA ${rna})` : " sans SIREN"}.`, "/admin");
   redirect(`/organisations/${org.id}`);
 }
 
@@ -65,7 +73,7 @@ export async function updateOrganization(_: FormState, form: FormData): Promise<
     where: { id: orgId },
     data: {
       name,
-      ...(renamed ? { verification: "PENDING", verificationNote: `Nom modifié : « ${org.name} » → « ${name} »`, listed: false } : {}),
+      ...(renamed ? { verification: "PENDING", verificationNote: `Nom modifié : « ${org.name} » → « ${name} »`, listed: false, verificationRequestedAt: new Date() } : {}),
       sector: str(form, "sector") || null,
       headquarters: str(form, "headquarters") || null,
       contactEmail: str(form, "contactEmail") || null,
@@ -87,8 +95,23 @@ export async function submitSiren(_: FormState, form: FormData): Promise<FormSta
   const { user, org } = await requireMembership(orgId, ["ADMIN"], { allowSupplier: true });
   // Une suspension se lève par KolBase, pas par une nouvelle demande de validation.
   if (org.verification === "SUSPENDED") return { error: "Organisation suspendue : la réactivation se fait par l'équipe KolBase, répondez à l'e-mail de suspension." };
+  // Association ou société savante : un numéro RNA tient lieu de SIREN.
+  const rna = rnaAccepted(org.kind) ? parseRna(str(form, "siren")) : null;
+  if (rna) {
+    const resubmitRna = org.verification !== "VERIFIED" || org.rna !== rna;
+    await db.organization.update({
+      where: { id: orgId },
+      data: { rna, ...(resubmitRna ? { verification: "PENDING", verificationNote: null, verificationRequestedAt: new Date(), ...(org.verification === "VERIFIED" ? { listed: false } : {}) } : {}) },
+    });
+    await audit(user.id, "org.rna", "Organization", orgId, { rna });
+    if (resubmitRna) notifyPlatformAdmins(`Organisation à valider : ${org.name}`, `${org.name} a renseigné le numéro RNA ${rna}.`, "/admin");
+    revalidatePath(`/organisations/${orgId}`);
+    revalidatePath(`/organisations/${orgId}/membres`);
+    return { ok: "Numéro RNA enregistré. Un administrateur KolBase va valider votre organisation." };
+  }
   const siren = parseSiren(str(form, "siren"));
-  if (!siren || !sirenKeyOk(siren)) return { error: "SIREN invalide : 9 chiffres (ou SIRET de 14 chiffres), vérifiez la saisie." };
+  if (!siren || !sirenKeyOk(siren))
+    return { error: rnaAccepted(org.kind) ? "Identifiant invalide : SIREN (9 chiffres), SIRET (14 chiffres) ou numéro RNA (W suivi de 9 chiffres), vérifiez la saisie." : "SIREN invalide : 9 chiffres (ou SIRET de 14 chiffres), vérifiez la saisie." };
   const { lookup, ...data } = await sirenFields(siren);
   if (lookup && !lookup.found) return { error: "Ce SIREN est introuvable dans le répertoire des entreprises." };
   if (lookup?.found && lookup.active === false) return { error: `L'entreprise ${lookup.name} est fermée selon le répertoire des entreprises.` };
@@ -96,7 +119,7 @@ export async function submitSiren(_: FormState, form: FormData): Promise<FormSta
   const resubmit = org.verification !== "VERIFIED" || org.siren !== siren;
   await db.organization.update({
     where: { id: orgId },
-    data: { ...data, ...(resubmit ? { verification: "PENDING", verificationNote: null, ...(org.verification === "VERIFIED" ? { listed: false } : {}) } : {}) },
+    data: { ...data, ...(resubmit ? { verification: "PENDING", verificationNote: null, verificationRequestedAt: new Date(), ...(org.verification === "VERIFIED" ? { listed: false } : {}) } : {}) },
   });
   await audit(user.id, "org.siren", "Organization", orgId, { siren, found: lookup?.found ?? null });
   if (resubmit) notifyPlatformAdmins(`Organisation à valider : ${org.name}`, `${org.name} a renseigné le SIREN ${siren}${lookup?.found ? ` (${lookup.name})` : ""}.`, "/admin");
@@ -131,7 +154,7 @@ export async function createInvitation(_: InviteState, form: FormData): Promise<
   revalidatePath(`/organisations/${orgId}`);
   revalidatePath(`/organisations/${orgId}/membres`);
   const link = `${process.env.APP_URL ?? ""}/invitation/${token}`;
-  if (email) notifyInvitation(email, org.name, `${user.firstName} ${user.lastName}`, link);
+  if (email) notifyInvitation(email, org.name, `${user.firstName} ${user.lastName}`, link, roleLabel(role, org.kind));
   return {
     ok: `${email ? `Invitation envoyée à ${email}. ` : ""}Lien valable ${INVITE_DAYS} jours, à usage unique. Copiez-le maintenant : il ne sera plus affiché.`,
     link,

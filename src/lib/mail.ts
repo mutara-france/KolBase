@@ -15,7 +15,11 @@ const transport = () => (g.kbMailer ??= process.env.SMTP_URL ? nodemailer.create
 export const mailEnabled = () => !!process.env.SMTP_URL;
 const FROM = () => process.env.MAIL_FROM ?? "KolBase <no-reply@kolbase.fr>";
 
-export type Mail = { to: string; subject: string; text: string; cta?: { label: string; href: string }; locale?: Locale; /** Lettre d'information : lien de désinscription (pied de page et en-têtes List-Unsubscribe). */ unsubscribe?: { page: string; oneClick: string } };
+export type Mail = {
+  to: string; subject: string; text: string; cta?: { label: string; href: string }; locale?: Locale;
+  /** Lettre d'information : lien de désinscription (pied de page et en-têtes List-Unsubscribe). */ unsubscribe?: { page: string; oneClick: string };
+  /** Pièces jointes textuelles (invitation d'agenda .ics). */ attachments?: { filename: string; content: string; contentType: string }[];
+};
 
 const esc = (s: string) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
 
@@ -57,7 +61,7 @@ export async function sendMail(m: Mail): Promise<boolean> {
     return false;
   }
   const headers = m.unsubscribe ? { "List-Unsubscribe": `<${m.unsubscribe.oneClick}>`, "List-Unsubscribe-Post": "List-Unsubscribe=One-Click" } : undefined;
-  await t.sendMail({ from: FROM(), to: m.to, subject: m.subject, text, html, headers });
+  await t.sendMail({ from: FROM(), to: m.to, subject: m.subject, text, html, headers, attachments: m.attachments });
   return true;
 }
 

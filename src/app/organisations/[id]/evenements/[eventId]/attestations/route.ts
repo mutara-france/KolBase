@@ -3,13 +3,15 @@ import { db } from "@/lib/db";
 import { attestableRegistrations, attestationPdf } from "@/lib/attestation-pdf";
 import { canCheckIn } from "@/lib/checkin";
 import { pdfResponse } from "@/lib/convention-pdf";
+import { eventEnded } from "@/lib/events";
 
 /** Attestations de présence de l'événement (toutes, ou ?inscription=<id>) : organisateur ou agence mandatée. */
 export async function GET(req: Request, { params }: { params: Promise<{ id: string; eventId: string }> }) {
   const { id, eventId } = await params;
   const user = await getCurrentUser();
-  const event = await db.event.findFirst({ where: { id: eventId, organizationId: id }, select: { id: true, organizationId: true, agencyId: true, startsAt: true } });
+  const event = await db.event.findFirst({ where: { id: eventId, organizationId: id }, select: { id: true, organizationId: true, agencyId: true, startsAt: true, durationMinutes: true } });
   if (!user || !event || !canCheckIn(user, event)) return new Response("Introuvable.", { status: 404 });
+  if (!eventEnded(event)) return new Response("Les attestations de présence s'éditent après la fin de l'événement.", { status: 404 });
   const one = new URL(req.url).searchParams.get("inscription");
   const regs = await attestableRegistrations({ eventId, ...(one ? { id: one } : {}) });
   if (regs.length === 0) return new Response("Aucun participant pointé : pas d'attestation à éditer.", { status: 404 });

@@ -28,7 +28,8 @@ export type OrgSectionKey = "praticiens" | "dossiers" | "evenements" | "conformi
 export type PractitionerSectionKey = "opportunites" | "agenda";
 
 const has = (roles: OrgRole[], list: OrgRole[]) => roles.some((r) => list.includes(r));
-const pathOf = (href: string) => href.split("?")[0];
+const pathOf = (href: string) => href.split(/[?#]/)[0];
+const ongletOf = (href: string) => new URLSearchParams(href.split("#")[0].split("?")[1] ?? "").get("onglet");
 
 /** Le chemin courant relève-t-il de cette entrée (son lien ou l'un de ses préfixes) ? */
 export function itemMatches(item: Pick<ShellItem, "href" | "match" | "exact">, path: string) {
@@ -119,9 +120,35 @@ export function practitionerSectionTabs(section: PractitionerSectionKey): Sectio
       ];
 }
 
+/** Barre du bas (mobile) : cinq entrées au plus ; les secondaires d'abord écartées, le reste passe dans le menu du compte. */
+export const BOTTOM_BAR_MAX = 5;
+export function bottomBar<T extends Pick<ShellItem, "key" | "secondary">>(items: T[]) {
+  const primary = items.length <= BOTTOM_BAR_MAX ? items : items.filter((i) => !i.secondary);
+  const bar = primary.slice(0, BOTTOM_BAR_MAX);
+  return { bar, overflow: items.filter((i) => !bar.includes(i)) };
+}
+
 /** Nombre d'actions qui mènent à une page de cette entrée (pastilles). */
 export function countFor(item: Pick<ShellItem, "href" | "match" | "exact">, hrefs: string[]) {
   return hrefs.filter((h) => itemMatches(item, pathOf(h))).length;
+}
+
+/**
+ * Pastille d'un onglet de rubrique : les actions qui le désignent (`tab`, quand leur lien mène ailleurs, au dossier
+ * par exemple), ou dont le lien mène à sa page. Les onglets d'une même page (« ?onglet= ») se distinguent : une action
+ * vers l'onglet Transparence ne compte pas pour « À valider », qui partage la même page.
+ */
+export function tabCount(tab: Pick<SectionTab, "key" | "href">, tabs: Pick<SectionTab, "href">[], todos: { href: string; tab?: string }[]) {
+  const path = pathOf(tab.href);
+  const onglet = ongletOf(tab.href);
+  const siblings = new Set(tabs.filter((t) => pathOf(t.href) === path).map((t) => ongletOf(t.href)).filter(Boolean));
+  return todos.filter((todo) => {
+    if (todo.tab) return todo.tab === tab.key;
+    const p = pathOf(todo.href);
+    if (p !== path && !p.startsWith(path + "/")) return false;
+    const o = ongletOf(todo.href);
+    return onglet ? o === onglet : !o || !siblings.has(o);
+  }).length;
 }
 
 /**

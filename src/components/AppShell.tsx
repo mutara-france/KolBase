@@ -8,7 +8,7 @@ import {
 } from "lucide-react";
 import { Logo } from "@/components/Logo";
 import { signOut } from "@/lib/auth-actions";
-import { itemMatches, type ShellIcon, type ShellItem, type ShellSpace } from "@/lib/nav";
+import { bottomBar, itemMatches, type ShellIcon, type ShellItem, type ShellSpace } from "@/lib/nav";
 import { useT } from "@/components/I18nProvider";
 
 const ICONS: Record<ShellIcon, typeof House> = { House, Users, Folder, FileText, CalendarDays, ShieldCheck, Send, Megaphone, UserRound, Receipt, Plug, ExternalLink, Wallet, BarChart3 };
@@ -90,7 +90,7 @@ export function AppShell({
 
       {space && (
         <nav className="bottom-nav" aria-label={t("Navigation principale")}>
-          {space.items.filter((i) => !i.secondary || space.items.length <= 5).map((i) => {
+          {bottomBar(space.items).bar.map((i) => {
             const Icon = ICONS[i.icon];
             return (
               <Link key={i.key} href={i.href} className={isActive(i) ? "active" : undefined} aria-current={isActive(i) ? "page" : undefined}>
@@ -199,7 +199,7 @@ function AccountMenu({ user, space, spaces, admin }: { user: ShellUser; space?: 
           )}
           {space && space.links.length > 0 && (
             <>
-              <p className="account-label">{isPractitioner ? t("Mon profil") : space.title}</p>
+              <p className="account-label">{isPractitioner ? t("Mon compte") : space.title}</p>
               {space.links.map((l) => {
                 const Icon = ICONS[l.icon];
                 return (
@@ -210,6 +210,21 @@ function AccountMenu({ user, space, spaces, admin }: { user: ShellUser; space?: 
                 );
               })}
             </>
+          )}
+          {/* Mobile : les rubriques qui ne tiennent pas dans la barre du bas (cinq entrées au plus). */}
+          {space && bottomBar(space.items).overflow.length > 0 && (
+            <div className="menu-mobile-only">
+              <p className="account-label">{t("Autres rubriques")}</p>
+              {bottomBar(space.items).overflow.map((i) => {
+                const Icon = ICONS[i.icon];
+                return (
+                  <Link key={i.key} href={i.href} role="menuitem">
+                    <Icon size={18} strokeWidth={1.8} aria-hidden />
+                    {i.label}
+                  </Link>
+                );
+              })}
+            </div>
           )}
           <hr />
           {!isPractitioner && (

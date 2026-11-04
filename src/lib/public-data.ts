@@ -1,5 +1,7 @@
 import "server-only";
+import { cache } from "react";
 import { db } from "@/lib/db";
+import { getCurrentUser } from "@/lib/auth";
 import { ORG_KIND_LABEL } from "@/lib/orgs";
 import { orgFamily } from "@/lib/org-roles";
 import { supplierCategoryLabel } from "@/lib/suppliers";
@@ -9,6 +11,17 @@ import { country } from "@/lib/countries";
 import { featuredEvents, trackedPath } from "@/lib/services";
 import type { CallCardData, EventCardData, KolCardData, OrgCardData } from "@/components/PublicCards";
 
+/** Événements auxquels la personne connectée est inscrite (cartes « Inscrit »), lus une fois par requête. */
+export const myRegisteredEventIds = cache(async () => {
+  const user = await getCurrentUser();
+  if (!user) return new Set<string>();
+  const regs = await db.registration.findMany({ where: { userId: user.id }, select: { eventId: true } });
+  return new Set(regs.map((r) => r.eventId));
+});
+
+/** Événements de l'agenda public : publiés, à venir, d'une organisation validée (même règle pour la liste et les compteurs). */
+const publicEventWhere = (now = new Date()) => ({ publishedAt: { not: null }, internal: false, startsAt: { gte: now }, organization: { verification: "VERIFIED" as const } });
+
 /**
  * Agenda public. `tracked` : liens suivis de la mise à la une (accueil seulement) ; ailleurs (/evenements), l'événement
  * reste en tête et marqué « À la une », mais le lien est direct (la mise à la une vendue est celle de l'accueil).
@@ -17,7 +30,7 @@ export async function publicEvents(take?: number, { tracked = false }: { tracked
   // Événements « à la une » (service KolBase) d'abord, puis les prochains par date.
   const codes = await featuredEvents();
   const featured = [...codes.keys()];
-  const where = { publishedAt: { not: null }, startsAt: { gte: new Date() }, organization: { verification: "VERIFIED" as const } };
+  const where = publicEventWhere();
   const include = { organization: { select: { name: true } }, _count: { select: { registrations: true } } } as const;
   // Le lien de connexion (réservé aux inscrits) n'est jamais lu pour les pages publiques.
   const omit = { onlineUrl: true } as const;
@@ -33,7 +46,8 @@ export async function publicExperts(take?: number): Promise<KolCardData[]> {
   const ps = await db.practitionerProfile.findMany({
     where: { listed: true },
     include: { user: { select: { firstName: true, lastName: true } }, projectLinks: { where: { status: { notIn: ["ATT_EXPERTS", "DECLINE"] } }, select: { project: { select: { organizationId: true } } } } },
-    orderBy: { listedAt: "desc" },
+    // « Réseau vérifié » : les identités vérifiées par KolBase d'abord, puis les plus récemment référencés.
+    orderBy: [{ rppsVerified: "desc" }, { listedAt: "desc" }],
     take,
   });
   return ps.map((p) => {
@@ -82,17 +96,31 @@ export async function publicCalls(take?: number): Promise<CallCardData[]> {
   return visible.slice(0, take).map((c) => ({ id: c.id, title: c.title, specialty: c.specialty, typeId: c.typeId, poster: c.organization.name, posterLogo: logoSrc(c.organization), deadline: c.deadline, description: c.description, budgetMinCents: c.budgetMinCents, budgetMaxCents: c.budgetMaxCents, open: true, event: c.event ? { title: c.event.title, startsAt: c.event.startsAt } : null }));
 }
 
+/**
+ * Compteurs de l'accueil et de l'aide : les mêmes règles que les pages qui listent (experts, organisations, agenda,
+ * appels publics), pour qu'un « 12 appels ouverts » mène à 12 appels.
+ */
 export async function publicCounts() {
-  const now = new Date();
   const [experts, verified, industriels, organizations, events, calls] = await Promise.all([
     db.practitionerProfile.count({ where: { listed: true } }),
     db.practitionerProfile.count({ where: { listed: true, rppsVerified: true } }),
     db.organization.count({ where: { listed: true, verification: "VERIFIED", kind: "INDUSTRIEL" } }),
     db.organization.count({ where: { listed: true, verification: "VERIFIED" } }),
-    db.event.count({ where: { publishedAt: { not: null }, startsAt: { gte: now }, organization: { verification: "VERIFIED" } } }),
-    db.openCall.count({ where: { status: "open", OR: [{ deadline: null }, { deadline: { gte: now } }], organization: { verification: "VERIFIED" } } }),
+    db.event.count({ where: publicEventWhere() }),
+    publicCalls().then((cs) => cs.length),
   ]);
   return { experts, verified, industriels, organizations, events, calls };
+}
+
+/** Organisations qui ont au moins un événement à venir ou un appel ouvert visibles du public (« Ils publient sur KolBase »). */
+export async function publishingOrgIds() {
+  const now = new Date();
+  const [events, calls] = await Promise.all([
+    db.event.findMany({ where: publicEventWhere(now), select: { organizationId: true }, distinct: ["organizationId"] }),
+    publicCalls(),
+  ]);
+  const callOrgs = await db.openCall.findMany({ where: { id: { in: calls.map((c) => c.id) } }, select: { organizationId: true }, distinct: ["organizationId"] });
+  return new Set([...events, ...callOrgs].map((x) => x.organizationId));
 }
 
 /** Spécialités des experts référencés, de la plus représentée à la moins représentée. */

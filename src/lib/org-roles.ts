@@ -66,6 +66,8 @@ export const ORG_NOT_VERIFIED =
 
 /** Types d'organisation pour lesquels le SIREN est obligatoire (les sociétés savantes et associations n'en ont pas toujours). */
 export const SIREN_REQUIRED: OrgKind[] = ["INDUSTRIEL", "ORGANISME_FORMATION", "PRESTATAIRE"];
+/** Société savante ou association : SIREN facultatif, numéro RNA accepté à la place. */
+export const rnaAccepted = (kind: OrgKind) => !SIREN_REQUIRED.includes(kind);
 
 export const VERIFICATION_LABEL = { PENDING: "En attente de validation", VERIFIED: "Validée", REJECTED: "Refusée", SUSPENDED: "Suspendue" } as const;
 /** Organisation suspendue par KolBase : masquée et sans action nouvelle, jusqu'à sa réactivation. */

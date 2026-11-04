@@ -1,5 +1,9 @@
 import type { OrgRole } from "@/generated/prisma/client";
 
+/** Fin d'un événement (durée inconnue : deux heures). Commencé n'est pas terminé : pointage pendant, bilan après. */
+export const eventEnd = (e: { startsAt: Date; durationMinutes: number | null }) => new Date(e.startsAt.getTime() + (e.durationMinutes ?? 120) * 60000);
+export const eventEnded = (e: { startsAt: Date; durationMinutes: number | null }, now = new Date()) => eventEnd(e) <= now;
+
 /** Types d'événements publiables (repris du prototype). */
 export const EVENT_TYPES = [
   { id: "symposium", label: "Symposium de congrès" },

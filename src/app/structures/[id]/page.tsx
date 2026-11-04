@@ -191,7 +191,7 @@ export default async function Page({ params }: { params: Promise<{ id: string }>
               <div className="section-head"><div><div className="eyebrow mb-1">{t("Opportunités")}</div><h2 className="section-h2">{t("Appels ouverts")}</h2></div></div>
               {canSee(v.projets, viewer) ? (
                 o.openCalls.length === 0 ? <p className="muted">{t("Aucun appel ouvert.")}</p> : (
-                  <div className="grid-2">{o.openCalls.map((c) => <CallCard key={c.id} c={{ ...c, poster: o.name, posterLogo: logoSrc(o), open: true }} action={<Link className="btn secondary" href={user ? `/opportunites/${c.id}` : `/connexion?next=${encodeURIComponent(`/opportunites/${c.id}`)}`}>{user ? t("Voir l'appel") : t("Se connecter pour candidater")}</Link>} />)}</div>
+                  <div className="grid-2">{o.openCalls.map((c) => <CallCard key={c.id} c={{ ...c, poster: o.name, posterLogo: logoSrc(o), open: true }} action={<Link className="btn secondary" href={user ? `/opportunites/${c.id}` : `/connexion?next=${encodeURIComponent(`/opportunites/${c.id}`)}`}>{user ? t("Candidater") : t("Se connecter pour candidater")}</Link>} />)}</div>
                 )
               ) : lock(t("Appels ouverts"))}
             </section>

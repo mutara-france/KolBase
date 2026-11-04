@@ -10,6 +10,7 @@ import type { Metadata } from "next";
 import { db } from "@/lib/db";
 import { drPrefix } from "@/lib/professions";
 import { getT } from "@/lib/i18n/server";
+import { currentSourcingOrg } from "@/lib/org-overview";
 
 /** Titre et description de la fiche (seulement les informations publiques de l'expert). */
 export async function generateMetadata({ params }: { params: Promise<{ id: string }> }): Promise<Metadata> {
@@ -32,7 +33,10 @@ export default async function Page({ params }: { params: Promise<{ id: string }>
   const { id } = await params;
   const [user, { t }] = await Promise.all([getCurrentUser(), getT()]);
   const viewer = kolViewer(user, id);
-  const org = user?.memberships.find((m) => SOURCING_ROLES.includes(m.role) && m.organization.kind !== "PRESTATAIRE" && m.organization.verification === "VERIFIED");
+  // « Solliciter » : depuis l'espace d'organisation courant (kb_espace) s'il le permet, sinon la première organisation validée.
+  const sourcing = user?.memberships.filter((m) => SOURCING_ROLES.includes(m.role) && m.organization.kind !== "PRESTATAIRE" && m.organization.verification === "VERIFIED") ?? [];
+  const current = sourcing.length > 1 ? await currentSourcingOrg() : null;
+  const org = sourcing.find((m) => m.organizationId === current) ?? sourcing[0];
   const profile = await ExpertProfile({ id, viewer, userId: user?.id ?? null, solicitHref: org ? `/organisations/${org.organizationId}/dossiers/nouveau?expert=${id}` : null });
   if (!profile) notFound();
   return (

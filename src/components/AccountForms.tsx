@@ -110,7 +110,11 @@ export function PasswordForm({ email }: { email: string }) {
 }
 
 /** Référencement comme expert ; `idMissing` : identifiant professionnel à renseigner d'abord (RPPS, ou celui du pays d'exercice). */
-export function ListingForm({ listed, eligible, idMissing }: { listed: boolean; eligible: boolean; idMissing: string | null }) {
+export function ListingForm({ listed, eligible, idMissing, rpps }: {
+  listed: boolean; eligible: boolean; idMissing: string | null;
+  /** Praticien exerçant en France : son RPPS se renseigne et se suit dans cet encart (prérequis du référencement). */
+  rpps?: { value: string | null; status: "none" | "pending" | "verified" | "rejected"; note: string | null } | null;
+}) {
   const [state, action, pending] = useActionState(setListed, undefined);
   const t = useT();
   if (!listed && !eligible)
@@ -131,8 +135,21 @@ export function ListingForm({ listed, eligible, idMissing }: { listed: boolean; 
           <li>{t("Votre profil apparaît dans l'annuaire des experts et sur le site public.")}</li>
           <li>{t("Vous recevez des sollicitations et accédez aux opportunités.")}</li>
           <li>{t("Toute rémunération ou avantage reçu fera l'objet d'une convention, que l'organisation déclare sur Transparence Santé.")}</li>
-          {idMissing && <li><strong>{t("Prérequis : renseignez votre {id}", { id: t(idMissing) })}</strong> {t("(Informations personnelles, plus bas).")}</li>}
+          {idMissing && !rpps && <li><strong>{t("Prérequis : renseignez votre {id}", { id: t(idMissing) })}</strong> {t("(Informations personnelles, plus bas).")}</li>}
         </ul>
+      )}
+      {rpps && !rpps.value && !listed && (
+        <label>{t("N° RPPS (prérequis, vérifié par KolBase)")}<input name="rpps" inputMode="numeric" pattern="[0-9 ]{11,14}" title={t("11 chiffres")} /></label>
+      )}
+      {rpps && !rpps.value && listed && <p className="text-sm">{t("N° RPPS : non renseigné, à indiquer dans Informations personnelles pour le badge « Identité vérifiée ».")}</p>}
+      {rpps?.value && (
+        <p className="text-sm">
+          {t("N° RPPS : {rpps}", { rpps: rpps.value })} ·{" "}
+          {rpps.status === "verified" ? t("Vérifié par KolBase : badge « Identité vérifiée » affiché.")
+            : rpps.status === "pending" ? t("En cours de vérification par KolBase.")
+            : rpps.note ? t("Non validé : {note}. Corrigez le numéro pour une nouvelle vérification.", { note: rpps.note }) : t("Non validé. Corrigez le numéro pour une nouvelle vérification.")}
+          {" "}<span className="hint">{t("(modifiable dans Informations personnelles)")}</span>
+        </p>
       )}
       <input type="hidden" name="listed" value={listed ? "0" : "1"} />
       <button className={listed ? "btn ghost" : "btn"} disabled={pending}>
@@ -148,7 +165,7 @@ export function EmailVerificationNotice({ email }: { email: string }) {
   const t = useT();
   return (
     <form action={action} className="notice warn">
-      {t("Confirmez votre adresse")} <strong>{email}</strong> {t("pour recevoir les sollicitations, messages et rappels : un lien vous a été envoyé.")}{" "}
+      {t("Confirmez votre adresse")} <strong>{email}</strong> {t(": un lien vous a été envoyé. Sans confirmation, vous ne recevez pas la lettre d'information ; le reste de KolBase fonctionne normalement.")}{" "}
       {state?.ok || state?.error ? <span>{state.ok ?? state.error}</span> : <button className="link" disabled={pending}>{t("Renvoyer le lien")}</button>}
     </form>
   );

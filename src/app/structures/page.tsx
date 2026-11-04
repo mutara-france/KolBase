@@ -38,8 +38,9 @@ export default async function Page({ searchParams }: { searchParams: Promise<{ q
         <section className="page-band">
           <div className="page-band-inner">
             <span className="kicker">{t("Côté organisations")}</span>
-            <h1>{t("Industriels, sociétés savantes, associations")}</h1>
-            <p>{t("Les organisations référencées sur KolBase, leurs événements et leurs appels ouverts.")}</p>
+            {/* Titre fidèle au filtre : une famille, ou toutes (prestataires et organismes de formation compris). */}
+            <h1>{family ? t(family.label) : t("Organisations référencées")}</h1>
+            <p>{family ? t(family.desc) : t("Industriels, sociétés savantes, associations, organismes de formation et prestataires référencés sur KolBase, leurs événements et leurs appels ouverts.")}</p>
           </div>
         </section>
         <section className="public-section">

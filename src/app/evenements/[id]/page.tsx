@@ -15,6 +15,7 @@ import { getT } from "@/lib/i18n/server";
 import { appUrl } from "@/lib/ics";
 import { jsonLd } from "@/lib/jsonld";
 import { orgIsPublic } from "@/lib/org-roles";
+import { ConfirmButton } from "@/components/ConfirmButton";
 
 /** « lundi 3 novembre 2026 à 14:00 » / « Monday, 3 November 2026 at 14:00 » (heure de Paris). */
 const dateTime = (locale: Locale, d: Date) => fmtDate(locale, d, { weekday: "long", day: "numeric", month: "long", year: "numeric", hour: "2-digit", minute: "2-digit" });
@@ -34,8 +35,9 @@ export async function generateMetadata({ params }: { params: Promise<{ id: strin
   };
 }
 
-export default async function Page({ params }: { params: Promise<{ id: string }> }) {
+export default async function Page({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: Promise<{ annulee?: string }> }) {
   const { id } = await params;
+  const { annulee } = await searchParams;
   const [event, user] = await Promise.all([
     db.event.findFirst({
       where: { id, publishedAt: { not: null }, organization: { verification: "VERIFIED" } },
@@ -56,12 +58,16 @@ export default async function Page({ params }: { params: Promise<{ id: string }>
   const canReview = !!reg && !reg.survey && eventEnded(event) && (await attended(reg));
   const onlineUrl = reg && event.format !== "PRESENTIEL" ? (await db.event.findUnique({ where: { id }, select: { onlineUrl: true } }))?.onlineUrl ?? null : null;
   const full = event.capacity != null && event._count.registrations >= event.capacity;
+  // Commencé (inscriptions closes) puis terminé : le badge reste utile aux retardataires pendant l'événement.
   const past = event.startsAt < new Date();
+  const ended = eventEnded(event);
   const back = encodeURIComponent(`/evenements/${id}`);
 
   const left = event.capacity != null ? Math.max(0, event.capacity - event._count.registrations) : null;
-  const status = past
+  const status = ended
     ? { label: t("Événement passé"), tone: "done" }
+    : past
+      ? { label: t("En cours"), tone: "done" }
     : !event.registrationOpen
       ? { label: t("Inscriptions closes"), tone: "done" }
       : full
@@ -134,7 +140,7 @@ export default async function Page({ params }: { params: Promise<{ id: string }>
                 </p>
                 {c.description && <p className="pre-line clamp-4">{c.description}</p>}
                 {user?.practitioner?.listed ? (
-                  <Link className="btn ghost small" href={`/opportunites/${c.id}`}>{t("Voir l'appel et candidater")}</Link>
+                  <Link className="btn ghost small" href={`/opportunites/${c.id}`}>{t("Candidater")}</Link>
                 ) : (
                   <p className="hint">{t("Réservé aux experts référencés.")}</p>
                 )}
@@ -144,11 +150,12 @@ export default async function Page({ params }: { params: Promise<{ id: string }>
           <aside className="page-aside">
             <section className="card next-step">
               <span className="eyebrow-sm">{t("Inscription")}</span>
+              {annulee && !reg && <p className="notice ok">{t("Inscription annulée. Un e-mail vous le confirme.")}</p>}
               {reg ? (
                 <>
                   <p className="notice ok">{t("Vous êtes inscrit à cet événement.")}</p>
                   {/* Lien de connexion : affiché aux seuls inscrits, jusqu'à la fin de l'événement. */}
-                  {event.format !== "PRESENTIEL" && !eventEnded(event) && (
+                  {event.format !== "PRESENTIEL" && !ended && (
                     onlineUrl
                       ? <p className="online-link text-sm">{t("Lien de connexion :")} <a href={onlineUrl} target="_blank" rel="noopener noreferrer">{onlineUrl}</a></p>
                       : <p className="muted text-sm">{t("Le lien de connexion vous sera communiqué par l'organisateur avant l'événement.")}</p>
@@ -158,15 +165,20 @@ export default async function Page({ params }: { params: Promise<{ id: string }>
                       ? t("Vous n'avez accepté aucune prestation.")
                       : t("Prestations acceptées : {list} ({total}).", { list: reg.benefits.map((b) => t(b.benefit.label)).join(", "), total: fmtEur(locale, reg.benefits.reduce((s, b) => s + b.valueCents, 0)) })}
                   </p>
-                  {!past && event.format !== "DISTANCIEL" && <Link className="btn secondary" href={`/inscriptions/${reg.id}/badge`}>{t("Mon badge d'accueil")}</Link>}
-                  {eventEnded(event) && reg.checkedInAt && <a className="btn secondary" href={`/inscriptions/${reg.id}/attestation`}>{t("Mon attestation de présence")}</a>}
+                  {!ended && event.format !== "DISTANCIEL" && <Link className="btn secondary" href={`/inscriptions/${reg.id}/badge`}>{t("Mon badge d'accueil")}</Link>}
+                  {ended && reg.checkedInAt && <a className="btn secondary" href={`/inscriptions/${reg.id}/attestation`}>{t("Mon attestation de présence")}</a>}
                   {canReview && <Link className="btn ghost" href={`/evenements/${id}/avis`}>{t("Donner mon avis")}</Link>}
                   {!reg.declared && !past && (
-                    <form action={cancelRegistration}><input type="hidden" name="eventId" value={id} /><button className="btn ghost">{t("Annuler mon inscription")}</button></form>
+                    <form action={cancelRegistration}>
+                      <input type="hidden" name="eventId" value={id} />
+                      <ConfirmButton localized className="btn ghost" confirm={t("annuler mon inscription")} summary={reg.benefits.length > 0 ? t("Votre place est libérée et les prestations acceptées sont retirées. Un e-mail vous confirme l'annulation.") : t("Votre place est libérée. Un e-mail vous confirme l'annulation.")}>
+                        {t("Annuler mon inscription")}
+                      </ConfirmButton>
+                    </form>
                   )}
                 </>
               ) : past ? (
-                <p className="muted">{t("Cet événement a eu lieu.")}</p>
+                <p className="muted">{ended ? t("Cet événement a eu lieu.") : t("Cet événement a commencé : les inscriptions sont closes.")}</p>
               ) : !event.registrationOpen ? (
                 <p className="muted">{t("Les inscriptions sont closes.")}</p>
               ) : full ? (

@@ -44,3 +44,19 @@ export const eventLocation = (e: { format: string; venue: string | null; city: s
   e.format === "DISTANCIEL" ? "Visioconférence" : [e.venue, e.city].filter(Boolean).join(", ") || null;
 /** Lien de connexion d'un événement en ligne ou hybride : à n'inclure que pour une personne inscrite. */
 export const joinUrl = (e: { format: string; onlineUrl: string | null }) => (e.format === "PRESENTIEL" ? null : e.onlineUrl);
+
+type EventForIcs = { id: string; title: string; startsAt: Date; durationMinutes: number | null; format: string; venue: string | null; city: string | null; onlineUrl: string | null };
+/**
+ * Entrée d'agenda d'un événement (page de l'événement, e-mail de confirmation d'inscription) : le lien de connexion
+ * n'y figure que pour une personne inscrite (`registered`). `t` traduit le lieu et la description.
+ */
+export function eventIcsEntry(e: EventForIcs, orgName: string, registered: boolean, t: (fr: string, vars?: Record<string, string>) => string): IcsEvent {
+  const link = registered ? joinUrl(e) : null;
+  const location = eventLocation(e);
+  return {
+    uid: e.id, start: e.startsAt, minutes: e.durationMinutes, title: e.title,
+    location: link && e.format === "DISTANCIEL" ? link : location && t(location),
+    description: [t("Organisé par {name}.", { name: orgName }), link ? t("Lien de connexion : {url}", { url: link }) : null].filter(Boolean).join("\n\n"),
+    url: `${appUrl()}/evenements/${e.id}`,
+  };
+}

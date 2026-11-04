@@ -7,6 +7,12 @@ export function parseSiren(v: string): string | null {
   return /^\d{9}$/.test(digits) ? digits : null;
 }
 
+/** Numéro RNA d'une association (répertoire national des associations) : « W » suivi de 9 chiffres ; null sinon. */
+export function parseRna(v: string): string | null {
+  const s = v.replace(/[\s.]/g, "").toUpperCase();
+  return /^W\d{9}$/.test(s) ? s : null;
+}
+
 /** Clé de Luhn du SIREN (La Poste, 356 000 000, fait exception). */
 export function sirenKeyOk(siren: string): boolean {
   if (siren === "356000000") return true;

@@ -5,7 +5,7 @@ import type { OrgRole } from "@/generated/prisma/client";
 import { logoSrc } from "@/lib/logos";
 import { db } from "@/lib/db";
 import { ORG_KIND_LABEL, invitableRoles, requireMembership, roleLabel } from "@/lib/orgs";
-import { ROLE_DESC } from "@/lib/org-roles";
+import { rnaAccepted, ROLE_DESC } from "@/lib/org-roles";
 import { acceptDpa, revokeInvitation } from "@/lib/org-actions";
 import { setEventFlag } from "@/lib/event-actions";
 import { asMotive, asObjectId, ENGAGING, resumeAction } from "@/lib/billing-plans";
@@ -150,7 +150,14 @@ export default async function Page({ params, searchParams }: { params: Promise<{
           </>
         ) : (
           <>
-            <VerificationCard orgId={id} canEdit={isAdmin} v={{ status: org.verification, siren: org.siren, legalName: org.legalName, note: org.verificationNote }} />
+            <VerificationCard
+              orgId={id}
+              canEdit={isAdmin}
+              v={{
+                status: org.verification, siren: org.siren, legalName: org.legalName, note: org.verificationNote, rna: org.rna, rnaAccepted: rnaAccepted(org.kind),
+                requestedAt: org.verification === "PENDING" && org.verificationRequestedAt ? formatDate(org.verificationRequestedAt) : null,
+              }}
+            />
             <section className="card stack-sm" id="double-authentification">
               <h2 className="section-title"><ShieldCheck size={15} /> Double authentification</h2>
               {isAdmin ? (

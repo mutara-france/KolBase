@@ -6,6 +6,7 @@ import { eventTypeLabel, TZ } from "@/lib/events";
 import { collabType } from "@/lib/projects";
 import { fmtDate, fmtEur } from "@/lib/i18n";
 import { getT } from "@/lib/i18n/server";
+import { myRegisteredEventIds } from "@/lib/public-data";
 
 /* Cartes publiques — charte KolBase : vignettes sur fond Aurore, cartes blanches, une seule couleur d'action. */
 
@@ -52,6 +53,9 @@ export async function EventCard({ ev, compact = false }: { ev: EventCardData; co
   const href = ev.trackedHref ?? `/evenements/${ev.id}`;
   const Go: ElementType = ev.trackedHref ? "a" : Link;
   const left = ev.capacity != null ? Math.max(ev.capacity - ev.registrations, 0) : null;
+  // Déjà inscrit : « Inscrit » au lieu de « S'inscrire » ; événement commencé : ni places restantes ni inscription.
+  const registered = (await myRegisteredEventIds()).has(ev.id);
+  const past = ev.startsAt < new Date();
   return (
     <article className="event-card">
       <Go href={href} className="event-cover" aria-hidden="true" tabIndex={-1}>
@@ -71,9 +75,13 @@ export async function EventCard({ ev, compact = false }: { ev: EventCardData; co
         <div className="event-org">{ev.organization.name}</div>
         <div className="event-foot">
           <span>
-            {!ev.registrationOpen ? t("Inscriptions closes") : full ? t("Complet") : left != null ? <><span className="mono ink">{left}</span> {t(left > 1 ? "places restantes" : "place restante")}</> : t("Inscriptions ouvertes")}
+            {past ? t("Événement passé") : !ev.registrationOpen ? t("Inscriptions closes") : full ? t("Complet") : left != null ? <><span className="mono ink">{left}</span> {left > 1 ? t("places restantes") : t("place restante")}</> : t("Inscriptions ouvertes")}
           </span>
-          {ev.registrationOpen && !full && <Go href={href} className="btn small"><Ticket size={14} /> {t("S'inscrire")}</Go>}
+          {registered ? (
+            <Go href={href} className="btn small secondary"><BadgeCheck size={14} /> {t("Inscrit")}</Go>
+          ) : (
+            !past && ev.registrationOpen && !full && <Go href={href} className="btn small"><Ticket size={14} /> {t("S'inscrire")}</Go>
+          )}
         </div>
       </div>
     </article>

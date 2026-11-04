@@ -3,9 +3,9 @@ import { cookies } from "next/headers";
 import type { TodoItem } from "@/components/Todo";
 import { getCurrentUser } from "@/lib/auth";
 import { db } from "@/lib/db";
-import { COMPLIANCE_ROLES, EVENT_MANAGER_ROLES, EVENT_ORGANIZER_ROLES, eventScope, formatDate, needsOnlineLink } from "@/lib/events";
+import { COMPLIANCE_ROLES, EVENT_MANAGER_ROLES, EVENT_ORGANIZER_ROLES, eventEnded, eventScope, formatDate, needsOnlineLink } from "@/lib/events";
 import { PROJECT_ROLES, PROJECT_VIEW_ROLES, REVIEW_ROLES, SOURCING_ROLES } from "@/lib/projects";
-import { countFor, orgSectionTabs, type OrgSectionKey, type SectionTab } from "@/lib/nav";
+import { orgSectionTabs, tabCount, type OrgSectionKey, type SectionTab } from "@/lib/nav";
 import type { OrgRole } from "@/generated/prisma/client";
 import { billingBlocked } from "@/lib/billing";
 import { pointedPastEvents } from "@/lib/checkin";
@@ -13,6 +13,7 @@ import { toDeclare } from "@/lib/indicators";
 import { subscribeHref } from "@/lib/billing-plans";
 import { activeMandate } from "@/lib/mandates";
 import { de } from "@/lib/elision";
+import { getT } from "@/lib/i18n/server";
 
 
 const DAY = 864e5;
@@ -102,10 +103,10 @@ export const orgOverview = cache(async (orgId: string) => {
       if ((p.status === "SIGNE" || p.status === "TERMINE") && !p.declared)
         todos.push({ href: `${base}/conformite?onglet=transparence`, title: `Publier sur Transparence Santé : ${p.title}`, detail: "Convention signée", icon: "FileSignature", tone: "warn" });
     for (const p of projects)
-      if (p.status === "EN_VALID") todos.push({ href: dossier(p), title: `Valider : ${p.title}`, detail: `Soumis le ${formatDate(p.updatedAt)}`, icon: "ShieldCheck", tone: "warn" });
+      if (p.status === "EN_VALID") todos.push({ href: dossier(p), title: `Valider : ${p.title}`, detail: `Soumis le ${formatDate(p.updatedAt)}`, icon: "ShieldCheck", tone: "warn", tab: "a-valider" });
     const byEvent = new Map<string, { title: string; n: number; past: boolean }>();
     for (const r of hosp) {
-      const e = byEvent.get(r.eventId) ?? { title: r.event.title, n: 0, past: r.event.startsAt < now };
+      const e = byEvent.get(r.eventId) ?? { title: r.event.title, n: 0, past: eventEnded(r.event, now) };
       e.n++;
       byEvent.set(r.eventId, e);
     }
@@ -200,8 +201,10 @@ export const orgOverview = cache(async (orgId: string) => {
 export async function orgTabs(section: OrgSectionKey, orgId: string): Promise<SectionTab[]> {
   const o = await orgOverview(orgId);
   if (!o) return [];
-  const hrefs = o.todos.map((t) => t.href);
-  return orgSectionTabs(section, orgId, o.roles, o.org.kind).map((t) => ({ ...t, count: countFor({ href: t.href }, hrefs) }));
+  const tabs = orgSectionTabs(section, orgId, o.roles, o.org.kind);
+  // Onglets traduits comme la navigation de l'espace (nav.ts).
+  const { t } = await getT();
+  return tabs.map((tab) => ({ ...tab, label: t(tab.label), count: tabCount(tab, tabs, o.todos) }));
 }
 
 /**

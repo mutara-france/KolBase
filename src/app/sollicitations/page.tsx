@@ -32,7 +32,7 @@ export default async function Page() {
         <strong>{l.project.title}</strong>
         <span className="muted">{l.project.organization.name} · {label && t(label)} · {l.feeCents != null ? t("{amount} HT", { amount: fmtEur(locale, l.feeCents) }) : "—"}</span>
         <span className="muted">{t("Reçue le {date}", { date: fmtDate(locale, l.createdAt) })}</span>
-        <StatusPill status={l.status === "ATT_EXPERTS" && !recruitmentOpen(l.project.status) ? "DECLINE" : l.status} />
+        <StatusPill viewer="expert" status={l.status === "ATT_EXPERTS" && !recruitmentOpen(l.project.status) ? "DECLINE" : l.status} />
       </Link>
     );
   };
