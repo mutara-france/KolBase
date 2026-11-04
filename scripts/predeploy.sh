@@ -2,6 +2,7 @@
 # Exécuté par Render avant chaque mise en production.
 set -e
 node scripts/baseline.mjs
+node scripts/retry-failed.mjs
 npx prisma migrate deploy
 # Logos des organisations partenaires publiées avec leur accord (posés s'ils manquent, jamais remplacés).
 node scripts/partner-logos.mjs
