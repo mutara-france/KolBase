@@ -34,7 +34,8 @@ export default async function Page({ params }: { params: Promise<{ slug: string 
   const user = await getCurrentUser();
   const admin = !!user && isPlatformAdmin(user);
   // Un brouillon s'affiche seulement pour l'équipe KolBase (aperçu avant publication).
-  const a = await db.article.findFirst({ where: { slug, ...(admin ? {} : { publishedAt: { not: null, lte: new Date() } }) } });
+  // L'image (octets en base) est servie à part par /actualites/couverture/[id] : inutile de la charger ici.
+  const a = await db.article.findFirst({ where: { slug, ...(admin ? {} : { publishedAt: { not: null, lte: new Date() } }) }, omit: { coverData: true } });
   if (!a) notFound();
   const { t, locale } = await getT();
   const others = (await publishedArticles(4)).filter((x) => x.id !== a.id).slice(0, 3);

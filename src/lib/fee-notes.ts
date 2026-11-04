@@ -5,8 +5,6 @@ import { embedPdfFonts } from "@/lib/convention-pdf";
  * Notes d'honoraires des experts (pur : utilisable dans les tests).
  * La note est figée à l'émission : les données de l'émetteur, du destinataire et de l'objet y sont recopiées.
  */
-export const VAT_REGIMES = { franchise: "Franchise en base de TVA (art. 293 B du CGI)", assujetti: "Assujetti à la TVA (20 %)" } as const;
-export type VatRegime = keyof typeof VAT_REGIMES;
 export const vatBpOf = (regime: string) => (regime === "assujetti" ? 2000 : 0);
 
 export type Billing = { billingAddress: string | null; siret: string | null; vatRegime: string; vatNumber: string | null; iban: string | null };

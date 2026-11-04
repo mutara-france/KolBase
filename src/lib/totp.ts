@@ -5,8 +5,8 @@
 import { createHash, createHmac, randomBytes, timingSafeEqual } from "node:crypto";
 
 const ALPHABET = "ABCDEFGHIJKLMNOPQRSTUVWXYZ234567";
-export const STEP_SECONDS = 30;
-export const DIGITS = 6;
+const STEP_SECONDS = 30;
+const DIGITS = 6;
 
 export function base32Encode(buf: Buffer) {
   let bits = 0, value = 0, out = "";
@@ -73,7 +73,7 @@ export const otpauthUri = (secret: string, account: string, issuer = "KolBase") 
 /** Codes de secours à usage unique (« abcd-efgh »), à conserver par l'utilisateur ; seuls leurs hash sont stockés. */
 export const newRecoveryCodes = (n = 10) =>
   Array.from({ length: n }, () => base32Encode(randomBytes(5)).toLowerCase().replace(/^(.{4})(.{4})$/, "$1-$2"));
-export const normalizeRecovery = (s: string) => s.toLowerCase().replace(/[^a-z2-7]/g, "");
+const normalizeRecovery = (s: string) => s.toLowerCase().replace(/[^a-z2-7]/g, "");
 export const hashRecovery = (code: string) => createHash("sha256").update(normalizeRecovery(code)).digest("hex");
 /** Ressemble à un code de secours (8 caractères base 32) plutôt qu'à un code à 6 chiffres. */
 export const looksLikeRecovery = (s: string) => normalizeRecovery(s).length === 8 && !/^\d+$/.test(s.replace(/\s/g, ""));

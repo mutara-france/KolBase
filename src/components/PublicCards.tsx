@@ -14,7 +14,7 @@ const hashCode = (s: string) => [...s].reduce((h, c) => (Math.imul(31, h) + c.ch
 const AURORE_FRAMES = ["20% 30%", "50% 50%", "80% 70%", "35% 60%", "65% 35%", "45% 80%"];
 
 /** Visuel de couverture : le dégradé Aurore de la marque, cadré différemment selon la graine. */
-export function AreaArt({ seed, height = 132, label }: { seed: string; height?: number; label?: string | null }) {
+function AreaArt({ seed, height = 132, label }: { seed: string; height?: number; label?: string | null }) {
   const frame = AURORE_FRAMES[Math.abs(hashCode(seed)) % AURORE_FRAMES.length];
   return (
     <div className="area-art" style={{ height }}>

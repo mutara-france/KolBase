@@ -11,7 +11,6 @@ import type { SignatureStatus } from "@/generated/prisma/client";
  * - Webhooks (en-tête X-Yousign-Signature-256) : https://developers.yousign.com/docs/use-webhooks-in-your-app
  */
 export const YOUSIGN_PRODUCTION_URL = "https://api.yousign.app/v3";
-export const YOUSIGN_SANDBOX_URL = "https://api-sandbox.yousign.app/v3";
 
 export const signatureEnabled = () => !!process.env.YOUSIGN_API_KEY;
 export const signatureApiUrl = () => (process.env.YOUSIGN_API_URL || YOUSIGN_PRODUCTION_URL).replace(/\/+$/, "");

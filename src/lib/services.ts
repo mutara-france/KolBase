@@ -15,7 +15,7 @@ export const ORDER_STATUS: Record<string, { label: string; tone: string }> = {
   annulee: { label: "Annulée", tone: "done" },
 };
 export const OPEN_ORDER = ["demandee", "planifiee"];
-export { FEATURE_DAYS, featuredUntil };
+export { featuredUntil };
 
 /** Délai avant l'envoi du bilan d'un service réalisé (ou dès que l'événement a eu lieu). */
 export const REPORT_DELAY_DAYS = 7;
@@ -38,7 +38,6 @@ export async function featuredEvents(now = new Date()) {
   for (const o of orders) if (!byEvent.has(o.eventId)) byEvent.set(o.eventId, o.trackCode);
   return byEvent;
 }
-export const featuredEventIds = async (now = new Date()) => [...(await featuredEvents(now)).keys()];
 
 export type OrderStats = { clicks: number; registrations: number; recipients: number | null; since: number | null };
 
@@ -55,8 +54,11 @@ export async function orderStats(orders: { id: string; eventId: string; doneAt: 
     db.registration.groupBy({ by: ["sourceOrderId"], where: { sourceOrderId: { in: ids } }, _count: true }),
     db.newsletterCampaign.findMany({ where: { orderId: { in: ids } }, select: { orderId: true, recipients: true } }),
   ]);
-  for (const o of orders) {
-    const since = o.doneAt ? await db.registration.count({ where: { eventId: o.eventId, createdAt: { gte: o.doneAt } } }) : null;
+  const sinceCounts = await Promise.all(
+    orders.map((o) => (o.doneAt ? db.registration.count({ where: { eventId: o.eventId, createdAt: { gte: o.doneAt } } }) : null)),
+  );
+  for (const [i, o] of orders.entries()) {
+    const since = sinceCounts[i];
     stats.set(o.id, {
       clicks: visitors.filter((v) => v.orderId === o.id).length,
       registrations: regs.find((r) => r.sourceOrderId === o.id)?._count ?? 0,

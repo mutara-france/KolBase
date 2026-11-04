@@ -278,7 +278,6 @@ async function ServicesAdmin() {
       take: 50,
     }),
   ]);
-  const open = orders.filter((o) => ["demandee", "planifiee"].includes(o.status));
   const done = orders.filter((o) => !["demandee", "planifiee"].includes(o.status));
   const toInvoice = done.filter((o) => o.status === "realisee" && !o.invoicedAt && o.priceCents > 0);
   const realized = orders.filter((o) => o.status === "realisee");

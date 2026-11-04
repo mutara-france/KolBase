@@ -25,7 +25,7 @@ export function feeTotals(fees: { status: string; feeCents: number; paidAt: Date
  */
 export const isAbsent = (r: { checkedInAt: Date | null }, eventPointed: boolean) => eventPointed && !r.checkedInAt;
 /** Présence connue : événement terminé et pointé (au moins un présent). Avant la fin ou sans pointage : les inscrits comptent. */
-export const presenceKnown = (ended: boolean, presentCount: number) => ended && presentCount > 0;
+const presenceKnown = (ended: boolean, presentCount: number) => ended && presentCount > 0;
 
 /**
  * Hospitalités d'un événement, absents exclus une fois la présence connue : valeur (TTC), bénéficiaires, et effectif

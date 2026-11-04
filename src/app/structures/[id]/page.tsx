@@ -16,6 +16,7 @@ import { FollowButton } from "@/components/FollowButton";
 import { callFull, COLLAB_TYPES, SIGNED_STATUSES } from "@/lib/projects";
 import type { Metadata } from "next";
 import { getT } from "@/lib/i18n/server";
+import { isDemoOrgId } from "@/lib/demo";
 
 export async function generateMetadata({ params }: { params: Promise<{ id: string }> }): Promise<Metadata> {
   const { id } = await params;
@@ -28,6 +29,7 @@ export async function generateMetadata({ params }: { params: Promise<{ id: strin
     description,
     alternates: { canonical: `/structures/${id}` },
     openGraph: { type: "website", siteName: "KolBase", url: `/structures/${id}`, title: `${o.name} — ${t(ORG_KIND_LABEL[o.kind])}`, description },
+    ...(isDemoOrgId(id) ? { robots: { index: false } } : {}),
   };
 }
 

@@ -11,13 +11,15 @@ import { db } from "@/lib/db";
 import { drPrefix } from "@/lib/professions";
 import { getT } from "@/lib/i18n/server";
 import { currentSourcingOrg } from "@/lib/org-overview";
+import { isDemoEmail } from "@/lib/demo";
 
 /** Titre et description de la fiche (seulement les informations publiques de l'expert). */
 export async function generateMetadata({ params }: { params: Promise<{ id: string }> }): Promise<Metadata> {
   const { id } = await params;
   const { t } = await getT();
-  const p = await db.practitionerProfile.findFirst({ where: { id, listed: true }, include: { user: { select: { firstName: true, lastName: true } } } });
+  const p = await db.practitionerProfile.findFirst({ where: { id, listed: true }, include: { user: { select: { firstName: true, lastName: true, email: true } } } });
   if (!p) return { title: t("Profil expert — KolBase"), robots: { index: false } };
+  const demo = isDemoEmail(p.user.email);
   const name = `${drPrefix(p.profession)}${p.user.firstName} ${p.user.lastName}`;
   const what = [t(p.specialty || p.profession), p.subspecialty].filter(Boolean).join(" · ");
   const description = (p.bio ?? t("{name}, expert référencé sur KolBase.", { name })).slice(0, 160);
@@ -26,6 +28,7 @@ export async function generateMetadata({ params }: { params: Promise<{ id: strin
     description,
     alternates: { canonical: `/experts/${id}` },
     openGraph: { type: "profile", siteName: "KolBase", url: `/experts/${id}`, title: `${name}${what ? ` — ${what}` : ""}`, description },
+    ...(demo ? { robots: { index: false } } : {}),
   };
 }
 

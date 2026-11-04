@@ -8,7 +8,7 @@ import { lookupSiren } from "@/lib/siren";
 import type { OrgRole } from "@/generated/prisma/client";
 
 // Libellés et rôles (module sans dépendance serveur, réutilisable et testable).
-export { INTERVENTION_TYPES, ORG_KIND_LABEL, ORG_NOT_VERIFIED, ORG_SUSPENDED, ROLE_LABEL, notVerified, SIREN_REQUIRED, SUPPLIER_ROLES, VERIFICATION_LABEL, invitableRoles, isAgencyOnly, isSuspendedOrg, isVerifiedOrg, orgIsPublic, roleLabel } from "@/lib/org-roles";
+export { INTERVENTION_TYPES, ORG_KIND_LABEL, ORG_SUSPENDED, notVerified, SIREN_REQUIRED, invitableRoles, isAgencyOnly, isSuspendedOrg, isVerifiedOrg, orgIsPublic, roleLabel } from "@/lib/org-roles";
 
 /**
  * Vérifie que l'utilisateur courant est membre de l'organisation (et, si précisé, a l'un des rôles).

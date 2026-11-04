@@ -24,15 +24,18 @@ Santé de l'application : `GET /api/health`.
 ## Tests
 
 ```bash
-npm run lint                  # vérification des types
+npm run lint                  # vérification des types (variables et imports inutilisés refusés)
+npm run deadcode              # fichiers, exports et dépendances inutilisés (knip, configuration knip.json)
 npm test                      # tests unitaires (règles de visibilité, conformité, rôles, montants…)
 # parcours de bout en bout : base chargée avec la démo, application lancée
 BASE=http://localhost:3000 DEMO_PASSWORD=… DATABASE_URL=… npm run test:e2e
 ```
 
-Chaque pull request passe par GitHub Actions (`.github/workflows/ci.yml`) : types, tests unitaires,
+Chaque pull request passe par GitHub Actions (`.github/workflows/ci.yml`) : types, code mort, tests unitaires,
 migrations appliquées à un PostgreSQL 17 neuf puis comparées au schéma Prisma (une migration oubliée
 fait échouer la vérification), données de démo, build, audit des dépendances et parcours de bout en bout.
+Un second job (« montee-de-version ») rejoue le déploiement sur une base déjà en service : la version précédente
+est installée et remplie avec la démo, puis cette version y applique ses migrations avec `scripts/predeploy.sh`.
 
 ## Modèle de données
 
@@ -57,7 +60,16 @@ Avant chaque mise en production, Render exécute `npm run deploy:prepare` (`scri
 3. si `SEED_DEMO=1`, chargement des données fictives (`prisma/seed.ts`, idempotent).
 
 Pour faire évoluer le modèle : modifier `prisma/schema.prisma`, puis `npm run db:migrate:dev -- --name <nom>`
-en local, et versionner le dossier de migration créé.
+en local, et versionner le dossier de migration créé. Trois règles, vérifiées par la CI quand c'est possible :
+
+- **Horodatage** : une nouvelle migration doit être classée après toutes celles déjà en service (certaines portent
+  une date à venir) ; sinon elle s'appliquerait dans un autre ordre en production que sur une base neuve.
+- **Données réelles** : une migration qui transforme des données doit passer sur une base remplie (montants élevés,
+  champs vides) ; le job « montee-de-version » le vérifie avec la démo.
+- **En deux temps** pour retirer ou renommer une colonne : pendant le déploiement, l'ancienne version reste en
+  service et lit encore toutes les colonnes de ses modèles (erreur « ColumnNotFound » le 2 novembre). D'abord la
+  retirer du client (`@ignore` dans le schéma, la colonne reste en base), puis la supprimer dans un déploiement
+  suivant (exemple : `PractitionerProfile.billingEntity`).
 
 ### Données de démonstration
 
@@ -129,7 +141,10 @@ l'en-tête `Authorization: Bearer $CRON_SECRET` (secret généré sur le service
 - envoie, une heure après la fin d'un événement, le remerciement avec l'attestation de présence et le questionnaire ;
 - supprime les sessions et liens de connexion expirés depuis plus de 30 jours.
 
-Après la première synchronisation du Blueprint, renseigner `APP_URL` sur le service cron.
+`APP_URL` est fixée dans `render.yaml` pour le service cron (https://kolbase.io) ; sans elle, la commande échoue
+en nommant la variable manquante. Activer les alertes d'échec du service cron dans Render (Settings ›
+Notifications) : dès sa création le 3 novembre, faute d'`APP_URL`, les tâches ont échoué toutes les heures sans
+que personne ne soit prévenu.
 
 ## Facturation
 

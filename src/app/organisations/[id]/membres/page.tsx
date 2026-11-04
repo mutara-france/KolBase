@@ -4,7 +4,7 @@ import { Avatar } from "@/components/Avatar";
 import type { OrgRole } from "@/generated/prisma/client";
 import { logoSrc } from "@/lib/logos";
 import { db } from "@/lib/db";
-import { ORG_KIND_LABEL, invitableRoles, requireMembership, roleLabel } from "@/lib/orgs";
+import { invitableRoles, requireMembership, roleLabel } from "@/lib/orgs";
 import { rnaAccepted, ROLE_DESC } from "@/lib/org-roles";
 import { acceptDpa, revokeInvitation } from "@/lib/org-actions";
 import { setEventFlag } from "@/lib/event-actions";

@@ -58,7 +58,6 @@ export async function followFeed(userId: string): Promise<FeedItem[]> {
       },
     });
     for (const o of orgs) {
-      const href = `/structures/${o.id}`;
       if (companyVisibility(o.visibility).projets !== "masque")
         for (const c of o.openCalls) items.push({ key: `call-${c.id}`, date: c.createdAt, subject: o.name, href: `/opportunites/${c.id}`, kind: "organization", ...label("Nouvel appel : {title}", { title: c.title }) });
       for (const e of o.events) {
