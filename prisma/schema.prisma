@@ -142,6 +142,44 @@ model PractitionerProfile {
   vatNumber      String?
   iban           String?
   feeNotes       FeeNote[]
+  // Photo (portrait recadré et réencodé par KolBase, métadonnées retirées), servie par /experts/[id]/photo selon le
+  // réglage de visibilité « photo » : date de mise à jour, null sans photo.
+  photoUpdatedAt DateTime?
+  // Accord pour l'usage de la photo dans la communication de ses interventions (programme, affiches, réseaux
+  // sociaux, e-mailing) par les organisations avec qui il collabore et par KolBase : date de l'accord, null sinon.
+  photoConsentAt DateTime?
+  photo          PractitionerPhoto?
+  proposals      ExpertProposal[]
+}
+
+/** Photo d'un praticien, conservée en base comme les logos : grand format (JPEG 800 px) et vignette (WebP 192 px). */
+model PractitionerPhoto {
+  practitionerId String              @id
+  practitioner   PractitionerProfile @relation(fields: [practitionerId], references: [id], onDelete: Cascade)
+  data           Bytes
+  thumb          Bytes
+  updatedAt      DateTime            @updatedAt
+}
+
+// Projet proposé par un expert à une ou plusieurs organisations (cinq au plus) : chacune en reçoit sa copie, un dossier
+// à elle (« Proposition de l'expert »), sans savoir qui d'autre l'a reçu. Les copies gardent le texte envoyé.
+model ExpertProposal {
+  id              String              @id @default(cuid())
+  practitionerId  String
+  practitioner    PractitionerProfile @relation(fields: [practitionerId], references: [id], onDelete: Cascade)
+  title           String
+  typeId          String
+  therapeuticArea String?
+  description     String              // objectif et contenu
+  audience        String?             // public visé et format
+  schedule        String?             // calendrier envisagé
+  feeCents        Int?                // honoraires souhaités (total HT)
+  units           Float?
+  createdAt       DateTime            @default(now())
+
+  projects Project[]
+
+  @@index([practitionerId, createdAt])
 }
 
 // Publication scientifique déclarée par le praticien.
@@ -366,6 +404,9 @@ model Project {
   signatureAttestedById String?
   // Motif de l'abandon du dossier : affiché à l'expert sur sa sollicitation.
   abandonNote     String?
+  // Copie d'un projet proposé par un expert (envoyé à plusieurs organisations, chacune a la sienne).
+  proposalId      String?
+  proposal        ExpertProposal? @relation(fields: [proposalId], references: [id], onDelete: SetNull)
   createdAt       DateTime      @default(now())
   updatedAt       DateTime      @updatedAt
 
@@ -375,6 +416,8 @@ model Project {
   expenses  Expense[]
   events    Event[]
   materials Material[]
+
+  @@index([proposalId])
 }
 
 // Support (diaporama, article, vidéo…) soumis à relecture médico-réglementaire.

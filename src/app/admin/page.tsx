@@ -6,7 +6,8 @@ import { platformAdminEmails, requirePlatformAdmin } from "@/lib/platform";
 import { ORG_KIND_LABEL, VERIFICATION_LABEL } from "@/lib/org-roles";
 import { formatDate, formatEUR } from "@/lib/events";
 import { normalize } from "@/lib/search";
-import { recheckSiren, reviewOrganization, reviewRpps } from "@/lib/admin-actions";
+import { recheckSiren, removePractitionerPhoto, reviewOrganization, reviewRpps } from "@/lib/admin-actions";
+import { photoPath } from "@/lib/expert-photo";
 import { missingLegal } from "@/lib/legal";
 import { mailEnabled } from "@/lib/mail";
 import { storageEnabled } from "@/lib/storage";
@@ -41,7 +42,7 @@ export default async function Page({ searchParams }: { searchParams: Promise<{ o
   const o = (await searchParams).onglet;
   const onglet = o === "praticiens" || o === "lancement" || o === "actualites" || o === "abonnements" || o === "services" ? o : "organisations";
 
-  const [orgs, rppsQueue, rppsDone] = await Promise.all([
+  const [orgs, rppsQueue, rppsDone, photos] = await Promise.all([
     db.organization.findMany({
       include: { members: { where: { role: "ADMIN" }, include: { user: { select: { email: true, firstName: true, lastName: true } } }, take: 3, orderBy: { createdAt: "asc" } } },
       orderBy: { createdAt: "desc" },
@@ -56,6 +57,13 @@ export default async function Page({ searchParams }: { searchParams: Promise<{ o
       include: { user: { select: { firstName: true, lastName: true } } },
       orderBy: { rppsCheckedAt: "desc" },
       take: 20,
+    }),
+    // Photos des praticiens, les plus récentes d'abord : contrôle a posteriori (portrait de la personne, rien de choquant).
+    db.practitionerProfile.findMany({
+      where: { photoUpdatedAt: { not: null } },
+      select: { id: true, profession: true, listed: true, photoUpdatedAt: true, user: { select: { firstName: true, lastName: true } } },
+      orderBy: { photoUpdatedAt: "desc" },
+      take: 30,
     }),
   ]);
   const pending = orgs.filter((o) => o.verification === "PENDING");
@@ -243,6 +251,32 @@ export default async function Page({ searchParams }: { searchParams: Promise<{ o
               </section>
               );
             })}
+            {photos.length > 0 && (
+              <section className="card stack-sm">
+                <h2>Photos des praticiens ({photos.length} plus récentes)</h2>
+                <p className="muted text-sm">Chaque photo est recadrée et débarrassée de ses métadonnées à l&apos;envoi. Retirez celle qui n&apos;est pas un portrait de la personne : elle est prévenue par e-mail, avec le motif.</p>
+                <ul className="photo-review">
+                  {photos.map((p) => {
+                    const name = `${p.user.firstName} ${p.user.lastName}`;
+                    return (
+                      <li key={p.id}>
+                        <Avatar name={name} size={64} photo={photoPath(p.id, p.photoUpdatedAt!)} />
+                        <span className="text-sm">
+                          {p.listed ? <Link href={`/experts/${p.id}`}>{name}</Link> : name}
+                          <br />
+                          <span className="text-xs muted">{p.profession} · {formatDate(p.photoUpdatedAt!)}</span>
+                        </span>
+                        <form action={removePractitionerPhoto} className="inline wrap">
+                          <input type="hidden" name="practitionerId" value={p.id} />
+                          <input name="note" placeholder="Motif (facultatif)" aria-label={`Motif du retrait de la photo de ${name}`} maxLength={300} />
+                          <ConfirmButton className="btn ghost small" confirm="retirer cette photo">Retirer</ConfirmButton>
+                        </form>
+                      </li>
+                    );
+                  })}
+                </ul>
+              </section>
+            )}
             {rppsDone.length > 0 && (
               <section className="card">
                 <h2>Derniers contrôles</h2>

@@ -1,8 +1,10 @@
 "use client";
 
 import { useActionState } from "react";
-import { addPublication, addStructure, importOrcid, updateKolVisibility, updateOrgVisibility } from "@/lib/profile-actions";
+import { addPublication, addStructure, importOrcid, removeExpertPhoto, setPhotoConsent, updateExpertPhoto, updateKolVisibility, updateOrgVisibility } from "@/lib/profile-actions";
 import { Notice } from "@/components/AuthForms";
+import { Avatar } from "@/components/Avatar";
+import { ConfirmButton } from "@/components/ConfirmButton";
 import { COMPANY_VIS_FIELDS, KOL_VIS_FIELDS, KOL_VISIBILITY_LEVELS, PROJECT_VISIBILITY_LEVELS, VISIBILITY_LEVELS, type CompanyVisibility, type KolVisibility } from "@/lib/visibility";
 import { useLocale, useT } from "@/components/I18nProvider";
 import { LEGAL_FORMS, STRUCTURE_ROLES } from "@/lib/structures";
@@ -36,6 +38,57 @@ export function KolVisibilityForm({ v }: { v: KolVisibility }) {
       <VisRow name="projets" label={t("Collaborations")} desc={t("Organisations et dossiers menés via KolBase.")} value={v.projets} levels={tr(PROJECT_VISIBILITY_LEVELS)} />
       <button className="btn" disabled={pending}>{pending ? t("Enregistrement…") : t("Enregistrer la visibilité")}</button>
     </form>
+  );
+}
+
+/**
+ * Photo du praticien : aperçu, envoi (recadrée et réencodée par KolBase), accord pour la communication de ses
+ * interventions, retrait. Sa visibilité se règle avec les autres informations du profil.
+ */
+export function PhotoForm({ name, src, consent, level }: { name: string; src: string | null; consent: boolean; level: string }) {
+  const [state, action, pending] = useActionState(updateExpertPhoto, undefined);
+  const [cState, cAction, cPending] = useActionState(setPhotoConsent, undefined);
+  const t = useT();
+  return (
+    <section className="card form" id="photo">
+      <h2>{t("Photo")}</h2>
+      <Notice state={state} />
+      <div className="photo-preview">
+        <Avatar name={name} size={96} photo={src} ring />
+        <div className="stack-sm">
+          <p className="muted text-sm" style={{ margin: 0 }}>
+            {t("Un portrait de face, net, sur fond neutre. JPEG, PNG ou WebP, 10 Mo au plus. KolBase le recadre au carré et retire les informations cachées du fichier (lieu de prise de vue, appareil, date).")}
+          </p>
+          <p className="text-xs" style={{ margin: 0 }}>
+            {src
+              ? t(level === "public" ? "Visible de tous : votre fiche, la liste des experts, l'annuaire et les dossiers." : level === "industriels" ? "Visible des organisations inscrites seulement : réglage « Photo » de la visibilité ci-dessous." : "Masquée : vous seul la voyez (réglage « Photo » de la visibilité ci-dessous).")
+              : t("Sans photo, vos initiales s'affichent.")}
+          </p>
+        </div>
+      </div>
+      <form action={action} className="inline wrap" key={state?.ok ?? "photo"}>
+        <label className="sr-only" htmlFor="photo-file">{t("Fichier de la photo")}</label>
+        <input id="photo-file" name="photo" type="file" accept="image/jpeg,image/png,image/webp" required />
+        <button className="btn secondary" disabled={pending}>{pending ? t("Envoi…") : src ? t("Remplacer") : t("Ajouter ma photo")}</button>
+      </form>
+      {src && (
+        <form action={cAction} className="stack-sm">
+          <Notice state={cState} />
+          <label className="check text-sm">
+            <input type="checkbox" name="consent" value="1" defaultChecked={consent} />
+            <span>{t("J'autorise les organisations avec qui je collabore sur KolBase, et l'équipe KolBase, à utiliser ma photo pour annoncer mes interventions (programme, affiches, réseaux sociaux, e-mailing). Je peux retirer cet accord à tout moment.")}</span>
+          </label>
+          <div><button className="btn ghost small" disabled={cPending}>{cPending ? t("Enregistrement…") : t("Enregistrer")}</button></div>
+        </form>
+      )}
+      {src && (
+        <form action={removeExpertPhoto}>
+          <ConfirmButton className="link danger" confirm={t("retirer ma photo")} summary={t("Vos initiales s'afficheront à la place, et votre accord pour la communication est retiré.")} localized>
+            {t("Retirer ma photo")}
+          </ConfirmButton>
+        </form>
+      )}
+    </section>
   );
 }
 

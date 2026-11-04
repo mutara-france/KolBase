@@ -10,6 +10,7 @@ import { logoSrc } from "@/lib/logos";
 import { country } from "@/lib/countries";
 import { callFull, SIGNED_STATUSES } from "@/lib/projects";
 import { featuredEvents, trackedPath } from "@/lib/services";
+import { expertPhotoSrc } from "@/lib/expert-photo";
 import type { CallCardData, EventCardData, KolCardData, OrgCardData } from "@/components/PublicCards";
 
 /** Événements auxquels la personne connectée est inscrite (cartes « Inscrit »), lus une fois par requête. */
@@ -60,6 +61,7 @@ export async function publicExperts(take?: number): Promise<KolCardData[]> {
       id: p.id, name: `Dr ${p.user.firstName} ${p.user.lastName}`, specialty: p.specialty, subspecialty: p.subspecialty, profession: p.profession,
       city: contact ? p.city : null, hospital: contact ? p.hospital : null, country: country(p.country).name, verified: p.rppsVerified, types: p.interventionTypes,
       collaborations: activity ? p.projectLinks.length : null,
+      photo: expertPhotoSrc(p, "public"),
       organizations: activity ? new Set(p.projectLinks.map((l) => l.project.organizationId)).size : null,
     };
   });

@@ -8,6 +8,7 @@ import { requireDirectoryAccess } from "@/lib/orgs";
 import type { Prisma } from "@/generated/prisma/client";
 import { matches } from "@/lib/search";
 import { canSee, kolVisibility } from "@/lib/visibility";
+import { expertPhotoSrc } from "@/lib/expert-photo";
 import { country, practicesInFrance } from "@/lib/countries";
 
 export const metadata = { title: "Annuaire des experts — KolBase" };
@@ -65,7 +66,7 @@ export default async function Page({ searchParams }: { searchParams: Promise<{ q
           {experts.map((e) => (
             <Link key={e.id} href={`/experts/${e.id}`} className="card tile">
               <span className="tile-head">
-                <Avatar name={`${e.user.firstName} ${e.user.lastName}`} size={44} />
+                <Avatar name={`${e.user.firstName} ${e.user.lastName}`} size={44} photo={expertPhotoSrc(e, "membre")} />
                 <span>
                   <strong>Dr {e.user.firstName} {e.user.lastName}</strong>
                   <br />

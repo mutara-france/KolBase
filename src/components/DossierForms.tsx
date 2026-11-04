@@ -1,11 +1,10 @@
 "use client";
 
 import { useActionState, useState } from "react";
-import { addExpense, addMaterial, addMaterialVersion, proposeCollaboration, setBudget } from "@/lib/dossier-actions";
+import { addExpense, addMaterial, addMaterialVersion, setBudget } from "@/lib/dossier-actions";
 import { Notice } from "@/components/AuthForms";
 import { uploadDocument } from "@/lib/document-actions";
-import { intlLocale } from "@/lib/i18n";
-import { useLocale, useT } from "@/components/I18nProvider";
+import { useT } from "@/components/I18nProvider";
 import { refreshSignatureStatus, sendConventionForSignature } from "@/lib/signature-actions";
 import { addProjectExpert, updateExpertTerms, updateProjectObject } from "@/lib/project-actions";
 import { ActionForm } from "@/components/ActionForm";
@@ -76,38 +75,6 @@ export function VersionForm({ materialId }: { materialId: string }) {
       <label>{t("Lien vers la nouvelle version")}<input name="url" type="url" placeholder="https://…" /></label>
       <label>{t("Modifications apportées")}<textarea name="notes" rows={2} /></label>
       <button className="btn small" disabled={pending}>{t("Soumettre la version")}</button>
-    </form>
-  );
-}
-
-type CType = { id: string; label: string; category: string; unit: string; fmv: readonly number[] };
-export function ProposeForm({ orgId, orgName, types, defaultFee }: { orgId: string; orgName: string; types: readonly CType[]; defaultFee: string }) {
-  const [state, action, pending] = useActionState(proposeCollaboration, undefined);
-  const [open, setOpen] = useState(false);
-  const [typeId, setTypeId] = useState(types[0].id);
-  const t = useT();
-  const locale = useLocale();
-  const num = (n: number) => n.toLocaleString(intlLocale(locale));
-  const type = types.find((x) => x.id === typeId)!;
-  if (!open) return <button type="button" className="btn secondary" onClick={() => setOpen(true)}>{t("Proposer une collaboration")}</button>;
-  return (
-    <form action={action} className="card form">
-      <h2>{t("Proposer une collaboration à {org}", { org: orgName })}</h2>
-      <p className="muted">{t("Votre proposition ouvre un dossier que l'organisation peut accepter ou décliner.")}</p>
-      <Notice state={state} />
-      <input type="hidden" name="orgId" value={orgId} />
-      <label>{t("Titre")}<input name="title" required placeholder={t("Ex. : Webinaire sur la maintenance implantaire")} /></label>
-      <div className="row">
-        <label>{t("Type")}<select name="typeId" value={typeId} onChange={(e) => setTypeId(e.target.value)}>{types.map((x) => <option key={x.id} value={x.id}>{t(x.label)}</option>)}</select></label>
-        <label>{t("Domaine")}<input name="therapeuticArea" /></label>
-      </div>
-      <div className="row">
-        <label>{t("Volume ({unit})", { unit: t(type.unit) })}<input name="units" inputMode="decimal" defaultValue="1" /></label>
-        <label>{t("Honoraires souhaités (€ HT)")}<input name="fee" inputMode="decimal" defaultValue={defaultFee} /></label>
-      </div>
-      <p className="hint">{t("Référence : {min} à {max} € HT par {unit}.", { min: num(type.fmv[0]), max: num(type.fmv[1]), unit: t(type.unit) })}</p>
-      <label>{t("Votre proposition")}<textarea name="message" rows={4} required minLength={30} placeholder={t("Objectif, public, format, dates possibles…")} /></label>
-      <button className="btn" disabled={pending}>{pending ? t("Envoi…") : t("Envoyer la proposition")}</button>
     </form>
   );
 }

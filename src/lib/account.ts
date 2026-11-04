@@ -23,6 +23,9 @@ export async function exportAccount(userId: string) {
           feeNotes: { select: { number: true, issuedAt: true, amountCents: true, vatBp: true, totalCents: true, data: true, organization: { select: { name: true } } }, orderBy: { issuedAt: "asc" } },
           projectLinks: { include: { project: { select: { title: true, typeId: true, status: true, organization: { select: { name: true } } } }, messages: { select: { body: true, createdAt: true, authorId: true } } } },
           applications: { include: { openCall: { select: { title: true, organization: { select: { name: true } }, event: { select: { title: true, startsAt: true } } } } } },
+          // Projets proposés aux organisations, avec la réponse de chacune.
+          proposals: { include: { projects: { select: { status: true, createdAt: true, organization: { select: { name: true } } } } }, orderBy: { createdAt: "asc" } },
+          photo: { select: { data: true, updatedAt: true } },
         },
       },
       memberships: { select: { role: true, createdAt: true, organization: { select: { name: true, kind: true } } } },
@@ -32,7 +35,12 @@ export async function exportAccount(userId: string) {
       auditLogs: { select: { action: true, entityType: true, entityId: true, createdAt: true }, orderBy: { createdAt: "desc" }, take: 500 },
     },
   });
-  return { exporte: new Date().toISOString(), source: "KolBase", compte: user };
+  // Photo : jointe telle que KolBase la conserve (grand format JPEG), lisible dans un navigateur.
+  const photo = user?.practitioner?.photo;
+  const compte = user?.practitioner
+    ? { ...user, practitioner: { ...user.practitioner, photo: photo ? { miseAJour: photo.updatedAt, image: `data:image/jpeg;base64,${Buffer.from(photo.data).toString("base64")}` } : null } }
+    : user;
+  return { exporte: new Date().toISOString(), source: "KolBase", compte };
 }
 
 /** Le compte a-t-il des données à conserver au titre des obligations « anti-cadeaux » et Transparence Santé ? */
@@ -97,6 +105,9 @@ export async function anonymizeAccount(userId: string) {
     ...(p
       ? [
           db.publication.deleteMany({ where: { practitionerId: p.id } }),
+          db.practitionerPhoto.deleteMany({ where: { practitionerId: p.id } }),
+          // Propositions : les copies reçues par les organisations restent leurs dossiers (texte envoyé).
+          db.expertProposal.deleteMany({ where: { practitionerId: p.id } }),
           db.declaredInterest.deleteMany({ where: { practitionerId: p.id } }),
           db.practitionerStructure.deleteMany({ where: { practitionerId: p.id, ...(keep ? { isPayee: false } : {}) } }),
           db.application.deleteMany({ where: { practitionerId: p.id, status: "pending" } }),
@@ -107,7 +118,7 @@ export async function anonymizeAccount(userId: string) {
             where: { id: p.id },
             data: {
               listed: false, listedAt: null, bio: null, hospital: null, subspecialty: null, languages: [], interventionTypes: [], dayRateCents: null,
-              orcid: null, orcidVerified: false, orcidSyncedAt: null, visibility: {}, responseDays: null,
+              orcid: null, orcidVerified: false, orcidSyncedAt: null, visibility: {}, responseDays: null, photoUpdatedAt: null, photoConsentAt: null,
               // Coordonnées de facturation : effacées (celles d'une note déjà établie y restent figées).
               iban: null, billingAddress: null, siret: null, vatNumber: null, vatRegime: "franchise",
               ...(keep ? {} : { rpps: null, rppsVerified: false, rppsCheckedAt: null, rppsCheckNote: null, city: null, specialty: null }),
@@ -146,7 +157,9 @@ async function afterExpertRemoved(projectId: string): Promise<"reopened" | "clos
   const statuses = project.experts.map((e) => e.status);
   const engaged = statuses.some((s) => s !== "DECLINE" && s !== "ATT_EXPERTS");
   let next: ProjectStatus = project.status;
-  if ((RECRUITING_STATUSES as string[]).includes(project.status)) next = statuses.every((s) => s === "DECLINE") ? "DECLINE" : engaged ? "ACCORD" : "ATT_EXPERTS";
+  // Proposition de l'expert encore sans réponse : elle tombe avec son compte.
+  if (project.status === "ATT_IND") next = "DECLINE";
+  else if ((RECRUITING_STATUSES as string[]).includes(project.status)) next = statuses.every((s) => s === "DECLINE") ? "DECLINE" : engaged ? "ACCORD" : "ATT_EXPERTS";
   else if (!engaged) next = "ATT_EXPERTS";
   if (next === project.status) return null;
   await db.project.update({ where: { id: projectId }, data: { status: next } });

@@ -93,13 +93,15 @@ export type KolCardData = {
   /** Pays d'exercice (nom affiché) ; « France » par défaut. */
   country?: string;
   verified: boolean; types: string[]; collaborations: number | null; organizations: number | null;
+  /** Photo visible de tous (réglage « Photo » public), sinon le monogramme. */
+  photo?: string | null;
 };
 export async function KolCard({ k }: { k: KolCardData }) {
   const { t } = await getT();
   return (
     <Link href={`/experts/${k.id}`} className="kol-card">
       <div className="kol-head">
-        <Avatar name={k.name} size={60} />
+        <Avatar name={k.name} size={60} photo={k.photo} />
         {k.verified && <span className="verif ok small"><BadgeCheck size={13} /> {t("Identité vérifiée")}</span>}
       </div>
       <h3 className="kol-name">{k.name}</h3>

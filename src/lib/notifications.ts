@@ -179,6 +179,18 @@ export function notifyExpertNotice(linkIds: string[], notice: ExpertNotice, note
             subject: t("Dossier signé : {titre}", { titre }),
             lines: [t("{org} confirme la signature de la convention pour « {titre} » : la prestation peut avoir lieu.", { org, titre })],
           },
+          proposition_acceptee: {
+            subject: t("Proposition acceptée : {titre}", { titre }),
+            lines: [t("{org} accepte votre proposition « {titre} ». Le dossier est ouvert : l'organisation le soumet à sa conformité, puis la convention vous sera soumise.", { org, titre })],
+          },
+          proposition_declinee: {
+            subject: t("Proposition déclinée : {titre}", { titre }),
+            lines: [
+              t("{org} ne donne pas suite à votre proposition « {titre} ».", { org, titre }),
+              note ? t("Motif : {note}", { note }) : null,
+              t("Vous pouvez la proposer à d'autres organisations depuis « Mes propositions »."),
+            ],
+          },
           recrutement_clos: {
             subject: t("Recrutement clos : {titre}", { titre }),
             lines: [
@@ -299,16 +311,35 @@ export function notifyCounterAccepted(linkId: string) {
   });
 }
 
-/** Proposition spontanée d'un expert. */
+/** Projet proposé par un expert (une copie par organisation : rien n'indique les autres destinataires). */
 export function notifyProposal(projectId: string) {
   later(async () => {
     const p = await db.project.findUnique({ where: { id: projectId }, include: { experts: { include: { practitioner: linkInclude.practitioner } } } });
     const e = p?.experts[0];
     if (!p || !e) return;
+    const type = collabType(p.typeId)?.label;
     await send(await members(p.organizationId, SOURCING_ROLES), {
-      subject: `Proposition de collaboration de ${expertName(e.practitioner)}`,
-      text: `Bonjour,\n\n${expertName(e.practitioner)} propose à votre organisation : « ${p.title} ». Acceptez la proposition pour ouvrir le circuit, ou déclinez-la.`,
+      subject: `Projet proposé par ${expertName(e.practitioner)} : ${p.title}`,
+      text: [
+        "Bonjour,",
+        `${expertName(e.practitioner)} propose un projet à votre organisation : « ${p.title} »${type ? ` (${type.toLowerCase()})` : ""}${e.feeCents != null ? `, honoraires souhaités : ${fmtEur("fr", e.feeCents)} HT` : ""}.`,
+        "Acceptez-le pour ouvrir le circuit habituel (conformité, convention, signature), ou déclinez-le : l'expert est prévenu de votre réponse.",
+      ].join("\n\n"),
       cta: { label: "Voir la proposition", href: `/organisations/${p.organizationId}/dossiers/${p.id}` },
+    });
+  });
+}
+
+/** Proposition retirée par l'expert avant la réponse de l'organisation. */
+export function notifyProposalWithdrawnByExpert(projectId: string) {
+  later(async () => {
+    const p = await db.project.findUnique({ where: { id: projectId }, include: { experts: { include: { practitioner: linkInclude.practitioner } } } });
+    const e = p?.experts[0];
+    if (!p || !e) return;
+    await send(await members(p.organizationId, SOURCING_ROLES), {
+      subject: `Proposition retirée : ${p.title}`,
+      text: `Bonjour,\n\n${expertName(e.practitioner)} a retiré sa proposition « ${p.title} ». Le dossier est clos, il n'y a rien d'autre à faire.`,
+      cta: { label: "Voir le dossier", href: `/organisations/${p.organizationId}/dossiers/${p.id}` },
     });
   });
 }
@@ -770,6 +801,24 @@ export function notifyOrgDecision(orgId: string, decision: "verify" | "reject" |
 }
 
 /** Identité professionnelle d'un praticien vérifiée ou refusée (motif et consigne). */
+/** Photo retirée par l'équipe KolBase (motif facultatif). */
+export function notifyPhotoRemoved(practitionerId: string, note: string | null) {
+  later(async () => {
+    const p = await db.practitionerProfile.findUnique({ where: { id: practitionerId }, include: { user: { select: userSelect } } });
+    if (!p) return;
+    await sendService([p.user], (t) => ({
+      subject: t("Votre photo a été retirée de KolBase"),
+      text: [
+        t("Bonjour,"),
+        t("L'équipe KolBase a retiré la photo de votre profil : elle ne correspond pas à ce qu'attendent les organisations (un portrait de vous, net et de face)."),
+        note ? t("Motif : {note}", { note }) : null,
+        t("Vous pouvez en ajouter une autre depuis « Mon compte › Photo »."),
+      ].filter(Boolean).join("\n\n"),
+      cta: { label: t("Ajouter une photo"), href: "/compte#photo" },
+    }));
+  });
+}
+
 export function notifyIdentityDecision(practitionerId: string, verified: boolean, note: string | null) {
   later(async () => {
     const p = await db.practitionerProfile.findUnique({ where: { id: practitionerId }, include: { user: { select: userSelect } } });

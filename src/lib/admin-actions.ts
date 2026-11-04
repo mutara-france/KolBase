@@ -6,7 +6,7 @@ import { audit } from "@/lib/auth";
 import { str } from "@/lib/form";
 import { sirenFields } from "@/lib/orgs";
 import { requirePlatformAdmin } from "@/lib/platform";
-import { notifyIdentityDecision, notifyOrgDecision } from "@/lib/notifications";
+import { notifyIdentityDecision, notifyOrgDecision, notifyPhotoRemoved } from "@/lib/notifications";
 import { syncStripePause } from "@/lib/billing";
 
 const refresh = () => {
@@ -94,4 +94,21 @@ export async function reviewRpps(form: FormData) {
     notifyIdentityDecision(practitionerId, decision === "verify", note);
   }
   refresh();
+}
+
+/** Photo inadaptée (pas un portrait, image d'un tiers, contenu choquant) : retirée par KolBase, le praticien est prévenu. */
+export async function removePractitionerPhoto(form: FormData) {
+  const admin = await requirePlatformAdmin();
+  const practitionerId = str(form, "practitionerId");
+  const note = str(form, "note", 300) || null;
+  const p = await db.practitionerProfile.findUnique({ where: { id: practitionerId }, select: { id: true, photoUpdatedAt: true } });
+  if (!p?.photoUpdatedAt) return;
+  await db.$transaction([
+    db.practitionerPhoto.deleteMany({ where: { practitionerId } }),
+    db.practitionerProfile.update({ where: { id: practitionerId }, data: { photoUpdatedAt: null, photoConsentAt: null } }),
+  ]);
+  await audit(admin.id, "admin.photo_remove", "PractitionerProfile", practitionerId, { note });
+  notifyPhotoRemoved(practitionerId, note);
+  revalidatePath("/admin");
+  revalidatePath(`/experts/${practitionerId}`);
 }

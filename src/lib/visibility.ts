@@ -28,6 +28,7 @@ export const PROJECT_VISIBILITY_LEVELS: { id: ProjVisLevel; label: string; hint:
 ];
 
 export const KOL_VIS_FIELDS = [
+  { key: "photo", label: "Photo", desc: "Votre portrait, à la place de vos initiales." },
   { key: "contact", label: "Lieu d'exercice et coordonnées", desc: "Cabinet ou service, ville, langues." },
   { key: "publications", label: "Publications", desc: "Titres, revues et mots-clés." },
   { key: "tarif", label: "Tarif indicatif", desc: "Votre tarif journalier indicatif." },
@@ -44,7 +45,7 @@ export const COMPANY_VIS_FIELDS = [
 export type KolVisibility = Record<(typeof KOL_VIS_FIELDS)[number]["key"], VisLevel> & { projets: ProjVisLevel };
 export type CompanyVisibility = Record<(typeof COMPANY_VIS_FIELDS)[number]["key"], VisLevel>;
 
-export const DEFAULT_KOL_VISIBILITY: KolVisibility = { contact: "public", tarif: "industriels", publications: "public", structures: "industriels", projets: "nominatif", historique: "public" };
+export const DEFAULT_KOL_VISIBILITY: KolVisibility = { photo: "public", contact: "public", tarif: "industriels", publications: "public", structures: "industriels", projets: "nominatif", historique: "public" };
 export const DEFAULT_COMPANY_VISIBILITY: CompanyVisibility = { areas: "public", policy: "public", contact: "industriels", projets: "public" };
 
 const isLevel = (v: unknown): v is VisLevel => v === "public" || v === "industriels" || v === "masque";

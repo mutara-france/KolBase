@@ -74,14 +74,16 @@ export const pipelineLabel = (status: ProjectStatus, viewer: "organisation" | "e
  * - contre : il a proposé d'autres honoraires, l'organisation doit répondre (la sollicitation reste ouverte) ;
  * - clos : restée sans réponse, le dossier a été soumis à la conformité (recrutement clos) ;
  * - abandonne : dossier abandonné par l'organisation (motif) ; refuse : sa proposition spontanée déclinée ;
+ * - retire : il a retiré sa proposition avant la réponse de l'organisation ;
  * - decline : il a décliné ; engage : il a accepté, le dossier suit son cours.
  */
-export type ExpertLinkState = "attente" | "contre" | "clos" | "abandonne" | "refuse" | "decline" | "engage";
+export type ExpertLinkState = "attente" | "contre" | "clos" | "abandonne" | "refuse" | "retire" | "decline" | "engage";
 export function expertLinkState(
-  link: { status: ProjectStatus | string; desiredFeeCents: number | null; respondedAt: Date | null },
+  link: { status: ProjectStatus | string; desiredFeeCents: number | null; respondedAt: Date | null; responseNote?: string | null },
   project: { status: ProjectStatus | string; abandonNote: string | null; origin: string | null },
 ): ExpertLinkState {
   const proposal = project.origin === PROPOSAL_ORIGIN;
+  if (proposal && link.responseNote === PROPOSAL_WITHDRAWN) return "retire";
   if (project.status === "DECLINE" && project.abandonNote) return "abandonne";
   if (link.status === "DECLINE" && link.respondedAt && !proposal) return "decline";
   if (project.status === "DECLINE") return proposal ? "refuse" : "abandonne";
@@ -95,6 +97,7 @@ export const EXPERT_LINK_LABEL: Record<Exclude<ExpertLinkState, "engage">, strin
   clos: "Recrutement clos",
   abandonne: "Abandonné par l'organisation",
   refuse: "Proposition déclinée",
+  retire: "Proposition retirée",
   decline: "Décliné",
 };
 /** Sollicitation qui attend la réponse de l'expert (compteurs du menu, de l'accueil et de la liste). */
@@ -104,6 +107,36 @@ export const awaitingExpert = (link: { status: ProjectStatus | string; desiredFe
 export const ACCOUNT_DELETED = "Compte supprimé";
 /** Origine d'un dossier ouvert par la proposition spontanée d'un expert. */
 export const PROPOSAL_ORIGIN = "Proposition de l'expert";
+/** Mention portée sur le lien de l'expert qui a retiré sa proposition avant la réponse de l'organisation. */
+export const PROPOSAL_WITHDRAWN = "Proposition retirée par l'expert";
+/** Garde-fous contre le démarchage : organisations par proposition, propositions par période de 30 jours. */
+export const PROPOSAL_MAX_ORGS = 5;
+export const PROPOSALS_PER_MONTH = 5;
+
+/**
+ * Réponse d'une organisation à la proposition, vue par l'expert : en attente, retirée par l'expert, déclinée (close
+ * sans avoir été acceptée), acceptée (le dossier suit son cours, ou a été abandonné ensuite).
+ */
+export type ProposalAnswer = "attente" | "retiree" | "declinee" | "acceptee" | "abandonnee";
+export function proposalAnswer(project: { status: ProjectStatus | string; abandonNote: string | null }, link: { responseNote: string | null } | undefined): ProposalAnswer {
+  if (project.status === "ATT_IND") return "attente";
+  if (link?.responseNote === PROPOSAL_WITHDRAWN) return "retiree";
+  // Un dossier abandonné après acceptation porte toujours un motif ; une proposition déclinée n'en a pas.
+  if (project.status === "DECLINE") return project.abandonNote ? "abandonnee" : "declinee";
+  return "acceptee";
+}
+export const PROPOSAL_ANSWER_LABEL: Record<ProposalAnswer, string> = {
+  attente: "En attente de réponse",
+  retiree: "Retirée",
+  declinee: "Déclinée",
+  acceptee: "Acceptée",
+  abandonnee: "Acceptée, puis abandonnée",
+};
+
+/** Texte reçu par l'organisation : l'objectif, puis le public et le calendrier quand l'expert les a précisés. */
+export function proposalText(p: { description: string; audience?: string | null; schedule?: string | null }) {
+  return [p.description, p.audience ? `Public et format : ${p.audience}` : null, p.schedule ? `Calendrier envisagé : ${p.schedule}` : null].filter(Boolean).join("\n\n");
+}
 
 export const STATUS_TONE: Record<ProjectStatus, "wait" | "ok" | "bad" | "done"> = {
   ATT_EXPERTS: "wait", ATT_IND: "wait", ACCORD: "ok", EN_VALID: "wait", BLOQUE: "bad", VALIDE: "ok",
@@ -200,7 +233,7 @@ export const MATERIAL_STATUS = { submitted: "En relecture", approved: "Approuvé
 export const REVIEW_ROLES: OrgRole[] = ["ADMIN", "CONFORMITE"];
 
 /** E-mails à l'expert lors des étapes du dossier qui le concernent (voir notifyExpertNotice). */
-export type ExpertNotice = "abandon" | "retour_accord" | "signature" | "signe" | "recrutement_clos";
+export type ExpertNotice = "abandon" | "retour_accord" | "signature" | "signe" | "recrutement_clos" | "proposition_acceptee" | "proposition_declinee";
 /**
  * Qui prévenir, et de quoi, quand le dossier change d'étape : experts engagés (accord donné), sollicités restés sans
  * réponse (dont une contre-proposition ou une offre renvoyée), ou tous. Passage en signature : seulement quand la
@@ -209,6 +242,9 @@ export type ExpertNotice = "abandon" | "retour_accord" | "signature" | "signe" |
 export function expertNotices(key: TransitionKey, eSignature: boolean): { notice: ExpertNotice; who: "engages" | "sollicites" | "tous" }[] {
   switch (key) {
     case "abandon": return [{ notice: "abandon", who: "tous" }];
+    // Proposition de l'expert : il est engagé d'office (c'est son projet), la réponse de l'organisation lui est envoyée.
+    case "accept_proposal": return [{ notice: "proposition_acceptee", who: "engages" }];
+    case "decline_proposal": return [{ notice: "proposition_declinee", who: "engages" }];
     case "back_to_accord": return [{ notice: "retour_accord", who: "engages" }];
     case "declaration": case "hors_france": case "ordre_ok": return eSignature ? [] : [{ notice: "signature", who: "engages" }];
     case "signed": return [{ notice: "signe", who: "engages" }];

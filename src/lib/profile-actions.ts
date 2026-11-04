@@ -8,6 +8,7 @@ import { fetchOrcidWorks, normTitle, ORCID_RE, orcidOAuth } from "@/lib/orcid";
 import { COMPANY_VIS_FIELDS, KOL_VIS_FIELDS, companyVisibility, kolVisibility } from "@/lib/visibility";
 import { str } from "@/lib/form";
 import { getT } from "@/lib/i18n/server";
+import { PHOTO_MAX_BYTES, PHOTO_MIN_SIDE, processPortrait } from "@/lib/photos";
 
 export type ActionState = { error?: string; ok?: string } | undefined;
 
@@ -122,4 +123,65 @@ export async function removeStructure(form: FormData) {
   if (!user.practitioner) return;
   await db.practitionerStructure.deleteMany({ where: { id: str(form, "id"), practitionerId: user.practitioner.id } });
   revalidatePath("/compte");
+}
+
+// ─── Photo du praticien ────────────────────────────────────────────────────
+
+const refreshPhoto = (practitionerId: string) => {
+  revalidatePath("/compte");
+  revalidatePath(`/experts/${practitionerId}`);
+  revalidatePath("/experts");
+  revalidatePath("/");
+};
+
+/**
+ * Photo du praticien : JPEG, PNG ou WebP vérifié sur son contenu, recadrée et réencodée par KolBase (aucune
+ * métadonnée conservée). Visible selon le réglage « Photo » de la visibilité du profil.
+ */
+export async function updateExpertPhoto(_: ActionState, form: FormData): Promise<ActionState> {
+  const user = await requireUser();
+  const { t } = await getT();
+  const p = user.practitioner;
+  if (!p) return { error: t("Réservé aux praticiens.") };
+  const file = form.get("photo");
+  if (!(file instanceof File) || file.size === 0) return { error: t("Choisissez une photo.") };
+  if (file.size > PHOTO_MAX_BYTES) return { error: t("Photo trop lourde : 10 Mo au maximum.") };
+  const result = await processPortrait(new Uint8Array(await file.arrayBuffer()));
+  if ("error" in result) return { error: t(result.error, { min: PHOTO_MIN_SIDE }) };
+  const now = new Date();
+  const data = new Uint8Array(result.data);
+  const thumb = new Uint8Array(result.thumb);
+  await db.$transaction([
+    db.practitionerPhoto.upsert({ where: { practitionerId: p.id }, update: { data, thumb }, create: { practitionerId: p.id, data, thumb } }),
+    db.practitionerProfile.update({ where: { id: p.id }, data: { photoUpdatedAt: now } }),
+  ]);
+  await audit(user.id, "practitioner.photo", "PractitionerProfile", p.id, { size: data.byteLength });
+  refreshPhoto(p.id);
+  return { ok: t("Photo enregistrée.") };
+}
+
+export async function removeExpertPhoto() {
+  const user = await requireUser();
+  const p = user.practitioner;
+  if (!p) return;
+  await db.$transaction([
+    db.practitionerPhoto.deleteMany({ where: { practitionerId: p.id } }),
+    db.practitionerProfile.update({ where: { id: p.id }, data: { photoUpdatedAt: null, photoConsentAt: null } }),
+  ]);
+  await audit(user.id, "practitioner.photo_remove", "PractitionerProfile", p.id);
+  refreshPhoto(p.id);
+}
+
+/** Accord pour l'usage de la photo dans la communication des interventions (révocable à tout moment). */
+export async function setPhotoConsent(_: ActionState, form: FormData): Promise<ActionState> {
+  const user = await requireUser();
+  const { t } = await getT();
+  const p = user.practitioner;
+  if (!p) return { error: t("Réservé aux praticiens.") };
+  const consent = form.get("consent") === "1";
+  if (consent && !p.photoUpdatedAt) return { error: t("Ajoutez d'abord une photo.") };
+  await db.practitionerProfile.update({ where: { id: p.id }, data: { photoConsentAt: consent ? (p.photoConsentAt ?? new Date()) : null } });
+  await audit(user.id, consent ? "practitioner.photo_consent" : "practitioner.photo_consent_withdrawn", "PractitionerProfile", p.id);
+  revalidatePath("/compte");
+  return { ok: t(consent ? "Accord enregistré." : "Accord retiré : votre photo ne sera plus proposée pour la communication de vos interventions.") };
 }

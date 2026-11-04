@@ -7,11 +7,13 @@ import { SiteHeader } from "@/components/SiteHeader";
 import { FmvBadge, Pipeline, StatusPill, Thread } from "@/components/ProjectBits";
 import { MessageForm } from "@/components/ProjectForms";
 import { AddExpertForm, ExpertTermsForm, ProjectObjectForm } from "@/components/DossierForms";
-import { canSee, kolVisibility } from "@/lib/visibility";
+import { canSee, kolViewer, kolVisibility } from "@/lib/visibility";
+import { expertPhotoSrc, photoPath } from "@/lib/expert-photo";
+import { BillingNotice } from "@/components/BillingNotice";
 import { db } from "@/lib/db";
 import { requireMembership } from "@/lib/orgs";
 import { COMPLIANCE_ROLES, formatDate, formatDateTime, formatEUR, parisToday } from "@/lib/events";
-import { ACCOUNT_DELETED, collabType, needsMeeting, PROJECT_ROLES, PROJECT_VIEW_ROLES, projectEditable, recruitmentOpen, REVIEW_ROLES, STATUS_LABEL, TRANSITIONS, type TransitionKey } from "@/lib/projects";
+import { ACCOUNT_DELETED, PROPOSAL_ORIGIN, PROPOSAL_WITHDRAWN, collabType, needsMeeting, PROJECT_ROLES, PROJECT_VIEW_ROLES, projectEditable, recruitmentOpen, REVIEW_ROLES, STATUS_LABEL, TRANSITIONS, type TransitionKey } from "@/lib/projects";
 import { storageEnabled } from "@/lib/storage";
 import { acceptCounterOffer, advanceProject } from "@/lib/project-actions";
 import { ConfirmButton } from "@/components/ConfirmButton";
@@ -61,6 +63,7 @@ const ACTION_LABEL: Record<string, string> = {
   "project.add_expert": "Expert ajouté au dossier",
   "project.accept_proposal": "Proposition de l'expert acceptée",
   "project.decline_proposal": "Proposition de l'expert déclinée",
+  "project.withdraw_proposal": "Proposition retirée par l'expert",
   "project.ordre": "Autorisation demandée à l'Ordre",
   "project.declaration": "Déclaration simple : convention à signer",
   "project.hors_france": "Hors France : obligations du pays vérifiées, convention à signer",
@@ -169,8 +172,11 @@ export default async function Page({ params, searchParams }: { params: Promise<{
     : [];
   // Contrôle à quatre yeux : qui a monté ou soumis le dossier ne le valide pas seul.
   const fourEyesRule = project.status === "EN_VALID" && isCompliance ? await fourEyes(await projectAuthors(projectId), id, user.id, COMPLIANCE_ROLES) : "ok";
+  // Accepter la proposition d'un expert l'engage : contrat de sous-traitance et abonnement, comme une sollicitation.
+  const proposalBlocked = project.status === "ATT_IND" && isProject ? await engagementBlock(id, "proposition") : null;
   const available = (Object.keys(TRANSITIONS) as TransitionKey[]).filter((k) => {
     const t = TRANSITIONS[k];
+    if (k === "accept_proposal" && proposalBlocked) return false;
     // Au-delà d'un seuil, la déclaration simple n'est pas possible : seule la demande d'autorisation est proposée.
     if (k === "declaration" && (regime?.regime === "autorisation" || regime?.regime === "hors_france")) return false;
     // Experts exerçant tous hors de France : ni déclaration ni autorisation EPS, une étape dédiée.
@@ -183,8 +189,8 @@ export default async function Page({ params, searchParams }: { params: Promise<{
     if (k === "back_to_accord" && signStarted) return false;
     return (t.from as readonly string[]).includes(project.status) && (t.roles === "compliance" ? isCompliance : isProject);
   }).sort((a, b) => Number(DANGER.includes(a)) - Number(DANGER.includes(b)));
-  const needsNote = (k: TransitionKey) => k === "block" || k === "validate" || k === "ordre" || k === "abandon";
-  const notePlaceholder = (k: TransitionKey) => (k === "ordre" ? "Référence de la demande" : k === "validate" && fourEyesRule === "justify" ? "Justification (obligatoire)" : k === "block" ? "Motif du blocage (obligatoire)" : k === "abandon" ? "Motif de l'abandon (obligatoire)" : "Commentaire (facultatif)");
+  const needsNote = (k: TransitionKey) => k === "block" || k === "validate" || k === "ordre" || k === "abandon" || k === "decline_proposal";
+  const notePlaceholder = (k: TransitionKey) => (k === "ordre" ? "Référence de la demande" : k === "validate" && fourEyesRule === "justify" ? "Justification (obligatoire)" : k === "block" ? "Motif du blocage (obligatoire)" : k === "abandon" ? "Motif de l'abandon (obligatoire)" : k === "decline_proposal" ? "Motif, transmis à l'expert (facultatif)" : "Commentaire (facultatif)");
 
   // Engagé = experts ayant accepté ; les honoraires proposés sans réponse sont indiqués à part (même définition
   // dans le budget plus bas).
@@ -254,7 +260,8 @@ export default async function Page({ params, searchParams }: { params: Promise<{
           <Pipeline status={project.status} />
         </header>
 
-        {project.status === "ATT_IND" && <p className="notice warn">Proposition spontanée de l&apos;expert : acceptez-la pour ouvrir le circuit, ou déclinez-la.</p>}
+        {project.status === "ATT_IND" && <p className="notice warn">Projet proposé par l&apos;expert : acceptez-le pour ouvrir le circuit (conformité, convention, signature), ou déclinez-le. Le motif éventuel lui est transmis dans vos échanges.</p>}
+        {proposalBlocked && <BillingNotice orgId={id} motive="proposition" objet={projectId} />}
 
         <div className="page-grid">
           <div className="page-main">
@@ -267,6 +274,7 @@ export default async function Page({ params, searchParams }: { params: Promise<{
               {project.experts.map((e) => {
                 const name = `${drPrefix(e.practitioner.profession)}${e.practitioner.user.firstName} ${e.practitioner.user.lastName}`;
                 const active = e.status !== "ATT_EXPERTS" && e.status !== "DECLINE";
+                const photo = expertPhotoSrc(e.practitioner, kolViewer(user, e.practitionerId));
                 // Contre-proposition de l'expert : la sollicitation reste ouverte, l'organisation répond.
                 const counter = e.status === "ATT_EXPERTS" && e.desiredFeeCents != null && !closed;
                 const last = e.messages.at(-1);
@@ -275,15 +283,19 @@ export default async function Page({ params, searchParams }: { params: Promise<{
                 return (
                   <section key={e.id} className={`card expert-card${e.status === "DECLINE" ? " muted-card" : ""}`}>
                     <div className="expert-head">
-                      <Avatar name={name} size={44} />
+                      <Avatar name={name} size={44} photo={photo} />
                       <div className="who">
                         <h3><Link href={`/annuaire/${e.practitionerId}`}>{name}</Link></h3>
                         <div className="muted text-sm">
                           {[e.practitioner.specialty ?? e.practitioner.profession, e.practitioner.city, !practicesInFrance(e.practitioner.country) ? country(e.practitioner.country).name : null].filter(Boolean).join(" · ")}
                         </div>
+                        {/* Expert engagé qui a donné son accord : sa photo en grand format pour le programme, les affiches, les posts. */}
+                        {active && photo && e.practitioner.photoConsentAt && e.practitioner.photoUpdatedAt && (
+                          <a className="text-xs" href={photoPath(e.practitionerId, e.practitioner.photoUpdatedAt, "grande")} download>Photo pour vos supports (accord de l&apos;expert)</a>
+                        )}
                       </div>
                       <span className={`pill ${e.status === "DECLINE" ? "done" : e.status === "ATT_EXPERTS" ? "wait" : "ok"}`}>
-                        {e.status === "ATT_EXPERTS" ? (closed ? "Sans réponse, recrutement clos" : counter ? "Contre-proposition" : "Réponse attendue") : e.status === "DECLINE" ? (e.responseNote === ACCOUNT_DELETED ? "Retiré : compte supprimé" : "A décliné") : STATUS_LABEL[e.status]}
+                        {e.status === "ATT_EXPERTS" ? (closed ? "Sans réponse, recrutement clos" : counter ? "Contre-proposition" : "Réponse attendue") : e.status === "DECLINE" ? (e.responseNote === ACCOUNT_DELETED ? "Retiré : compte supprimé" : e.responseNote === PROPOSAL_WITHDRAWN ? "Proposition retirée par l'expert" : project.origin === PROPOSAL_ORIGIN ? "Dossier clos" : "A décliné") : STATUS_LABEL[e.status]}
                       </span>
                     </div>
                     <div className="terms">

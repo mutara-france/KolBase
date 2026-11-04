@@ -31,4 +31,15 @@ export const EMAILS: Record<string, string> = {
   "Votre inscription à « {title} » ({org}), {when}, est annulée.": "Your registration for “{title}” ({org}), {when}, has been cancelled.",
   "Les prestations que vous aviez acceptées sont retirées.": "The hospitality you had accepted is withdrawn.",
   "Vous pouvez vous réinscrire tant que les inscriptions sont ouvertes.": "You can register again while registration is open.",
+
+  // ─── Photo et projets proposés par l'expert ─
+  "Proposition acceptée : {titre}": "Proposal accepted: {titre}",
+  "{org} accepte votre proposition « {titre} ». Le dossier est ouvert : l'organisation le soumet à sa conformité, puis la convention vous sera soumise.": "{org} accepts your proposal “{titre}”. The project is open: the organisation submits it to its compliance team, then the agreement will be sent to you.",
+  "Proposition déclinée : {titre}": "Proposal declined: {titre}",
+  "{org} ne donne pas suite à votre proposition « {titre} ».": "{org} is not taking your proposal “{titre}” further.",
+  "Vous pouvez la proposer à d'autres organisations depuis « Mes propositions ».": "You can propose it to other organisations from “My proposals”.",
+  "Votre photo a été retirée de KolBase": "Your photo has been removed from KolBase",
+  "L'équipe KolBase a retiré la photo de votre profil : elle ne correspond pas à ce qu'attendent les organisations (un portrait de vous, net et de face).": "The KolBase team has removed the photo from your profile: it does not match what organisations expect (a sharp, front-facing portrait of you).",
+  "Vous pouvez en ajouter une autre depuis « Mon compte › Photo ».": "You can add another one from “My account › Photo”.",
+  "Ajouter une photo": "Add a photo",
 };

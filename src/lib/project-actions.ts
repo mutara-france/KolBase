@@ -15,7 +15,7 @@ import { missingSignedConventions } from "@/lib/project-documents";
 import { eurToCents, str, unitsOrNull, UNITS_INVALID } from "@/lib/form";
 import { notifyCompliance, notifyCounterAccepted, notifyExpertAnswer, notifyExpertCounter, notifyExpertNotice, notifyMessage, notifyNewProposal, notifySolicitations } from "@/lib/notifications";
 import { signatureEnabled } from "@/lib/yousign";
-import { engagementGate } from "@/lib/billing";
+import { engagementBlock, engagementGate } from "@/lib/billing";
 import type { GateLink } from "@/lib/billing-plans";
 import { getT } from "@/lib/i18n/server";
 import { closeOpenSignatures } from "@/lib/signature";
@@ -209,6 +209,8 @@ export async function advanceProject(form: FormData) {
   const note = str(form, "note");
   // Abandon : le motif est obligatoire (il figure dans l'historique du dossier).
   if (key === "abandon" && !note) return;
+  // Accepter la proposition d'un expert l'engage : organisation validée, contrat de sous-traitance, abonnement.
+  if (key === "accept_proposal" && (await engagementBlock(orgId, "proposition"))) return;
   // Retour en accord de principe : impossible si une convention est en cours de signature ou déjà signée
   // (l'expert signerait des conditions qui vont changer).
   if (key === "back_to_accord" && (await signaturesStarted(projectId))) return;
@@ -238,11 +240,14 @@ export async function advanceProject(form: FormData) {
   // Dossier signé (conventions déposées ou attestées) ou abandonné : plus aucune signature électronique en attente.
   if (key === "signed" || key === "abandon") await closeOpenSignatures({ projectId }, key === "signed" ? "dossier passé « Signé »" : "dossier abandonné");
   await audit(user.id, `project.${key}`, "Project", projectId, { from: project.status, to: t.to, note: note || undefined, ...(attest ? { attestation: "convention signée conservée hors KolBase" } : {}), ...(selfValidated ? { selfValidated: true } : {}) });
+  // Proposition déclinée avec un motif : il rejoint les échanges avec l'expert (qui le lit dans sa sollicitation).
+  if (key === "decline_proposal" && note && engagedIds[0]) await db.message.create({ data: { projectId, projectExpertId: engagedIds[0], authorId: user.id, body: note } });
   if (key === "submit" || key === "validate" || key === "block") notifyCompliance(projectId, key, user.id);
   for (const n of expertNotices(key, signatureEnabled())) {
     const ids = n.who === "engages" ? engagedIds : n.who === "sollicites" ? waitingIds : [...engagedIds, ...waitingIds];
-    if (ids.length) notifyExpertNotice(ids, n.notice, key === "abandon" ? note : null);
+    if (ids.length) notifyExpertNotice(ids, n.notice, key === "abandon" || key === "decline_proposal" ? note : null);
   }
+  if (key === "accept_proposal" || key === "decline_proposal") revalidatePath("/propositions");
   revalidatePath(`/organisations/${orgId}/dossiers/${projectId}`);
   // Reprise après blocage ou retour en arrière : on arrive sur la modification du dossier.
   if (key === "revise" || key === "back_to_accord") {

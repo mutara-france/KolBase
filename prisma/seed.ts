@@ -355,12 +355,22 @@ async function main() {
   ];
   for (const p of PROJECTS) {
     const created = at(-(p.steps[0]?.[3] ?? 0));
+    // Projet proposé par l'expert : la proposition d'abord (même identifiant que la reprise de la migration).
+    const proposalId = p.status === "ATT_IND" ? `prop_${p.id}` : null;
+    if (proposalId) {
+      const e = p.experts[0];
+      await db.expertProposal.upsert({
+        where: { id: proposalId },
+        update: {},
+        create: { id: proposalId, practitionerId: e.p, title: p.title, typeId: p.type, therapeuticArea: p.area, description: p.desc ?? "", feeCents: e.fee * 100, units: e.units, createdAt: created },
+      });
+    }
     await db.project.upsert({
       where: { id: p.id },
       update: {},
       create: {
         id: p.id, organizationId: p.org, title: p.title, typeId: p.type, therapeuticArea: p.area, status: p.status, description: p.desc,
-        complianceNote: p.note, ordreRef: p.ordre, origin: p.status === "ATT_IND" ? "Proposition de l'expert" : "Sollicitation directe", createdById: p.steps[0]?.[0], createdAt: created,
+        complianceNote: p.note, ordreRef: p.ordre, origin: p.status === "ATT_IND" ? "Proposition de l'expert" : "Sollicitation directe", createdById: p.steps[0]?.[0], createdAt: created, proposalId,
         ...(p.closed ? { updatedAt: at(-p.closed.days), declared: true, declarationRef: p.closed.ref, declaredAt: at(-p.closed.days + 5) } : {}),
       },
     });

@@ -11,9 +11,8 @@ import { db } from "@/lib/db";
 import { getCurrentUser, viaMandate } from "@/lib/auth";
 import { ORG_KIND_LABEL, orgIsPublic } from "@/lib/orgs";
 import { canSee, companyVisibility, type Viewer } from "@/lib/visibility";
-import { ProposeForm } from "@/components/DossierForms";
 import { FollowButton } from "@/components/FollowButton";
-import { callFull, COLLAB_TYPES, SIGNED_STATUSES } from "@/lib/projects";
+import { callFull, SIGNED_STATUSES } from "@/lib/projects";
 import type { Metadata } from "next";
 import { getT } from "@/lib/i18n/server";
 
@@ -159,7 +158,10 @@ export default async function Page({ params }: { params: Promise<{ id: string }>
             </>
           )}
           {!isMember && !isSupplier && user?.practitioner?.listed && (
-            <ProposeForm orgId={o.id} orgName={o.name} types={COLLAB_TYPES} defaultFee={user.practitioner.dayRateCents != null ? String(user.practitioner.dayRateCents / 100) : ""} />
+            <section className="card actions spread">
+              <p className="muted text-sm" style={{ margin: 0, flex: "1 1 260px" }}>{t("Un projet de formation, d'étude ou d'intervention pour {org} ? Proposez-le : l'organisation peut l'accepter et ouvrir un dossier avec vous.", { org: o.name })}</p>
+              <Link className="btn secondary" href={`/propositions/nouvelle?organisation=${o.id}`}>{t("Proposer un projet")}</Link>
+            </section>
           )}
           {!isSupplier && <div className="stats-row">
             <div className="stat-card"><div className="stat-value">{o.openCalls.filter((c) => !callFull(c)).length}</div><div className="stat-label">{t("Appels ouverts")}</div></div>
