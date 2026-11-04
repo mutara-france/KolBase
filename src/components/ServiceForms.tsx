@@ -4,8 +4,11 @@ import { useActionState, useState, useTransition } from "react";
 import { Megaphone, Sparkles } from "lucide-react";
 import { draftServiceText, orderService, sendNewsletter } from "@/lib/service-actions";
 import { Notice } from "@/components/AuthForms";
+import { ActionForm } from "@/components/ActionForm";
+import { ConfirmButton } from "@/components/ConfirmButton";
+import { de } from "@/lib/elision";
 
-type Offer = { id: string; label: string; description: string; price: string; ordered: boolean; pack?: boolean; compareAt?: string; saving?: string; blocked?: boolean };
+type Offer = { id: string; label: string; description: string; price: string; ordered: boolean; pack?: boolean; compareAt?: string; saving?: string; blocked?: boolean; /** E-mailing (seul ou dans le pack) : praticiens abonnés aujourd'hui. */ audience?: number };
 
 /** Catalogue des services KolBase sur un événement : commande avec consignes et date souhaitée. */
 export function ServiceOffers({ orgId, eventId, offers, maxDate }: { orgId: string; eventId: string; offers: Offer[]; maxDate: string }) {
@@ -21,9 +24,17 @@ export function ServiceOffers({ orgId, eventId, offers, maxDate }: { orgId: stri
               <strong>{o.label}</strong> <span className="service-price">{o.price}</span>
               {o.compareAt && <> <s className="text-sm muted">{o.compareAt}</s> <span className="pill ok">Économisez {o.saving}</span></>}
               <p className="text-sm muted">{o.description}</p>
+              {o.audience != null && (
+                <p className="text-xs">
+                  {o.audience > 0
+                    ? `E-mailing : ${o.audience} praticien${o.audience > 1 ? "s" : ""} abonné${o.audience > 1 ? "s" : ""} à la lettre d'information aujourd'hui.`
+                    : "E-mailing : aucun praticien n'est abonné à la lettre d'information pour l'instant, la commande n'est pas possible."}
+                </p>
+              )}
             </div>
             {o.ordered ? <span className="pill electric">Commandé</span>
               : o.blocked ? <span className="text-xs muted">Un des services du pack est déjà commandé.</span>
+              : o.audience === 0 ? <span className="text-xs muted">Indisponible : audience nulle.</span>
               : open === o.id ? null : <button type="button" className={`btn small${o.pack ? "" : " secondary"}`} onClick={() => setOpen(o.id)}><Megaphone size={13} /> Commander</button>}
             {open === o.id && !o.ordered && (
               <form action={action} className="form service-order-form" onSubmit={() => setOpen(null)}>
@@ -46,18 +57,26 @@ export function ServiceOffers({ orgId, eventId, offers, maxDate }: { orgId: stri
   );
 }
 
-/** E-mailing aux membres consentants (équipe KolBase), avec brouillon de l'assistant. */
-export function NewsletterForm({ orderId, subject, body, audience, ai }: { orderId?: string; subject: string; body: string; audience: number; ai: boolean }) {
+/**
+ * E-mailing aux praticiens consentants (équipe KolBase), avec brouillon de l'assistant. Aperçu de l'e-mail tel
+ * qu'il part, « M'envoyer un test », puis envoi confirmé en deux temps (compteur des envois du mois).
+ */
+export function NewsletterForm({ orderId, advertiser, subject, body, audience, ai, sends, max, month }: {
+  orderId?: string; advertiser?: string; subject: string; body: string; audience: number; ai: boolean; sends: number; max: number; month: string;
+}) {
   const [state, action, pending] = useActionState(sendNewsletter, undefined);
   const [text, setText] = useState(body);
+  const [title, setTitle] = useState(subject);
   const [drafting, start] = useTransition();
   const [err, setErr] = useState<string | null>(null);
-  if (state?.ok) return <p className="notice ok">{state.ok}</p>;
+  if (state?.sent) return <p className="notice ok">{state.ok}</p>;
+  const capped = sends >= max;
+  const people = `${audience} praticien${audience > 1 ? "s" : ""}`;
   return (
-    <form action={action} className="card form">
+    <ActionForm action={action} className="card form">
       <Notice state={state} />
       {orderId && <input type="hidden" name="orderId" value={orderId} />}
-      <label>Objet<input name="subject" required maxLength={160} defaultValue={subject} /></label>
+      <label>Objet<input name="subject" required maxLength={160} value={title} onChange={(e) => setTitle(e.target.value)} /></label>
       <label>Texte<textarea name="body" rows={12} required value={text} onChange={(e) => setText(e.target.value)} /></label>
       {ai && orderId && (
         <div className="ai-draft">
@@ -70,9 +89,35 @@ export function NewsletterForm({ orderId, subject, body, audience, ai }: { order
           {err && <span className="text-xs error-text">{err}</span>}
         </div>
       )}
-      <p className="hint">Envoyé à {audience} membre{audience > 1 ? "s" : ""} ayant accepté la lettre d&apos;information, avec un lien de désinscription en un clic.{orderId ? " La mention « Communication de [organisation], diffusée par KolBase » est ajoutée." : ""}</p>
-      <button className="btn" disabled={pending || audience === 0}>{pending ? "Envoi…" : `Envoyer à ${audience} membre${audience > 1 ? "s" : ""}`}</button>
-    </form>
+      <details className="newsletter-preview" open>
+        <summary>Aperçu de l&apos;e-mail</summary>
+        <div className="mail-preview">
+          <p className="text-sm"><strong>{title || "(objet)"}</strong></p>
+          <p className="mail-preview-body">{text || "(texte)"}{advertiser ? `\n\nCommunication ${de(advertiser)}, diffusée par KolBase.` : ""}</p>
+          <p className="text-sm"><span className="btn small" aria-hidden>{orderId ? "Voir l'événement et s'inscrire" : "Ouvrir KolBase"}</span></p>
+          <p className="text-xs muted">Lien de désinscription en un clic ajouté à chaque envoi.</p>
+        </div>
+      </details>
+      <p className="hint">
+        Envoyé à {people} (compte praticien, lettre acceptée, adresse confirmée).{" "}
+        Envois en {month} : {sends} sur {max} au plus (e-mailings commandés et lettres libres confondus).
+      </p>
+      {capped && <p className="notice warn">Plafond atteint pour {month} : le prochain envoi est possible le mois prochain.</p>}
+      <div className="actions">
+        <button className="btn ghost small" name="intent" value="test" disabled={pending}>{pending ? "Envoi…" : "M'envoyer un test"}</button>
+        <ConfirmButton
+          className="btn"
+          disabled={audience === 0 || capped}
+          pending={pending}
+          name="intent"
+          value="send"
+          confirm={`envoyer à ${people}`}
+          summary={<>« {title} » part aussitôt à {people} ; envoi {sends + 1} sur {max} en {month}. Il ne pourra pas être annulé.</>}
+        >
+          Envoyer à {people}
+        </ConfirmButton>
+      </div>
+    </ActionForm>
   );
 }
 

@@ -19,7 +19,8 @@ import { asInterval, displayStatus, exempt, monthlyCents, PLANS, planFor, STATUS
 import { stripeEnabled } from "@/lib/billing";
 import { setExemption } from "@/lib/billing-actions";
 import { saveServiceOffer, updateServiceOrder } from "@/lib/service-actions";
-import { ORDER_STATUS, orderStats, trackedPath } from "@/lib/services";
+import { newsletterAudienceCount, newsletterSendsThisMonth, ORDER_STATUS, orderStats, trackedPath } from "@/lib/services";
+import { NEWSLETTER_MONTHLY_MAX, parisMonthLabel } from "@/lib/newsletter";
 import { reportLine } from "@/lib/service-report";
 import { country, licenseRule, practicesInFrance, registryLink } from "@/lib/countries";
 import { ConfirmButton } from "@/components/ConfirmButton";
@@ -254,10 +255,16 @@ export default async function Page({ searchParams }: { searchParams: Promise<{ o
 
 /** État de la configuration en production (lecture seule) : ce qui reste à faire avant l'ouverture. */
 async function ServicesAdmin() {
-  const [orders, offers, audience] = await Promise.all([
+  const [orders, offers, audience, sends, campaigns] = await Promise.all([
     db.serviceOrder.findMany({ include: { event: { select: { id: true, title: true, startsAt: true } }, organization: { select: { name: true } }, offer: { select: { kind: true } } }, orderBy: { createdAt: "desc" }, take: 100 }),
     db.serviceOffer.findMany({ orderBy: { position: "asc" } }),
-    db.user.count({ where: { notifyPrefs: { path: ["newsletter"], equals: true }, emailVerifiedAt: { not: null } } }),
+    newsletterAudienceCount(),
+    newsletterSendsThisMonth(),
+    db.newsletterCampaign.findMany({
+      include: { order: { select: { label: true, organization: { select: { name: true } }, event: { select: { id: true, title: true } } } } },
+      orderBy: { createdAt: "desc" },
+      take: 50,
+    }),
   ]);
   const open = orders.filter((o) => ["demandee", "planifiee"].includes(o.status));
   const done = orders.filter((o) => !["demandee", "planifiee"].includes(o.status));
@@ -301,12 +308,37 @@ async function ServicesAdmin() {
             <h2>Commandes à traiter ({open.length})</h2>
             <p className="text-sm muted">{realized.length} service{realized.length > 1 ? "s" : ""} réalisé{realized.length > 1 ? "s" : ""} pour {formatEUR(realized.reduce((n, o) => n + o.priceCents, 0))} HT.</p>
           </div>
-          <Link className="btn ghost small" href="/admin/services/lettre">Lettre d&apos;information libre ({audience} abonné{audience > 1 ? "s" : ""})</Link>
+          <Link className="btn ghost small" href="/admin/services/lettre">Lettre d&apos;information libre ({audience} praticien{audience > 1 ? "s" : ""} abonné{audience > 1 ? "s" : ""})</Link>
         </div>
         {open.length === 0 ? <p className="muted">Aucune commande en attente.</p> : <ul className="plain stack-sm">{open.map((o) => <Row key={o.id} o={o} />)}</ul>}
         {toInvoice.length > 0 && <p className="notice warn">{toInvoice.length} service{toInvoice.length > 1 ? "s" : ""} réalisé{toInvoice.length > 1 ? "s" : ""} à facturer hors Stripe.</p>}
         {done.length > 0 && (
           <details className="older"><summary>Commandes traitées ({done.length})</summary><ul className="plain stack-sm">{done.map((o) => <Row key={o.id} o={o} />)}</ul></details>
+        )}
+      </section>
+      <section className="card stack-sm" id="lettre">
+        <div className="actions spread">
+          <h2>Lettre d&apos;information</h2>
+          <span className={`pill ${sends >= NEWSLETTER_MONTHLY_MAX ? "bad" : "ok"}`}>{sends} envoi{sends > 1 ? "s" : ""} sur {NEWSLETTER_MONTHLY_MAX} en {parisMonthLabel()}</span>
+        </div>
+        <p className="muted">
+          {audience} praticien{audience > 1 ? "s" : ""} abonné{audience > 1 ? "s" : ""} (compte praticien, lettre acceptée, adresse confirmée). Au plus {NEWSLETTER_MONTHLY_MAX} envois par mois civil,
+          e-mailings commandés et lettres libres confondus : au-delà, l&apos;envoi est refusé.
+        </p>
+        {campaigns.length === 0 ? <p className="muted">Aucun envoi pour l&apos;instant.</p> : (
+          <table className="table" tabIndex={0}>
+            <thead><tr><th>Date</th><th>Objet</th><th>Destinataires</th><th>Commande liée</th></tr></thead>
+            <tbody>
+              {campaigns.map((c) => (
+                <tr key={c.id}>
+                  <td>{c.sentAt ? formatDate(c.sentAt) : "envoi en cours"}</td>
+                  <td>{c.subject}</td>
+                  <td>{c.recipients}</td>
+                  <td>{c.order ? <>{c.order.label} · {c.order.organization.name} · <Link href={`/evenements/${c.order.event.id}`}>{c.order.event.title}</Link></> : "Lettre libre"}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
         )}
       </section>
       <section className="card stack-sm">

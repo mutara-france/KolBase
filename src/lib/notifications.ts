@@ -89,7 +89,7 @@ export function notifySolicitations(projectId: string, kind: "sollicitation" | "
       await send([l.practitioner.user], (t, locale) => {
         const fee = l.feeCents != null ? ` ${t("Honoraires proposés : {montant} HT.", { montant: fmtEur(locale, l.feeCents) })}` : "";
         return {
-          subject: kind === "honoraires" ? t("Candidature retenue : {org} vous propose des honoraires", { org }) : t("Nouvelle sollicitation de {org}", { org }),
+          subject: kind === "honoraires" ? t("Candidature retenue : {org} vous propose des honoraires", { org }) : t("Nouvelle sollicitation {de_org}", { org, de_org: de(org) }),
           text:
             kind === "honoraires"
               ? `${t("Bonjour,")}\n\n${t("{org} a retenu votre candidature « {titre} ».", { org, titre: title })}${fee}\n\n${t("Acceptez ou déclinez la proposition sur KolBase : le dossier n'avance qu'après votre réponse.")}`
@@ -108,7 +108,7 @@ export function notifyNewProposal(linkId: string) {
     if (!l || l.status !== "ATT_EXPERTS") return;
     const org = l.project.organization.name;
     await send([l.practitioner.user], (t, locale) => ({
-      subject: t("Nouvelle proposition de {org}", { org }),
+      subject: t("Nouvelle proposition {de_org}", { org, de_org: de(org) }),
       text: [
         t("Bonjour,"),
         t("{org} a modifié sa proposition pour « {titre} ».", { org, titre: l.project.title }),
@@ -134,7 +134,7 @@ export function notifyMessage(linkId: string, authorId: string) {
     } else {
       const org = l.project.organization.name;
       await send([l.practitioner.user], (t) => ({
-        subject: t("Nouveau message de {org}", { org }),
+        subject: t("Nouveau message {de_org}", { org, de_org: de(org) }),
         text: `${t("Bonjour,")}\n\n${t("{org} vous a écrit à propos de « {titre} ».", { org, titre: l.project.title })}`,
         cta: { label: t("Lire le message"), href: `/sollicitations/${l.id}` },
       }), authorId);
@@ -249,7 +249,7 @@ export function notifySupplierReview(reviewId: string) {
     const r = await db.supplierReview.findUnique({ where: { id: reviewId }, include: { client: { select: { name: true } } } });
     if (!r) return;
     await send(await supplierTeam(r.supplierId), {
-      subject: `Nouvel avis de ${r.client.name} : ${r.rating}/5`,
+      subject: `Nouvel avis ${de(r.client.name)} : ${r.rating}/5`,
       text: `Bonjour,\n\n${r.client.name} a évalué votre prestation : ${r.rating}/5.${r.comment ? `\n\n« ${r.comment} »` : ""}`,
       cta: { label: "Voir ma page publique", href: `/structures/${r.supplierId}` },
     });
@@ -286,7 +286,7 @@ export function notifyRfqSent(rfqId: string) {
     for (const s of r.suppliers) {
       const team = await db.membership.findMany({ where: { organizationId: s.supplierId }, include: { user: { select: userSelect } } });
       await send(team.map((m) => m.user), {
-        subject: `Demande de devis de ${r.organization.name}`,
+        subject: `Demande de devis ${de(r.organization.name)}`,
         text: `Bonjour,\n\n${r.organization.name} vous consulte pour une prestation.${r.deadline ? ` Réponse attendue avant le ${r.deadline.toLocaleDateString("fr-FR", { timeZone: "Europe/Paris" })}.` : ""}`,
         cta: { label: "Répondre à la demande", href: `/organisations/${s.supplierId}/devis` },
       });
@@ -491,7 +491,7 @@ export function notifyInvitation(email: string, orgName: string, inviterName: st
     await sendMail({
       to: email,
       subject: `${inviterName} vous invite à rejoindre ${orgName} sur KolBase`,
-      text: `Bonjour,\n\n${inviterName} vous invite à rejoindre l'espace de ${orgName} sur KolBase. Le lien est valable 14 jours et ne sert qu'une fois.`,
+      text: `Bonjour,\n\n${inviterName} vous invite à rejoindre l'espace ${de(orgName)} sur KolBase. Le lien est valable 14 jours et ne sert qu'une fois.`,
       cta: { label: "Rejoindre l'organisation", href: link },
     });
   });
@@ -549,7 +549,7 @@ export function notifyOrgDecision(orgId: string, decision: "verify" | "reject" |
               }
             : {
                 subject: `${org.name} est de nouveau active sur KolBase`,
-                text: `Bonjour,\n\nL'équipe KolBase a levé la suspension de ${org.name}. ${supplier ? "Votre fiche prestataire est de nouveau visible et vous pouvez répondre aux demandes de devis." : "Votre page publique, vos événements et vos appels à candidatures sont de nouveau visibles ; vous pouvez de nouveau solliciter des experts, publier et consulter des prestataires."}`,
+                text: `Bonjour,\n\nL'équipe KolBase a levé la suspension ${de(org.name)}. ${supplier ? "Votre fiche prestataire est de nouveau visible et vous pouvez répondre aux demandes de devis." : "Votre page publique, vos événements et vos appels à candidatures sont de nouveau visibles ; vous pouvez de nouveau solliciter des experts, publier et consulter des prestataires."}`,
                 cta: { label: "Ouvrir l'espace de l'organisation", href: `/organisations/${orgId}` },
               };
     await sendService(await members(orgId, ["ADMIN"]), mail);
@@ -592,12 +592,12 @@ export function notifyExemption(orgId: string, until: Date | null, note: string 
     await sendService(await members(orgId, ["ADMIN"]), until
       ? {
           subject: `KolBase vous offre l'abonnement jusqu'au ${date}`,
-          text: `Bonjour,\n\nL'équipe KolBase offre l'abonnement de ${org.name} jusqu'au ${date}${note ? ` (${note})` : ""}. D'ici là, vous pouvez ${actions} sans rien payer.`,
+          text: `Bonjour,\n\nL'équipe KolBase offre l'abonnement ${de(org.name)} jusqu'au ${date}${note ? ` (${note})` : ""}. D'ici là, vous pouvez ${actions} sans rien payer.`,
           cta: { label: "Voir l'abonnement", href: `/organisations/${orgId}/abonnement` },
         }
       : {
           subject: "KolBase : gratuité de l'abonnement retirée",
-          text: `Bonjour,\n\nL'abonnement de ${org.name} n'est plus offert par l'équipe KolBase. Pour continuer à ${actions}, un administrateur active l'abonnement depuis la page Abonnement. Vos dossiers, événements et échanges restent accessibles.`,
+          text: `Bonjour,\n\nL'abonnement ${de(org.name)} n'est plus offert par l'équipe KolBase. Pour continuer à ${actions}, un administrateur active l'abonnement depuis la page Abonnement. Vos dossiers, événements et échanges restent accessibles.`,
           cta: { label: "Voir l'abonnement", href: `/organisations/${orgId}/abonnement` },
         });
   });

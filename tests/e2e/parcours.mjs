@@ -1871,6 +1871,7 @@ async function submitNewOrg(page, siren) {
   await adm.page.click('button:has-text("Proposer un texte avec l\'IA")');
   await adm.page.waitForFunction(() => document.querySelector('textarea[name="body"]')?.value.includes("PROPOSITION IA"), null, { timeout: 15000 });
   await adm.page.click('button:has-text("Envoyer à")');
+  await adm.page.click('button:has-text("Confirmer : envoyer à")');
   await adm.page.waitForTimeout(2000);
   check("E-mailing : envoyé aux membres consentants", /Lettre envoyée à \d+ membre/.test(await text(adm.page)));
   const nl = await waitMail("ines.lambert@demo.kolbase.local", /^Soirée implantologie.* — /);
@@ -3010,6 +3011,87 @@ async function submitNewOrg(page, siren) {
     await own.ctx.close();
     await anon.ctx.close();
     await adm.ctx.close();
+  }
+
+  // 2. Lettre d'information tenue : praticiens confirmés seulement, deux envois par mois, historique, test, élision.
+  {
+    // Les envois déjà faits par le parcours sont reportés au mois précédent : le compteur du mois repart de zéro.
+    await pgc.query(`update "NewsletterCampaign" set "sentAt" = "sentAt" - interval '40 days', "createdAt" = "createdAt" - interval '40 days'`);
+    // Une administratrice d'organisation (sans profil praticien) abonnée : elle ne reçoit pas la lettre.
+    await pgc.query(`update "User" set "notifyPrefs" = "notifyPrefs" || '{"newsletter": true}' where email = 'claire.morel@demo.kolbase.local'`);
+    const adm = await session();
+    await login(adm.page, "anne.chevalier@demo.kolbase.local");
+    const stale = await session();
+    await login(stale.page, "anne.chevalier@demo.kolbase.local");
+    await stale.page.goto(`${BASE}/admin/services/lettre`);
+    await adm.page.goto(`${BASE}/admin/services/lettre`);
+    const lt = await text(adm.page);
+    check("Lettre libre : audience des praticiens et compteur du mois", /Envoyé à \d+ praticiens? \(compte praticien/.test(lt) && lt.includes("Envois en ") && lt.includes(": 0 sur 2"), lt.slice(0, 300));
+    await adm.page.fill('input[name="subject"]', "Lot trois : lettre de novembre");
+    await adm.page.fill('textarea[name="body"]', "Les nouveautés du mois sur KolBase, pour les praticiens abonnés.");
+    check("Lettre libre : aperçu de l'e-mail", (await adm.page.locator(".mail-preview").innerText()).includes("Les nouveautés du mois sur KolBase"));
+    await adm.page.click('button:has-text("M\'envoyer un test")');
+    check("Lettre libre : envoi de test à l'administrateur seul", !!(await waitMail("anne.chevalier@demo.kolbase.local", "[Test] Lot trois : lettre de novembre")) && !mails.some((m) => m.subject === "Lot trois : lettre de novembre"));
+    check("Envoi de test : ni enregistré ni compté", !(await q1(`select id from "NewsletterCampaign" where subject = 'Lot trois : lettre de novembre'`)));
+    // Double clic sur la confirmation : un seul envoi.
+    await adm.page.click('button:has-text("Envoyer à")');
+    await adm.page.locator('button:has-text("Confirmer : envoyer à")').dblclick();
+    await adm.page.waitForTimeout(2500);
+    check("Lettre libre : envoyée une seule fois malgré le double clic", (await q1(`select count(*)::int n from "NewsletterCampaign" where subject = 'Lot trois : lettre de novembre'`)).n === 1);
+    check("Lettre : praticiens confirmés seulement (pas un membre d'organisation)", !!(await waitMail("ines.lambert@demo.kolbase.local", "Lot trois : lettre de novembre")) && !mails.some((m) => m.to === "claire.morel@demo.kolbase.local" && m.subject === "Lot trois : lettre de novembre"));
+    // Deuxième envoi du mois, puis le troisième (page ouverte avant) est refusé.
+    await adm.page.goto(`${BASE}/admin/services/lettre`);
+    await adm.page.fill('input[name="subject"]', "Lot trois : seconde lettre");
+    await adm.page.fill('textarea[name="body"]', "Deuxième et dernier envoi possible ce mois-ci.");
+    await adm.page.click('button:has-text("Envoyer à")');
+    await adm.page.click('button:has-text("Confirmer : envoyer à")');
+    await adm.page.waitForTimeout(2000);
+    await stale.page.fill('input[name="subject"]', "Lot trois : troisième lettre");
+    await stale.page.fill('textarea[name="body"]', "Cet envoi dépasse le plafond du mois et doit être refusé.");
+    await stale.page.click('button:has-text("Envoyer à")');
+    await stale.page.click('button:has-text("Confirmer : envoyer à")');
+    await stale.page.waitForTimeout(1500);
+    check("Plafond : troisième envoi du mois refusé avec un message", (await text(stale.page)).includes("Plafond atteint : 2 envois") && !(await q1(`select id from "NewsletterCampaign" where subject = 'Lot trois : troisième lettre'`)));
+    await adm.page.goto(`${BASE}/admin/services/lettre`);
+    check("Plafond : envoi impossible depuis la page", (await text(adm.page)).includes("Plafond atteint pour") && (await adm.page.locator('button:has-text("Envoyer à")').isDisabled()));
+    await adm.page.goto(`${BASE}/admin?onglet=services`);
+    const hist = await adm.page.locator("section#lettre").innerText();
+    check("Admin : compteur et historique des envois (objet, destinataires, commande liée)", hist.includes("2 envois sur 2") && hist.includes("Lot trois : seconde lettre") && hist.includes("Lettre libre") && hist.includes("E-mailing dédié aux membres KolBase · Dentalys Implants"), hist.slice(0, 400));
+    // Élision : « Communication d'Académie Odonto Formation ».
+    await pgc.query(`insert into "ServiceOrder" (id, "organizationId", "eventId", "offerId", label, "priceCents", "orderedById", status, "updatedAt")
+      select 'e2e-l3-mailing', 'demo-org-academie', 'demo-ev-tp-endo', 'svc-newsletter', 'E-mailing dédié aux membres KolBase', 69000, id, 'demandee', now() from "User" where email = 'anne.chevalier@demo.kolbase.local'`);
+    await adm.page.goto(`${BASE}/admin/services/e2e-l3-mailing`);
+    check("E-mailing : « Communication d'Académie Odonto Formation »", (await adm.page.locator(".mail-preview").innerText()).includes("Communication d'Académie Odonto Formation, diffusée par KolBase."));
+    await pgc.query(`delete from "ServiceOrder" where id = 'e2e-l3-mailing'`);
+    await stale.ctx.close();
+    await adm.ctx.close();
+    await pgc.query(`update "User" set "notifyPrefs" = "notifyPrefs" || '{"newsletter": false}' where email = 'claire.morel@demo.kolbase.local'`);
+
+    // Commande d'un e-mailing : audience affichée ; impossible quand elle est nulle.
+    const org = await session();
+    await login(org.page, "julien.faure@demo.kolbase.local");
+    await org.page.goto(`${BASE}/organisations/demo-org-dentalys/evenements/demo-ev-soiree-implanto`);
+    const mailing = () => org.page.locator('.service-list li:not(.service-pack):has-text("E-mailing dédié")');
+    check("Commande d'e-mailing : audience actuelle affichée", /\d+ praticiens? abonnés? à la lettre d'information aujourd'hui/.test(await mailing().innerText()));
+    const subs = (await pgc.query(`select id from "User" where "notifyPrefs"->>'newsletter' = 'true'`)).rows.map((r) => r.id);
+    await pgc.query(`update "User" set "notifyPrefs" = "notifyPrefs" || '{"newsletter": false}' where id = any($1)`, [subs]);
+    await org.page.reload();
+    check("Commande d'e-mailing : impossible sans abonné (message)", (await mailing().innerText()).includes("aucun praticien n'est abonné") && (await mailing().locator('button:has-text("Commander")').count()) === 0);
+    await pgc.query(`update "User" set "notifyPrefs" = "notifyPrefs" || '{"newsletter": true}' where id = any($1)`, [subs]);
+    await org.ctx.close();
+
+    // Abonné dont l'adresse n'est pas confirmée : l'envoi commencera après la confirmation, lien renvoyé.
+    await pgc.query(`update "User" set "notifyPrefs" = "notifyPrefs" || '{"newsletter": true}', "emailVerifiedAt" = null where email = 'sarah.mercier@demo.kolbase.local'`);
+    const pr = await session();
+    await login(pr.page, "sarah.mercier@demo.kolbase.local");
+    await pr.page.goto(`${BASE}/actualites`);
+    check("Lettre : abonné non confirmé prévenu que l'envoi attend la confirmation", (await text(pr.page)).includes("l'envoi commencera après la confirmation de votre adresse"));
+    const sentBefore = mails.filter((m) => m.to === "sarah.mercier@demo.kolbase.local" && m.subject.startsWith("Confirmez votre adresse")).length;
+    await pr.page.locator('.newsletter-done button:has-text("Renvoyer le lien")').click();
+    for (let i = 0; i < 40 && mails.filter((m) => m.to === "sarah.mercier@demo.kolbase.local" && m.subject.startsWith("Confirmez votre adresse")).length === sentBefore; i++) await pr.page.waitForTimeout(200);
+    check("Lettre : lien de confirmation renvoyé depuis l'encart", mails.filter((m) => m.to === "sarah.mercier@demo.kolbase.local" && m.subject.startsWith("Confirmez votre adresse")).length > sentBefore);
+    await pgc.query(`update "User" set "emailVerifiedAt" = now(), "notifyPrefs" = "notifyPrefs" || '{"newsletter": false}' where email = 'sarah.mercier@demo.kolbase.local'`);
+    await pr.ctx.close();
   }
 
   await pgc.end();

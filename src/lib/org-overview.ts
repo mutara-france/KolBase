@@ -12,6 +12,7 @@ import { pointedPastEvents } from "@/lib/checkin";
 import { toDeclare } from "@/lib/indicators";
 import { subscribeHref } from "@/lib/billing-plans";
 import { activeMandate } from "@/lib/mandates";
+import { de } from "@/lib/elision";
 
 
 const DAY = 864e5;
@@ -158,9 +159,9 @@ export const orgOverview = cache(async (orgId: string) => {
       if (seen.has(key)) continue;
       seen.add(key);
       if (isSupplier && !m.fromSupplier)
-        todos.push({ href: `${base}/devis`, title: `Message de ${m.rfq.organization.name}`, detail: m.rfq.event?.title ?? "Demande de devis", icon: "MessageSquare", tone: "warn" });
+        todos.push({ href: `${base}/devis`, title: `Message ${de(m.rfq.organization.name)}`, detail: m.rfq.event?.title ?? "Demande de devis", icon: "MessageSquare", tone: "warn" });
       if (!isSupplier && m.fromSupplier)
-        todos.push({ href: `${base}/prestataires#rfq-${m.rfqId}`, title: `Question de ${m.supplier.name}`, detail: m.rfq.event?.title ?? "Demande de devis", icon: "MessageSquare", tone: "warn" });
+        todos.push({ href: `${base}/prestataires#rfq-${m.rfqId}`, title: `Question ${de(m.supplier.name)}`, detail: m.rfq.event?.title ?? "Demande de devis", icon: "MessageSquare", tone: "warn" });
     }
   }
 
@@ -184,7 +185,7 @@ export const orgOverview = cache(async (orgId: string) => {
       for (const m of r.messages) {
         if (seen.has(m.supplierId)) continue;
         seen.add(m.supplierId);
-        if (m.fromSupplier) todos.push({ href, title: `Question de ${m.supplier.name}`, detail: `${label} · ${r.organization.name}`, icon: "MessageSquare", tone: "warn" });
+        if (m.fromSupplier) todos.push({ href, title: `Question ${de(m.supplier.name)}`, detail: `${label} · ${r.organization.name}`, icon: "MessageSquare", tone: "warn" });
       }
     }
   }

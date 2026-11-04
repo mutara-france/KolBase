@@ -3,6 +3,7 @@ import { isAgencyOnly, isSuspendedOrg, isVerifiedOrg, notVerified, ORG_NOT_VERIF
 import { orgMenuLinks } from "@/lib/nav";
 import { de, elides } from "@/lib/elision";
 import { featuredUntil, groupOrders, packStatus } from "@/lib/service-pack";
+import { NEWSLETTER_MONTHLY_MAX, parisMonthLabel, parisMonthStart } from "@/lib/newsletter";
 
 describe("agence mandatée dans l'espace d'un client", () => {
   it("seul le rôle « Agence mandatée » dans une organisation cliente", () => {
@@ -77,5 +78,16 @@ describe("organisation suspendue", () => {
     expect(notVerified(org)).toBe(ORG_SUSPENDED);
     expect(notVerified({ verification: "PENDING" })).toBe(ORG_NOT_VERIFIED);
     expect(VERIFICATION_LABEL.SUSPENDED).toBe("Suspendue");
+  });
+});
+
+describe("lettre d'information : mois civil à Paris", () => {
+  it("début du mois à minuit, heure de Paris", () => {
+    expect(parisMonthStart(new Date("2026-11-04T10:00:00Z")).toISOString()).toBe("2026-10-31T23:00:00.000Z");
+    // 31 octobre à 23 h 30 UTC : déjà le 1er novembre à Paris.
+    expect(parisMonthStart(new Date("2026-10-31T23:30:00Z")).toISOString()).toBe("2026-10-31T23:00:00.000Z");
+    expect(parisMonthStart(new Date("2026-07-15T12:00:00Z")).toISOString()).toBe("2026-06-30T22:00:00.000Z");
+    expect(parisMonthLabel(new Date("2026-11-04T10:00:00Z"))).toBe("novembre 2026");
+    expect(NEWSLETTER_MONTHLY_MAX).toBe(2);
   });
 });

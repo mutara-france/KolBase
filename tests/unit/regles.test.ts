@@ -325,7 +325,9 @@ describe("traductions", () => {
     expect(translate("fr", "Se connecter")).toBe("Se connecter");
     expect(translate("en", "Se connecter")).toBe("Sign in");
     expect(translate("en", "Texte sans traduction")).toBe("Texte sans traduction");
-    expect(translate("en", "Nouvelle sollicitation de {org}", { org: "Dentalys" })).toBe("New collaboration request from Dentalys");
+    // Clé avec élision (« de Dentalys », « d'Académie… ») : l'anglais reprend le nom seul.
+    expect(translate("en", "Nouvelle sollicitation {de_org}", { org: "Dentalys", de_org: "de Dentalys" })).toBe("New collaboration request from Dentalys");
+    expect(translate("fr", "Nouvelle sollicitation {de_org}", { org: "Académie", de_org: "d'Académie" })).toBe("Nouvelle sollicitation d'Académie");
     expect(translate("en", "Chirurgien-dentiste")).toBe("Dentist");
   });
   it("e-mail dans la langue du destinataire", async () => {

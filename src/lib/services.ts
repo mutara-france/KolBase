@@ -3,6 +3,8 @@ import { randomBytes } from "node:crypto";
 import { db } from "@/lib/db";
 import { stripe, stripeEnabled } from "@/lib/stripe";
 import { FEATURE_DAYS, featuredUntil } from "@/lib/service-pack";
+import { parisMonthStart } from "@/lib/newsletter";
+import type { Prisma } from "@/generated/prisma/client";
 
 /** Statuts d'une commande de service. */
 export const ORDER_STATUS: Record<string, { label: string; tone: string }> = {
@@ -68,12 +70,22 @@ export async function orderStats(orders: { id: string; eventId: string; doneAt: 
 /** Lecture des liens suivis par des robots (aperçus de liens, antivirus des messageries) : non comptée. */
 export const isBot = (ua: string) => !ua || /bot|crawl|spider|slurp|preview|facebookexternalhit|embedly|proofpoint|mimecast|barracuda|safelinks|scanner|curl|wget|python|headless/i.test(ua);
 
-/** Membres qui ont accepté de recevoir la lettre d'information (adresse confirmée). */
+/** Destinataires de la lettre d'information : praticiens (compte avec profil praticien) qui l'ont acceptée et ont confirmé leur adresse. */
+const AUDIENCE = { notifyPrefs: { path: ["newsletter"], equals: true }, emailVerifiedAt: { not: null }, practitioner: { isNot: null } } satisfies Prisma.UserWhereInput;
+
 export function newsletterAudience() {
-  return db.user.findMany({
-    where: { notifyPrefs: { path: ["newsletter"], equals: true }, emailVerifiedAt: { not: null } },
-    select: { id: true, email: true, firstName: true, locale: true, unsubscribeToken: true },
-  });
+  return db.user.findMany({ where: AUDIENCE, select: { id: true, email: true, firstName: true, locale: true, unsubscribeToken: true } });
+}
+export const newsletterAudienceCount = () => db.user.count({ where: AUDIENCE });
+
+/**
+ * Envois de la lettre sur le mois civil (heure de Paris) : lettres envoyées, et envoi en cours (réservé, pas encore
+ * terminé) depuis moins d'une heure. Sert au plafond de deux envois par mois.
+ */
+export function newsletterSendsThisMonth(now = new Date(), client: Pick<typeof db, "newsletterCampaign"> = db) {
+  const start = parisMonthStart(now);
+  const recent = new Date(Math.max(start.getTime(), now.getTime() - 3600e3));
+  return client.newsletterCampaign.count({ where: { OR: [{ sentAt: { gte: start } }, { sentAt: null, createdAt: { gte: recent } }] } });
 }
 
 /** Jeton de désinscription d'un membre (créé à la première lettre). */

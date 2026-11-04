@@ -22,7 +22,7 @@ import { checkinOpen } from "@/lib/checkin";
 import { eventEnded, fmtRating, surveySummary } from "@/lib/event-followup";
 import { ServiceOffers } from "@/components/ServiceForms";
 import { cancelServiceOrder } from "@/lib/service-actions";
-import { featuredUntil, ORDER_STATUS, orderStats } from "@/lib/services";
+import { featuredUntil, newsletterAudienceCount, ORDER_STATUS, orderStats } from "@/lib/services";
 import { ConfirmButton } from "@/components/ConfirmButton";
 import { conversion, reportParts } from "@/lib/service-report";
 import { groupOrders, packSaving, packStatus } from "@/lib/service-pack";
@@ -117,8 +117,11 @@ export default async function Page({ params, searchParams }: { params: Promise<{
   const offers = isOrganizer && !event.internal ? await db.serviceOffer.findMany({ where: { active: true }, orderBy: { position: "asc" } }) : [];
   // Services proposés ; un pack affiche le prix des services séparés et n'est commandable que si aucun n'est en cours.
   const openFor = (offerId: string) => event.serviceOrders.some((x) => x.offerId === offerId && ["demandee", "planifiee"].includes(x.status));
+  // E-mailing (seul ou dans un pack) : l'audience actuelle est annoncée, et la commande impossible si elle est nulle.
+  const audience = offers.some((o) => o.kind === "newsletter") ? await newsletterAudienceCount() : 0;
   const offerCards = offers.map((o) => {
     const items = o.kind === "pack" ? offers.filter((x) => o.includes.includes(x.code)) : [];
+    const mailing = o.kind === "newsletter" || items.some((x) => x.kind === "newsletter");
     const separate = items.length === o.includes.length ? items.reduce((n, x) => n + x.priceCents, 0) : 0;
     return {
       id: o.id, label: o.label, description: o.description, price: `${formatEUR(o.priceCents)} HT`, pack: o.kind === "pack",
@@ -126,6 +129,7 @@ export default async function Page({ params, searchParams }: { params: Promise<{
       saving: o.kind === "pack" && separate > o.priceCents ? `${formatEUR(packSaving(items.map((x) => x.priceCents), o.priceCents))} HT` : undefined,
       ordered: o.kind === "pack" ? items.length > 0 && items.every((x) => openFor(x.id)) : openFor(o.id),
       blocked: o.kind === "pack" && items.some((x) => openFor(x.id)),
+      audience: mailing ? audience : undefined,
     };
   }).filter((o) => !o.pack || o.compareAt != null || o.ordered);
   const pack = offerCards.find((o) => o.pack && !o.blocked);

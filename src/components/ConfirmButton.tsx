@@ -17,6 +17,7 @@ export function ConfirmButton({
   name,
   value,
   disabled,
+  pending: busy,
 }: {
   children: ReactNode;
   /** Suite de « Confirmer : » (« retenir ce devis », « suspendre l'organisation »…). */
@@ -26,9 +27,12 @@ export function ConfirmButton({
   name?: string;
   value?: string;
   disabled?: boolean;
+  /** Envoi en cours, quand le formulaire n'est pas un simple <form action> (ActionForm, useActionState). */
+  pending?: boolean;
 }) {
   const [armed, setArmed] = useState(false);
-  const { pending } = useFormStatus();
+  const status = useFormStatus();
+  const pending = busy ?? status.pending;
   if (!armed)
     return (
       <button

@@ -154,6 +154,17 @@ export function EmailVerificationNotice({ email }: { email: string }) {
   );
 }
 
+/** Renvoi du lien de confirmation d'adresse, en une ligne (encart de la lettre d'information). */
+export function ResendVerificationLink() {
+  const [state, action, pending] = useActionState(resendVerification, undefined);
+  const t = useT();
+  return (
+    <form action={action} className="inline">
+      {state?.ok || state?.error ? <span>{state.ok ?? state.error}</span> : <button className="link" disabled={pending}>{t("Renvoyer le lien")}</button>}
+    </form>
+  );
+}
+
 export function NotificationsForm({ email, newsletter = false }: { email: boolean; newsletter?: boolean }) {
   const [state, action, pending] = useActionState(updateNotifyPrefs, undefined);
   const t = useT();
