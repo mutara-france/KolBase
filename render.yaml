@@ -105,7 +105,9 @@ services:
     buildCommand: "true"
     # Sans APP_URL, curl échouait sans rien dire d'utile (« URL using bad/illegal format ») : depuis la création du
     # service le 3 novembre, aucune tâche n'avait tourné. Le message nomme désormais la variable manquante.
-    startCommand: 'curl -fsS --retry 2 --max-time 120 -X POST -H "Authorization: Bearer $CRON_SECRET" "${APP_URL:?APP_URL manquant sur le service kolbase-taches}/api/taches"'
+    # Une redirection (adresse à corriger) fait échouer l'appel au lieu de passer pour un succès (-L --max-redirs 0).
+    # Pas de délai maximal : un nouvel essai pendant que la première exécution tourne encore ferait doublon.
+    startCommand: 'curl -fsS -L --max-redirs 0 --retry 2 -X POST -H "Authorization: Bearer $CRON_SECRET" "${APP_URL:?APP_URL manquant sur le service kolbase-taches}/api/taches"'
     envVars:
       - key: CRON_SECRET
         fromService:

@@ -1,5 +1,6 @@
 /**
- * Données fictives de démonstration (prisma/seed.ts, retirées par scripts/purge-demo.ts) : mêmes critères que la purge.
+ * Données fictives de démonstration chargées par prisma/seed.ts : comptes en @demo.kolbase.local, organisations
+ * « demo-… » (scripts/purge-demo.ts retire en plus les organisations créées ensuite par ces seuls comptes).
  * Elles restent visibles sur le site, mais jamais indexées par les moteurs de recherche ni listées dans le plan du site :
  * des fiches « Dr Prénom Nom » inventées ne doivent pas apparaître dans Google.
  */

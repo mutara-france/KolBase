@@ -52,6 +52,22 @@ async function send(recipients: Recipient[], mail: Omit<Mail, "to"> | Compose, e
 
 const userSelect = { id: true, email: true, notifyPrefs: true, locale: true } as const;
 
+/**
+ * Envoi unique d'un message suivi par une date (rappel, remerciement, bilan). La date est posée avant l'envoi, si elle
+ * est encore vide : deux passages simultanés (tâche planifiée, envoi par l'organisateur, nouvel essai) n'envoient pas
+ * deux fois. Elle est retirée si l'envoi échoue, pour que le passage suivant réessaie.
+ */
+async function sendOnce(claim: () => Promise<{ count: number }>, release: () => Promise<unknown>, deliver: () => Promise<void>) {
+  if ((await claim()).count === 0) return false;
+  try {
+    await deliver();
+  } catch (e) {
+    await release();
+    throw e;
+  }
+  return true;
+}
+
 /** Membres d'une organisation ayant l'un des rôles. */
 async function members(orgId: string, roles: OrgRole[]) {
   const ms = await db.membership.findMany({ where: { organizationId: orgId, role: { in: roles } }, include: { user: { select: userSelect } } });
@@ -830,25 +846,28 @@ export async function sendEventReminders(eventId: string, now = new Date()) {
   const inPerson = ev.format !== "DISTANCIEL";
   const program = ev.program ? (ev.program.length > 700 ? `${ev.program.slice(0, 700).trimEnd()}…` : ev.program) : null;
   for (const r of ev.registrations) {
-    await send([r.user], (t, locale) => {
-      const when = ev.startsAt.toLocaleString(locale === "en" ? "en-GB" : "fr-FR", { timeZone: "Europe/Paris", weekday: "long", day: "numeric", month: "long", hour: "2-digit", minute: "2-digit" });
-      const place = ev.format === "DISTANCIEL" ? null : t("Lieu : {place}", { place: [ev.venue, ev.city].filter(Boolean).join(", ") || t("à préciser par l'organisateur") });
-      // Lien de connexion (en ligne, hybride) : réservé aux inscrits, donné dans le rappel.
-      const online = ev.format === "PRESENTIEL" ? null : ev.onlineUrl ? t("Lien de connexion : {url}", { url: ev.onlineUrl }) : t("En ligne : le lien de connexion vous est communiqué par l'organisateur.");
-      return {
-        subject: t("Rappel : « {title} », {when}", { title: ev.title, when }),
-        text: [
-          t("Bonjour {name},", { name: r.user.firstName }),
-          t("Vous êtes inscrit à « {title} » ({org}), {when}.", { title: ev.title, org: ev.organization.name, when }),
-          place,
-          online,
-          program ? `${t("Programme")} :\n${program}` : null,
-          inPerson ? t("À l'accueil, présentez votre badge : le lien ci-dessous l'affiche sur votre téléphone.") : null,
-        ].filter(Boolean).join("\n\n"),
-        cta: inPerson ? { label: t("Mon badge d'accueil"), href: `/inscriptions/${r.id}/badge` } : { label: t("Voir l'événement"), href: `/evenements/${ev.id}` },
-      };
-    });
-    await db.registration.update({ where: { id: r.id }, data: { reminderSentAt: now } });
+    await sendOnce(
+      () => db.registration.updateMany({ where: { id: r.id, reminderSentAt: null }, data: { reminderSentAt: now } }),
+      () => db.registration.update({ where: { id: r.id }, data: { reminderSentAt: null } }),
+      () => send([r.user], (t, locale) => {
+        const when = ev.startsAt.toLocaleString(locale === "en" ? "en-GB" : "fr-FR", { timeZone: "Europe/Paris", weekday: "long", day: "numeric", month: "long", hour: "2-digit", minute: "2-digit" });
+        const place = ev.format === "DISTANCIEL" ? null : t("Lieu : {place}", { place: [ev.venue, ev.city].filter(Boolean).join(", ") || t("à préciser par l'organisateur") });
+        // Lien de connexion (en ligne, hybride) : réservé aux inscrits, donné dans le rappel.
+        const online = ev.format === "PRESENTIEL" ? null : ev.onlineUrl ? t("Lien de connexion : {url}", { url: ev.onlineUrl }) : t("En ligne : le lien de connexion vous est communiqué par l'organisateur.");
+        return {
+          subject: t("Rappel : « {title} », {when}", { title: ev.title, when }),
+          text: [
+            t("Bonjour {name},", { name: r.user.firstName }),
+            t("Vous êtes inscrit à « {title} » ({org}), {when}.", { title: ev.title, org: ev.organization.name, when }),
+            place,
+            online,
+            program ? `${t("Programme")} :\n${program}` : null,
+            inPerson ? t("À l'accueil, présentez votre badge : le lien ci-dessous l'affiche sur votre téléphone.") : null,
+          ].filter(Boolean).join("\n\n"),
+          cta: inPerson ? { label: t("Mon badge d'accueil"), href: `/inscriptions/${r.id}/badge` } : { label: t("Voir l'événement"), href: `/evenements/${ev.id}` },
+        };
+      }),
+    );
   }
   return ev.registrations.length;
 }
@@ -989,17 +1008,20 @@ export async function sendEventFollowUps(eventId: string, now = new Date()) {
   const pointed = ev.registrations.some((r) => r.checkedInAt);
   const targets = ev.registrations.filter((r) => !r.followUpSentAt && (!pointed || r.checkedInAt));
   for (const r of targets) {
-    await send([r.user], (t) => ({
-      subject: t("Merci pour votre participation à « {title} »", { title: ev.title }),
-      text: [
-        t("Bonjour {name},", { name: r.user.firstName }),
-        t("Merci d'avoir participé à « {title} » ({org}).", { title: ev.title, org: ev.organization.name }),
-        r.checkedInAt ? t("Votre attestation de présence est disponible dans « Mes inscriptions ».") : null,
-        t("Votre avis aide l'organisateur à améliorer les prochaines éditions : une minute suffit, vos réponses lui sont transmises sans votre nom."),
-      ].filter(Boolean).join("\n\n"),
-      cta: { label: t("Donner mon avis"), href: `/evenements/${ev.id}/avis` },
-    }));
-    await db.registration.update({ where: { id: r.id }, data: { followUpSentAt: now } });
+    await sendOnce(
+      () => db.registration.updateMany({ where: { id: r.id, followUpSentAt: null }, data: { followUpSentAt: now } }),
+      () => db.registration.update({ where: { id: r.id }, data: { followUpSentAt: null } }),
+      () => send([r.user], (t) => ({
+        subject: t("Merci pour votre participation à « {title} »", { title: ev.title }),
+        text: [
+          t("Bonjour {name},", { name: r.user.firstName }),
+          t("Merci d'avoir participé à « {title} » ({org}).", { title: ev.title, org: ev.organization.name }),
+          r.checkedInAt ? t("Votre attestation de présence est disponible dans « Mes inscriptions ».") : null,
+          t("Votre avis aide l'organisateur à améliorer les prochaines éditions : une minute suffit, vos réponses lui sont transmises sans votre nom."),
+        ].filter(Boolean).join("\n\n"),
+        cta: { label: t("Donner mon avis"), href: `/evenements/${ev.id}/avis` },
+      })),
+    );
   }
   return targets.length;
 }
@@ -1072,7 +1094,9 @@ export async function sendServiceReport(orderId: string, now = new Date()) {
   ];
   const orderer = await db.user.findUnique({ where: { id: o.orderedById }, select: { ...userSelect, memberships: { where: { organizationId: o.organizationId }, select: { id: true } } } });
   const to = orderer && orderer.memberships.length > 0 ? [orderer] : await members(o.organizationId, EVENT_ORGANIZER_ROLES);
-  await send(to, { subject: `Bilan : ${o.label} — ${o.event.title}`, text: `Bonjour,\n\n${lines.join("\n")}`, cta: { label: "Voir l'événement", href: `/organisations/${o.event.organizationId}/evenements/${o.event.id}#services` } });
-  await db.serviceOrder.update({ where: { id: o.id }, data: { reportSentAt: now } });
-  return true;
+  return sendOnce(
+    () => db.serviceOrder.updateMany({ where: { id: o.id, reportSentAt: null }, data: { reportSentAt: now } }),
+    () => db.serviceOrder.update({ where: { id: o.id }, data: { reportSentAt: null } }),
+    () => send(to, { subject: `Bilan : ${o.label} — ${o.event.title}`, text: `Bonjour,\n\n${lines.join("\n")}`, cta: { label: "Voir l'événement", href: `/organisations/${o.event.organizationId}/evenements/${o.event.id}#services` } }),
+  );
 }
