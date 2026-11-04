@@ -136,8 +136,8 @@ export async function createInvitation(_: InviteState, form: FormData): Promise<
   // KolBase n'envoie d'e-mail d'invitation qu'au nom d'une organisation validée, et pas en rafale.
   if (email && !isVerifiedOrg(org)) return { error: "L'envoi d'invitations par e-mail est possible une fois l'organisation validée par KolBase. Générez le lien sans e-mail et transmettez-le vous-même." };
   const rateKey = `invite:${user.id}`;
-  if (email && blockedFor(rateKey, 30, 60 * 60 * 1000)) return { error: "Trop d'invitations envoyées en peu de temps : réessayez dans une heure." };
-  if (email) hit(rateKey);
+  if (email && await blockedFor(rateKey, 30, 60 * 60 * 1000)) return { error: "Trop d'invitations envoyées en peu de temps : réessayez dans une heure." };
+  if (email) await hit(rateKey);
   const token = randomBytes(24).toString("base64url");
   const inv = await db.invitation.create({
     data: {

@@ -194,14 +194,14 @@ export async function draftServiceText(form: FormData): Promise<{ text?: string;
   const admin = await requirePlatformAdmin();
   if (!aiEnabled()) return { error: "L'assistant n'est pas activé." };
   const key = `ai:${admin.id}`;
-  if (blockedFor(key, 30, 3600_000)) return { error: "Réessayez dans une heure." };
+  if (await blockedFor(key, 30, 3600_000)) return { error: "Réessayez dans une heure." };
   const o = await db.serviceOrder.findUnique({ where: { id: str(form, "orderId") }, include: { offer: true, organization: { select: { name: true } }, event: true } });
   if (!o) return { error: "Commande introuvable." };
   const e = o.event;
   const link = `${app()}${o.trackCode ? trackedPath(o.trackCode) : `/evenements/${o.eventId}`}`;
   const kind = o.offer.kind === "social" ? `un post LinkedIn (6 à 8 lignes, 3 hashtags sobres en fin de texte) contenant le lien d'inscription ${link}` : "le texte d'un e-mail (8 à 12 lignes) adressé à des chirurgiens-dentistes";
   const prompt = `Événement scientifique organisé par ${o.organization.name} : « ${e.title} », le ${formatDate(e.startsAt)} à ${formatTime(e.startsAt)}${e.format === "DISTANCIEL" ? ", en ligne" : e.city ? `, à ${e.city}${e.venue ? ` (${e.venue})` : ""}` : ""}.${e.therapeuticArea ? ` Domaine : ${e.therapeuticArea}.` : ""}\n${e.description ? `Présentation : ${e.description.slice(0, 1200)}\n` : ""}${e.program ? `Programme : ${e.program.slice(0, 1200)}\n` : ""}${o.brief ? `Consignes de l'organisateur : ${o.brief.slice(0, 800)}\n` : ""}\nRédige ${kind} pour faire connaître cet événement et inviter à s'inscrire sur KolBase. Ton professionnel et sobre, aucune allégation sur des produits ; termine par l'invitation à s'inscrire.`;
-  hit(key);
+  await hit(key);
   try {
     const text = await aiComplete(prompt, 700);
     await audit(admin.id, "ai.service_draft", "ServiceOrder", o.id);

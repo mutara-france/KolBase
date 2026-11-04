@@ -1750,9 +1750,14 @@ async function submitNewOrg(page, siren) {
   await fillDossier("Conférence implantologie — abonnement actif");
   check("Abonnement actif : sollicitation envoyée", /\/dossiers\/[^/]+$/.test(page.url()) && !page.url().endsWith("/nouveau"), page.url());
   const sub = [...stripeState.subscriptions.values()].at(-1);
-  await stripeWebhook("customer.subscription.updated", { ...sub, status: "past_due" });
+  // Comme chez Stripe, l'API reflète l'état annoncé : l'application relit l'abonnement au lieu de croire la notification.
+  sub.status = "past_due";
+  await stripeWebhook("customer.subscription.updated", { ...sub, status: "active" }, "evt_retard");
   await page.goto(`${BASE}/organisations/demo-org-cdra/abonnement`);
-  check("Paiement en échec : signalé, sans blocage", (await text(page)).includes("Paiement en attente"));
+  check("Paiement en échec : signalé, sans blocage (état relu chez Stripe)", (await text(page)).includes("Paiement en attente"));
+  await stripeWebhook("customer.subscription.updated", { ...sub }, "evt_retard");
+  check("Stripe : notification rejouée ignorée", stripeState.webhooks.at(-1)?.status === 200 && stripeState.webhooks.at(-1)?.body?.duplicate === true, JSON.stringify(stripeState.webhooks.at(-1)));
+  sub.status = "canceled";
   await stripeWebhook("customer.subscription.deleted", { ...sub, status: "canceled" });
   await page.goto(`${BASE}/organisations/demo-org-cdra/abonnement`);
   check("Résiliation : réactivation proposée sans nouveau mois offert", (await text(page)).includes("Résilié") && (await page.locator('button:has-text("Réactiver l\'abonnement")').count()) === 2 && !(await text(page)).includes("jours offerts"));
@@ -2090,6 +2095,9 @@ async function submitNewOrg(page, siren) {
   await login(lea.page, "lea.rousseau@demo.kolbase.local");
   await lea.page.goto(`${BASE}/organisations/demo-org-orthonova`);
   check("Membre sans double authentification : renvoyé vers « Mon compte »", lea.page.url().includes("/compte?securite=demo-org-orthonova") && (await text(lea.page)).includes("OrthoNova exige la double authentification de ses membres"), lea.page.url());
+  // Même règle pour les téléchargements par adresse directe (ils ne passent pas par les pages de l'espace).
+  const leaStats = await lea.page.request.get(`${BASE}/organisations/demo-org-orthonova/statistiques/export`);
+  check("Membre sans double authentification : export direct refusé", leaStats.status() === 404, String(leaStats.status()));
   await lea.ctx.close();
   // Connexion : mot de passe, puis code ; codes de secours à usage unique ; un code ne sert qu'une fois.
   const s1 = await session();
