@@ -583,7 +583,7 @@ export function notifyIdentityDecision(practitionerId: string, verified: boolean
 }
 
 /** Gratuité de l'abonnement offerte ou retirée par l'équipe KolBase : les administrateurs de l'organisation sont prévenus. */
-export function notifyExemption(orgId: string, until: Date | null, note: string | null) {
+export function notifyExemption(orgId: string, until: Date | null, note: string | null, stripeBilling: "paused" | "resumed" | null = null) {
   later(async () => {
     const org = await db.organization.findUnique({ where: { id: orgId }, select: { name: true, kind: true } });
     if (!org) return;
@@ -592,12 +592,14 @@ export function notifyExemption(orgId: string, until: Date | null, note: string 
     await sendService(await members(orgId, ["ADMIN"]), until
       ? {
           subject: `KolBase vous offre l'abonnement jusqu'au ${date}`,
-          text: `Bonjour,\n\nL'équipe KolBase offre l'abonnement ${de(org.name)} jusqu'au ${date}${note ? ` (${note})` : ""}. D'ici là, vous pouvez ${actions} sans rien payer.`,
+          text: `Bonjour,\n\nL'équipe KolBase offre l'abonnement ${de(org.name)} jusqu'au ${date} inclus${note ? ` (${note})` : ""}. D'ici là, vous pouvez ${actions} sans rien payer.${stripeBilling === "paused" ? " La facturation de votre abonnement en cours est suspendue pendant cette période ; elle reprendra d'elle-même ensuite." : ""}`,
           cta: { label: "Voir l'abonnement", href: `/organisations/${orgId}/abonnement` },
         }
       : {
           subject: "KolBase : gratuité de l'abonnement retirée",
-          text: `Bonjour,\n\nL'abonnement ${de(org.name)} n'est plus offert par l'équipe KolBase. Pour continuer à ${actions}, un administrateur active l'abonnement depuis la page Abonnement. Vos dossiers, événements et échanges restent accessibles.`,
+          text: stripeBilling === "resumed"
+            ? `Bonjour,\n\nL'abonnement ${de(org.name)} n'est plus offert par l'équipe KolBase : la facturation de votre abonnement en cours reprend. Rien ne change pour vos fonctions, dossiers, événements et échanges.`
+            : `Bonjour,\n\nL'abonnement ${de(org.name)} n'est plus offert par l'équipe KolBase. Pour continuer à ${actions}, un administrateur active l'abonnement depuis la page Abonnement. Vos dossiers, événements et échanges restent accessibles.`,
           cta: { label: "Voir l'abonnement", href: `/organisations/${orgId}/abonnement` },
         });
   });

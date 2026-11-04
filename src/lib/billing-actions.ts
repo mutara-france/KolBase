@@ -7,7 +7,7 @@ import { audit } from "@/lib/auth";
 import { requireMembership } from "@/lib/orgs";
 import { requirePlatformAdmin } from "@/lib/platform";
 import { str } from "@/lib/form";
-import { checkoutUrl, portalUrl, stripeEnabled } from "@/lib/billing";
+import { checkoutUrl, pauseStripeBilling, portalUrl, stripeEnabled } from "@/lib/billing";
 import { asInterval, asMotive, asObjectId, exempt, planFor } from "@/lib/billing-plans";
 import { notifyExemption } from "@/lib/notifications";
 import { parseParisDateTime } from "@/lib/events";
@@ -32,7 +32,10 @@ export async function openBillingPortal(form: FormData) {
   redirect(url ?? `/organisations/${orgId}/abonnement`);
 }
 
-/** Gratuité accordée par KolBase jusqu'à une date (pilote, partenaire), ou retirée. */
+/**
+ * Gratuité accordée par KolBase jusqu'à une date (pilote, partenaire), ou retirée. La date saisie est le dernier
+ * jour offert : fin de journée à Paris. Abonnement Stripe en cours : facturation en pause, puis reprise.
+ */
 export async function setExemption(form: FormData) {
   const admin = await requirePlatformAdmin();
   const orgId = str(form, "orgId");
@@ -46,8 +49,16 @@ export async function setExemption(form: FormData) {
   const data = remove ? { exemptUntil: null, exemptNote: null } : { exemptUntil: date, exemptNote: str(form, "note").slice(0, 200) || null };
   const before = await db.subscription.findUnique({ where: { organizationId: orgId }, select: { status: true, exemptUntil: true } });
   await db.subscription.upsert({ where: { organizationId: orgId }, update: data, create: { organizationId: orgId, plan: planFor(org.kind), ...data } });
-  await audit(admin.id, remove ? "billing.exempt_remove" : "billing.exempt", "Organization", orgId, { until: remove ? undefined : until });
+  let stripeBilling: Awaited<ReturnType<typeof pauseStripeBilling>> = null;
+  try {
+    stripeBilling = await pauseStripeBilling(orgId, remove ? null : date);
+  } catch (e) {
+    // La gratuité vaut dans KolBase ; la pause Stripe se rattrape depuis le tableau de bord Stripe.
+    console.error("[gratuité : pause Stripe]", e);
+    await audit(admin.id, "billing.stripe_pause_failed", "Organization", orgId, { remove });
+  }
+  await audit(admin.id, remove ? "billing.exempt_remove" : "billing.exempt", "Organization", orgId, { until: remove ? undefined : until, stripe: stripeBilling ?? undefined });
   // L'organisation est prévenue : gratuité offerte (ou prolongée), ou retirée alors qu'elle était en cours.
-  if (!remove || exempt(before)) notifyExemption(orgId, remove ? null : date, remove ? null : data.exemptNote ?? null);
+  if (!remove || exempt(before)) notifyExemption(orgId, remove ? null : date, remove ? null : data.exemptNote ?? null, stripeBilling);
   revalidatePath("/admin");
 }

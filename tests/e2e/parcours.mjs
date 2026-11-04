@@ -1879,7 +1879,8 @@ async function submitNewOrg(page, siren) {
   check("E-mailing : pas d'envoi sans consentement", !mails.some((m) => m.to === "olivier.girard@demo.kolbase.local" && /^Soirée implantologie.* — /.test(m.subject)));
   check("Organisateur prévenu de la réalisation", !!(await waitMail("julien.faure@demo.kolbase.local", "Service KolBase : E-mailing dédié")));
   await page.goto(`${BASE}/organisations/demo-org-dentalys/evenements/demo-ev-soiree-implanto`);
-  check("Événement : services réalisés affichés", ((await text(page)).match(/Réalisée/g) ?? []).length >= 2);
+  // La mise à la une réalisée reste « En cours jusqu'au … » pendant sa durée (lot 3) ; l'e-mailing est « Réalisée ».
+  check("Événement : services réalisés affichés", ((await text(page)).match(/Réalisée/g) ?? []).length >= 1 && (await text(page)).includes("En cours jusqu'au"));
   // Désinscription depuis le lien reçu, et en un clic.
   const link = nl.text.match(/https?:\/\/\S+\/desinscription\/[A-Za-z0-9_-]+/)[0].replace(/^https?:\/\/[^/]+/, BASE);
   const un = await session();
@@ -2881,6 +2882,7 @@ async function submitNewOrg(page, siren) {
     await login(sup.page, "ludovic.perrin@demo.kolbase.local");
     await sup.page.goto(`${BASE}/organisations/demo-sup-belleville/devis`);
     const card = sup.page.locator('section.card:has-text("Déjeuner opératoire")');
+    await card.locator('summary:has-text("Questions et échanges")').click();
     await card.locator('textarea[name="body"]').first().fill("Faut-il prévoir des plateaux-repas en salle ?");
     await card.locator('button:has-text("Envoyer")').first().click();
     check("Agence : question d'un prestataire envoyée à l'agence qui a créé la demande", !!(await waitMail("karim.benali@demo.kolbase.local", "Question de Traiteur Belleville")));
@@ -3092,6 +3094,40 @@ async function submitNewOrg(page, siren) {
     check("Lettre : lien de confirmation renvoyé depuis l'encart", mails.filter((m) => m.to === "sarah.mercier@demo.kolbase.local" && m.subject.startsWith("Confirmez votre adresse")).length > sentBefore);
     await pgc.query(`update "User" set "emailVerifiedAt" = now(), "notifyPrefs" = "notifyPrefs" || '{"newsletter": false}' where email = 'sarah.mercier@demo.kolbase.local'`);
     await pr.ctx.close();
+  }
+
+  // 5. Gratuité et Stripe : abonnement en cours mis en pause puis repris ; date de fin = fin de journée à Paris.
+  {
+    const subId = "sub_e2el3pause";
+    stripeState.subscriptions.set(subId, { id: subId, object: "subscription", customer: "cus_e2el3", status: "active", trial_end: null, current_period_end: Math.floor(Date.now() / 1000) + 20 * 86400, cancel_at_period_end: false, metadata: { orgId: "demo-org-orthonova" }, pause_collection: null });
+    await pgc.query(`insert into "Subscription" ("organizationId", plan, status, "stripeCustomerId", "stripeSubscriptionId", "updatedAt") values ('demo-org-orthonova', 'organisation', 'active', 'cus_e2el3', $1, now())
+      on conflict ("organizationId") do update set status = 'active', "stripeCustomerId" = 'cus_e2el3', "stripeSubscriptionId" = $1, "exemptUntil" = null, "exemptNote" = null`, [subId]);
+    const until = new Date(Date.now() + 12 * 864e5).toLocaleDateString("sv-SE", { timeZone: "Europe/Paris" });
+    const adm = await session();
+    await login(adm.page, "anne.chevalier@demo.kolbase.local");
+    await adm.page.goto(`${BASE}/admin?onglet=abonnements`);
+    const row = () => adm.page.locator('tr:has-text("OrthoNova")');
+    await row().locator('input[name="until"]').fill(until);
+    await row().locator('input[name="note"]').fill("Pilote lot trois");
+    await row().locator('button:has-text("offrir")').click();
+    await adm.page.waitForTimeout(1500);
+    const ex = await q1(`select to_char("exemptUntil" at time zone 'Europe/Paris', 'YYYY-MM-DD HH24:MI') d from "Subscription" where "organizationId" = 'demo-org-orthonova'`);
+    check("Gratuité : fin de la journée saisie, heure de Paris", ex?.d === `${until} 23:59`, ex?.d);
+    const shown = new Date(`${until}T12:00:00Z`).toLocaleDateString("fr-FR", { timeZone: "Europe/Paris", day: "numeric", month: "short", year: "numeric" });
+    check("Gratuité : date affichée = date saisie (pas le lendemain)", (await row().innerText()).includes(`jusqu'au ${shown}`), await row().innerText());
+    const paused = stripeState.subscriptions.get(subId).pause_collection;
+    check("Gratuité : facturation Stripe en pause (void, reprise à la fin)", paused?.behavior === "void" && !!paused.resumes_at && new Date(paused.resumes_at * 1000).toLocaleDateString("sv-SE", { timeZone: "Europe/Paris" }) === until, JSON.stringify(paused));
+    const offer = await waitMail("thomas.garnier@demo.kolbase.local", "KolBase vous offre l'abonnement jusqu'au");
+    check("E-mail : gratuité offerte, facturation suspendue", !!offer && offer.text.includes("est suspendue pendant cette période") && offer.text.includes("inclus"));
+    // Retirer : confirmation, puis la facturation reprend.
+    await row().locator('button:has-text("retirer")').click();
+    check("Retirer la gratuité : confirmation qui annonce la reprise de la facturation", (await row().locator(".confirm-step").innerText()).includes("la facturation de son abonnement Stripe reprend") && !!(await q1(`select "exemptUntil" from "Subscription" where "organizationId" = 'demo-org-orthonova'`))?.exemptUntil);
+    await row().locator('button:has-text("Confirmer : retirer la gratuité")').click();
+    await adm.page.waitForTimeout(1500);
+    check("Gratuité retirée : facturation Stripe reprise", stripeState.subscriptions.get(subId).pause_collection === null && !(await q1(`select "exemptUntil" from "Subscription" where "organizationId" = 'demo-org-orthonova'`))?.exemptUntil);
+    const back = await waitMail("thomas.garnier@demo.kolbase.local", "gratuité de l'abonnement retirée");
+    check("E-mail : gratuité retirée, la facturation reprend", !!back && back.text.includes("la facturation de votre abonnement en cours reprend"));
+    await adm.ctx.close();
   }
 
   await pgc.end();
