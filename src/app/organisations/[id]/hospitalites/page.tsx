@@ -10,6 +10,7 @@ import { complianceSettings, foreignRegime, hospitalityRegime, REGIME_LABEL } fr
 import { practicesInFrance } from "@/lib/countries";
 import { pointedPastEvents } from "@/lib/checkin";
 import { isAbsent } from "@/lib/indicators";
+import { TableWrap } from "@/components/TableWrap";
 
 export const metadata = { title: "Hospitalités — KolBase" };
 
@@ -75,41 +76,43 @@ export default async function Page({ params, searchParams }: { params: Promise<{
             <h2><Link href={`/organisations/${id}/evenements/${eventId}`}>{rs[0].event.title}</Link></h2>
             <p className="muted">{formatDate(rs[0].event.startsAt)} · {rs.filter((r) => !absent(r)).length} bénéficiaire{rs.filter((r) => !absent(r)).length > 1 ? "s" : ""} · {formatEUR(sum(rs.filter((r) => !absent(r))))} TTC</p>
             {rs.some(absent) && <p className="notice warn">{rs.filter(absent).length} inscrit{rs.filter(absent).length > 1 ? "s" : ""} absent{rs.filter(absent).length > 1 ? "s" : ""} au pointage ({formatEUR(sum(rs.filter(absent)))} TTC) : avantage non consommé, non déclaré. {canPoint ? <><Link href={`/organisations/${id}/evenements/${eventId}/pointage`}>Corriger le pointage</Link> si la personne était présente.</> : "Si la personne était présente, l'équipe organisatrice peut corriger le pointage."}</p>}
-            <table className="table" tabIndex={0}>
-              <thead><tr><th>Bénéficiaire</th><th>Profession</th><th>Prestations</th><th>Valeur</th><th>Régime</th><th>Convention</th><th>Déclaration</th></tr></thead>
-              <tbody>
-                {rs.map((r) => (
-                  <tr key={r.id}>
-                    <td>{r.user.lastName.toUpperCase()} {r.user.firstName}{absent(r) && <> <span className="pill wait">Absent au pointage</span></>}</td>
-                    <td>{r.profession}</td>
-                    <td>{r.benefits.map((b) => b.benefit.label).join(", ")}</td>
-                    <td>{formatEUR(r.benefits.reduce((s, b) => s + b.valueCents, 0))} TTC</td>
-                    <td>{(() => { const g = regimeOf(r); return <span className={`pill ${g.regime === "autorisation" ? "wait" : g.regime === "hors_france" ? "" : "ok"}`} title={g.reason}>{REGIME_LABEL[g.regime]}</span>; })()}</td>
-                    <td><a href={`/organisations/${id}/hospitalites/convention/${r.id}`} target="_blank" rel="noreferrer">PDF</a></td>
-                    <td>
-                      {absent(r) ? <span className="pill">Absent : non déclaré</span> : (
-                      <form action={markDeclared} className="inline">
-                        <input type="hidden" name="orgId" value={id} />
-                        <input type="hidden" name="registrationId" value={r.id} />
-                        {r.declared ? (
-                          <>
-                            <span>Déclaré{r.declarationRef ? ` · ${r.declarationRef}` : ""}</span>
-                            <input type="hidden" name="undo" value="1" />
-                            <button className="link">annuler</button>
-                          </>
-                        ) : (
-                          <>
-                            <input name="declarationRef" placeholder="Réf. convention" aria-label="Référence" />
-                            <button className="link">Marquer déclaré</button>
-                          </>
+            <TableWrap label="Hospitalités">
+              <table className="table">
+                <thead><tr><th>Bénéficiaire</th><th>Profession</th><th>Prestations</th><th>Valeur</th><th>Régime</th><th>Convention</th><th>Déclaration</th></tr></thead>
+                <tbody>
+                  {rs.map((r) => (
+                    <tr key={r.id}>
+                      <td data-label="Bénéficiaire">{r.user.lastName.toUpperCase()} {r.user.firstName}{absent(r) && <> <span className="pill wait">Absent au pointage</span></>}</td>
+                      <td data-label="Profession">{r.profession}</td>
+                      <td data-label="Prestations">{r.benefits.map((b) => b.benefit.label).join(", ")}</td>
+                      <td data-label="Valeur">{formatEUR(r.benefits.reduce((s, b) => s + b.valueCents, 0))} TTC</td>
+                      <td data-label="Régime">{(() => { const g = regimeOf(r); return <span className={`pill ${g.regime === "autorisation" ? "wait" : g.regime === "hors_france" ? "" : "ok"}`} title={g.reason}>{REGIME_LABEL[g.regime]}</span>; })()}</td>
+                      <td data-label="Convention"><a href={`/organisations/${id}/hospitalites/convention/${r.id}`} target="_blank" rel="noreferrer">PDF</a></td>
+                      <td data-label="Déclaration">
+                        {absent(r) ? <span className="pill">Absent : non déclaré</span> : (
+                        <form action={markDeclared} className="inline">
+                          <input type="hidden" name="orgId" value={id} />
+                          <input type="hidden" name="registrationId" value={r.id} />
+                          {r.declared ? (
+                            <>
+                              <span>Déclaré{r.declarationRef ? ` · ${r.declarationRef}` : ""}</span>
+                              <input type="hidden" name="undo" value="1" />
+                              <button className="link">annuler</button>
+                            </>
+                          ) : (
+                            <>
+                              <input name="declarationRef" placeholder="Réf. convention" aria-label="Référence" />
+                              <button className="link">Marquer déclaré</button>
+                            </>
+                          )}
+                        </form>
                         )}
-                      </form>
-                      )}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </TableWrap>
           </section>
         ))}
       </main>

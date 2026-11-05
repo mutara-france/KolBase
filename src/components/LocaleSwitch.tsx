@@ -3,7 +3,7 @@
 import { useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { setLocale } from "@/lib/i18n/actions";
-import { LOCALES } from "@/lib/i18n";
+import { LOCALES } from "@/lib/i18n/core";
 import { useLocale, useT } from "@/components/I18nProvider";
 
 /** Sélecteur FR / EN (pied de page, navigation publique). */

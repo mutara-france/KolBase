@@ -25,11 +25,12 @@ export function PresenceButton({ registrationId, checkedAt, big = false }: { reg
 
 export type CheckinRow = { id: string; name: string; detail: string; checkedAt: string | null };
 
+const norm = (s: string) => s.normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase();
+
 /** Liste de pointage filtrable (nom, profession, structure). */
 export function CheckinList({ rows, open }: { rows: CheckinRow[]; open: boolean }) {
   const [q, setQ] = useState("");
   const [onlyMissing, setOnlyMissing] = useState(false);
-  const norm = (s: string) => s.normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase();
   const shown = useMemo(() => rows.filter((r) => (!onlyMissing || !r.checkedAt) && norm(`${r.name} ${r.detail}`).includes(norm(q.trim()))), [rows, q, onlyMissing]);
   return (
     <div className="stack-sm">

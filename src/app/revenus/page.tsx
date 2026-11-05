@@ -2,6 +2,7 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 import { Building2, Euro, FileClock, Gift, Hourglass } from "lucide-react";
 import { SiteHeader } from "@/components/SiteHeader";
+import { TableWrap } from "@/components/TableWrap";
 import { BillingForm, InterestForm, IssueNoteButton, ReportForm } from "@/components/RevenueForms";
 import { billingComplete } from "@/lib/fee-notes";
 import { requireUser } from "@/lib/auth";
@@ -83,40 +84,44 @@ export default async function Page({ searchParams }: { searchParams: Promise<{ o
             <section className="card">
               <h2>{t("Honoraires")}</h2>
               {fees.length === 0 ? <p className="muted">{t("Aucune collaboration engagée cette année.")}</p> : (
-                <table className="table" tabIndex={0}>
-                  <thead><tr><th>{t("Date")}</th><th>{t("Organisation")}</th><th>{t("Collaboration")}</th><th>{t("Montant HT")}</th><th>{t("Statut")}</th><th>{t("Note d'honoraires")}</th></tr></thead>
-                  <tbody>
-                    {fees.map((f) => (
-                      <tr key={f.id}>
-                        <td>{fmtDate(locale, f.date)}</td>
-                        <td>{f.org.name}</td>
-                        <td><Link href={`/sollicitations/${f.id}`}>{f.title}</Link><div className="text-xs muted">{t(f.type)}</div></td>
-                        <td>{fmtEur(locale, f.paidCents ?? f.feeCents)}</td>
-                        <td><span className={`pill ${f.paidAt ? "ok" : f.signed ? "wait" : ""}`}>{feeStatus(f)}</span></td>
-                        <td><NoteCell f={f} /></td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
+                <TableWrap label={t("Honoraires")}>
+                  <table className="table">
+                    <thead><tr><th>{t("Date")}</th><th>{t("Collaboration")}</th><th>{t("Organisation")}</th><th className="num">{t("Montant HT")}</th><th>{t("Statut")}</th><th>{t("Note d'honoraires")}</th></tr></thead>
+                    <tbody>
+                      {fees.map((f) => (
+                        <tr key={f.id}>
+                          <td className="nowrap" data-label={t("Date")}>{fmtDate(locale, f.date)}</td>
+                          <td data-label={t("Collaboration")}><Link href={`/sollicitations/${f.id}`}>{f.title}</Link><div className="text-xs muted">{t(f.type)}</div></td>
+                          <td data-label={t("Organisation")}>{f.org.name}</td>
+                          <td className="num" data-label={t("Montant HT")}>{fmtEur(locale, f.paidCents ?? f.feeCents)}</td>
+                          <td data-label={t("Statut")}><span className={`pill ${f.paidAt ? "ok" : f.signed ? "wait" : ""}`}>{feeStatus(f)}</span></td>
+                          <td data-label={t("Note d'honoraires")}><NoteCell f={f} /></td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </TableWrap>
               )}
             </section>
             <section className="card">
               <h2>{t("Hospitalités reçues")}</h2>
               {hosp.length === 0 ? <p className="muted">{t("Aucune hospitalité cette année.")}</p> : (
-                <table className="table" tabIndex={0}>
-                  <thead><tr><th>{t("Date")}</th><th>{t("Organisation")}</th><th>{t("Événement")}</th><th>{t("Prestations")}</th><th>{t("Valeur TTC")}</th></tr></thead>
-                  <tbody>
-                    {hosp.map((h) => (
-                      <tr key={h.id}>
-                        <td>{fmtDate(locale, h.date)}</td>
-                        <td>{h.org.name}</td>
-                        <td><Link href={`/evenements/${h.eventId}`}>{h.title}</Link></td>
-                        <td>{h.items.map((i) => t(i)).join(", ")}</td>
-                        <td>{h.absent ? <><s className="muted">{fmtEur(locale, h.valueCents)}</s> <span className="pill">{t("Absent : non déclaré")}</span></> : fmtEur(locale, h.valueCents)}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
+                <TableWrap label={t("Hospitalités reçues")}>
+                  <table className="table">
+                    <thead><tr><th>{t("Date")}</th><th>{t("Événement")}</th><th>{t("Organisation")}</th><th>{t("Prestations")}</th><th className="num">{t("Valeur TTC")}</th></tr></thead>
+                    <tbody>
+                      {hosp.map((h) => (
+                        <tr key={h.id}>
+                          <td className="nowrap" data-label={t("Date")}>{fmtDate(locale, h.date)}</td>
+                          <td data-label={t("Événement")}><Link href={`/evenements/${h.eventId}`}>{h.title}</Link></td>
+                          <td data-label={t("Organisation")}>{h.org.name}</td>
+                          <td data-label={t("Prestations")}>{h.items.map((i) => t(i)).join(", ")}</td>
+                          <td className="num" data-label={t("Valeur TTC")}>{h.absent ? <><s className="muted">{fmtEur(locale, h.valueCents)}</s> <span className="pill">{t("Absent : non déclaré")}</span></> : fmtEur(locale, h.valueCents)}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </TableWrap>
               )}
               <p className="hint">{t("KolBase n'est pas un logiciel comptable : ces montants vous aident à préparer votre déclaration, vos justificatifs restent ceux des organisations.")}</p>
             </section>
@@ -129,31 +134,39 @@ export default async function Page({ searchParams }: { searchParams: Promise<{ o
               <h2>{t("Notes d'honoraires")}</h2>
               <p className="muted">{t("Une note par convention signée : numérotée, établie à partir de la convention et transmise à l'organisation, qui la retrouve dans le dossier.")}</p>
               {toInvoice.length > 0 && (
-                <ul className="plain stack-sm">
-                  {toInvoice.map((f) => (
-                    <li key={f.id} className="flex-between">
-                      <span><strong>{f.title}</strong> · {f.org.name} · {fmtEur(locale, f.feeCents)} {t("HT")}</span>
-                      <NoteCell f={f} />
-                    </li>
-                  ))}
-                </ul>
+                <>
+                  <h3 className="section-title">{t("À établir")}</h3>
+                  <ul className="pub-list">
+                    {toInvoice.map((f) => (
+                      <li key={f.id} className="flex-between">
+                        <span className="grow">
+                          <strong>{f.title}</strong>
+                          <span className="text-xs muted"> · {f.org.name} · {fmtEur(locale, f.feeCents)} {t("HT")}</span>
+                        </span>
+                        <NoteCell f={f} />
+                      </li>
+                    ))}
+                  </ul>
+                </>
               )}
               {notes.length === 0 ? <p className="muted">{t("Aucune note établie pour l'instant.")}</p> : (
-                <table className="table" tabIndex={0}>
-                  <thead><tr><th>{t("Numéro")}</th><th>{t("Date")}</th><th>{t("Organisation")}</th><th>{t("Collaboration")}</th><th>{t("Montant")}</th><th>{t("Paiement")}</th></tr></thead>
-                  <tbody>
-                    {notes.map((f) => (
-                      <tr key={f.id}>
-                        <td><a href={`/notes-honoraires/${f.note!.id}`}>{f.note!.number}</a></td>
-                        <td>{fmtDate(locale, f.note!.issuedAt)}</td>
-                        <td>{f.org.name}</td>
-                        <td>{f.title}</td>
-                        <td>{fmtEur(locale, f.note!.totalCents)}</td>
-                        <td>{f.paidAt ? <span className="pill ok">{t("Payé le {date}", { date: fmtDate(locale, f.paidAt) })}</span> : <span className="pill wait">{t("En attente")}</span>}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
+                <TableWrap label={t("Notes d'honoraires")}>
+                  <table className="table">
+                    <thead><tr><th>{t("Numéro")}</th><th>{t("Date")}</th><th>{t("Collaboration")}</th><th>{t("Organisation")}</th><th className="num">{t("Montant")}</th><th>{t("Paiement")}</th></tr></thead>
+                    <tbody>
+                      {notes.map((f) => (
+                        <tr key={f.id}>
+                          <td className="nowrap" data-label={t("Numéro")}><a href={`/notes-honoraires/${f.note!.id}`}>{f.note!.number}</a></td>
+                          <td className="nowrap" data-label={t("Date")}>{fmtDate(locale, f.note!.issuedAt)}</td>
+                          <td data-label={t("Collaboration")}>{f.title}</td>
+                          <td data-label={t("Organisation")}>{f.org.name}</td>
+                          <td className="num" data-label={t("Montant")}>{fmtEur(locale, f.note!.totalCents)}</td>
+                          <td data-label={t("Paiement")}>{f.paidAt ? <span className="pill ok">{t("Payé le {date}", { date: fmtDate(locale, f.paidAt) })}</span> : <span className="pill wait">{t("En attente")}</span>}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </TableWrap>
               )}
             </section>
             <section className="card stack-sm">
@@ -219,7 +232,7 @@ export default async function Page({ searchParams }: { searchParams: Promise<{ o
                     <strong>{t("Convention")} · {f.title}</strong>
                     <span className={`pill ${f.declared ? "ok" : "wait"}`}>{f.declared ? t("Déclarée{ref}", { ref: f.declarationRef ? ` (${f.declarationRef})` : "" }) : t("À déclarer par l'organisation")}</span>
                   </div>
-                  <span className="muted">{f.org.name} · {fmtEur(locale, f.feeCents)} HT · {fmtDate(locale, f.date)}</span>
+                  <span className="muted">{f.org.name} · {fmtEur(locale, f.feeCents)} {t("HT")} · {fmtDate(locale, f.date)}</span>
                   <ReportForm kind="convention" id={f.id} />
                 </li>
               ))}
@@ -229,7 +242,7 @@ export default async function Page({ searchParams }: { searchParams: Promise<{ o
                     <strong>{t("Avantages")} · {h.title}</strong>
                     <span className={`pill ${h.declared ? "ok" : h.absent ? "" : "wait"}`}>{h.declared ? t("Déclarée{ref}", { ref: h.declarationRef ? ` (${h.declarationRef})` : "" }) : h.absent ? t("Absent : non déclaré") : t("À déclarer par l'organisation")}</span>
                   </div>
-                  <span className="muted">{h.org.name} · {h.items.map((i) => t(i)).join(", ")} · {fmtEur(locale, h.valueCents)} TTC · {fmtDate(locale, h.date)}</span>
+                  <span className="muted">{h.org.name} · {h.items.map((i) => t(i)).join(", ")} · {fmtEur(locale, h.valueCents)} {t("TTC")} · {fmtDate(locale, h.date)}</span>
                   <ReportForm kind="hospitalite" id={h.id} />
                 </li>
               ))}

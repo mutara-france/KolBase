@@ -5,7 +5,8 @@ import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import { db } from "@/lib/db";
 import { audit, createSession, destroyOtherSessions, destroySession, requireUser } from "@/lib/auth";
-import { hashPassword, passwordProblem, verifyPassword } from "@/lib/password";
+import { hashPassword, needsRehash, passwordProblem, verifyPassword } from "@/lib/password";
+import { confirmPassword, tooManyAttempts } from "@/lib/password-check";
 import { blockedFor, clientIp, hit, reset } from "@/lib/rate-limit";
 import { safeNext } from "@/lib/safe-redirect";
 import { canBeExpert, isRpps, normalizeRpps, PROFESSIONS } from "@/lib/professions";
@@ -78,9 +79,9 @@ export async function signUp(_: FormState, form: FormData): Promise<FormState> {
   const newsletter = !!profession && form.get("newsletter") === "1";
   const signupKey = `signup:ip:${await clientIp()}`;
   const emailKey = `signup:email:${email}`;
-  const wait = Math.max(blockedFor(signupKey, SIGNUP_MAX_PER_IP, SIGNUP_WINDOW_MS), blockedFor(emailKey, SIGNUP_MAX_PER_EMAIL, SIGNUP_WINDOW_MS));
+  const wait = Math.max(await blockedFor(signupKey, SIGNUP_MAX_PER_IP, SIGNUP_WINDOW_MS), await blockedFor(emailKey, SIGNUP_MAX_PER_EMAIL, SIGNUP_WINDOW_MS));
   if (wait) return tooMany(t, wait);
-  hit(emailKey);
+  await hit(emailKey);
 
   const exists = await db.user.findUnique({ where: { email } });
   if (exists) return { error: t("Un compte existe déjà avec cette adresse. Connectez-vous.") };
@@ -98,7 +99,7 @@ export async function signUp(_: FormState, form: FormData): Promise<FormState> {
       practitioner: profession ? { create: { profession, country: countryCode, languages: practicesInFrance(countryCode) ? ["fr"] : [] } } : undefined,
     },
   });
-  hit(signupKey);
+  await hit(signupKey);
   await audit(user.id, "user.signup", "User", user.id);
   if (newsletter) await audit(user.id, "user.notify_prefs", "User", user.id, { newsletter, source: "inscription" });
   const next = safeNext(str(form, "next"), "");
@@ -114,17 +115,19 @@ export async function signIn(_: FormState, form: FormData): Promise<FormState> {
   const emailKey = `signin:email:${email}`;
   const { t } = await getT();
   // Vérifié avant le calcul (coûteux) du hash : un attaquant bloqué ne consomme plus de CPU.
-  const wait = Math.max(blockedFor(emailKey, SIGNIN_MAX_FAILURES_PER_EMAIL, SIGNIN_WINDOW_MS), blockedFor(ipKey, SIGNIN_MAX_FAILURES_PER_IP, SIGNIN_WINDOW_MS));
+  const wait = Math.max(await blockedFor(emailKey, SIGNIN_MAX_FAILURES_PER_EMAIL, SIGNIN_WINDOW_MS), await blockedFor(ipKey, SIGNIN_MAX_FAILURES_PER_IP, SIGNIN_WINDOW_MS));
   if (wait) return tooMany(t, wait);
   const user = await db.user.findUnique({ where: { email } });
   const ok = await verifyPassword(password, user?.passwordHash);
   if (!user || !ok) {
-    hit(emailKey);
-    hit(ipKey);
+    await hit(emailKey);
+    await hit(ipKey);
     if (user) await audit(user.id, "user.signin_failed", "User", user.id);
     return { error: t("E-mail ou mot de passe incorrect.") };
   }
-  reset(emailKey);
+  await reset(emailKey);
+  // Hash d'un ancien format ou de paramètres dépassés : recalculé maintenant que le mot de passe est connu.
+  if (user.passwordHash && needsRehash(user.passwordHash)) await db.user.update({ where: { id: user.id }, data: { passwordHash: await hashPassword(password) } });
   // Double authentification : le mot de passe ne suffit pas, le code de l'application est demandé ensuite.
   if (user.totpEnabledAt) {
     await audit(user.id, "user.signin_password", "User", user.id);
@@ -215,7 +218,9 @@ export async function changePassword(_: FormState, form: FormData): Promise<Form
   const current = String(form.get("current") ?? "");
   const next = String(form.get("next") ?? "");
   const { t } = await getT();
-  if (!(await verifyPassword(current, user.passwordHash))) return { error: t("Mot de passe actuel incorrect.") };
+  const check = await confirmPassword(user.id, current, user.passwordHash);
+  if (check.wait) return tooManyAttempts(t, check.wait);
+  if (!check.ok) return { error: t("Mot de passe actuel incorrect.") };
   const pwErr = passwordProblem(next);
   if (pwErr) return { error: t(pwErr) };
   if (next !== String(form.get("confirm") ?? "")) return { error: t("Les deux mots de passe ne correspondent pas.") };
@@ -273,10 +278,10 @@ export async function requestPasswordReset(_: FormState, form: FormData): Promis
   if (!emailOk(email)) return { error: t("Adresse e-mail invalide.") };
   const ipKey = `reset:ip:${await clientIp()}`;
   const emailKey = `reset:email:${email}`;
-  const wait = Math.max(blockedFor(ipKey, RESET_MAX_PER_IP, RESET_WINDOW_MS), blockedFor(emailKey, RESET_MAX_PER_EMAIL, RESET_WINDOW_MS));
+  const wait = Math.max(await blockedFor(ipKey, RESET_MAX_PER_IP, RESET_WINDOW_MS), await blockedFor(emailKey, RESET_MAX_PER_EMAIL, RESET_WINDOW_MS));
   if (wait) return tooMany(t, wait);
-  hit(ipKey);
-  hit(emailKey);
+  await hit(ipKey);
+  await hit(emailKey);
   const user = await db.user.findUnique({ where: { email } });
   if (user) {
     // La page d'origine suit le lien : retour à cette page après le nouveau mot de passe.
@@ -308,7 +313,7 @@ export async function resetPassword(_: FormState, form: FormData): Promise<FormS
     data: { passwordHash: await hashPassword(password), ...(t.user.emailVerifiedAt ? {} : { emailVerifiedAt: new Date() }) },
   });
   await db.session.deleteMany({ where: { userId: t.userId } });
-  reset(`signin:email:${t.user.email}`);
+  await reset(`signin:email:${t.user.email}`);
   await audit(t.userId, "user.reset_password", "User", t.userId);
   // Retour à la page d'origine gardée par le lien. Le lien reçu par e-mail ne remplace pas le second facteur.
   const next = safeNext(t.next, "/tableau-de-bord");
@@ -323,9 +328,9 @@ export async function resendVerification(_: FormState): Promise<FormState> {
   const { t } = await getT();
   if (user.emailVerifiedAt) return { ok: t("Votre adresse est déjà confirmée.") };
   const key = `verify:user:${user.id}`;
-  const wait = blockedFor(key, VERIFY_RESEND_MAX, RESET_WINDOW_MS);
+  const wait = await blockedFor(key, VERIFY_RESEND_MAX, RESET_WINDOW_MS);
   if (wait) return tooMany(t, wait);
-  hit(key);
+  await hit(key);
   await sendVerification(user, !!user.practitioner);
   return { ok: t("Lien envoyé à {email}.", { email: user.email }) };
 }
@@ -362,7 +367,9 @@ export async function deleteAccount(_: FormState, form: FormData): Promise<FormS
   const user = await requireUser();
   const { t } = await getT();
   if (form.get("confirm") !== "1") return { error: t("Cochez la case de confirmation.") };
-  if (!(await verifyPassword(String(form.get("password") ?? ""), user.passwordHash))) return { error: t("Mot de passe incorrect.") };
+  const check = await confirmPassword(user.id, String(form.get("password") ?? ""), user.passwordHash);
+  if (check.wait) return tooManyAttempts(t, check.wait);
+  if (!check.ok) return { error: t("Mot de passe incorrect.") };
   const blocking = await soleAdminOrgs(user.id);
   if (blocking.length)
     return { error: t("Vous êtes le seul administrateur de {orgs} : nommez d'abord un autre administrateur (Membres et réglages), ou retirez les autres membres.", { orgs: blocking.join(", ") }) };

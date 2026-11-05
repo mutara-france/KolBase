@@ -8,7 +8,8 @@ export const ARTICLE_CATEGORIES = ["Plateforme", "Réglementation", "Événement
 export type Inline = { text: string; bold?: boolean; href?: string };
 export type Block = { kind: "h2"; text: string } | { kind: "p"; parts: Inline[] } | { kind: "ul"; items: Inline[][] };
 
-const safeHref = (h: string) => (/^https?:\/\/[^\s<>"]+$/i.test(h) || /^\/[^\s<>"]*$/.test(h) ? h : null);
+// Lien absolu http(s), ou chemin interne : « //hôte » (adresse relative au protocole) mènerait hors du site.
+const safeHref = (h: string) => (/^https?:\/\/[^\s<>"]+$/i.test(h) || /^\/(?![/\\])[^\s<>"]*$/.test(h) ? h : null);
 
 export function inline(text: string): Inline[] {
   const out: Inline[] = [];

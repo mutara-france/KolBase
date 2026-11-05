@@ -28,6 +28,8 @@ import { country, licenseRule, practicesInFrance, registryLink } from "@/lib/cou
 import { ConfirmButton } from "@/components/ConfirmButton";
 import { ExemptionOffer } from "@/components/AdminForms";
 import { adminTwoFactorRequired } from "@/lib/two-factor";
+import { TASK_NAME, taskHealth } from "@/lib/task-health";
+import { TableWrap } from "@/components/TableWrap";
 
 export const metadata = { title: "Administration — KolBase" };
 export const dynamic = "force-dynamic";
@@ -67,6 +69,8 @@ export default async function Page({ searchParams }: { searchParams: Promise<{ o
     }),
   ]);
   const pending = orgs.filter((o) => o.verification === "PENDING");
+  // Tâches planifiées : une alerte en tête de l'administration dès qu'elles ne tournent plus.
+  const tasks = process.env.CRON_SECRET ? taskHealth(await db.taskRun.findUnique({ where: { name: TASK_NAME } })) : null;
   // Plusieurs organisations sur un même SIREN : doublon ou tentative d'usurpation, à examiner.
   const bySiren = new Map<string, typeof orgs>();
   for (const o of orgs) if (o.siren) bySiren.set(o.siren, [...(bySiren.get(o.siren) ?? []), o]);
@@ -82,6 +86,7 @@ export default async function Page({ searchParams }: { searchParams: Promise<{ o
       <SiteHeader />
       <main className="stack">
         <h1>Administration KolBase</h1>
+        {tasks && !tasks.ok && <p className="notice warn">Tâches planifiées : {tasks.detail}</p>}
         <nav className="tabs">
           <Link href="?onglet=organisations" className={onglet === "organisations" ? "active" : ""}>Organisations ({pending.length} à valider)</Link>
           <Link href="?onglet=praticiens" className={onglet === "praticiens" ? "active" : ""}>Identités ({rppsQueue.length} à vérifier)</Link>
@@ -211,6 +216,7 @@ export default async function Page({ searchParams }: { searchParams: Promise<{ o
           <LaunchChecklist
             demoOrgs={orgs.filter((x) => x.id.startsWith("demo-")).length}
             admins={await db.user.findMany({ where: { email: { in: platformAdminEmails() } }, select: { email: true, emailVerifiedAt: true } })}
+            tasks={tasks}
           />
         )}
 
@@ -399,19 +405,21 @@ async function ServicesAdmin() {
           e-mailings commandés et lettres libres confondus : au-delà, l&apos;envoi est refusé.
         </p>
         {campaigns.length === 0 ? <p className="muted">Aucun envoi pour l&apos;instant.</p> : (
-          <table className="table" tabIndex={0}>
-            <thead><tr><th>Date</th><th>Objet</th><th>Destinataires</th><th>Commande liée</th></tr></thead>
-            <tbody>
-              {campaigns.map((c) => (
-                <tr key={c.id}>
-                  <td>{c.sentAt ? formatDate(c.sentAt) : "envoi en cours"}</td>
-                  <td>{c.subject}</td>
-                  <td>{c.recipients}</td>
-                  <td>{c.order ? <>{c.order.label} · {c.order.organization.name} · <Link href={`/evenements/${c.order.event.id}`}>{c.order.event.title}</Link></> : "Lettre libre"}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+          <TableWrap label="Lettre d'information">
+            <table className="table">
+              <thead><tr><th>Date</th><th>Objet</th><th>Destinataires</th><th>Commande liée</th></tr></thead>
+              <tbody>
+                {campaigns.map((c) => (
+                  <tr key={c.id}>
+                    <td data-label="Date">{c.sentAt ? formatDate(c.sentAt) : "envoi en cours"}</td>
+                    <td data-label="Objet">{c.subject}</td>
+                    <td data-label="Destinataires">{c.recipients}</td>
+                    <td data-label="Commande liée">{c.order ? <>{c.order.label} · {c.order.organization.name} · <Link href={`/evenements/${c.order.event.id}`}>{c.order.event.title}</Link></> : "Lettre libre"}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </TableWrap>
         )}
       </section>
       <section className="card stack-sm">
@@ -469,36 +477,38 @@ async function BillingAdmin() {
         {paying.length} abonnement{paying.length > 1 ? "s" : ""} en cours, revenu mensuel hors essais : {formatEUR(mrr)} HT.
       </p>
       <p className="hint scroll-hint">Tableau plus large que l&apos;écran : faites-le défiler vers la droite pour la colonne Gratuité.</p>
-      <table className="table" tabIndex={0} aria-label="Abonnements des organisations">
-        <thead><tr><th>Organisation</th><th>Offre</th><th>Statut</th><th>Échéance</th><th>Gratuité</th></tr></thead>
-        <tbody>
-          {orgs.map((o) => {
-            const st = displayStatus(o.subscription, now);
-            return (
-              <tr key={o.id}>
-                <td>{o.name}</td>
-                <td>{PLANS[planFor(o.kind)].label.replace("Abonnement ", "")}{o.subscription && ["essai", "active", "impayee"].includes(o.subscription.status) ? <div className="text-xs muted">{asInterval(o.subscription.interval) === "year" ? "annuel" : "mensuel"}</div> : null}</td>
-                <td><span className={`pill ${["active", "essai", "offerte"].includes(st) ? "ok" : st === "impayee" ? "wait" : ""}`}>{STATUS_LABEL[st]}</span>{o.subscription?.triggeredAt ? <div className="text-xs muted">{o.subscription.triggeredBy}</div> : null}</td>
-                <td>{o.subscription?.trialEndsAt && o.subscription.status === "essai" ? `essai → ${formatDate(o.subscription.trialEndsAt)}` : o.subscription?.currentPeriodEnd ? formatDate(o.subscription.currentPeriodEnd) : "—"}</td>
-                <td>
-                  {exempt(o.subscription, now) ? (
-                    <form action={setExemption} className="inline wrap">
-                      <input type="hidden" name="orgId" value={o.id} />
-                      <span className="text-xs">jusqu&apos;au {formatDate(o.subscription!.exemptUntil!)}{o.subscription!.exemptNote ? ` · ${o.subscription!.exemptNote}` : ""}</span>
-                      <input type="hidden" name="remove" value="1" />
-                      <ConfirmButton className="link" confirm="retirer la gratuité" summary={<>{o.name} est prévenue par e-mail ; {o.subscription?.stripeSubscriptionId && ["active", "essai", "impayee"].includes(o.subscription.status) ? (o.verification === "SUSPENDED" ? "la facturation de son abonnement Stripe reste en pause pendant la suspension." : "la facturation de son abonnement Stripe reprend.") : "pour continuer à agir, un administrateur devra activer l'abonnement."}</>}>
-                        retirer
-                      </ConfirmButton>
-                    </form>
-                  ) : (
-                    <ExemptionOffer orgId={o.id} min={today} />
-                  )}
-                </td>
-              </tr>
-            );
-          })}
-        </tbody>
-      </table>
+      <TableWrap label="Abonnements des organisations">
+        <table className="table">
+          <thead><tr><th>Organisation</th><th>Offre</th><th>Statut</th><th>Échéance</th><th>Gratuité</th></tr></thead>
+          <tbody>
+            {orgs.map((o) => {
+              const st = displayStatus(o.subscription, now);
+              return (
+                <tr key={o.id}>
+                  <td data-label="Organisation">{o.name}</td>
+                  <td data-label="Offre">{PLANS[planFor(o.kind)].label.replace("Abonnement ", "")}{o.subscription && ["essai", "active", "impayee"].includes(o.subscription.status) ? <div className="text-xs muted">{asInterval(o.subscription.interval) === "year" ? "annuel" : "mensuel"}</div> : null}</td>
+                  <td data-label="Statut"><span className={`pill ${["active", "essai", "offerte"].includes(st) ? "ok" : st === "impayee" ? "wait" : ""}`}>{STATUS_LABEL[st]}</span>{o.subscription?.triggeredAt ? <div className="text-xs muted">{o.subscription.triggeredBy}</div> : null}</td>
+                  <td data-label="Échéance">{o.subscription?.trialEndsAt && o.subscription.status === "essai" ? `essai → ${formatDate(o.subscription.trialEndsAt)}` : o.subscription?.currentPeriodEnd ? formatDate(o.subscription.currentPeriodEnd) : "—"}</td>
+                  <td data-label="Gratuité">
+                    {exempt(o.subscription, now) ? (
+                      <form action={setExemption} className="inline wrap">
+                        <input type="hidden" name="orgId" value={o.id} />
+                        <span className="text-xs">jusqu&apos;au {formatDate(o.subscription!.exemptUntil!)}{o.subscription!.exemptNote ? ` · ${o.subscription!.exemptNote}` : ""}</span>
+                        <input type="hidden" name="remove" value="1" />
+                        <ConfirmButton className="link" confirm="retirer la gratuité" summary={<>{o.name} est prévenue par e-mail ; {o.subscription?.stripeSubscriptionId && ["active", "essai", "impayee"].includes(o.subscription.status) ? (o.verification === "SUSPENDED" ? "la facturation de son abonnement Stripe reste en pause pendant la suspension." : "la facturation de son abonnement Stripe reprend.") : "pour continuer à agir, un administrateur devra activer l'abonnement."}</>}>
+                          retirer
+                        </ConfirmButton>
+                      </form>
+                    ) : (
+                      <ExemptionOffer orgId={o.id} min={today} />
+                    )}
+                  </td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </TableWrap>
     </section>
   );
 }
@@ -513,25 +523,27 @@ async function NewsAdmin() {
       </div>
       <p className="muted">Publiées dans la rubrique « Actualités » et sur la page d&apos;accueil (les trois plus récentes).</p>
       {articles.length === 0 ? <p className="muted">Aucune actualité.</p> : (
-        <table className="table" tabIndex={0}>
-          <thead><tr><th>Titre</th><th>Rubrique</th><th>Statut</th><th>Mise à jour</th></tr></thead>
-          <tbody>
-            {articles.map((a) => (
-              <tr key={a.id}>
-                <td><Link href={`/admin/actualites/${a.id}`}>{a.title}</Link></td>
-                <td>{a.category}</td>
-                <td><span className={`pill ${a.publishedAt ? "ok" : "wait"}`}>{a.publishedAt ? `Publiée le ${formatDate(a.publishedAt)}` : "Brouillon"}</span></td>
-                <td>{formatDate(a.updatedAt)}</td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
+        <TableWrap label="Actualités">
+          <table className="table">
+            <thead><tr><th>Titre</th><th>Rubrique</th><th>Statut</th><th>Mise à jour</th></tr></thead>
+            <tbody>
+              {articles.map((a) => (
+                <tr key={a.id}>
+                  <td data-label="Titre"><Link href={`/admin/actualites/${a.id}`}>{a.title}</Link></td>
+                  <td data-label="Rubrique">{a.category}</td>
+                  <td data-label="Statut"><span className={`pill ${a.publishedAt ? "ok" : "wait"}`}>{a.publishedAt ? `Publiée le ${formatDate(a.publishedAt)}` : "Brouillon"}</span></td>
+                  <td data-label="Mise à jour">{formatDate(a.updatedAt)}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </TableWrap>
       )}
     </section>
   );
 }
 
-function LaunchChecklist({ demoOrgs, admins }: { demoOrgs: number; admins: { email: string; emailVerifiedAt: Date | null }[] }) {
+function LaunchChecklist({ demoOrgs, admins, tasks }: { demoOrgs: number; admins: { email: string; emailVerifiedAt: Date | null }[]; tasks: { ok: boolean; detail: string } | null }) {
   const unconfirmed = admins.filter((a) => !a.emailVerifiedAt).map((a) => a.email);
   const missing = platformAdminEmails().filter((e) => !admins.some((a) => a.email.toLowerCase() === e));
   const legalGaps = missingLegal();
@@ -557,7 +569,13 @@ function LaunchChecklist({ demoOrgs, admins }: { demoOrgs: number; admins: { ema
     { ok: mailEnabled(), label: "Envoi d'e-mails (SMTP_URL, MAIL_FROM)", detail: mailEnabled() ? `Expéditeur : ${process.env.MAIL_FROM ?? "par défaut"}` : "Non configuré : aucun e-mail n'est envoyé (mot de passe oublié, notifications)." },
     { ok: storageEnabled(), label: "Stockage des documents (S3_*)", detail: storageEnabled() ? `Compartiment : ${process.env.S3_BUCKET}` : "Non configuré : le dépôt de documents est désactivé." },
     { ok: esign && !!webhookSecret() && !signatureSandbox(), optional: !esign, label: "Signature électronique (YOUSIGN_*, facultatif)", detail: esignDetail },
-    { ok: !!process.env.CRON_SECRET, label: "Tâches planifiées (CRON_SECRET, service cron kolbase-taches)", detail: process.env.CRON_SECRET ? "Configurées : rappels de la veille, attestations et questionnaires, purge des sessions expirées (toutes les heures)." : "Non configurées : synchroniser le Blueprint Render (service cron) ; ni rappels ni envois après les événements." },
+    {
+      ok: !!tasks?.ok,
+      label: "Tâches planifiées (CRON_SECRET, service cron kolbase-taches)",
+      detail: tasks
+        ? `${tasks.detail}${process.env.HEARTBEAT_URL ? " Surveillance externe active (HEARTBEAT_URL)." : " HEARTBEAT_URL non définie : aucune alerte si le cron s'arrête (voir docs/exploitation.md)."}`
+        : "Non configurées : synchroniser le Blueprint Render (service cron) ; ni rappels ni envois après les événements.",
+    },
     // Facturation : en alerte tant que la TVA (STRIPE_TAX_RATE) n'est pas appliquée aux abonnements.
     { ok: stripeEnabled() && !!process.env.STRIPE_WEBHOOK_SECRET && !!process.env.STRIPE_TAX_RATE, label: "Facturation (STRIPE_SECRET_KEY, STRIPE_WEBHOOK_SECRET, STRIPE_TAX_RATE)", detail: stripeEnabled() ? (process.env.STRIPE_WEBHOOK_SECRET ? `Active${process.env.STRIPE_TAX_RATE ? ", TVA appliquée" : " (STRIPE_TAX_RATE à définir pour la TVA)"}. Notifications : <APP_URL>/api/stripe/webhook.` : "Clé définie mais secret des notifications manquant : déclarer <APP_URL>/api/stripe/webhook chez Stripe.") : "Inactive : abonnements non facturés, toutes les fonctions accessibles." },
     {

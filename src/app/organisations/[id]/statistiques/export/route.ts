@@ -2,12 +2,13 @@ import { getCurrentUser } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { toCSV } from "@/lib/events";
 import { orgStats, STATS_ROLES } from "@/lib/org-stats";
+import { hasMemberRole } from "@/lib/org-roles";
 
 /** Export CSV des statistiques d'une année : budget par trimestre, types, experts, spécialités, événements, délais. */
 export async function GET(req: Request, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
   const user = await getCurrentUser();
-  const allowed = user?.memberships.some((m) => m.organizationId === id && STATS_ROLES.includes(m.role));
+  const allowed = !!user && hasMemberRole(user, id, STATS_ROLES);
   const org = allowed ? await db.organization.findUnique({ where: { id }, select: { name: true, kind: true } }) : null;
   if (!org || org.kind === "PRESTATAIRE") return new Response("Introuvable.", { status: 404 });
   const now = new Date().getFullYear();
