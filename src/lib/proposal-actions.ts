@@ -7,7 +7,7 @@ import { db } from "@/lib/db";
 import { audit, requireUser } from "@/lib/auth";
 import { eurToCents, str, UNITS_INVALID, unitsOrNull } from "@/lib/form";
 import { collabType, PROPOSAL_MAX_ORGS, PROPOSAL_ORIGIN, PROPOSAL_WITHDRAWN, PROPOSALS_PER_MONTH, proposalText } from "@/lib/projects";
-import { ALLOWED_TYPES, MAX_UPLOAD_BYTES, putObject, safeFileName, storageEnabled } from "@/lib/storage";
+import { ALLOWED_TYPES, matchesType, MAX_UPLOAD_BYTES, putObject, safeFileName, storageEnabled } from "@/lib/storage";
 import { notifyProposal, notifyProposalWithdrawnByExpert } from "@/lib/notifications";
 import { getT } from "@/lib/i18n/server";
 import { proposalsThisMonth } from "@/lib/proposals";
@@ -67,7 +67,8 @@ export async function submitProposal(_: ProposalState, form: FormData): Promise<
     if (file.size > MAX_UPLOAD_BYTES) return { error: t("Fichier trop lourd : 10 Mo au maximum.") };
     if (!(file.type in ALLOWED_TYPES)) return { error: t("Format non accepté : PDF, JPEG, PNG, Word, Excel ou PowerPoint.") };
     const bytes = new Uint8Array(await file.arrayBuffer());
-    if (file.type === "application/pdf" && new TextDecoder().decode(bytes.slice(0, 5)) !== "%PDF-") return { error: t("Ce fichier n'est pas un PDF valide.") };
+    if (!matchesType(file.type, bytes))
+      return { error: file.type === "application/pdf" ? t("Ce fichier n'est pas un PDF valide.") : t("Format non accepté : PDF, JPEG, PNG, Word, Excel ou PowerPoint.") };
     attachment = { bytes, name: file.name.slice(0, 200), type: file.type };
   }
 

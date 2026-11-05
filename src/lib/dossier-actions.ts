@@ -8,6 +8,7 @@ import { requireMembership } from "@/lib/orgs";
 import { MATERIAL_KINDS, PROJECT_ROLES, REVIEW_ROLES } from "@/lib/projects";
 import { eurToCents, str } from "@/lib/form";
 import { getT } from "@/lib/i18n/server";
+import { hasMemberRole } from "@/lib/org-roles";
 
 export type ActionState = { error?: string; ok?: string } | undefined;
 const okUrl = (u: string) => !u || /^https?:\/\/\S+$/i.test(u);
@@ -74,7 +75,7 @@ async function canSubmit(userId: string, projectId: string) {
   const user = await requireUser();
   const project = await db.project.findUnique({ where: { id: projectId }, include: { experts: { include: { practitioner: true } } } });
   if (!project) return null;
-  const isOrg = user.memberships.some((m) => m.organizationId === project.organizationId && PROJECT_ROLES.includes(m.role));
+  const isOrg = hasMemberRole(user, project.organizationId, PROJECT_ROLES);
   const isExpert = project.experts.some((e) => e.practitioner.userId === userId && !["ATT_EXPERTS", "DECLINE"].includes(e.status));
   return isOrg || isExpert ? project : null;
 }

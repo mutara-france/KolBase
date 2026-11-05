@@ -58,7 +58,7 @@ export async function aiDraft(form: FormData): Promise<AiResult> {
   const user = await requireUser();
   if (!aiEnabled()) return { error: "L'assistant de rédaction n'est pas activé sur cette plateforme." };
   const key = `ai:${user.id}`;
-  if (blockedFor(key, PER_HOUR, 60 * 60 * 1000)) return { error: "Vous avez beaucoup sollicité l'assistant : réessayez dans une heure." };
+  if (await blockedFor(key, PER_HOUR, 60 * 60 * 1000)) return { error: "Vous avez beaucoup sollicité l'assistant : réessayez dans une heure." };
   const kind = str(form, "aiKind");
   const orgId = str(form, "orgId");
   let prompt: string | null = null;
@@ -99,7 +99,7 @@ export async function aiDraft(form: FormData): Promise<AiResult> {
     return { error: "Demande inconnue." };
   }
 
-  hit(key);
+  await hit(key);
   try {
     const text = await aiComplete(prompt, kind === "programme" ? 1600 : 900);
     await audit(user.id, "ai.draft", "Organization", orgId, { kind });
@@ -127,8 +127,8 @@ export async function suggestExpertsAction(form: FormData): Promise<SuggestResul
   if (suggestions.length === 0) return { suggestions, summary: undefined };
   let summary: string | undefined;
   const key = `ai:${user.id}`;
-  if (aiEnabled() && !blockedFor(key, PER_HOUR, 60 * 60 * 1000)) {
-    hit(key);
+  if (aiEnabled() && !await blockedFor(key, PER_HOUR, 60 * 60 * 1000)) {
+    await hit(key);
     const type = collabType(need.typeId);
     const prompt = `Besoin d'une organisation du secteur dentaire : « ${need.title || "[sans titre]"} », ${type?.label ?? "collaboration"}${need.area ? `, domaine : ${need.area}` : ""}.${need.description ? `\nObjet : ${need.description}` : ""}\n\nExperts présélectionnés par KolBase (données du profil, liens d'intérêts connus) :\n${suggestions.map((s, i) => `${i + 1}. ${s.name} (${s.detail}) — atouts : ${s.reasons.join(" ; ") || "aucun"}${s.notes.length ? ` — ${s.notes.join(" ; ")}` : ""}${s.warnings.length ? ` — vigilance : ${s.warnings.join(" ; ")}` : ""}`).join("\n")}\n\nEn 4 à 6 lignes, recommande quels experts solliciter en priorité et pourquoi, en t'appuyant uniquement sur ces informations. Favorise la diversité des experts sollicités et signale les liens d'intérêts à examiner. Pas de liste numérotée, pas de jugement sur les personnes.`;
     try {
@@ -147,7 +147,7 @@ export async function aiReviewProject(form: FormData): Promise<AiResult> {
   const { user, org } = await requireMembership(orgId, COMPLIANCE_ROLES);
   if (!aiEnabled()) return { error: "L'assistant n'est pas activé sur cette plateforme." };
   const key = `ai:${user.id}`;
-  if (blockedFor(key, PER_HOUR, 60 * 60 * 1000)) return { error: "Vous avez beaucoup sollicité l'assistant : réessayez dans une heure." };
+  if (await blockedFor(key, PER_HOUR, 60 * 60 * 1000)) return { error: "Vous avez beaucoup sollicité l'assistant : réessayez dans une heure." };
   const p = await db.project.findFirst({
     where: { id: str(form, "projectId"), organizationId: orgId },
     include: {
@@ -185,7 +185,7 @@ export async function aiReviewProject(form: FormData): Promise<AiResult> {
     "3) « Message proposé au chef de projet : » 3 à 5 lignes, courtoises et précises.",
     "Tu ne rends pas d'avis juridique : ta lecture est une aide, la décision appartient à l'équipe conformité.",
   ].filter(Boolean).join("\n");
-  hit(key);
+  await hit(key);
   try {
     const text = await aiComplete(prompt, 1100);
     await audit(user.id, "ai.review", "Project", p.id);

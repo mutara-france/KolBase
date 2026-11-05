@@ -18,6 +18,28 @@ export const ORG_FAMILIES = [
 export type OrgFamily = (typeof ORG_FAMILIES)[number]["id"];
 export const orgFamily = (kind: OrgKind): OrgFamily => ORG_FAMILIES.find((f) => (f.kinds as readonly OrgKind[]).includes(kind))!.id;
 
+/** Ce que les contrôles d'accès lisent d'un compte : ses appartenances (avec l'exigence de l'organisation) et sa 2FA. */
+export type AccessUser = { totpEnabledAt: Date | null; memberships: { organizationId: string; role: OrgRole; organization: { require2fa: boolean } }[] };
+
+/**
+ * Rôles de l'utilisateur dans une organisation, pour tout contrôle d'accès fait hors de requireMembership (téléchargements,
+ * actions partagées entre l'expert et l'organisation). Aucun tant que l'organisation exige la double authentification et
+ * que l'utilisateur ne l'a pas activée : même règle que requireMembership, qui renvoie alors vers Mon compte › Sécurité.
+ * Sans elle, un document, une convention signée ou un devis restaient téléchargeables par adresse directe avec le seul
+ * mot de passe.
+ */
+export function memberRoles(user: AccessUser, orgId: string): OrgRole[] {
+  const ms = user.memberships.filter((m) => m.organizationId === orgId);
+  if (!user.totpEnabledAt && ms.some((m) => m.organization.require2fa)) return [];
+  return ms.map((m) => m.role);
+}
+
+/** L'utilisateur a-t-il, dans cette organisation, l'un de ces rôles (ou n'importe lequel sans liste) ? Voir memberRoles. */
+export function hasMemberRole(user: AccessUser, orgId: string, roles?: readonly OrgRole[]) {
+  const mine = memberRoles(user, orgId);
+  return roles ? mine.some((r) => roles.includes(r)) : mine.length > 0;
+}
+
 /**
  * Quatre rôles. Le cloisonnement des décisions repose surtout sur le contrôle à quatre yeux : la personne qui monte
  * ou soumet un dossier ne le valide pas, celle qui soumet un support ne l'approuve pas (voir lib/four-eyes).
