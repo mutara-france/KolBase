@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, type PointerEvent as RPointerEvent } from "react";
+import { TableWrap } from "@/components/TableWrap";
 
 /**
  * Graphiques légers en HTML (aucune dépendance) : colonnes empilées, barres classées, jauge.
@@ -153,11 +154,13 @@ function DataTable({ caption, head, rows }: { caption: string; head: string[]; r
   return (
     <details className="viz-table">
       <summary>Voir les données</summary>
-      <table className="table" tabIndex={0}>
-        <caption className="sr-only">{caption}</caption>
-        <thead><tr>{head.map((h, i) => <th key={i} scope="col">{h}</th>)}</tr></thead>
-        <tbody>{rows.map((r, i) => <tr key={i}>{r.map((c, j) => (j === 0 ? <th key={j} scope="row">{c}</th> : <td key={j} className="num">{c}</td>))}</tr>)}</tbody>
-      </table>
+      <TableWrap label={caption}>
+        <table className="table">
+          <caption className="sr-only">{caption}</caption>
+          <thead><tr>{head.map((h, i) => <th key={i} scope="col">{h}</th>)}</tr></thead>
+          <tbody>{rows.map((r, i) => <tr key={i}>{r.map((c, j) => (j === 0 ? <th key={j} scope="row">{c}</th> : <td key={j} className="num" data-label={head[j]}>{c}</td>))}</tr>)}</tbody>
+        </table>
+      </TableWrap>
     </details>
   );
 }

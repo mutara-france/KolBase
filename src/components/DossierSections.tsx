@@ -16,6 +16,7 @@ import { fmtDate, type Locale, type T } from "@/lib/i18n";
 import { getT } from "@/lib/i18n/server";
 import { canSendAgain, SIGNATURE_LABEL, signatureEnabled } from "@/lib/yousign";
 import type { ConventionSignature, ProjectStatus } from "@/generated/prisma/client";
+import { TableWrap } from "@/components/TableWrap";
 
 export async function ConflictsPanel({ projectId }: { projectId: string }) {
   const conflicts = await detectConflicts(projectId);
@@ -71,35 +72,37 @@ export async function BudgetPanel({ orgId, projectId, canEdit }: { orgId: string
       {pct != null && <div className="gauge-track"><div className={`gauge-fill${over ? " over" : ""}`} style={{ width: `${pct}%` }} /></div>}
       {over && <p className="notice error mt-2">Le total engagé dépasse le budget prévu de {formatEUR(total - budget!)}.</p>}
       {(project.expenses.length > 0 || quotes.length > 0) && (
-        <table className="table mt-3">
-          <thead><tr><th>Date</th><th>Poste</th><th>Montant HT</th><th>Statut</th>{canEdit && <th />}</tr></thead>
-          <tbody>
-            {quotes.map((q) => (
-              <tr key={q.id}>
-                <td>{formatDate(q.updatedAt)}</td>
-                <td>{supplierCategoryLabel(q.rfq.category)} : {q.supplier.name}</td>
-                <td>{formatEUR(q.amountCents)}</td>
-                <td><span className="pill ok">Devis retenu</span></td>
-                {canEdit && <td><a className="link" href={`/organisations/${orgId}/prestataires#rfq-${q.rfqId}`}>Voir le devis</a></td>}
-              </tr>
-            ))}
-            {project.expenses.map((e) => (
-              <tr key={e.id}>
-                <td>{formatDate(e.date)}</td><td>{e.label}</td><td>{formatEUR(e.amountCents)}</td>
-                <td><span className={`pill ${e.status === "payee" ? "ok" : "wait"}`}>{e.status === "payee" ? "Payée" : "Engagée"}</span></td>
-                {canEdit && (
-                  <td>
-                    <form action={updateExpense} className="inline">
-                      <input type="hidden" name="orgId" value={orgId} /><input type="hidden" name="projectId" value={projectId} /><input type="hidden" name="expenseId" value={e.id} />
-                      {e.status !== "payee" && <button className="link" name="status" value="payee">Marquer payée</button>}
-                      <button className="link danger" name="remove" value="1">Retirer</button>
-                    </form>
-                  </td>
-                )}
-              </tr>
-            ))}
-          </tbody>
-        </table>
+        <TableWrap label="Dépenses et devis retenus">
+          <table className="table mt-3">
+            <thead><tr><th>Date</th><th>Poste</th><th>Montant HT</th><th>Statut</th>{canEdit && <th />}</tr></thead>
+            <tbody>
+              {quotes.map((q) => (
+                <tr key={q.id}>
+                  <td data-label="Date">{formatDate(q.updatedAt)}</td>
+                  <td data-label="Poste">{supplierCategoryLabel(q.rfq.category)} : {q.supplier.name}</td>
+                  <td data-label="Montant HT">{formatEUR(q.amountCents)}</td>
+                  <td data-label="Statut"><span className="pill ok">Devis retenu</span></td>
+                  {canEdit && <td><a className="link" href={`/organisations/${orgId}/prestataires#rfq-${q.rfqId}`}>Voir le devis</a></td>}
+                </tr>
+              ))}
+              {project.expenses.map((e) => (
+                <tr key={e.id}>
+                  <td data-label="Date">{formatDate(e.date)}</td><td data-label="Poste">{e.label}</td><td data-label="Montant HT">{formatEUR(e.amountCents)}</td>
+                  <td data-label="Statut"><span className={`pill ${e.status === "payee" ? "ok" : "wait"}`}>{e.status === "payee" ? "Payée" : "Engagée"}</span></td>
+                  {canEdit && (
+                    <td>
+                      <form action={updateExpense} className="inline">
+                        <input type="hidden" name="orgId" value={orgId} /><input type="hidden" name="projectId" value={projectId} /><input type="hidden" name="expenseId" value={e.id} />
+                        {e.status !== "payee" && <button className="link" name="status" value="payee">Marquer payée</button>}
+                        <button className="link danger" name="remove" value="1">Retirer</button>
+                      </form>
+                    </td>
+                  )}
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </TableWrap>
       )}
       {canEdit && (
         <details className="disclosure mt-3">

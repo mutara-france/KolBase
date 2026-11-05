@@ -7,7 +7,7 @@ import { Notice } from "@/components/AuthForms";
 import { ActionForm } from "@/components/ActionForm";
 import { BLOCKED_UNTIL, type Blocked } from "@/lib/billing-plans";
 import { useLocale, useT } from "@/components/I18nProvider";
-import { intlLocale, type Locale } from "@/lib/i18n";
+import { intlLocale, type Locale } from "@/lib/i18n/core";
 import { benefitLimit, hospitalityRegime, type HospitalityLimits } from "@/lib/compliance";
 import { eurToCents } from "@/lib/form";
 import { parseParisDateTime } from "@/lib/events";

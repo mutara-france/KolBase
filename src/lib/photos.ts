@@ -15,6 +15,11 @@ const WORK = 1600;
 /** Image décompressée au plus (pixels) : une petite image piégée ne doit pas occuper toute la mémoire du serveur. */
 const MAX_PIXELS = 50_000_000;
 
+// Instance de 512 Mo, déjà occupée aux trois quarts aux heures chargées : pas de cache d'opérations libvips (jusqu'à
+// 50 Mo gardés après un envoi), un seul fil de calcul par image. Un portrait se traite en moins d'une seconde.
+sharp.cache(false);
+sharp.concurrency(1);
+
 export type Portrait = { data: Buffer; thumb: Buffer };
 
 export async function processPortrait(bytes: Uint8Array): Promise<Portrait | { error: string }> {

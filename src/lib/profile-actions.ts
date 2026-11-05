@@ -68,7 +68,7 @@ export async function importOrcid(_: ActionState, form: FormData): Promise<Actio
   if (orcidOAuth() && !p.orcidVerified) return { error: t("Connectez d'abord votre compte ORCID : l'import ne porte que sur votre propre iD.") };
   const orcid = (orcidOAuth() ? p.orcid ?? "" : str(form, "orcid") || p.orcid || "").toUpperCase().replace(/^HTTPS?:\/\/ORCID\.ORG\//i, "");
   if (!ORCID_RE.test(orcid)) return { error: t("Identifiant ORCID invalide (format 0000-0000-0000-0000).") };
-  let works;
+  let works: Awaited<ReturnType<typeof fetchOrcidWorks>>;
   try {
     works = await fetchOrcidWorks(orcid);
   } catch (e) {

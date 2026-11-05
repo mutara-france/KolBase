@@ -58,7 +58,7 @@ export async function reportTransparencyIssue(_: FormState, form: FormData): Pro
   const comment = str(form, "comment").slice(0, 2000);
   if (comment.length < 10) return { error: t("Décrivez l'erreur en quelques mots.") };
   const key = `transparence:${user.id}`;
-  if (blockedFor(key, 10, 60 * 60 * 1000)) return { error: t("Trop de signalements : réessayez plus tard.") };
+  if (await blockedFor(key, 10, 60 * 60 * 1000)) return { error: t("Trop de signalements : réessayez plus tard.") };
   const kind = str(form, "kind");
   const id = str(form, "id");
   let target: { orgId: string; label: string } | null = null;
@@ -70,7 +70,7 @@ export async function reportTransparencyIssue(_: FormState, form: FormData): Pro
     if (r) target = { orgId: r.event.organizationId, label: `Hospitalités de l'événement « ${r.event.title} »` };
   }
   if (!target) return { error: t("Élément introuvable.") };
-  hit(key);
+  await hit(key);
   await audit(user.id, "transparency.report", kind === "convention" ? "ProjectExpert" : "Registration", id, { orgId: target.orgId });
   notifyTransparencyIssue(target.orgId, `${user.firstName} ${user.lastName}`, target.label, comment);
   return { ok: t("Signalement envoyé à l'équipe conformité de l'organisation.") };
@@ -140,7 +140,7 @@ export async function issueFeeNote(_: FormState, form: FormData): Promise<FormSt
   };
   const vatBp = vatBpOf(prof.vatRegime);
   const year = new Date().getFullYear();
-  let note;
+  let note: Awaited<ReturnType<typeof db.feeNote.create>> | undefined;
   for (let attempt = 0; attempt < 3 && !note; attempt++) {
     const existing = await db.feeNote.findMany({ where: { practitionerId: p.id, number: { startsWith: `NH-${year}-` } }, select: { number: true } });
     try {

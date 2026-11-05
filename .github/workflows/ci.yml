@@ -68,11 +68,15 @@ jobs:
 
       - name: Types
         run: npm run lint
+      # Lint : erreurs de hooks React, variables inutilisées, pièges courants (configuration : biome.json).
+      - name: Lint
+        run: npm run check
       # Fichiers, exports et dépendances inutilisés (configuration : knip.json).
       - name: Code mort
         run: npm run deadcode
+      # Tests unitaires, avec une couverture minimale des modules de règles (vitest.config.mts).
       - name: Tests unitaires
-        run: npm test
+        run: npm run test:coverage
 
       - name: Migrations
         run: npx prisma migrate deploy
@@ -98,6 +102,8 @@ jobs:
         run: |
           npm start > next.log 2>&1 &
           for i in $(seq 1 60); do curl -sf http://localhost:3000/api/health && break; sleep 1; done
+          # Mise en page (débordements, blocs collés, champs sans style) sur la démo intacte, avant le parcours.
+          BASE=http://localhost:3000 npm run test:affichage
           BASE=http://localhost:3000 npm run test:e2e
       - name: Journal du serveur (en cas d'échec)
         if: failure()
