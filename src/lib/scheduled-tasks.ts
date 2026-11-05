@@ -3,6 +3,7 @@ import { db } from "@/lib/db";
 import { eventEnd, FOLLOWUP_DELAY_MS, FOLLOWUP_MAX_AGE_MS, REMINDER_WINDOW_MS } from "@/lib/event-followup";
 import { sendEventFollowUps, sendEventReminders, sendServiceReport } from "@/lib/notifications";
 import { REPORT_DELAY_DAYS } from "@/lib/services";
+import { purgeRateLimits } from "@/lib/rate-limit";
 
 /** Tâches dues : rappels de la veille, puis remerciements (attestation, questionnaire) après les événements. Idempotent. */
 export async function runDueTasks(now = new Date()) {
@@ -32,5 +33,7 @@ export async function runDueTasks(now = new Date()) {
   const tokens = (await db.authToken.deleteMany({ where: { OR: [{ expiresAt: { lt: old } }, { usedAt: { lt: old } }] } })).count;
   // Mesure des services : visites des liens suivis conservées 13 mois (politique de confidentialité).
   const clicks = (await db.serviceClick.deleteMany({ where: { createdAt: { lt: new Date(now.getTime() - 395 * 24 * 3600 * 1000) } } })).count;
-  return { reminders, followUps, reports, purged: { sessions, tokens, clicks } };
+  // Limiteur de débit : tentatives de plus de 24 h.
+  const attempts = await purgeRateLimits(now);
+  return { reminders, followUps, reports, purged: { sessions, tokens, clicks, attempts } };
 }

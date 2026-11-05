@@ -28,6 +28,7 @@ import { country, licenseRule, practicesInFrance, registryLink } from "@/lib/cou
 import { ConfirmButton } from "@/components/ConfirmButton";
 import { ExemptionOffer } from "@/components/AdminForms";
 import { adminTwoFactorRequired } from "@/lib/two-factor";
+import { TASK_NAME, taskHealth } from "@/lib/task-health";
 import { TableWrap } from "@/components/TableWrap";
 
 export const metadata = { title: "Administration — KolBase" };
@@ -68,6 +69,8 @@ export default async function Page({ searchParams }: { searchParams: Promise<{ o
     }),
   ]);
   const pending = orgs.filter((o) => o.verification === "PENDING");
+  // Tâches planifiées : une alerte en tête de l'administration dès qu'elles ne tournent plus.
+  const tasks = process.env.CRON_SECRET ? taskHealth(await db.taskRun.findUnique({ where: { name: TASK_NAME } })) : null;
   // Plusieurs organisations sur un même SIREN : doublon ou tentative d'usurpation, à examiner.
   const bySiren = new Map<string, typeof orgs>();
   for (const o of orgs) if (o.siren) bySiren.set(o.siren, [...(bySiren.get(o.siren) ?? []), o]);
@@ -83,6 +86,7 @@ export default async function Page({ searchParams }: { searchParams: Promise<{ o
       <SiteHeader />
       <main className="stack">
         <h1>Administration KolBase</h1>
+        {tasks && !tasks.ok && <p className="notice warn">Tâches planifiées : {tasks.detail}</p>}
         <nav className="tabs">
           <Link href="?onglet=organisations" className={onglet === "organisations" ? "active" : ""}>Organisations ({pending.length} à valider)</Link>
           <Link href="?onglet=praticiens" className={onglet === "praticiens" ? "active" : ""}>Identités ({rppsQueue.length} à vérifier)</Link>
@@ -212,6 +216,7 @@ export default async function Page({ searchParams }: { searchParams: Promise<{ o
           <LaunchChecklist
             demoOrgs={orgs.filter((x) => x.id.startsWith("demo-")).length}
             admins={await db.user.findMany({ where: { email: { in: platformAdminEmails() } }, select: { email: true, emailVerifiedAt: true } })}
+            tasks={tasks}
           />
         )}
 
@@ -538,7 +543,7 @@ async function NewsAdmin() {
   );
 }
 
-function LaunchChecklist({ demoOrgs, admins }: { demoOrgs: number; admins: { email: string; emailVerifiedAt: Date | null }[] }) {
+function LaunchChecklist({ demoOrgs, admins, tasks }: { demoOrgs: number; admins: { email: string; emailVerifiedAt: Date | null }[]; tasks: { ok: boolean; detail: string } | null }) {
   const unconfirmed = admins.filter((a) => !a.emailVerifiedAt).map((a) => a.email);
   const missing = platformAdminEmails().filter((e) => !admins.some((a) => a.email.toLowerCase() === e));
   const legalGaps = missingLegal();
@@ -564,7 +569,13 @@ function LaunchChecklist({ demoOrgs, admins }: { demoOrgs: number; admins: { ema
     { ok: mailEnabled(), label: "Envoi d'e-mails (SMTP_URL, MAIL_FROM)", detail: mailEnabled() ? `Expéditeur : ${process.env.MAIL_FROM ?? "par défaut"}` : "Non configuré : aucun e-mail n'est envoyé (mot de passe oublié, notifications)." },
     { ok: storageEnabled(), label: "Stockage des documents (S3_*)", detail: storageEnabled() ? `Compartiment : ${process.env.S3_BUCKET}` : "Non configuré : le dépôt de documents est désactivé." },
     { ok: esign && !!webhookSecret() && !signatureSandbox(), optional: !esign, label: "Signature électronique (YOUSIGN_*, facultatif)", detail: esignDetail },
-    { ok: !!process.env.CRON_SECRET, label: "Tâches planifiées (CRON_SECRET, service cron kolbase-taches)", detail: process.env.CRON_SECRET ? "Configurées : rappels de la veille, attestations et questionnaires, purge des sessions expirées (toutes les heures)." : "Non configurées : synchroniser le Blueprint Render (service cron) ; ni rappels ni envois après les événements." },
+    {
+      ok: !!tasks?.ok,
+      label: "Tâches planifiées (CRON_SECRET, service cron kolbase-taches)",
+      detail: tasks
+        ? `${tasks.detail}${process.env.HEARTBEAT_URL ? " Surveillance externe active (HEARTBEAT_URL)." : " HEARTBEAT_URL non définie : aucune alerte si le cron s'arrête (voir docs/exploitation.md)."}`
+        : "Non configurées : synchroniser le Blueprint Render (service cron) ; ni rappels ni envois après les événements.",
+    },
     // Facturation : en alerte tant que la TVA (STRIPE_TAX_RATE) n'est pas appliquée aux abonnements.
     { ok: stripeEnabled() && !!process.env.STRIPE_WEBHOOK_SECRET && !!process.env.STRIPE_TAX_RATE, label: "Facturation (STRIPE_SECRET_KEY, STRIPE_WEBHOOK_SECRET, STRIPE_TAX_RATE)", detail: stripeEnabled() ? (process.env.STRIPE_WEBHOOK_SECRET ? `Active${process.env.STRIPE_TAX_RATE ? ", TVA appliquée" : " (STRIPE_TAX_RATE à définir pour la TVA)"}. Notifications : <APP_URL>/api/stripe/webhook.` : "Clé définie mais secret des notifications manquant : déclarer <APP_URL>/api/stripe/webhook chez Stripe.") : "Inactive : abonnements non facturés, toutes les fonctions accessibles." },
     {

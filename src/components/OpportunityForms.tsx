@@ -7,7 +7,7 @@ import { Notice } from "@/components/AuthForms";
 import { ActionForm } from "@/components/ActionForm";
 import { BLOCKED_UNTIL, type Blocked } from "@/lib/billing-plans";
 import { useLocale, useT } from "@/components/I18nProvider";
-import { intlLocale } from "@/lib/i18n";
+import { intlLocale } from "@/lib/i18n/core";
 
 type CType = { id: string; label: string; category: string; unit: string; fmv: readonly number[] };
 

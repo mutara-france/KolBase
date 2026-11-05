@@ -1,6 +1,7 @@
 import { db } from "@/lib/db";
 import { requireUser } from "@/lib/auth";
 import { PROJECT_VIEW_ROLES } from "@/lib/projects";
+import { hasMemberRole } from "@/lib/org-roles";
 import { getObject, storageEnabled } from "@/lib/storage";
 import { signedConventionKey, signedConventionName } from "@/lib/signature";
 import { downloadSignedDocument, signatureEnabled } from "@/lib/yousign";
@@ -16,7 +17,7 @@ export async function GET(_: Request, { params }: { params: Promise<{ linkId: st
     where: { id: linkId },
     include: { project: { select: { organizationId: true } }, practitioner: { select: { userId: true } }, signature: true },
   });
-  const team = !!link && user.memberships.some((m) => m.organizationId === link.project.organizationId && PROJECT_VIEW_ROLES.includes(m.role));
+  const team = !!link && hasMemberRole(user, link.project.organizationId, PROJECT_VIEW_ROLES);
   const expert = !!link && link.practitioner.userId === user.id;
   const sig = link?.signature;
   if (!link || !(team || expert) || !sig || sig.status !== "done") return new Response("Convention signée introuvable.", { status: 404 });

@@ -193,7 +193,6 @@ const linkIn = (mail) => mail?.text.match(/https?:\/\/\S+/g)?.find((u) => !u.end
   await page.fill('textarea[name="body"]', "Bonjour, je confirme mes disponibilités.");
   await page.click('button:has-text("Envoyer")');
   check("E-mail à l'organisation : nouveau message de l'expert", !!(await waitMail("anne.chevalier@demo.kolbase.local", "Nouveau message de Dr Olivier Girard")));
-  const dossierUrl = page.url();
   await page.goto(`${BASE}/compte`);
   await page.uncheck('form:has(h2:has-text("Notifications")) input[name="email"]');
   await page.click('form:has(h2:has-text("Notifications")) button:has-text("Enregistrer")');
@@ -418,7 +417,7 @@ const linkIn = (mail) => mail?.text.match(/https?:\/\/\S+/g)?.find((u) => !u.end
   const claire = await session();
   await login(claire.page, "claire.morel@demo.kolbase.local");
   await claire.page.goto(`${BASE}/organisations/demo-org-dentalys/dossiers/e2e-prj-be`);
-  let t = await text(claire.page);
+  const t = await text(claire.page);
   check("Dossier hors France : régime « Hors France », obligations belges rappelées", t.includes("Hors France") && t.includes("betransparent.be") && t.includes("Mdeon"));
   check("Dossier hors France : pas de démarche auprès de l'Ordre", !t.includes("Demander l'autorisation à l'Ordre") && !t.includes("Déclaration simple"));
   await claire.page.click('button:has-text("Hors France")');
@@ -1497,7 +1496,7 @@ async function submitNewOrg(page, siren) {
   await part.ctx.close();
   // L'organisateur : avis anonymes, attestations, statistiques.
   await org.page.goto(`${BASE}/organisations/demo-org-dentalys/evenements/demo-ev-soiree-implanto`);
-  let t = await text(org.page);
+  const t = await text(org.page);
   check("Organisateur : avis des participants", t.includes("Avis des participants") && /4,0\s*\/\s*5/.test(t) && t.includes("Très bons échanges") && !/Lambert[^\n]*Très bons/.test(t));
   check("Organisateur : envoi après l'événement indiqué", t.includes("Envoyés le"));
   const all = await org.ctx.request.get(`${BASE}/organisations/demo-org-dentalys/evenements/demo-ev-soiree-implanto/attestations`);
@@ -1514,7 +1513,7 @@ async function submitNewOrg(page, siren) {
   const { ctx, page } = await session();
   await login(page, "camille.petit@demo.kolbase.local");
   await page.goto(`${BASE}/revenus?onglet=facturation`);
-  let t = await text(page);
+  const t = await text(page);
   check("Notes d'honoraires : note existante et convention à facturer", /NH-\d{4}-001/.test(t) && t.includes("Comité scientifique aligneurs"));
   await page.fill('input[name="siret"]', "12345678901234");
   await page.click('form:has(textarea[name="billingAddress"]) button:has-text("Enregistrer")');
@@ -1641,11 +1640,20 @@ async function submitNewOrg(page, siren) {
   const r = await (await fetch(`${BASE}/api/taches`, { method: "POST", headers: { Authorization: `Bearer ${process.env.CRON_SECRET ?? "secret-des-taches-de-test"}` } })).json();
   const left = (await pgc.query(`select count(*)::int n from "Session" where id = 'e2e-old-session'`)).rows[0].n;
   check("Conservation : sessions expirées purgées", left === 0 && r.purged?.sessions >= 1, JSON.stringify(r));
-  await pgc.end();
+  const run = (await pgc.query(`select "okAt", error, result from "TaskRun" where name = 'taches-horaires'`)).rows[0];
+  check("Tâches planifiées : exécution enregistrée", !!run?.okAt && run.error === null && run.result?.purged?.sessions >= 1, JSON.stringify(run));
   const adm = await session();
   await login(adm.page, "anne.chevalier@demo.kolbase.local");
   await adm.page.goto(`${BASE}/admin?onglet=lancement`);
-  check("Lancement : tâches planifiées vérifiées", /OK\s+Tâches planifiées/.test(await text(adm.page)));
+  const launch = await text(adm.page);
+  check("Lancement : tâches planifiées vérifiées", /OK\s+Tâches planifiées/.test(launch) && launch.includes("Dernière réussite il y a") && !launch.includes("Tâches planifiées : Aucune réussite"));
+  // Plus de deux heures sans réussite : bandeau en tête de l'administration, quel que soit l'onglet.
+  // Colonnes sans fuseau, écrites en UTC par Prisma : now() suivrait le fuseau du serveur PostgreSQL.
+  await pgc.query(`update "TaskRun" set "okAt" = timezone('utc', now()) - interval '3 hours', "startedAt" = timezone('utc', now()) - interval '3 hours' where name = 'taches-horaires'`);
+  await adm.page.goto(`${BASE}/admin`);
+  check("Tâches arrêtées : bandeau d'alerte dans /admin", (await text(adm.page)).includes("Tâches planifiées : Aucune réussite depuis 3 h"));
+  await pgc.query(`update "TaskRun" set "okAt" = timezone('utc', now()), "startedAt" = timezone('utc', now()) where name = 'taches-horaires'`);
+  await pgc.end();
   await adm.ctx.close();
 }
 
@@ -1750,9 +1758,14 @@ async function submitNewOrg(page, siren) {
   await fillDossier("Conférence implantologie — abonnement actif");
   check("Abonnement actif : sollicitation envoyée", /\/dossiers\/[^/]+$/.test(page.url()) && !page.url().endsWith("/nouveau"), page.url());
   const sub = [...stripeState.subscriptions.values()].at(-1);
-  await stripeWebhook("customer.subscription.updated", { ...sub, status: "past_due" });
+  // Comme chez Stripe, l'API reflète l'état annoncé : l'application relit l'abonnement au lieu de croire la notification.
+  sub.status = "past_due";
+  await stripeWebhook("customer.subscription.updated", { ...sub, status: "active" }, "evt_retard");
   await page.goto(`${BASE}/organisations/demo-org-cdra/abonnement`);
-  check("Paiement en échec : signalé, sans blocage", (await text(page)).includes("Paiement en attente"));
+  check("Paiement en échec : signalé, sans blocage (état relu chez Stripe)", (await text(page)).includes("Paiement en attente"));
+  await stripeWebhook("customer.subscription.updated", { ...sub }, "evt_retard");
+  check("Stripe : notification rejouée ignorée", stripeState.webhooks.at(-1)?.status === 200 && stripeState.webhooks.at(-1)?.body?.duplicate === true, JSON.stringify(stripeState.webhooks.at(-1)));
+  sub.status = "canceled";
   await stripeWebhook("customer.subscription.deleted", { ...sub, status: "canceled" });
   await page.goto(`${BASE}/organisations/demo-org-cdra/abonnement`);
   check("Résiliation : réactivation proposée sans nouveau mois offert", (await text(page)).includes("Résilié") && (await page.locator('button:has-text("Réactiver l\'abonnement")').count()) === 2 && !(await text(page)).includes("jours offerts"));
@@ -2090,6 +2103,9 @@ async function submitNewOrg(page, siren) {
   await login(lea.page, "lea.rousseau@demo.kolbase.local");
   await lea.page.goto(`${BASE}/organisations/demo-org-orthonova`);
   check("Membre sans double authentification : renvoyé vers « Mon compte »", lea.page.url().includes("/compte?securite=demo-org-orthonova") && (await text(lea.page)).includes("OrthoNova exige la double authentification de ses membres"), lea.page.url());
+  // Même règle pour les téléchargements par adresse directe (ils ne passent pas par les pages de l'espace).
+  const leaStats = await lea.page.request.get(`${BASE}/organisations/demo-org-orthonova/statistiques/export`);
+  check("Membre sans double authentification : export direct refusé", leaStats.status() === 404, String(leaStats.status()));
   await lea.ctx.close();
   // Connexion : mot de passe, puis code ; codes de secours à usage unique ; un code ne sert qu'une fois.
   const s1 = await session();
@@ -3017,7 +3033,6 @@ async function submitNewOrg(page, siren) {
   {
     const before = await q1(`select listed, (select count(*)::int from "OpenCall" where "organizationId" = 'demo-org-cdra' and status = 'open') calls from "Organization" where id = 'demo-org-cdra'`);
     await adm.page.goto(`${BASE}/admin`);
-    const mark = mails.length;
     const card = () => adm.page.locator('section.card:has-text("Collège Dentaire Rhône-Alpes")').first();
     await card().locator('form:has(button:has-text("Suspendre")) input[name="note"]').fill("Contrôle de conformité en cours");
     await card().locator('button:has-text("Suspendre")').click();
@@ -3149,7 +3164,8 @@ async function submitNewOrg(page, siren) {
     await row().locator('button:has-text("retirer")').click();
     check("Retirer la gratuité : confirmation qui annonce la reprise de la facturation", (await row().locator(".confirm-step").innerText()).includes("la facturation de son abonnement Stripe reprend") && !!(await q1(`select "exemptUntil" from "Subscription" where "organizationId" = 'demo-org-orthonova'`))?.exemptUntil);
     await row().locator('button:has-text("Confirmer : retirer la gratuité")').click();
-    await until(async () => !(await q1(`select "exemptUntil" from "Subscription" where "organizationId" = 'demo-org-orthonova'`))?.exemptUntil);
+    // La base est mise à jour avant l'appel à Stripe : attendre les deux, sinon le test dépend de la charge de la machine.
+    await until(async () => stripeState.subscriptions.get(subId).pause_collection === null && !(await q1(`select "exemptUntil" from "Subscription" where "organizationId" = 'demo-org-orthonova'`))?.exemptUntil);
     check("Gratuité retirée : facturation Stripe reprise", stripeState.subscriptions.get(subId).pause_collection === null && !(await q1(`select "exemptUntil" from "Subscription" where "organizationId" = 'demo-org-orthonova'`))?.exemptUntil);
     const back = await waitMail("thomas.garnier@demo.kolbase.local", "gratuité de l'abonnement retirée");
     check("E-mail : gratuité retirée, la facturation reprend", !!back && back.text.includes("la facturation de votre abonnement en cours reprend"));
@@ -3871,12 +3887,6 @@ async function submitNewOrg(page, siren) {
   const until = async (fn, ms = 6000) => {
     for (const end = Date.now() + ms; Date.now() < end; await new Promise((r) => setTimeout(r, 150))) if (await fn()) return true;
     return false;
-  };
-  const confirmClick = async (scope, label) => {
-    await scope.locator(`button:has-text("${label}")`).first().click();
-    const ok = scope.locator('button:has-text("Confirmer")').first();
-    await ok.waitFor({ timeout: 3000 });
-    await ok.click();
   };
   const CLAIRE = "claire.morel@demo.kolbase.local";
   /** E-mail reçu depuis un repère (les blocs précédents ont pu envoyer un e-mail de même sujet). */

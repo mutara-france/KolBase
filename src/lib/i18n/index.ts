@@ -5,37 +5,17 @@
  * et sa traduction anglaise figure dans src/lib/i18n/en/*.ts sous la même clé (le texte français exact).
  * Un texte sans traduction s'affiche en français : on peut traduire écran par écran.
  * Variables : t("{n} praticiens", { n: 3 }). Le pluriel se choisit dans le code (deux clés).
+ *
+ * Ce module importe le dictionnaire : côté serveur seulement (pages, e-mails). Les composants client importent
+ * « @/lib/i18n/core » et reçoivent le dictionnaire par I18nProvider, chargé pour les seuls anglophones.
  */
 import { EN } from "@/lib/i18n/en";
+import { type Locale, tFrom, type T, type Vars } from "@/lib/i18n/core";
 
-export type Locale = "fr" | "en";
-export const LOCALES: Locale[] = ["fr", "en"];
-export const isLocale = (v: unknown): v is Locale => v === "fr" || v === "en";
+export * from "@/lib/i18n/core";
 
-export type Vars = Record<string, string | number | null | undefined>;
-export type T = (fr: string, vars?: Vars) => string;
+const BY_LOCALE: Record<Locale, T> = { fr: tFrom(null), en: tFrom(EN) };
 
-export function translate(locale: Locale, fr: string, vars?: Vars): string {
-  const s = locale === "en" ? (EN[fr] ?? fr) : fr;
-  return vars ? s.replace(/\{(\w+)\}/g, (m, k: string) => (vars[k] == null ? m : String(vars[k]))) : s;
-}
+export const translate = (locale: Locale, fr: string, vars?: Vars): string => BY_LOCALE[locale](fr, vars);
 
-export const makeT = (locale: Locale): T => (fr, vars) => translate(locale, fr, vars);
-
-/** Locale des fonctions Intl (dates, montants). */
-export const intlLocale = (locale: Locale) => (locale === "en" ? "en-GB" : "fr-FR");
-
-/** Date courte (« 3 nov. 2026 » / « 3 Nov 2026 ») à l'heure de Paris. */
-export const fmtDate = (locale: Locale, d: Date, opts: Intl.DateTimeFormatOptions = { day: "numeric", month: "short", year: "numeric" }) =>
-  d.toLocaleDateString(intlLocale(locale), { timeZone: "Europe/Paris", ...opts });
-
-/** Date et heure longues (« jeudi 3 novembre 2026 à 18:00 » / « Thursday 3 November 2026 at 18:00 »), heure de Paris. */
-export const fmtDateTime = (locale: Locale, d: Date) =>
-  d.toLocaleString(intlLocale(locale), { timeZone: "Europe/Paris", weekday: "long", day: "numeric", month: "long", year: "numeric", hour: "2-digit", minute: "2-digit" });
-
-/** Heure (« 18:00 »), heure de Paris. */
-export const fmtTime = (locale: Locale, d: Date) => d.toLocaleTimeString(intlLocale(locale), { timeZone: "Europe/Paris", hour: "2-digit", minute: "2-digit" });
-
-/** Montant en euros (« 1 200 € » / « €1,200 »). */
-export const fmtEur = (locale: Locale, cents: number) =>
-  (cents / 100).toLocaleString(intlLocale(locale), { style: "currency", currency: "EUR", maximumFractionDigits: cents % 100 ? 2 : 0 });
+export const makeT = (locale: Locale): T => BY_LOCALE[locale];

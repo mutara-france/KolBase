@@ -11,6 +11,7 @@ import { loadCollabConvention } from "@/lib/convention-data";
 import { buildCollaborationConventionForSignature } from "@/lib/convention-pdf";
 import { canSendAgain, createSignatureRequest, SIGNATURE_LABEL, signatureEnabled, YousignError } from "@/lib/yousign";
 import { isPendingRequest, PENDING_PREFIX, syncSignature } from "@/lib/signature";
+import { hasMemberRole } from "@/lib/org-roles";
 
 export type ActionState = { error?: string; ok?: string } | undefined;
 const ENGAGED = (s: string) => s !== "ATT_EXPERTS" && s !== "DECLINE";
@@ -95,7 +96,7 @@ export async function refreshSignatureStatus(_: ActionState, form: FormData): Pr
     where: { id: str(form, "linkId") },
     include: { project: { select: { id: true, organizationId: true } }, practitioner: { select: { userId: true } }, signature: true },
   });
-  const team = !!link && user.memberships.some((m) => m.organizationId === link.project.organizationId && PROJECT_VIEW_ROLES.includes(m.role));
+  const team = !!link && hasMemberRole(user, link.project.organizationId, PROJECT_VIEW_ROLES);
   const expert = !!link && link.practitioner.userId === user.id;
   const { t } = await getT();
   if (!link || !(team || expert) || !link.signature) return { error: t("Demande de signature introuvable.") };

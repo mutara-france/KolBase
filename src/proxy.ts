@@ -1,6 +1,27 @@
 import { NextResponse, type NextRequest } from "next/server";
 
 /**
+ * Politique de sécurité des contenus (CSP) à nonce, en observation (Report-Only) : rien n'est bloqué, les écarts sont
+ * envoyés à /api/csp et journalisés. Une fois les journaux propres, elle passera en `Content-Security-Policy` (bloquante).
+ * Next.js lit le nonce dans cet en-tête de requête et l'appose sur ses propres scripts.
+ */
+function cspFor(nonce: string) {
+  return [
+    "default-src 'self'",
+    `script-src 'self' 'nonce-${nonce}' 'strict-dynamic'`,
+    "style-src 'self' 'unsafe-inline'",
+    "img-src 'self' data: blob:",
+    "font-src 'self' data:",
+    "connect-src 'self'",
+    "frame-ancestors 'none'",
+    "base-uri 'self'",
+    "form-action 'self'",
+    "object-src 'none'",
+    "report-uri /api/csp",
+  ].join("; ");
+}
+
+/**
  * Proxy (Next 16, ex-« middleware ») : transmet aux pages le chemin demandé (en-tête de requête `x-kb-path`,
  * chemin et paramètres). Une page réservée aux membres connectés renvoie ainsi vers
  * `/connexion?next=<chemin>` (voir requireUser), et la personne revient où elle allait après la connexion.
@@ -12,7 +33,11 @@ export function proxy(request: NextRequest) {
   url.searchParams.delete("_rsc");
   const headers = new Headers(request.headers);
   headers.set("x-kb-path", `${url.pathname}${url.search}`.slice(0, 2000));
-  return NextResponse.next({ request: { headers } });
+  const csp = cspFor(btoa(crypto.randomUUID()));
+  headers.set("content-security-policy-report-only", csp);
+  const response = NextResponse.next({ request: { headers } });
+  response.headers.set("Content-Security-Policy-Report-Only", csp);
+  return response;
 }
 
 export const config = {

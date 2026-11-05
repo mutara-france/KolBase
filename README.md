@@ -25,16 +25,19 @@ Santé de l'application : `GET /api/health`.
 
 ```bash
 npm run lint                  # vérification des types (variables et imports inutilisés refusés)
+npm run check                 # lint (Biome, configuration biome.json)
 npm run deadcode              # fichiers, exports et dépendances inutilisés (knip, configuration knip.json)
+npm run test:coverage         # tests unitaires + couverture minimale des modules de règles
 npm test                      # tests unitaires (règles de visibilité, conformité, rôles, montants…)
 # parcours de bout en bout : base chargée avec la démo, application lancée
 BASE=http://localhost:3000 DEMO_PASSWORD=… DATABASE_URL=… npm run test:e2e
+BASE=http://localhost:3000 DEMO_PASSWORD=… npm run test:a11y   # accessibilité (axe-core, WCAG 2.1 AA)
 BASE=http://localhost:3000 DEMO_PASSWORD=… npm run test:affichage   # mise en page, 4 profils × téléphone/tablette/ordinateur
 ```
 
 Chaque pull request passe par GitHub Actions (`.github/workflows/ci.yml`) : types, code mort, tests unitaires,
 migrations appliquées à un PostgreSQL 17 neuf puis comparées au schéma Prisma (une migration oubliée
-fait échouer la vérification), données de démo, build, audit des dépendances et parcours de bout en bout.
+fait échouer la vérification), données de démo, build, audit des dépendances, parcours de bout en bout et accessibilité des pages principales.
 Un second job (« montee-de-version ») rejoue le déploiement sur une base déjà en service : la version précédente
 est installée et remplie avec la démo, puis cette version y applique ses migrations avec `scripts/predeploy.sh`.
 
@@ -163,7 +166,13 @@ l'en-tête `Authorization: Bearer $CRON_SECRET` (secret généré sur le service
 
 - envoie le rappel de la veille aux inscrits (date, lieu, programme, badge) ;
 - envoie, une heure après la fin d'un événement, le remerciement avec l'attestation de présence et le questionnaire ;
-- supprime les sessions et liens de connexion expirés depuis plus de 30 jours.
+- envoie les bilans des services KolBase réalisés ;
+- supprime les sessions et liens de connexion expirés depuis plus de 30 jours et les visites des liens suivis de plus
+  de 13 mois.
+
+Chaque exécution est enregistrée (table `TaskRun`) : `/admin` affiche un bandeau si aucune n'a réussi depuis deux
+heures. `HEARTBEAT_URL` (facultatif) est appelée après chaque réussite : une sonde externe (Healthchecks.io, Better
+Stack…) alerte quand ces appels cessent.
 
 `APP_URL` est fixée dans `render.yaml` pour le service cron (https://kolbase.io) ; sans elle, la commande échoue
 en nommant la variable manquante. Activer les alertes d'échec du service cron dans Render (Settings ›
@@ -201,7 +210,10 @@ lien de désinscription et les en-têtes `List-Unsubscribe` (désinscription en 
 
 Toute erreur serveur (page, action, route) est journalisée en JSON (Render › kolbase-web › Logs) et signalée par
 e-mail aux `PLATFORM_ADMIN_EMAILS` (`src/instrumentation.ts`), au plus une fois par erreur toutes les 30 minutes et
-dix fois par heure. `/api/health` vérifie l'application et la base (contrôle de santé Render).
+dix fois par heure. Journaux et alertes ne contiennent ni adresse e-mail complète ni jeton (`src/lib/redact.ts`).
+`/api/health` vérifie l'application et la base (contrôle de santé Render).
+
+Procédures (retour arrière, restauration de la base, changement de secret, maintenance) : `docs/exploitation.md`.
 
 ## Double authentification
 

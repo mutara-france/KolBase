@@ -7,10 +7,11 @@ import { audit, requireUser } from "@/lib/auth";
 import { str } from "@/lib/form";
 import { PROJECT_ROLES } from "@/lib/projects";
 import { COMPLIANCE_ROLES } from "@/lib/events";
-import { ALLOWED_TYPES, deleteObject, MAX_UPLOAD_BYTES, putObject, safeFileName, storageEnabled } from "@/lib/storage";
+import { ALLOWED_TYPES, matchesType, deleteObject, MAX_UPLOAD_BYTES, putObject, safeFileName, storageEnabled } from "@/lib/storage";
 import { getT } from "@/lib/i18n/server";
 import { closeOpenSignatures } from "@/lib/signature";
 import { notifyConventionDeposited } from "@/lib/notifications";
+import { memberRoles } from "@/lib/org-roles";
 
 export type ActionState = { error?: string; ok?: string } | undefined;
 const ENGAGED = (s: string) => s !== "ATT_EXPERTS" && s !== "DECLINE";
@@ -20,7 +21,7 @@ async function access(projectId: string) {
   const user = await requireUser();
   const project = await db.project.findUnique({ where: { id: projectId }, include: { experts: { include: { practitioner: { select: { userId: true } } } } } });
   if (!project) return null;
-  const orgRoles = user.memberships.filter((m) => m.organizationId === project.organizationId).map((m) => m.role);
+  const orgRoles = memberRoles(user, project.organizationId);
   const team = orgRoles.some((r) => PROJECT_ROLES.includes(r) || COMPLIANCE_ROLES.includes(r));
   const ownLink = project.experts.find((e) => e.practitioner.userId === user.id && ENGAGED(e.status)) ?? null;
   return { user, project, team, ownLink };
@@ -42,7 +43,8 @@ export async function uploadDocument(_: ActionState, form: FormData): Promise<Ac
   if (file.size > MAX_UPLOAD_BYTES) return { error: t("Fichier trop lourd : 10 Mo au maximum.") };
   if (!(file.type in ALLOWED_TYPES)) return { error: t("Format non accepté : PDF, JPEG, PNG, Word, Excel ou PowerPoint.") };
   const bytes = new Uint8Array(await file.arrayBuffer());
-  if (file.type === "application/pdf" && new TextDecoder().decode(bytes.slice(0, 5)) !== "%PDF-") return { error: t("Ce fichier n'est pas un PDF valide.") };
+  if (!matchesType(file.type, bytes))
+      return { error: file.type === "application/pdf" ? t("Ce fichier n'est pas un PDF valide.") : t("Format non accepté : PDF, JPEG, PNG, Word, Excel ou PowerPoint.") };
 
   const kind = str(form, "kind") === "CONVENTION_SIGNEE" ? "CONVENTION_SIGNEE" : "PIECE";
   // Un expert dépose pour son propre lien ; l'organisation choisit l'expert concerné (obligatoire pour une convention).

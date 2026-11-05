@@ -19,6 +19,7 @@ import { engagementBlock, engagementGate } from "@/lib/billing";
 import type { GateLink } from "@/lib/billing-plans";
 import { getT } from "@/lib/i18n/server";
 import { closeOpenSignatures } from "@/lib/signature";
+import { hasMemberRole } from "@/lib/org-roles";
 
 export type ActionState = { error?: string; ok?: string; fix?: GateLink } | undefined;
 
@@ -174,7 +175,7 @@ export async function postMessage(_: ActionState, form: FormData): Promise<Actio
   const link = await db.projectExpert.findUnique({ where: { id: linkId }, include: { project: true, practitioner: true } });
   if (!link) return { error: t("Fil introuvable.") };
   const isExpert = link.practitioner.userId === user.id;
-  const isOrg = user.memberships.some((m) => m.organizationId === link.project.organizationId && PROJECT_VIEW_ROLES.includes(m.role));
+  const isOrg = hasMemberRole(user, link.project.organizationId, PROJECT_VIEW_ROLES);
   if (!isExpert && !isOrg) return { error: t("Accès refusé.") };
   await db.message.create({ data: { projectId: link.projectId, projectExpertId: link.id, authorId: user.id, body } });
   notifyMessage(link.id, user.id);

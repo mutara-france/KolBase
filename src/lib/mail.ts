@@ -3,6 +3,7 @@ import nodemailer, { type Transporter } from "nodemailer";
 import { after } from "next/server";
 import { appUrl } from "@/lib/ics";
 import { makeT, type Locale } from "@/lib/i18n";
+import { errorText, maskEmails } from "@/lib/redact";
 
 /**
  * Envoi d'e-mails par SMTP (Brevo, Postmark, Resend, OVH… : tous fournissent un accès SMTP).
@@ -57,7 +58,7 @@ export async function sendMail(m: Mail): Promise<boolean> {
   if (!t) {
     // En production, le contenu n'est jamais journalisé : il peut contenir un lien de réinitialisation ou d'invitation.
     const body = process.env.NODE_ENV === "production" ? "(contenu masqué)" : `\n${text}`;
-    console.info(`[e-mail non envoyé : SMTP_URL absent] À : ${m.to} — ${m.subject} ${body}`);
+    console.info(`[e-mail non envoyé : SMTP_URL absent] À : ${process.env.NODE_ENV === "production" ? maskEmails(m.to) : m.to} — ${m.subject} ${body}`);
     return false;
   }
   const headers = m.unsubscribe ? { "List-Unsubscribe": `<${m.unsubscribe.oneClick}>`, "List-Unsubscribe-Post": "List-Unsubscribe=One-Click" } : undefined;
@@ -69,6 +70,6 @@ export async function sendMail(m: Mail): Promise<boolean> {
 export function sendLater(...mails: Mail[]) {
   if (mails.length === 0) return;
   after(async () => {
-    for (const m of mails) await sendMail(m).catch((e) => console.error(`[e-mail en échec] ${m.to} — ${m.subject}`, e));
+    for (const m of mails) await sendMail(m).catch((e) => console.error(`[e-mail en échec] ${maskEmails(m.to)} — ${m.subject} : ${errorText(e)}`));
   });
 }

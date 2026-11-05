@@ -60,6 +60,23 @@ export const ALLOWED_TYPES: Record<string, string> = {
 };
 export const MAX_UPLOAD_BYTES = 10 * 1024 * 1024;
 
+/** Premiers octets attendus pour chaque format accepté : un fichier renommé (un exécutable en .pdf) est refusé. */
+const SIGNATURES: Record<string, number[]> = {
+  "application/pdf": [0x25, 0x50, 0x44, 0x46, 0x2d], // %PDF-
+  "image/jpeg": [0xff, 0xd8, 0xff],
+  "image/png": [0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a],
+  // Word, Excel et PowerPoint (OOXML) sont des archives ZIP.
+  "application/vnd.openxmlformats-officedocument.wordprocessingml.document": [0x50, 0x4b, 0x03, 0x04],
+  "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet": [0x50, 0x4b, 0x03, 0x04],
+  "application/vnd.openxmlformats-officedocument.presentationml.presentation": [0x50, 0x4b, 0x03, 0x04],
+};
+
+/** Le contenu du fichier correspond-il au format déclaré par le navigateur ? */
+export function matchesType(contentType: string, bytes: Uint8Array) {
+  const sig = SIGNATURES[contentType];
+  return !!sig && bytes.length >= sig.length && sig.every((b, i) => bytes[i] === b);
+}
+
 /** Nom de fichier sûr pour la clé de stockage et l'en-tête de téléchargement. */
 export const safeFileName = (name: string) =>
   name.normalize("NFD").replace(/[̀-ͯ]/g, "").replace(/[^A-Za-z0-9._-]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 120) || "document";

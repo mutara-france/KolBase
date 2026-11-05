@@ -10,7 +10,7 @@ import { defaultVatBp, VAT_OPTIONS, vatLabel } from "@/lib/quotes";
 import { Avatar } from "@/components/Avatar";
 import { AiDraft } from "@/components/AiDraft";
 import { useLocale, useT } from "@/components/I18nProvider";
-import { intlLocale, type Locale } from "@/lib/i18n";
+import { intlLocale, type Locale } from "@/lib/i18n/core";
 
 type Cat = { id: string; label: string };
 type Supplier = { id: string; name: string; categories: string[]; city: string | null; coverage: string | null; about: string | null; since: number; rating?: number | null; reviews?: number };

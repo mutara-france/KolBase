@@ -3,7 +3,7 @@
 import { useState, type PointerEvent as RPointerEvent } from "react";
 import { TableWrap } from "@/components/TableWrap";
 import { useLocale, useT } from "@/components/I18nProvider";
-import { intlLocale } from "@/lib/i18n";
+import { intlLocale } from "@/lib/i18n/core";
 
 /**
  * Graphiques légers en HTML (aucune dépendance) : colonnes empilées, barres classées, jauge.

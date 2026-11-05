@@ -15,6 +15,7 @@ import { de } from "@/lib/elision";
 import { notifyPlatformAdmins, notifyServiceOrder } from "@/lib/notifications";
 import { aiComplete, aiEnabled } from "@/lib/ai";
 import { blockedFor, hit } from "@/lib/rate-limit";
+import { errorText, maskEmails } from "@/lib/redact";
 import { getT } from "@/lib/i18n/server";
 
 export type FormState = { error?: string; ok?: string; test?: boolean; sent?: boolean } | undefined;
@@ -177,7 +178,7 @@ export async function sendNewsletter(_: FormState, form: FormData): Promise<Form
       // Lien suivi : visites et inscriptions comptées dans le bilan envoyé à l'organisateur.
       cta,
       unsubscribe: { page: `${app()}/desinscription/${token}`, oneClick: `${app()}/api/desinscription/${token}` },
-    }).catch((e) => { console.error("[lettre d'information]", u.email, e); return false; });
+    }).catch((e) => { console.error("[lettre d'information]", maskEmails(u.email), errorText(e)); return false; });
     if (ok) sent++;
   }
   await db.newsletterCampaign.update({ where: { id: reserved.id }, data: { recipients: sent, sentAt: new Date() } });
@@ -198,14 +199,14 @@ export async function draftServiceText(form: FormData): Promise<{ text?: string;
   const admin = await requirePlatformAdmin();
   if (!aiEnabled()) return { error: t("L'assistant n'est pas activé.") };
   const key = `ai:${admin.id}`;
-  if (blockedFor(key, 30, 3600_000)) return { error: t("Réessayez dans une heure.") };
+  if (await blockedFor(key, 30, 3600_000)) return { error: t("Réessayez dans une heure.") };
   const o = await db.serviceOrder.findUnique({ where: { id: str(form, "orderId") }, include: { offer: true, organization: { select: { name: true } }, event: true } });
   if (!o) return { error: t("Commande introuvable.") };
   const e = o.event;
   const link = `${app()}${o.trackCode ? trackedPath(o.trackCode) : `/evenements/${o.eventId}`}`;
   const kind = o.offer.kind === "social" ? `un post LinkedIn (6 à 8 lignes, 3 hashtags sobres en fin de texte) contenant le lien d'inscription ${link}` : "le texte d'un e-mail (8 à 12 lignes) adressé à des chirurgiens-dentistes";
   const prompt = `Événement scientifique organisé par ${o.organization.name} : « ${e.title} », le ${formatDate(e.startsAt)} à ${formatTime(e.startsAt)}${e.format === "DISTANCIEL" ? ", en ligne" : e.city ? `, à ${e.city}${e.venue ? ` (${e.venue})` : ""}` : ""}.${e.therapeuticArea ? ` Domaine : ${e.therapeuticArea}.` : ""}\n${e.description ? `Présentation : ${e.description.slice(0, 1200)}\n` : ""}${e.program ? `Programme : ${e.program.slice(0, 1200)}\n` : ""}${o.brief ? `Consignes de l'organisateur : ${o.brief.slice(0, 800)}\n` : ""}\nRédige ${kind} pour faire connaître cet événement et inviter à s'inscrire sur KolBase. Ton professionnel et sobre, aucune allégation sur des produits ; termine par l'invitation à s'inscrire.`;
-  hit(key);
+  await hit(key);
   try {
     const text = await aiComplete(prompt, 700);
     await audit(admin.id, "ai.service_draft", "ServiceOrder", o.id);

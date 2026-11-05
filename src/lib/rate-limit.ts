@@ -1,40 +1,40 @@
 import "server-only";
+import { createHash } from "node:crypto";
 import { headers } from "next/headers";
+import { db } from "@/lib/db";
 
 /**
- * Limiteur de débit en mémoire (fenêtre glissante).
- * Suffisant tant que KolBase tourne sur une seule instance Render ; avec plusieurs instances,
- * remplacer le stockage par une table Postgres ou Redis (même interface).
+ * Limiteur de débit à fenêtre glissante, stocké en base (table RateLimitHit). En mémoire, il repartait de zéro à chaque
+ * déploiement (plusieurs par jour certains jours) et ne valait que pour une instance. La clé (adresse e-mail, IP…) n'est
+ * conservée que hachée ; les tentatives de plus de 24 h sont purgées par la tâche planifiée (purgeRateLimits).
  */
-type Store = Map<string, number[]>;
-const g = globalThis as unknown as { kbRateLimit?: Store };
-const store: Store = (g.kbRateLimit ??= new Map());
-
-function recent(key: string, windowMs: number, now: number) {
-  const hits = (store.get(key) ?? []).filter((t) => now - t < windowMs);
-  if (hits.length) store.set(key, hits);
-  else store.delete(key);
-  return hits;
-}
+const hashed = (key: string) => createHash("sha256").update(key).digest("hex");
 
 /** Nombre de minutes avant de pouvoir réessayer si la limite est atteinte, sinon 0. Ne compte pas la tentative. */
-export function blockedFor(key: string, limit: number, windowMs: number): number {
+export async function blockedFor(key: string, limit: number, windowMs: number): Promise<number> {
   const now = Date.now();
-  const hits = recent(key, windowMs, now);
-  return hits.length >= limit ? Math.max(1, Math.ceil((windowMs - (now - hits[0])) / 60000)) : 0;
+  const hits = await db.rateLimitHit.findMany({
+    where: { key: hashed(key), at: { gt: new Date(now - windowMs) } },
+    select: { at: true },
+    orderBy: { at: "asc" },
+    take: limit,
+  });
+  return hits.length >= limit ? Math.max(1, Math.ceil((windowMs - (now - hits[0].at.getTime())) / 60000)) : 0;
 }
 
 /** Enregistre une tentative. */
-export function hit(key: string) {
-  const now = Date.now();
-  store.set(key, [...(store.get(key) ?? []), now]);
-  // Ménage occasionnel des clés expirées (fenêtre maximale utilisée : 1 h).
-  if (store.size > 5000) for (const k of [...store.keys()]) recent(k, 60 * 60 * 1000, now);
+export async function hit(key: string) {
+  await db.rateLimitHit.create({ data: { key: hashed(key) } });
 }
 
 /** Efface les tentatives d'une clé (connexion réussie). */
-export function reset(key: string) {
-  store.delete(key);
+export async function reset(key: string) {
+  await db.rateLimitHit.deleteMany({ where: { key: hashed(key) } });
+}
+
+/** Ménage : tentatives plus anciennes que la plus longue fenêtre utilisée (24 h). */
+export async function purgeRateLimits(now = new Date()) {
+  return (await db.rateLimitHit.deleteMany({ where: { at: { lt: new Date(now.getTime() - 24 * 3600 * 1000) } } })).count;
 }
 
 /** Adresse IP du client, telle que transmise par Cloudflare et le proxy de Render. */
