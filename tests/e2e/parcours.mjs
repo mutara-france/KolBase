@@ -193,7 +193,6 @@ const linkIn = (mail) => mail?.text.match(/https?:\/\/\S+/g)?.find((u) => !u.end
   await page.fill('textarea[name="body"]', "Bonjour, je confirme mes disponibilités.");
   await page.click('button:has-text("Envoyer")');
   check("E-mail à l'organisation : nouveau message de l'expert", !!(await waitMail("anne.chevalier@demo.kolbase.local", "Nouveau message de Dr Olivier Girard")));
-  const dossierUrl = page.url();
   await page.goto(`${BASE}/compte`);
   await page.uncheck('form:has(h2:has-text("Notifications")) input[name="email"]');
   await page.click('form:has(h2:has-text("Notifications")) button:has-text("Enregistrer")');
@@ -418,7 +417,7 @@ const linkIn = (mail) => mail?.text.match(/https?:\/\/\S+/g)?.find((u) => !u.end
   const claire = await session();
   await login(claire.page, "claire.morel@demo.kolbase.local");
   await claire.page.goto(`${BASE}/organisations/demo-org-dentalys/dossiers/e2e-prj-be`);
-  let t = await text(claire.page);
+  const t = await text(claire.page);
   check("Dossier hors France : régime « Hors France », obligations belges rappelées", t.includes("Hors France") && t.includes("betransparent.be") && t.includes("Mdeon"));
   check("Dossier hors France : pas de démarche auprès de l'Ordre", !t.includes("Demander l'autorisation à l'Ordre") && !t.includes("Déclaration simple"));
   await claire.page.click('button:has-text("Hors France")');
@@ -1497,7 +1496,7 @@ async function submitNewOrg(page, siren) {
   await part.ctx.close();
   // L'organisateur : avis anonymes, attestations, statistiques.
   await org.page.goto(`${BASE}/organisations/demo-org-dentalys/evenements/demo-ev-soiree-implanto`);
-  let t = await text(org.page);
+  const t = await text(org.page);
   check("Organisateur : avis des participants", t.includes("Avis des participants") && /4,0\s*\/\s*5/.test(t) && t.includes("Très bons échanges") && !/Lambert[^\n]*Très bons/.test(t));
   check("Organisateur : envoi après l'événement indiqué", t.includes("Envoyés le"));
   const all = await org.ctx.request.get(`${BASE}/organisations/demo-org-dentalys/evenements/demo-ev-soiree-implanto/attestations`);
@@ -1514,7 +1513,7 @@ async function submitNewOrg(page, siren) {
   const { ctx, page } = await session();
   await login(page, "camille.petit@demo.kolbase.local");
   await page.goto(`${BASE}/revenus?onglet=facturation`);
-  let t = await text(page);
+  const t = await text(page);
   check("Notes d'honoraires : note existante et convention à facturer", /NH-\d{4}-001/.test(t) && t.includes("Comité scientifique aligneurs"));
   await page.fill('input[name="siret"]', "12345678901234");
   await page.click('form:has(textarea[name="billingAddress"]) button:has-text("Enregistrer")');
@@ -3025,7 +3024,6 @@ async function submitNewOrg(page, siren) {
   {
     const before = await q1(`select listed, (select count(*)::int from "OpenCall" where "organizationId" = 'demo-org-cdra' and status = 'open') calls from "Organization" where id = 'demo-org-cdra'`);
     await adm.page.goto(`${BASE}/admin`);
-    const mark = mails.length;
     const card = () => adm.page.locator('section.card:has-text("Collège Dentaire Rhône-Alpes")').first();
     await card().locator('form:has(button:has-text("Suspendre")) input[name="note"]').fill("Contrôle de conformité en cours");
     await card().locator('button:has-text("Suspendre")').click();
@@ -3879,12 +3877,6 @@ async function submitNewOrg(page, siren) {
   const until = async (fn, ms = 6000) => {
     for (const end = Date.now() + ms; Date.now() < end; await new Promise((r) => setTimeout(r, 150))) if (await fn()) return true;
     return false;
-  };
-  const confirmClick = async (scope, label) => {
-    await scope.locator(`button:has-text("${label}")`).first().click();
-    const ok = scope.locator('button:has-text("Confirmer")').first();
-    await ok.waitFor({ timeout: 3000 });
-    await ok.click();
   };
   const CLAIRE = "claire.morel@demo.kolbase.local";
   /** E-mail reçu depuis un repère (les blocs précédents ont pu envoyer un e-mail de même sujet). */
