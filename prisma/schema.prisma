@@ -996,9 +996,9 @@ model Article {
 model Subscription {
   organizationId       String       @id
   organization         Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  plan                 String       // organisation | prestataire
-  interval             String       @default("month") // month | year (formule annuelle, deux mois offerts)
-  status               String       @default("a_activer") // a_activer | essai | active | impayee | resiliee
+  plan                 SubscriptionPlan
+  interval             BillingInterval    @default(month) // formule annuelle : deux mois offerts
+  status               SubscriptionStatus @default(a_activer)
   triggeredAt          DateTime?    // déclenchement (premier devis retenu pour un prestataire)
   triggeredBy          String?
   stripeCustomerId     String?
@@ -1017,7 +1017,7 @@ model Subscription {
 model ServiceOffer {
   id          String         @id @default(cuid())
   code        String         @unique // newsletter | reseaux | une | …
-  kind        String         // newsletter (lettre aux membres) | social (réseaux sociaux) | une (accueil) | pack | autre
+  kind        ServiceKind
   includes    String[]       @default([]) // pack : codes des services compris
   label       String
   description String
@@ -1042,7 +1042,7 @@ model ServiceOrder {
   priceCents     Int
   brief          String?
   wishedAt       DateTime?
-  status         String       @default("demandee") // demandee | planifiee | realisee | refusee | annulee
+  status         ServiceOrderStatus @default(demandee)
   adminNote      String?
   resultUrl      String?
   orderedById    String
@@ -1086,6 +1086,42 @@ model NewsletterCampaign {
   sentAt      DateTime?
   createdById String
   createdAt   DateTime      @default(now())
+}
+
+// Abonnements et services : valeurs en minuscules, identiques à l'ancien texte libre (migration sans réécriture).
+enum SubscriptionPlan {
+  organisation
+  prestataire
+}
+
+enum BillingInterval {
+  month
+  year
+}
+
+enum SubscriptionStatus {
+  a_activer
+  essai
+  active
+  impayee
+  resiliee
+}
+
+/// newsletter : lettre aux membres ; social : réseaux sociaux ; une : accueil ; pack : plusieurs services ; autre.
+enum ServiceKind {
+  newsletter
+  social
+  une
+  pack
+  autre
+}
+
+enum ServiceOrderStatus {
+  demandee
+  planifiee
+  realisee
+  refusee
+  annulee
 }
 
 /// Suivi des tâches planifiées (POST /api/taches) : dernière exécution et dernière réussite, affichées dans /admin.

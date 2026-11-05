@@ -4,17 +4,17 @@ import { db } from "@/lib/db";
 import { stripe, stripeEnabled } from "@/lib/stripe";
 import { FEATURE_DAYS, featuredUntil } from "@/lib/service-pack";
 import { parisMonthStart } from "@/lib/newsletter";
-import type { Prisma } from "@/generated/prisma/client";
+import type { Prisma, ServiceOrderStatus } from "@/generated/prisma/client";
 
-/** Statuts d'une commande de service. */
+/** Statuts d'une commande de service (lisible aussi avec un statut de pack, « en_cours »). */
 export const ORDER_STATUS: Record<string, { label: string; tone: string }> = {
   demandee: { label: "Demandée", tone: "wait" },
   planifiee: { label: "Planifiée", tone: "electric" },
   realisee: { label: "Réalisée", tone: "ok" },
   refusee: { label: "Refusée", tone: "bad" },
   annulee: { label: "Annulée", tone: "done" },
-};
-export const OPEN_ORDER = ["demandee", "planifiee"];
+} satisfies Record<ServiceOrderStatus, { label: string; tone: string }>;
+export const OPEN_ORDER: ServiceOrderStatus[] = ["demandee", "planifiee"];
 export { featuredUntil };
 
 /** Délai avant l'envoi du bilan d'un service réalisé (ou dès que l'événement a eu lieu). */

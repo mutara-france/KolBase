@@ -8,6 +8,8 @@
  * - Premier mois offert (une fois), sans engagement ; gratuités accordées par KolBase.
  * - Formule annuelle : dix mois payés pour douze (deux mois offerts).
  */
+import type { SubscriptionStatus } from "@/generated/prisma/client";
+
 export const PLANS = {
   organisation: { label: "Abonnement organisation", cents: 59900, yearCents: 599000 },
   prestataire: { label: "Abonnement prestataire", cents: 24900, yearCents: 249000 },
@@ -51,7 +53,7 @@ export const displayStatus = (s: SubLike, now = new Date()) => (exempt(s, now) ?
 export const canEngage = (s: SubLike, now = new Date()) => exempt(s, now) || ["essai", "active", "impayee"].includes(s?.status ?? "");
 
 /** Statut Stripe d'un abonnement → statut KolBase. */
-export const fromStripeStatus = (st: string) =>
+export const fromStripeStatus = (st: string): SubscriptionStatus =>
   st === "trialing" ? "essai" : st === "active" ? "active" : st === "past_due" || st === "unpaid" ? "impayee" : st === "canceled" || st === "incomplete_expired" ? "resiliee" : "a_activer";
 
 /** Actions qui déclenchent l'abonnement d'une organisation (libellés des messages). */
