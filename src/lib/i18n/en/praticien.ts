@@ -732,6 +732,8 @@ export const PRATICIEN: Record<string, string> = {
   "Note d'honoraires": "Fee note",
   "Une note par convention signée : numérotée, établie à partir de la convention et transmise à l'organisation, qui la retrouve dans le dossier.": "One note per signed agreement: numbered, drawn up from the agreement and sent to the organisation, which finds it in the file.",
   "HT": "excl. VAT",
+  "TTC": "incl. VAT",
+  "À établir": "To issue",
   "Aucune note établie pour l'instant.": "No fee note issued yet.",
   "Numéro": "Number",
   "Montant": "Amount",

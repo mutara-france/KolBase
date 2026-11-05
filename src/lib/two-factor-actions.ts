@@ -5,7 +5,7 @@ import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import { db } from "@/lib/db";
 import { audit, createSession, requireUser } from "@/lib/auth";
-import { verifyPassword } from "@/lib/password";
+import { confirmPassword, tooManyAttempts } from "@/lib/password-check";
 import { blockedFor, hit, reset } from "@/lib/rate-limit";
 import { safeNext } from "@/lib/safe-redirect";
 import { requireMembership } from "@/lib/orgs";
@@ -57,15 +57,15 @@ export async function verifySecondFactor(_: FormState, form: FormData): Promise<
   const pending = await findToken(jar.get(PENDING_COOKIE)?.value ?? "", "TWO_FACTOR");
   if (!pending || !pending.user.totpEnabledAt) return { error: t("Délai dépassé : reconnectez-vous avec votre mot de passe.") };
   const key = `2fa:${pending.userId}`;
-  const wait = blockedFor(key, MAX_FAILURES, WINDOW_MS);
+  const wait = await blockedFor(key, MAX_FAILURES, WINDOW_MS);
   if (wait) return { error: t("Trop de tentatives. Réessayez dans {n} minutes.", { n: wait }) };
   const how = await checkSecondFactor(pending.user, str(form, "code"));
   if (!how) {
-    hit(key);
+    await hit(key);
     await audit(pending.userId, "user.2fa_failed", "User", pending.userId);
     return { error: t("Code incorrect ou déjà utilisé. Saisissez le code affiché par votre application.") };
   }
-  reset(key);
+  await reset(key);
   await consumeToken(pending.id, pending.userId, "TWO_FACTOR");
   jar.delete(PENDING_COOKIE);
   await audit(pending.userId, "user.signin", "User", pending.userId, { twoFactor: how });
@@ -123,7 +123,9 @@ export async function disableTwoFactor(_: FormState, form: FormData): Promise<Fo
   const orgs = requiringOrgs(user);
   if (orgs.length) return { error: t("Impossible : {orgs} exige la double authentification de ses membres.", { orgs: orgs.map((o) => o.name).join(", ") }) };
   if (isPlatformAdmin(user) && adminTwoFactorRequired()) return { error: t("Impossible : la double authentification est obligatoire pour les administrateurs de KolBase.") };
-  if (!(await verifyPassword(String(form.get("password") ?? ""), user.passwordHash))) return { error: t("Mot de passe incorrect.") };
+  const check = await confirmPassword(user.id, String(form.get("password") ?? ""), user.passwordHash);
+  if (check.wait) return tooManyAttempts(t, check.wait);
+  if (!check.ok) return { error: t("Mot de passe incorrect.") };
   await db.user.update({ where: { id: user.id }, data: { totpSecret: null, totpEnabledAt: null, totpLastStep: null, recoveryCodes: [] } });
   await audit(user.id, "user.2fa_disabled", "User", user.id);
   securityNotice(user, "La double authentification vient d'être désactivée sur votre compte.");

@@ -191,13 +191,13 @@ export const stripeState = { customers: new Map(), sessions: new Map(), subscrip
 export const STRIPE_WEBHOOK_SECRET = "whsec_test";
 const APP = process.env.BASE ?? "http://localhost:3000";
 
-/** Envoie une notification Stripe signée à l'application. */
-export async function stripeWebhook(type, object) {
-  const payload = JSON.stringify({ id: `evt_${randomUUID().slice(0, 8)}`, type, data: { object } });
+/** Envoie une notification Stripe signée à l'application (même `id` = rejeu d'un événement déjà reçu). */
+export async function stripeWebhook(type, object, id = `evt_${randomUUID().slice(0, 8)}`) {
+  const payload = JSON.stringify({ id, type, data: { object } });
   const t = Math.floor(Date.now() / 1000);
   const sig = createHmac("sha256", STRIPE_WEBHOOK_SECRET).update(`${t}.${payload}`).digest("hex");
   const r = await fetch(`${APP}/api/stripe/webhook`, { method: "POST", headers: { "Content-Type": "application/json", "Stripe-Signature": `t=${t},v1=${sig}` }, body: payload });
-  stripeState.webhooks.push({ type, status: r.status });
+  stripeState.webhooks.push({ id, type, status: r.status, body: await r.json().catch(() => null) });
   return r.status;
 }
 

@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { SiteHeader } from "@/components/SiteHeader";
+import { TableWrap } from "@/components/TableWrap";
 
 /** Paragraphes d'un texte légal (chaînes simples, sans échappement JSX). */
 export const P = ({ children }: { children: React.ReactNode[] | React.ReactNode }) => <>{(Array.isArray(children) ? children : [children]).map((c, i) => <p key={i}>{c}</p>)}</>;
@@ -7,10 +8,12 @@ export const P = ({ children }: { children: React.ReactNode[] | React.ReactNode 
 export const L = ({ items }: { items: React.ReactNode[] }) => <ul className="plain legal-list">{items.map((c, i) => <li key={i}>{c}</li>)}</ul>;
 /** Tableau d'un texte légal (première ligne = en-têtes). */
 export const T = ({ head, rows }: { head: string[]; rows: React.ReactNode[][] }) => (
-  <table className="table legal-table">
-    <thead><tr>{head.map((h) => <th key={h} scope="col">{h}</th>)}</tr></thead>
-    <tbody>{rows.map((r, i) => <tr key={i}>{r.map((c, j) => <td key={j}>{c}</td>)}</tr>)}</tbody>
-  </table>
+  <TableWrap label={head.join(", ")}>
+    <table className="table legal-table">
+      <thead><tr>{head.map((h) => <th key={h} scope="col">{h}</th>)}</tr></thead>
+      <tbody>{rows.map((r, i) => <tr key={i}>{r.map((c, j) => <td key={j} data-label={head[j]}>{c}</td>)}</tr>)}</tbody>
+    </table>
+  </TableWrap>
 );
 
 /** Autres textes légaux, liés en bas de chaque page. */

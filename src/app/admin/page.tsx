@@ -28,6 +28,7 @@ import { country, licenseRule, practicesInFrance, registryLink } from "@/lib/cou
 import { ConfirmButton } from "@/components/ConfirmButton";
 import { ExemptionOffer } from "@/components/AdminForms";
 import { adminTwoFactorRequired } from "@/lib/two-factor";
+import { TableWrap } from "@/components/TableWrap";
 
 export const metadata = { title: "Administration — KolBase" };
 export const dynamic = "force-dynamic";
@@ -399,19 +400,21 @@ async function ServicesAdmin() {
           e-mailings commandés et lettres libres confondus : au-delà, l&apos;envoi est refusé.
         </p>
         {campaigns.length === 0 ? <p className="muted">Aucun envoi pour l&apos;instant.</p> : (
-          <table className="table" tabIndex={0}>
-            <thead><tr><th>Date</th><th>Objet</th><th>Destinataires</th><th>Commande liée</th></tr></thead>
-            <tbody>
-              {campaigns.map((c) => (
-                <tr key={c.id}>
-                  <td>{c.sentAt ? formatDate(c.sentAt) : "envoi en cours"}</td>
-                  <td>{c.subject}</td>
-                  <td>{c.recipients}</td>
-                  <td>{c.order ? <>{c.order.label} · {c.order.organization.name} · <Link href={`/evenements/${c.order.event.id}`}>{c.order.event.title}</Link></> : "Lettre libre"}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+          <TableWrap label="Lettre d'information">
+            <table className="table">
+              <thead><tr><th>Date</th><th>Objet</th><th>Destinataires</th><th>Commande liée</th></tr></thead>
+              <tbody>
+                {campaigns.map((c) => (
+                  <tr key={c.id}>
+                    <td data-label="Date">{c.sentAt ? formatDate(c.sentAt) : "envoi en cours"}</td>
+                    <td data-label="Objet">{c.subject}</td>
+                    <td data-label="Destinataires">{c.recipients}</td>
+                    <td data-label="Commande liée">{c.order ? <>{c.order.label} · {c.order.organization.name} · <Link href={`/evenements/${c.order.event.id}`}>{c.order.event.title}</Link></> : "Lettre libre"}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </TableWrap>
         )}
       </section>
       <section className="card stack-sm">
@@ -469,36 +472,38 @@ async function BillingAdmin() {
         {paying.length} abonnement{paying.length > 1 ? "s" : ""} en cours, revenu mensuel hors essais : {formatEUR(mrr)} HT.
       </p>
       <p className="hint scroll-hint">Tableau plus large que l&apos;écran : faites-le défiler vers la droite pour la colonne Gratuité.</p>
-      <table className="table" tabIndex={0} aria-label="Abonnements des organisations">
-        <thead><tr><th>Organisation</th><th>Offre</th><th>Statut</th><th>Échéance</th><th>Gratuité</th></tr></thead>
-        <tbody>
-          {orgs.map((o) => {
-            const st = displayStatus(o.subscription, now);
-            return (
-              <tr key={o.id}>
-                <td>{o.name}</td>
-                <td>{PLANS[planFor(o.kind)].label.replace("Abonnement ", "")}{o.subscription && ["essai", "active", "impayee"].includes(o.subscription.status) ? <div className="text-xs muted">{asInterval(o.subscription.interval) === "year" ? "annuel" : "mensuel"}</div> : null}</td>
-                <td><span className={`pill ${["active", "essai", "offerte"].includes(st) ? "ok" : st === "impayee" ? "wait" : ""}`}>{STATUS_LABEL[st]}</span>{o.subscription?.triggeredAt ? <div className="text-xs muted">{o.subscription.triggeredBy}</div> : null}</td>
-                <td>{o.subscription?.trialEndsAt && o.subscription.status === "essai" ? `essai → ${formatDate(o.subscription.trialEndsAt)}` : o.subscription?.currentPeriodEnd ? formatDate(o.subscription.currentPeriodEnd) : "—"}</td>
-                <td>
-                  {exempt(o.subscription, now) ? (
-                    <form action={setExemption} className="inline wrap">
-                      <input type="hidden" name="orgId" value={o.id} />
-                      <span className="text-xs">jusqu&apos;au {formatDate(o.subscription!.exemptUntil!)}{o.subscription!.exemptNote ? ` · ${o.subscription!.exemptNote}` : ""}</span>
-                      <input type="hidden" name="remove" value="1" />
-                      <ConfirmButton className="link" confirm="retirer la gratuité" summary={<>{o.name} est prévenue par e-mail ; {o.subscription?.stripeSubscriptionId && ["active", "essai", "impayee"].includes(o.subscription.status) ? (o.verification === "SUSPENDED" ? "la facturation de son abonnement Stripe reste en pause pendant la suspension." : "la facturation de son abonnement Stripe reprend.") : "pour continuer à agir, un administrateur devra activer l'abonnement."}</>}>
-                        retirer
-                      </ConfirmButton>
-                    </form>
-                  ) : (
-                    <ExemptionOffer orgId={o.id} min={today} />
-                  )}
-                </td>
-              </tr>
-            );
-          })}
-        </tbody>
-      </table>
+      <TableWrap label="Abonnements des organisations">
+        <table className="table">
+          <thead><tr><th>Organisation</th><th>Offre</th><th>Statut</th><th>Échéance</th><th>Gratuité</th></tr></thead>
+          <tbody>
+            {orgs.map((o) => {
+              const st = displayStatus(o.subscription, now);
+              return (
+                <tr key={o.id}>
+                  <td data-label="Organisation">{o.name}</td>
+                  <td data-label="Offre">{PLANS[planFor(o.kind)].label.replace("Abonnement ", "")}{o.subscription && ["essai", "active", "impayee"].includes(o.subscription.status) ? <div className="text-xs muted">{asInterval(o.subscription.interval) === "year" ? "annuel" : "mensuel"}</div> : null}</td>
+                  <td data-label="Statut"><span className={`pill ${["active", "essai", "offerte"].includes(st) ? "ok" : st === "impayee" ? "wait" : ""}`}>{STATUS_LABEL[st]}</span>{o.subscription?.triggeredAt ? <div className="text-xs muted">{o.subscription.triggeredBy}</div> : null}</td>
+                  <td data-label="Échéance">{o.subscription?.trialEndsAt && o.subscription.status === "essai" ? `essai → ${formatDate(o.subscription.trialEndsAt)}` : o.subscription?.currentPeriodEnd ? formatDate(o.subscription.currentPeriodEnd) : "—"}</td>
+                  <td data-label="Gratuité">
+                    {exempt(o.subscription, now) ? (
+                      <form action={setExemption} className="inline wrap">
+                        <input type="hidden" name="orgId" value={o.id} />
+                        <span className="text-xs">jusqu&apos;au {formatDate(o.subscription!.exemptUntil!)}{o.subscription!.exemptNote ? ` · ${o.subscription!.exemptNote}` : ""}</span>
+                        <input type="hidden" name="remove" value="1" />
+                        <ConfirmButton className="link" confirm="retirer la gratuité" summary={<>{o.name} est prévenue par e-mail ; {o.subscription?.stripeSubscriptionId && ["active", "essai", "impayee"].includes(o.subscription.status) ? (o.verification === "SUSPENDED" ? "la facturation de son abonnement Stripe reste en pause pendant la suspension." : "la facturation de son abonnement Stripe reprend.") : "pour continuer à agir, un administrateur devra activer l'abonnement."}</>}>
+                          retirer
+                        </ConfirmButton>
+                      </form>
+                    ) : (
+                      <ExemptionOffer orgId={o.id} min={today} />
+                    )}
+                  </td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </TableWrap>
     </section>
   );
 }
@@ -513,19 +518,21 @@ async function NewsAdmin() {
       </div>
       <p className="muted">Publiées dans la rubrique « Actualités » et sur la page d&apos;accueil (les trois plus récentes).</p>
       {articles.length === 0 ? <p className="muted">Aucune actualité.</p> : (
-        <table className="table" tabIndex={0}>
-          <thead><tr><th>Titre</th><th>Rubrique</th><th>Statut</th><th>Mise à jour</th></tr></thead>
-          <tbody>
-            {articles.map((a) => (
-              <tr key={a.id}>
-                <td><Link href={`/admin/actualites/${a.id}`}>{a.title}</Link></td>
-                <td>{a.category}</td>
-                <td><span className={`pill ${a.publishedAt ? "ok" : "wait"}`}>{a.publishedAt ? `Publiée le ${formatDate(a.publishedAt)}` : "Brouillon"}</span></td>
-                <td>{formatDate(a.updatedAt)}</td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
+        <TableWrap label="Actualités">
+          <table className="table">
+            <thead><tr><th>Titre</th><th>Rubrique</th><th>Statut</th><th>Mise à jour</th></tr></thead>
+            <tbody>
+              {articles.map((a) => (
+                <tr key={a.id}>
+                  <td data-label="Titre"><Link href={`/admin/actualites/${a.id}`}>{a.title}</Link></td>
+                  <td data-label="Rubrique">{a.category}</td>
+                  <td data-label="Statut"><span className={`pill ${a.publishedAt ? "ok" : "wait"}`}>{a.publishedAt ? `Publiée le ${formatDate(a.publishedAt)}` : "Brouillon"}</span></td>
+                  <td data-label="Mise à jour">{formatDate(a.updatedAt)}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </TableWrap>
       )}
     </section>
   );

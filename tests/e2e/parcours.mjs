@@ -193,7 +193,6 @@ const linkIn = (mail) => mail?.text.match(/https?:\/\/\S+/g)?.find((u) => !u.end
   await page.fill('textarea[name="body"]', "Bonjour, je confirme mes disponibilités.");
   await page.click('button:has-text("Envoyer")');
   check("E-mail à l'organisation : nouveau message de l'expert", !!(await waitMail("anne.chevalier@demo.kolbase.local", "Nouveau message de Dr Olivier Girard")));
-  const dossierUrl = page.url();
   await page.goto(`${BASE}/compte`);
   await page.uncheck('form:has(h2:has-text("Notifications")) input[name="email"]');
   await page.click('form:has(h2:has-text("Notifications")) button:has-text("Enregistrer")');
@@ -418,7 +417,7 @@ const linkIn = (mail) => mail?.text.match(/https?:\/\/\S+/g)?.find((u) => !u.end
   const claire = await session();
   await login(claire.page, "claire.morel@demo.kolbase.local");
   await claire.page.goto(`${BASE}/organisations/demo-org-dentalys/dossiers/e2e-prj-be`);
-  let t = await text(claire.page);
+  const t = await text(claire.page);
   check("Dossier hors France : régime « Hors France », obligations belges rappelées", t.includes("Hors France") && t.includes("betransparent.be") && t.includes("Mdeon"));
   check("Dossier hors France : pas de démarche auprès de l'Ordre", !t.includes("Demander l'autorisation à l'Ordre") && !t.includes("Déclaration simple"));
   await claire.page.click('button:has-text("Hors France")');
@@ -1497,7 +1496,7 @@ async function submitNewOrg(page, siren) {
   await part.ctx.close();
   // L'organisateur : avis anonymes, attestations, statistiques.
   await org.page.goto(`${BASE}/organisations/demo-org-dentalys/evenements/demo-ev-soiree-implanto`);
-  let t = await text(org.page);
+  const t = await text(org.page);
   check("Organisateur : avis des participants", t.includes("Avis des participants") && /4,0\s*\/\s*5/.test(t) && t.includes("Très bons échanges") && !/Lambert[^\n]*Très bons/.test(t));
   check("Organisateur : envoi après l'événement indiqué", t.includes("Envoyés le"));
   const all = await org.ctx.request.get(`${BASE}/organisations/demo-org-dentalys/evenements/demo-ev-soiree-implanto/attestations`);
@@ -1514,7 +1513,7 @@ async function submitNewOrg(page, siren) {
   const { ctx, page } = await session();
   await login(page, "camille.petit@demo.kolbase.local");
   await page.goto(`${BASE}/revenus?onglet=facturation`);
-  let t = await text(page);
+  const t = await text(page);
   check("Notes d'honoraires : note existante et convention à facturer", /NH-\d{4}-001/.test(t) && t.includes("Comité scientifique aligneurs"));
   await page.fill('input[name="siret"]', "12345678901234");
   await page.click('form:has(textarea[name="billingAddress"]) button:has-text("Enregistrer")');
@@ -1750,9 +1749,14 @@ async function submitNewOrg(page, siren) {
   await fillDossier("Conférence implantologie — abonnement actif");
   check("Abonnement actif : sollicitation envoyée", /\/dossiers\/[^/]+$/.test(page.url()) && !page.url().endsWith("/nouveau"), page.url());
   const sub = [...stripeState.subscriptions.values()].at(-1);
-  await stripeWebhook("customer.subscription.updated", { ...sub, status: "past_due" });
+  // Comme chez Stripe, l'API reflète l'état annoncé : l'application relit l'abonnement au lieu de croire la notification.
+  sub.status = "past_due";
+  await stripeWebhook("customer.subscription.updated", { ...sub, status: "active" }, "evt_retard");
   await page.goto(`${BASE}/organisations/demo-org-cdra/abonnement`);
-  check("Paiement en échec : signalé, sans blocage", (await text(page)).includes("Paiement en attente"));
+  check("Paiement en échec : signalé, sans blocage (état relu chez Stripe)", (await text(page)).includes("Paiement en attente"));
+  await stripeWebhook("customer.subscription.updated", { ...sub }, "evt_retard");
+  check("Stripe : notification rejouée ignorée", stripeState.webhooks.at(-1)?.status === 200 && stripeState.webhooks.at(-1)?.body?.duplicate === true, JSON.stringify(stripeState.webhooks.at(-1)));
+  sub.status = "canceled";
   await stripeWebhook("customer.subscription.deleted", { ...sub, status: "canceled" });
   await page.goto(`${BASE}/organisations/demo-org-cdra/abonnement`);
   check("Résiliation : réactivation proposée sans nouveau mois offert", (await text(page)).includes("Résilié") && (await page.locator('button:has-text("Réactiver l\'abonnement")').count()) === 2 && !(await text(page)).includes("jours offerts"));
@@ -2090,6 +2094,9 @@ async function submitNewOrg(page, siren) {
   await login(lea.page, "lea.rousseau@demo.kolbase.local");
   await lea.page.goto(`${BASE}/organisations/demo-org-orthonova`);
   check("Membre sans double authentification : renvoyé vers « Mon compte »", lea.page.url().includes("/compte?securite=demo-org-orthonova") && (await text(lea.page)).includes("OrthoNova exige la double authentification de ses membres"), lea.page.url());
+  // Même règle pour les téléchargements par adresse directe (ils ne passent pas par les pages de l'espace).
+  const leaStats = await lea.page.request.get(`${BASE}/organisations/demo-org-orthonova/statistiques/export`);
+  check("Membre sans double authentification : export direct refusé", leaStats.status() === 404, String(leaStats.status()));
   await lea.ctx.close();
   // Connexion : mot de passe, puis code ; codes de secours à usage unique ; un code ne sert qu'une fois.
   const s1 = await session();
@@ -3017,7 +3024,6 @@ async function submitNewOrg(page, siren) {
   {
     const before = await q1(`select listed, (select count(*)::int from "OpenCall" where "organizationId" = 'demo-org-cdra' and status = 'open') calls from "Organization" where id = 'demo-org-cdra'`);
     await adm.page.goto(`${BASE}/admin`);
-    const mark = mails.length;
     const card = () => adm.page.locator('section.card:has-text("Collège Dentaire Rhône-Alpes")').first();
     await card().locator('form:has(button:has-text("Suspendre")) input[name="note"]').fill("Contrôle de conformité en cours");
     await card().locator('button:has-text("Suspendre")').click();
@@ -3872,12 +3878,6 @@ async function submitNewOrg(page, siren) {
     for (const end = Date.now() + ms; Date.now() < end; await new Promise((r) => setTimeout(r, 150))) if (await fn()) return true;
     return false;
   };
-  const confirmClick = async (scope, label) => {
-    await scope.locator(`button:has-text("${label}")`).first().click();
-    const ok = scope.locator('button:has-text("Confirmer")').first();
-    await ok.waitFor({ timeout: 3000 });
-    await ok.click();
-  };
   const CLAIRE = "claire.morel@demo.kolbase.local";
   /** E-mail reçu depuis un repère (les blocs précédents ont pu envoyer un e-mail de même sujet). */
   const mailSince = async (from, to, subject, timeout = 8000) => {
@@ -4023,7 +4023,9 @@ async function submitNewOrg(page, siren) {
     // Texte lu en minuscules : en-têtes et intitulés sont en capitales par la feuille de style.
     const st = n(await text(cl.page)).toLowerCase();
     const thead = n(await cl.page.locator(".stats-table thead").first().innerText()).toLowerCase();
-    check("Statistiques : par présent, HT et TTC séparés", thead.includes("hospitalités par présent (ttc)") && thead.includes("prestataires par présent (ht)") && !thead.includes("par inscrit") && st.includes("budget engagé (ht)"), thead);
+    // Coût par présent sous chaque total (deux colonnes de moins : le tableau tient dans la page).
+    const tbody = n(await cl.page.locator(".stats-table tbody").first().innerText()).toLowerCase();
+    check("Statistiques : par présent, HT et TTC séparés", thead.includes("hospitalités (ttc)") && thead.includes("prestataires (ht)") && tbody.includes("par présent") && st.includes("budget engagé (ht)"), thead);
     check("Statistiques : définition d'« engagé » en bas de page", st.includes("engagé : l'expert a accepté la proposition"));
     // TVA par ligne : repas à 10 %, vin à 20 % ; meilleure offre sur le TTC.
     await pgc.query(`insert into "Subscription" ("organizationId", plan, status, "exemptUntil", "updatedAt") values ('demo-sup-belleville', 'prestataire', 'a_activer', '2099-12-31', now()) on conflict ("organizationId") do update set "exemptUntil" = '2099-12-31'`);
