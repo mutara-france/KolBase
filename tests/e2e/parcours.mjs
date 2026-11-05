@@ -4023,7 +4023,9 @@ async function submitNewOrg(page, siren) {
     // Texte lu en minuscules : en-têtes et intitulés sont en capitales par la feuille de style.
     const st = n(await text(cl.page)).toLowerCase();
     const thead = n(await cl.page.locator(".stats-table thead").first().innerText()).toLowerCase();
-    check("Statistiques : par présent, HT et TTC séparés", thead.includes("hospitalités par présent (ttc)") && thead.includes("prestataires par présent (ht)") && !thead.includes("par inscrit") && st.includes("budget engagé (ht)"), thead);
+    // Coût par présent sous chaque total (deux colonnes de moins : le tableau tient dans la page).
+    const tbody = n(await cl.page.locator(".stats-table tbody").first().innerText()).toLowerCase();
+    check("Statistiques : par présent, HT et TTC séparés", thead.includes("hospitalités (ttc)") && thead.includes("prestataires (ht)") && tbody.includes("par présent") && st.includes("budget engagé (ht)"), thead);
     check("Statistiques : définition d'« engagé » en bas de page", st.includes("engagé : l'expert a accepté la proposition"));
     // TVA par ligne : repas à 10 %, vin à 20 % ; meilleure offre sur le TTC.
     await pgc.query(`insert into "Subscription" ("organizationId", plan, status, "exemptUntil", "updatedAt") values ('demo-sup-belleville', 'prestataire', 'a_activer', '2099-12-31', now()) on conflict ("organizationId") do update set "exemptUntil" = '2099-12-31'`);

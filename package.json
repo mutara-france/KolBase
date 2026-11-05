@@ -16,6 +16,7 @@
     "deploy:prepare": "sh scripts/predeploy.sh",
     "test": "vitest run",
     "test:e2e": "node tests/e2e/parcours.mjs",
+    "test:affichage": "node tests/e2e/affichage.mjs",
     "db:purge-demo": "tsx scripts/purge-demo.ts",
     "deadcode": "knip"
   },

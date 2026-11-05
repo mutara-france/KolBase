@@ -15,6 +15,7 @@ import { markProjectPublished, markSemesterPublished } from "@/lib/compliance-ac
 import { detectConflicts } from "@/lib/conflicts";
 import { pointedPastEvents } from "@/lib/checkin";
 import { declarationRows, parseSemester, recentSemesters, semesterKey, semesterLabel } from "@/lib/transparence";
+import { TableWrap } from "@/components/TableWrap";
 
 export const metadata = { title: "Conformité — KolBase" };
 
@@ -92,41 +93,45 @@ export default async function Page({ params, searchParams }: { params: Promise<{
               adressée au moins {s.authorizationDays} jours avant l&apos;exécution ; sous les seuils, une déclaration {s.declarationDays} jours ouvrables avant suffit.
             </p>
             {authorizations.length === 0 ? <p className="muted">Aucune autorisation en cours.</p> : (
-              <table className="table" tabIndex={0}>
-                <thead><tr><th>Dossier</th><th>Experts</th><th>Montant</th><th>Motif</th><th>Statut</th></tr></thead>
-                <tbody>
-                  {authorizations.map((p) => (
-                    <tr key={p.id}>
-                      <td><Link href={dossier(p.id)}>{p.title}</Link></td>
-                      <td>{experts(p)}</td>
-                      <td>{formatEUR(total(p))} HT</td>
-                      <td>{regimeOf(p).reason}</td>
-                      <td>{p.status === "VALIDE" ? <span className="pill wait">Demande à faire</span> : <StatusPill status={p.status} />}{p.ordreRef ? <span className="muted"> · {p.ordreRef}</span> : null}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
+              <TableWrap label="Autorisations">
+                <table className="table">
+                  <thead><tr><th>Dossier</th><th>Experts</th><th>Montant</th><th>Motif</th><th>Statut</th></tr></thead>
+                  <tbody>
+                    {authorizations.map((p) => (
+                      <tr key={p.id}>
+                        <td data-label="Dossier"><Link href={dossier(p.id)}>{p.title}</Link></td>
+                        <td data-label="Experts">{experts(p)}</td>
+                        <td data-label="Montant">{formatEUR(total(p))} HT</td>
+                        <td data-label="Motif">{regimeOf(p).reason}</td>
+                        <td data-label="Statut">{p.status === "VALIDE" ? <span className="pill wait">Demande à faire</span> : <StatusPill status={p.status} />}{p.ordreRef ? <span className="muted"> · {p.ordreRef}</span> : null}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </TableWrap>
             )}
             <h2>Hospitalités soumises à autorisation</h2>
             <p className="muted">Conventions d&apos;hospitalité dont une prestation ou le total dépasse un seuil : l&apos;autorisation de l&apos;Ordre est à demander au moins {s.authorizationDays} jours avant l&apos;événement.</p>
             {hospAuthorizations.length === 0 ? <p className="muted">Aucune hospitalité soumise à autorisation.</p> : (
-              <table className="table" tabIndex={0}>
-                <thead><tr><th>Événement</th><th>Bénéficiaire</th><th>Valeur</th><th>Motif</th><th>Demande</th></tr></thead>
-                <tbody>
-                  {hospAuthorizations.map(({ r, regime }) => {
-                    const by = new Date(r.event.startsAt.getTime() - s.authorizationDays * 864e5);
-                    return (
-                      <tr key={r.id}>
-                        <td><Link href={`/organisations/${id}/evenements/${r.event.id}`}>{r.event.title}</Link><span className="muted"> · {formatDate(r.event.startsAt)}</span></td>
-                        <td>{r.user.lastName.toUpperCase()} {r.user.firstName}</td>
-                        <td>{formatEUR(r.benefits.reduce((x, b) => x + b.valueCents, 0))} TTC</td>
-                        <td>{regime.reason}</td>
-                        <td>{r.event.startsAt < now ? <span className="pill">Événement passé</span> : <span className={`pill ${by < now ? "bad" : "wait"}`}>{by < now ? "Délai dépassé" : `Avant le ${formatDate(by)}`}</span>}{" "}<a className="link" href={`/organisations/${id}/hospitalites/convention/${r.id}`} target="_blank" rel="noreferrer">convention</a></td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
+              <TableWrap label="Hospitalités soumises à autorisation">
+                <table className="table">
+                  <thead><tr><th>Événement</th><th>Bénéficiaire</th><th>Valeur</th><th>Motif</th><th>Demande</th></tr></thead>
+                  <tbody>
+                    {hospAuthorizations.map(({ r, regime }) => {
+                      const by = new Date(r.event.startsAt.getTime() - s.authorizationDays * 864e5);
+                      return (
+                        <tr key={r.id}>
+                          <td data-label="Événement"><Link href={`/organisations/${id}/evenements/${r.event.id}`}>{r.event.title}</Link><span className="muted"> · {formatDate(r.event.startsAt)}</span></td>
+                          <td data-label="Bénéficiaire">{r.user.lastName.toUpperCase()} {r.user.firstName}</td>
+                          <td data-label="Valeur">{formatEUR(r.benefits.reduce((x, b) => x + b.valueCents, 0))} TTC</td>
+                          <td data-label="Motif">{regime.reason}</td>
+                          <td data-label="Demande">{r.event.startsAt < now ? <span className="pill">Événement passé</span> : <span className={`pill ${by < now ? "bad" : "wait"}`}>{by < now ? "Délai dépassé" : `Avant le ${formatDate(by)}`}</span>}{" "}<a className="link" href={`/organisations/${id}/hospitalites/convention/${r.id}`} target="_blank" rel="noreferrer">convention</a></td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </TableWrap>
             )}
           </section>
         )}
@@ -143,37 +148,39 @@ export default async function Page({ params, searchParams }: { params: Promise<{
               <Link href={`/organisations/${id}/hospitalites`}>Hospitalités</Link>.
             </p>
             {toPublish.length === 0 ? <p className="muted">Aucune convention signée.</p> : (
-              <table className="table" tabIndex={0}>
-                <thead><tr><th>Dossier</th><th>Experts</th><th>Montant</th><th>Statut</th><th>Publication</th></tr></thead>
-                <tbody>
-                  {toPublish.map((p) => (
-                    <tr key={p.id}>
-                      <td><Link href={dossier(p.id)}>{p.title}</Link></td>
-                      <td>{experts(p)}</td>
-                      <td>{formatEUR(total(p))} HT</td>
-                      <td><StatusPill status={p.status} /></td>
-                      <td>
-                        <form action={markProjectPublished} className="inline">
-                          <input type="hidden" name="orgId" value={id} />
-                          <input type="hidden" name="projectId" value={p.id} />
-                          {p.declared ? (
-                            <>
-                              <span>Publié{p.declarationRef ? ` · ${p.declarationRef}` : ""}{p.declaredAt ? ` · ${formatDate(p.declaredAt)}` : ""}</span>
-                              <input type="hidden" name="undo" value="1" />
-                              <button className="link">annuler</button>
-                            </>
-                          ) : (
-                            <>
-                              <input name="ref" placeholder="Réf. de publication" aria-label="Référence" />
-                              <button className="link">Marquer publié</button>
-                            </>
-                          )}
-                        </form>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
+              <TableWrap label="Suivi des publications">
+                <table className="table">
+                  <thead><tr><th>Dossier</th><th>Experts</th><th>Montant</th><th>Statut</th><th>Publication</th></tr></thead>
+                  <tbody>
+                    {toPublish.map((p) => (
+                      <tr key={p.id}>
+                        <td data-label="Dossier"><Link href={dossier(p.id)}>{p.title}</Link></td>
+                        <td data-label="Experts">{experts(p)}</td>
+                        <td data-label="Montant">{formatEUR(total(p))} HT</td>
+                        <td data-label="Statut"><StatusPill status={p.status} /></td>
+                        <td data-label="Publication">
+                          <form action={markProjectPublished} className="inline">
+                            <input type="hidden" name="orgId" value={id} />
+                            <input type="hidden" name="projectId" value={p.id} />
+                            {p.declared ? (
+                              <>
+                                <span>Publié{p.declarationRef ? ` · ${p.declarationRef}` : ""}{p.declaredAt ? ` · ${formatDate(p.declaredAt)}` : ""}</span>
+                                <input type="hidden" name="undo" value="1" />
+                                <button className="link">annuler</button>
+                              </>
+                            ) : (
+                              <>
+                                <input name="ref" placeholder="Réf. de publication" aria-label="Référence" />
+                                <button className="link">Marquer publié</button>
+                              </>
+                            )}
+                          </form>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </TableWrap>
             )}
           </section>
         )}
@@ -227,26 +234,28 @@ export default async function Page({ params, searchParams }: { params: Promise<{
       <section className="card">
         <h2>Dossiers à valider</h2>
         {toValidate.length === 0 ? <p className="muted">Aucun dossier en attente de validation.</p> : (
-          <table className="table" tabIndex={0}>
-            <thead><tr><th>Dossier</th><th>Experts</th><th>Montant</th><th>Juste contrepartie</th><th>Régime</th><th>Conflits</th><th>Soumis le</th></tr></thead>
-            <tbody>
-              {toValidate.map((p, i) => {
-                const r = regimeOf(p);
-                const c = conflicts[i];
-                return (
-                  <tr key={p.id}>
-                    <td><Link href={dossier(p.id)}>{p.title}</Link><br /><span className="muted">{collabType(p.typeId)?.label ?? p.typeId}</span></td>
-                    <td>{experts(p)}</td>
-                    <td>{formatEUR(total(p))} HT</td>
-                    <td>{p.experts.map((e) => <FmvBadge key={e.id} typeId={p.typeId} feeCents={e.feeCents} units={e.days} />)}</td>
-                    <td><RegimePill regime={r.regime} reason={r.reason} /></td>
-                    <td>{c.length ? <span className={`pill ${c.some((x) => x.severity === "danger") ? "bad" : "wait"}`}>{c.length}</span> : <span className="pill ok">Aucun</span>}</td>
-                    <td>{formatDate(p.updatedAt)}</td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
+          <TableWrap label="Dossiers à valider">
+            <table className="table">
+              <thead><tr><th>Dossier</th><th>Experts</th><th>Montant</th><th>Juste contrepartie</th><th>Régime</th><th>Conflits</th><th>Soumis le</th></tr></thead>
+              <tbody>
+                {toValidate.map((p, i) => {
+                  const r = regimeOf(p);
+                  const c = conflicts[i];
+                  return (
+                    <tr key={p.id}>
+                      <td data-label="Dossier"><Link href={dossier(p.id)}>{p.title}</Link><br /><span className="muted">{collabType(p.typeId)?.label ?? p.typeId}</span></td>
+                      <td data-label="Experts">{experts(p)}</td>
+                      <td data-label="Montant">{formatEUR(total(p))} HT</td>
+                      <td data-label="Juste contrepartie">{p.experts.map((e) => <FmvBadge key={e.id} typeId={p.typeId} feeCents={e.feeCents} units={e.days} />)}</td>
+                      <td data-label="Régime"><RegimePill regime={r.regime} reason={r.reason} /></td>
+                      <td data-label="Conflits">{c.length ? <span className={`pill ${c.some((x) => x.severity === "danger") ? "bad" : "wait"}`}>{c.length}</span> : <span className="pill ok">Aucun</span>}</td>
+                      <td data-label="Soumis le">{formatDate(p.updatedAt)}</td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </TableWrap>
         )}
       </section>
     );
@@ -268,22 +277,24 @@ export default async function Page({ params, searchParams }: { params: Promise<{
         </nav>
         <p className="muted">{rows.length} convention{rows.length > 1 ? "s" : ""} · {formatEUR(sum)} · {rows.filter((r) => r.regime === "autorisation").length} sous autorisation</p>
         {rows.length === 0 ? <p className="muted">Aucune convention sur la période.</p> : (
-          <table className="table" tabIndex={0}>
-            <thead><tr><th>Date</th><th>Bénéficiaire</th><th>Objet</th><th>Nature</th><th>Montant</th><th>Régime</th><th>Statut</th></tr></thead>
-            <tbody>
-              {rows.map((r, i) => (
-                <tr key={i}>
-                  <td>{formatDate(r.date)}</td>
-                  <td>{r.lastName.toUpperCase()} {r.firstName}{r.rpps ? <><br /><span className="muted">RPPS {r.rpps}</span></> : null}</td>
-                  <td><Link href={r.href}>{r.subject}</Link></td>
-                  <td>{r.nature}</td>
-                  <td>{formatEUR(r.amountCents)}</td>
-                  <td><RegimePill regime={r.regime} reason={r.reason} /></td>
-                  <td>{r.status ? STATUS_LABEL[r.status as keyof typeof STATUS_LABEL] : "Hospitalité"}{r.declared ? " · publié" : ""}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+          <TableWrap label="Registre des conventions">
+            <table className="table">
+              <thead><tr><th>Date</th><th>Bénéficiaire</th><th>Objet</th><th>Nature</th><th>Montant</th><th>Régime</th><th>Statut</th></tr></thead>
+              <tbody>
+                {rows.map((r, i) => (
+                  <tr key={i}>
+                    <td data-label="Date">{formatDate(r.date)}</td>
+                    <td data-label="Bénéficiaire">{r.lastName.toUpperCase()} {r.firstName}{r.rpps ? <><br /><span className="muted">RPPS {r.rpps}</span></> : null}</td>
+                    <td data-label="Objet"><Link href={r.href}>{r.subject}</Link></td>
+                    <td data-label="Nature">{r.nature}</td>
+                    <td data-label="Montant">{formatEUR(r.amountCents)}</td>
+                    <td data-label="Régime"><RegimePill regime={r.regime} reason={r.reason} /></td>
+                    <td data-label="Statut">{r.status ? STATUS_LABEL[r.status as keyof typeof STATUS_LABEL] : "Hospitalité"}{r.declared ? " · publié" : ""}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </TableWrap>
         )}
       </section>
     );

@@ -98,6 +98,8 @@ jobs:
         run: |
           npm start > next.log 2>&1 &
           for i in $(seq 1 60); do curl -sf http://localhost:3000/api/health && break; sleep 1; done
+          # Mise en page (débordements, blocs collés, champs sans style) sur la démo intacte, avant le parcours.
+          BASE=http://localhost:3000 npm run test:affichage
           BASE=http://localhost:3000 npm run test:e2e
       - name: Journal du serveur (en cas d'échec)
         if: failure()

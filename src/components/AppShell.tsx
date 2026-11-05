@@ -4,7 +4,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 import {
-  BarChart3, Bell, CalendarDays, Check, ChevronDown, CircleHelp, ExternalLink, FileText, Folder, House, LogOut, Megaphone, Plug, Receipt, Send, ShieldCheck, UserRound, Users, Building2, Wallet,
+  BarChart3, Bell, CalendarDays, Check, ChevronDown, ExternalLink, FileText, Folder, House, LogOut, Megaphone, Plug, Receipt, Send, ShieldCheck, UserRound, Users, Building2, Wallet,
 } from "lucide-react";
 import { Logo } from "@/components/Logo";
 import { signOut } from "@/lib/auth-actions";
@@ -231,7 +231,6 @@ function AccountMenu({ user, space, spaces, admin }: { user: ShellUser; space?: 
             <Link href="/compte" role="menuitem"><UserRound size={18} strokeWidth={1.8} aria-hidden />{t("Mon compte")}</Link>
           )}
           <Link href="/organisations" role="menuitem"><Building2 size={18} strokeWidth={1.8} aria-hidden />{t("Mes organisations")}</Link>
-          <Link href="/aide" role="menuitem"><CircleHelp size={18} strokeWidth={1.8} aria-hidden />{t("Aide")}</Link>
           {admin && <Link href="/admin" role="menuitem"><ShieldCheck size={18} strokeWidth={1.8} aria-hidden />{t("Administration KolBase")}</Link>}
           <hr />
           <form action={signOut}>

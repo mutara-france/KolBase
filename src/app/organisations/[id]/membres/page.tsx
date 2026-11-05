@@ -17,6 +17,7 @@ import { formatDate } from "@/lib/events";
 import { ShieldCheck } from "lucide-react";
 import { companyVisibility } from "@/lib/visibility";
 import { OrgTwoFactorForm } from "@/components/TwoFactorForms";
+import { TableWrap } from "@/components/TableWrap";
 
 export const metadata = { title: "Membres et réglages — KolBase" };
 
@@ -124,25 +125,27 @@ export default async function Page({ params, searchParams }: { params: Promise<{
                 {invitations.length > 0 && (
                   <section className="card">
                     <h2>Invitations en attente</h2>
-                    <table className="table" tabIndex={0}>
-                      <thead><tr><th>Rôle</th><th>Mémo</th><th>Expire le</th><th /></tr></thead>
-                      <tbody>
-                        {invitations.map((i) => (
-                          <tr key={i.id}>
-                            <td>{roleLabel(i.role, org.kind)}</td>
-                            <td>{i.email ?? "—"}</td>
-                            <td>{fmt(i.expiresAt)}</td>
-                            <td>
-                              <form action={revokeInvitation}>
-                                <input type="hidden" name="orgId" value={id} />
-                                <input type="hidden" name="invitationId" value={i.id} />
-                                <button className="link danger">Révoquer</button>
-                              </form>
-                            </td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
+                    <TableWrap label="Invitations en attente">
+                      <table className="table">
+                        <thead><tr><th>Rôle</th><th>Mémo</th><th>Expire le</th><th /></tr></thead>
+                        <tbody>
+                          {invitations.map((i) => (
+                            <tr key={i.id}>
+                              <td data-label="Rôle">{roleLabel(i.role, org.kind)}</td>
+                              <td data-label="Mémo">{i.email ?? "—"}</td>
+                              <td data-label="Expire le">{fmt(i.expiresAt)}</td>
+                              <td>
+                                <form action={revokeInvitation}>
+                                  <input type="hidden" name="orgId" value={id} />
+                                  <input type="hidden" name="invitationId" value={i.id} />
+                                  <button className="link danger">Révoquer</button>
+                                </form>
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </TableWrap>
                   </section>
                 )}
               </>
