@@ -15,6 +15,7 @@ import { de } from "@/lib/elision";
 import { notifyPlatformAdmins, notifyServiceOrder } from "@/lib/notifications";
 import { aiComplete, aiEnabled } from "@/lib/ai";
 import { blockedFor, hit } from "@/lib/rate-limit";
+import { errorText, maskEmails } from "@/lib/redact";
 
 export type FormState = { error?: string; ok?: string; test?: boolean; sent?: boolean } | undefined;
 const app = () => process.env.APP_URL ?? "http://localhost:3000";
@@ -174,7 +175,7 @@ export async function sendNewsletter(_: FormState, form: FormData): Promise<Form
       // Lien suivi : visites et inscriptions comptées dans le bilan envoyé à l'organisateur.
       cta,
       unsubscribe: { page: `${app()}/desinscription/${token}`, oneClick: `${app()}/api/desinscription/${token}` },
-    }).catch((e) => { console.error("[lettre d'information]", u.email, e); return false; });
+    }).catch((e) => { console.error("[lettre d'information]", maskEmails(u.email), errorText(e)); return false; });
     if (ok) sent++;
   }
   await db.newsletterCampaign.update({ where: { id: reserved.id }, data: { recipients: sent, sentAt: new Date() } });

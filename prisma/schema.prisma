@@ -1088,6 +1088,15 @@ model NewsletterCampaign {
   createdAt   DateTime      @default(now())
 }
 
+/// Suivi des tâches planifiées (POST /api/taches) : dernière exécution et dernière réussite, affichées dans /admin.
+model TaskRun {
+  name      String    @id
+  startedAt DateTime
+  okAt      DateTime?
+  error     String?
+  result    Json?
+}
+
 // Tentative comptée par le limiteur de débit (connexion, inscription, réinitialisation, 2FA, assistant…) : clé hachée,
 // date. Stockée en base pour survivre aux déploiements ; purgée après 24 h par la tâche planifiée.
 model RateLimitHit {
