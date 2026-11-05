@@ -98,13 +98,23 @@ jobs:
 
       - name: Navigateur de test
         run: npx playwright install --with-deps chromium
-      - name: Parcours de bout en bout
+      - name: Application lancée
+        id: app
         run: |
           npm start > next.log 2>&1 &
           for i in $(seq 1 60); do curl -sf http://localhost:3000/api/health && break; sleep 1; done
-          # Mise en page (débordements, blocs collés, champs sans style) sur la démo intacte, avant le parcours.
-          BASE=http://localhost:3000 npm run test:affichage
-          BASE=http://localhost:3000 npm run test:e2e
+          curl -sf http://localhost:3000/api/health > /dev/null
+      # Mise en page (débordements, blocs collés, champs sans style) sur la démo intacte, avant le parcours.
+      - name: Mise en page
+        run: BASE=http://localhost:3000 npm run test:affichage
+      # Accessibilité (axe-core, WCAG 2.1 A et AA) des pages publiques, praticien, organisation et administration :
+      # échec sur une violation critique ou grave. Avant le parcours, qui modifie les comptes de démonstration.
+      - name: Accessibilité
+        if: ${{ !cancelled() && steps.app.outcome == 'success' }}
+        run: BASE=http://localhost:3000 npm run test:a11y
+      - name: Parcours de bout en bout
+        if: ${{ !cancelled() && steps.app.outcome == 'success' }}
+        run: BASE=http://localhost:3000 npm run test:e2e
       - name: Journal du serveur (en cas d'échec)
         if: failure()
         run: tail -n 200 next.log || true
