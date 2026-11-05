@@ -133,13 +133,14 @@ export async function disableTwoFactor(_: FormState, form: FormData): Promise<Fo
 
 /** Organisation : exiger la double authentification de tous les membres (administrateur, lui-même protégé). */
 export async function setOrgTwoFactor(_: FormState, form: FormData): Promise<FormState> {
+  const { t } = await getT();
   const orgId = str(form, "orgId");
   const { user, isAdmin } = await requireMembership(orgId, undefined, { allowSupplier: true });
-  if (!isAdmin) return { error: "Réservé aux administrateurs de l'organisation." };
+  if (!isAdmin) return { error: t("Réservé aux administrateurs de l'organisation.") };
   const on = form.get("require") === "1";
-  if (on && !user.totpEnabledAt) return { error: "Activez d'abord la double authentification sur votre propre compte (Mon compte › Sécurité)." };
+  if (on && !user.totpEnabledAt) return { error: t("Activez d'abord la double authentification sur votre propre compte (Mon compte › Sécurité).") };
   await db.organization.update({ where: { id: orgId }, data: { require2fa: on } });
   await audit(user.id, on ? "org.2fa_required" : "org.2fa_optional", "Organization", orgId);
   revalidatePath(`/organisations/${orgId}/membres`);
-  return { ok: on ? "Double authentification exigée : les membres qui ne l'ont pas activée devront le faire à leur prochain accès." : "Double authentification facultative." };
+  return { ok: on ? t("Double authentification exigée : les membres qui ne l'ont pas activée devront le faire à leur prochain accès.") : t("Double authentification facultative.") };
 }

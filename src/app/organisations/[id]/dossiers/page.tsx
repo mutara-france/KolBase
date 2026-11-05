@@ -5,16 +5,21 @@ import { orgTabs } from "@/lib/org-overview";
 import { StatusPill } from "@/components/ProjectBits";
 import { db } from "@/lib/db";
 import { requireMembership } from "@/lib/orgs";
-import { formatDate, formatEUR } from "@/lib/events";
 import { PROPOSAL_ORIGIN, collabType, NEXT_ACTOR, PROJECT_VIEW_ROLES, SOURCING_ROLES } from "@/lib/projects";
 import { drPrefix } from "@/lib/professions";
 import type { ProjectStatus } from "@/generated/prisma/client";
+import { getT } from "@/lib/i18n/server";
+import { fmtDate, fmtEur } from "@/lib/i18n";
 
-export const metadata = { title: "Dossiers — KolBase" };
+export async function generateMetadata() {
+  const { t } = await getT();
+  return { title: `${t("Dossiers")} — KolBase` };
+}
 
 const PER_PAGE = 50;
 
 export default async function Page({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: Promise<{ page?: string; etat?: string }> }) {
+  const { t, locale } = await getT();
   const { id } = await params;
   const sp = await searchParams;
   const etat = sp.etat === "clos" ? "clos" : sp.etat === "tous" ? "tous" : "en-cours";
@@ -39,21 +44,21 @@ export default async function Page({ params, searchParams }: { params: Promise<{
   const base = `/organisations/${id}/dossiers`;
   const pageHref = (n: number) => `${base}?etat=${etat}${n > 1 ? `&page=${n}` : ""}`;
   const sectionTabs = await orgTabs("dossiers", id);
-  const filters = [["en-cours", `En cours (${openCount})`], ["clos", `Clos (${closedCount})`], ["tous", "Tous"]] as const;
+  const filters = [["en-cours", t("En cours ({n})", { n: openCount })], ["clos", t("Clos ({n})", { n: closedCount })], ["tous", t("Tous")]] as const;
   return (
     <>
       <SiteHeader />
       <main className="stack">
-        <SectionNav tabs={sectionTabs} active="dossiers" label="Rubrique Dossiers" />
+        <SectionNav tabs={sectionTabs} active="dossiers" label={t("Rubrique Dossiers")} />
         <div className="actions spread">
-          <h1>Dossiers de collaboration</h1>
-          {canCreate && <Link className="btn" href={`${base}/nouveau`}>Nouveau dossier</Link>}
+          <h1>{t("Dossiers de collaboration")}</h1>
+          {canCreate && <Link className="btn" href={`${base}/nouveau`}>{t("Nouveau dossier")}</Link>}
         </div>
-        <nav className="tabs" aria-label="Filtrer les dossiers">
+        <nav className="tabs" aria-label={t("Filtrer les dossiers")}>
           {filters.map(([k, l]) => <Link key={k} href={`${base}?etat=${k}`} className={k === etat ? "active" : ""}>{l}</Link>)}
         </nav>
         {projects.length === 0 ? (
-          <div className="card empty"><p className="muted">{etat === "clos" ? "Aucun dossier clos." : "Aucun dossier en cours. Créez-en un, ou sollicitez un expert depuis l'annuaire."}</p></div>
+          <div className="card empty"><p className="muted">{etat === "clos" ? t("Aucun dossier clos.") : t("Aucun dossier en cours. Créez-en un, ou sollicitez un expert depuis l'annuaire.")}</p></div>
         ) : (
           <section className="card row-list">
             {projects.map((p) => {
@@ -65,24 +70,24 @@ export default async function Page({ params, searchParams }: { params: Promise<{
                 <Link key={p.id} href={`${base}/${p.id}`} className="row-item">
                   <span className="row-main">
                     <strong>{p.title}</strong>
-                    <span className="muted text-sm">{p.origin === PROPOSAL_ORIGIN ? "Projet proposé par l'expert · " : ""}{collabType(p.typeId)?.label ?? p.typeId}{names.length ? ` · ${names.slice(0, 3).join(", ")}${names.length > 3 ? ` +${names.length - 3}` : ""}` : ""}</span>
+                    <span className="muted text-sm">{p.origin === PROPOSAL_ORIGIN ? t("Projet proposé par l'expert · ") : ""}{t(collabType(p.typeId)?.label ?? p.typeId)}{names.length ? ` · ${names.slice(0, 3).join(", ")}${names.length > 3 ? ` +${names.length - 3}` : ""}` : ""}</span>
                   </span>
                   <span className="row-status">
                     <StatusPill status={p.status} />
-                    {actor && <span className="text-xs muted">À faire : <strong>{actor.who}</strong>, {actor.what}</span>}
+                    {actor && <span className="text-xs muted">{t("À faire :")}{" "}<strong>{t(actor.who)}</strong>, {t(actor.what)}</span>}
                   </span>
                   <span className="row-figures">
-                    <strong>{formatEUR(engaged)} HT</strong>
-                    <span className="text-xs muted">mis à jour le {formatDate(p.updatedAt)}</span>
+                    <strong>{fmtEur(locale, engaged)}{" "}{t("HT")}</strong>
+                    <span className="text-xs muted">{t("mis à jour le {date}", { date: fmtDate(locale, p.updatedAt) })}</span>
                   </span>
                 </Link>
               );
             })}
             {pages > 1 && (
-              <nav className="pager" aria-label="Pages de dossiers">
-                {page > 1 ? <Link href={pageHref(page - 1)} className="btn ghost small" rel="prev">Précédent</Link> : <span />}
-                <span className="muted text-sm">{total} dossiers · page {page} sur {pages}</span>
-                {page < pages ? <Link href={pageHref(page + 1)} className="btn ghost small" rel="next">Suivant</Link> : <span />}
+              <nav className="pager" aria-label={t("Pages de dossiers")}>
+                {page > 1 ? <Link href={pageHref(page - 1)} className="btn ghost small" rel="prev">{t("Précédent")}</Link> : <span />}
+                <span className="muted text-sm">{t("{total} dossiers · page {page} sur {pages}", { total, page, pages })}</span>
+                {page < pages ? <Link href={pageHref(page + 1)} className="btn ghost small" rel="next">{t("Suivant")}</Link> : <span />}
               </nav>
             )}
           </section>

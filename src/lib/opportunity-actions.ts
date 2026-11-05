@@ -20,29 +20,30 @@ export type ActionState = { error?: string; ok?: string; fix?: GateLink } | unde
  * de l'organisation (formation, symposium…). Dans les deux cas, la personne retenue ouvre un dossier.
  */
 export async function createOpenCall(_: ActionState, form: FormData): Promise<ActionState> {
+  const { t } = await getT();
   const orgId = str(form, "orgId");
   const { user, org } = await requireMembership(orgId, SOURCING_ROLES);
-  if (!isVerifiedOrg(org)) return { error: notVerified(org) };
+  if (!isVerifiedOrg(org)) return { error: t(notVerified(org)) };
   const gate = await engagementGate(orgId, "appel");
   if (gate) return gate;
   const title = str(form, "title");
   const typeId = str(form, "typeId");
-  if (!title) return { error: "Le titre est obligatoire." };
-  if (!collabType(typeId)) return { error: "Type de collaboration invalide." };
+  if (!title) return { error: t("Le titre est obligatoire.") };
+  if (!collabType(typeId)) return { error: t("Type de collaboration invalide.") };
   const eventId = str(form, "eventId") || null;
   const event = eventId ? await db.event.findFirst({ where: { id: eventId, organizationId: orgId } }) : null;
-  if (eventId && !event) return { error: "Événement introuvable." };
-  if (event && event.startsAt < new Date()) return { error: "Cet événement est déjà passé." };
+  if (eventId && !event) return { error: t("Événement introuvable.") };
+  if (event && event.startsAt < new Date()) return { error: t("Cet événement est déjà passé.") };
   const slotsRaw = str(form, "slots");
   const slots = slotsRaw ? Number(slotsRaw) : null;
-  if (slots != null && (!Number.isInteger(slots) || slots < 1 || slots > 50)) return { error: "Nombre de places invalide (1 à 50)." };
+  if (slots != null && (!Number.isInteger(slots) || slots < 1 || slots > 50)) return { error: t("Nombre de places invalide (1 à 50).") };
   const min = eurToCents(str(form, "budgetMin"));
   const max = eurToCents(str(form, "budgetMax"));
-  if (min != null && max != null && min > max) return { error: "Le budget minimum dépasse le maximum." };
+  if (min != null && max != null && min > max) return { error: t("Le budget minimum dépasse le maximum.") };
   const deadlineRaw = str(form, "deadline");
   const deadline = deadlineRaw ? parseParisDateTime(`${deadlineRaw}T23:59`) : null;
-  if (deadlineRaw && (!deadline || deadline < new Date())) return { error: "Date limite invalide ou passée." };
-  if (deadline && event && deadline > event.startsAt) return { error: "La date limite doit précéder l'événement." };
+  if (deadlineRaw && (!deadline || deadline < new Date())) return { error: t("Date limite invalide ou passée.") };
+  if (deadline && event && deadline > event.startsAt) return { error: t("La date limite doit précéder l'événement.") };
   const call = await db.openCall.create({
     data: {
       organizationId: orgId,
@@ -125,18 +126,19 @@ export async function rejectApplication(form: FormData) {
  * Le dossier ne passe en accord de principe qu'une fois cette proposition acceptée par l'expert.
  */
 export async function retainApplication(_: ActionState, form: FormData): Promise<ActionState> {
+  const { t } = await getT();
   const orgId = str(form, "orgId");
   const { user, org } = await requireMembership(orgId, SOURCING_ROLES);
-  if (!isVerifiedOrg(org)) return { error: notVerified(org) };
+  if (!isVerifiedOrg(org)) return { error: t(notVerified(org)) };
   const appId = str(form, "applicationId");
   const app = await db.application.findFirst({
     where: { id: appId, openCall: { organizationId: orgId } },
     include: { openCall: { include: { event: true } }, practitioner: { include: { user: { select: { lastName: true } } } } },
   });
-  if (!app) return { error: "Candidature introuvable." };
-  if (app.status !== "pending") return { error: "Cette candidature a déjà été traitée." };
+  if (!app) return { error: t("Candidature introuvable.") };
+  if (app.status !== "pending") return { error: t("Cette candidature a déjà été traitée.") };
   const fee = eurToCents(str(form, "fee"));
-  if (fee === null) return { error: "Indiquez les honoraires convenus." };
+  if (fee === null) return { error: t("Indiquez les honoraires convenus.") };
   const parsedUnits = unitsOrNull(str(form, "units"));
   if (parsedUnits === undefined) return { error: UNITS_INVALID };
   const units = parsedUnits ?? 1;
@@ -175,8 +177,8 @@ export async function retainApplication(_: ActionState, form: FormData): Promise
     await tx.application.update({ where: { id: app.id }, data: { projectId: created.id } });
     return created;
   });
-  if (project === "full") return { error: "Toutes les places sont déjà pourvues." };
-  if (!project) return { error: "Cette candidature a déjà été traitée." };
+  if (project === "full") return { error: t("Toutes les places sont déjà pourvues.") };
+  if (!project) return { error: t("Cette candidature a déjà été traitée.") };
   await audit(user.id, "application.retain", "Application", app.id, { projectId: project.id });
   await audit(user.id, "project.create", "Project", project.id, { from: "opencall", callId: app.openCallId });
   notifySolicitations(project.id, "honoraires");

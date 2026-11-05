@@ -11,7 +11,7 @@ import { quoteTtc } from "@/lib/quotes";
 import { PLANS } from "@/lib/billing-plans";
 import { rnaAccepted } from "@/lib/org-roles";
 import { supplierCategoryLabel } from "@/lib/suppliers";
-import { fmtEur, isLocale, makeT, type Locale, type T } from "@/lib/i18n";
+import { fmtEur, intlLocale, isLocale, makeT, type Locale, type T } from "@/lib/i18n";
 import { collabType, PROJECT_ROLES, SOURCING_ROLES, STATUS_LABEL, type ExpertNotice } from "@/lib/projects";
 import { featuredUntil, orderStats } from "@/lib/services";
 import { conversion, reportParts } from "@/lib/service-report";
@@ -151,11 +151,7 @@ export function notifyMessage(linkId: string, authorId: string) {
     const l = await db.projectExpert.findUnique({ where: { id: linkId }, include: linkInclude });
     if (!l) return;
     if (l.practitioner.userId === authorId) {
-      await send(await projectTeam(l.project), {
-        subject: `Nouveau message de ${expertName(l.practitioner)}`,
-        text: `Bonjour,\n\n${expertName(l.practitioner)} vous a écrit à propos du dossier « ${l.project.title} ».`,
-        cta: { label: "Lire le message", href: `/organisations/${l.project.organizationId}/dossiers/${l.projectId}` },
-      }, authorId);
+      await send(await projectTeam(l.project), (t) => ({ subject: t("Nouveau message de {expert}", { expert: expertName(l.practitioner) }), text: t("Bonjour,\n\n{expert} vous a écrit à propos du dossier « {project} ».", { expert: expertName(l.practitioner), project: l.project.title }), cta: { label: t("Lire le message"), href: `/organisations/${l.project.organizationId}/dossiers/${l.projectId}` } }), authorId);
     } else {
       const org = l.project.organization.name;
       await send([l.practitioner.user], (t) => ({
@@ -244,13 +240,7 @@ export function notifyExpertAnswer(linkId: string, accepted: boolean) {
   later(async () => {
     const l = await db.projectExpert.findUnique({ where: { id: linkId }, include: linkInclude });
     if (!l) return;
-    await send(await projectTeam(l.project), {
-      subject: `${expertName(l.practitioner)} ${accepted ? "a donné son accord de principe" : "a décliné"} — ${l.project.title}`,
-      text: (accepted
-        ? `Bonjour,\n\n${expertName(l.practitioner)} a donné son accord de principe pour « ${l.project.title} ». Vous pouvez soumettre le dossier à la conformité.`
-        : `Bonjour,\n\n${expertName(l.practitioner)} a décliné « ${l.project.title} ».${l.responseNote ? `\n\nSon message : ${l.responseNote}` : ""}`),
-      cta: { label: "Ouvrir le dossier", href: `/organisations/${l.project.organizationId}/dossiers/${l.projectId}` },
-    });
+    await send(await projectTeam(l.project), (t) => ({ subject: `${expertName(l.practitioner)} ${accepted ? t("a donné son accord de principe") : t("a décliné")} — ${l.project.title}`, text: accepted ? t("Bonjour,\n\n{expert} a donné son accord de principe pour « {project} ». Vous pouvez soumettre le dossier à la conformité.", { expert: expertName(l.practitioner), project: l.project.title }) : t("Bonjour,\n\n{expert} a décliné « {project} ».{v}", { expert: expertName(l.practitioner), project: l.project.title, v: l.responseNote ? t("\n\nSon message : {responseNote}", { responseNote: l.responseNote }) : "" }), cta: { label: t("Ouvrir le dossier"), href: `/organisations/${l.project.organizationId}/dossiers/${l.projectId}` } }));
   });
 }
 
@@ -259,11 +249,7 @@ export function notifyConventionDeposited(linkId: string) {
   later(async () => {
     const l = await db.projectExpert.findUnique({ where: { id: linkId }, include: linkInclude });
     if (!l) return;
-    await send(await projectTeam(l.project), {
-      subject: `Convention signée déposée par ${expertName(l.practitioner)} — ${l.project.title}`,
-      text: `Bonjour,\n\n${expertName(l.practitioner)} a déposé sa convention signée pour « ${l.project.title} ». Vérifiez-la dans les documents du dossier, puis passez le dossier en « Signé » une fois toutes les conventions réunies.`,
-      cta: { label: "Ouvrir le dossier", href: `/organisations/${l.project.organizationId}/dossiers/${l.projectId}` },
-    });
+    await send(await projectTeam(l.project), (t) => ({ subject: t("Convention signée déposée par {expert} — {project}", { expert: expertName(l.practitioner), project: l.project.title }), text: t("Bonjour,\n\n{expert} a déposé sa convention signée pour « {project} ». Vérifiez-la dans les documents du dossier, puis passez le dossier en « Signé » une fois toutes les conventions réunies.", { expert: expertName(l.practitioner), project: l.project.title }), cta: { label: t("Ouvrir le dossier"), href: `/organisations/${l.project.organizationId}/dossiers/${l.projectId}` } }));
   });
 }
 
@@ -274,23 +260,12 @@ export function notifyConventionDeposited(linkId: string) {
 export function notifyExpertRemoved(expert: string, projects: { id: string; organizationId: string; createdById: string | null; title: string; outcome: "reopened" | "closed" | null }[], calls: { id: string; organizationId: string; createdById: string | null; title: string }[]) {
   later(async () => {
     for (const p of projects) {
-      await send(await projectTeam(p), {
-        subject: `${expert} a supprimé son compte — ${p.title}`,
-        text: `Bonjour,\n\n${expert} a supprimé son compte KolBase : il est retiré du dossier « ${p.title} ».${
-          p.outcome === "reopened" ? " Plus aucun expert n'y est engagé : le dossier revient en attente des experts. Sollicitez un autre expert ou abandonnez le dossier."
-          : p.outcome === "closed" ? " Plus aucun expert n'y reste sollicité : le dossier est clos (décliné)."
-          : ""}`,
-        cta: { label: "Ouvrir le dossier", href: `/organisations/${p.organizationId}/dossiers/${p.id}` },
-      });
+      await send(await projectTeam(p), (t) => ({ subject: t("{expert} a supprimé son compte — {title}", { expert, title: p.title }), text: t("Bonjour,\n\n{expert} a supprimé son compte KolBase : il est retiré du dossier « {title} ».{v}", { expert, title: p.title, v: p.outcome === "reopened" ? t(" Plus aucun expert n'y est engagé : le dossier revient en attente des experts. Sollicitez un autre expert ou abandonnez le dossier.") : p.outcome === "closed" ? t(" Plus aucun expert n'y reste sollicité : le dossier est clos (décliné).") : "" }), cta: { label: t("Ouvrir le dossier"), href: `/organisations/${p.organizationId}/dossiers/${p.id}` } }));
     }
     for (const c of calls) {
       const team = await members(c.organizationId, SOURCING_ROLES);
       const creator = team.find((u) => u.id === c.createdById);
-      await send(creator ? [creator] : team, {
-        subject: `${expert} a supprimé son compte — ${c.title}`,
-        text: `Bonjour,\n\n${expert} a supprimé son compte KolBase : sa candidature à « ${c.title} » est retirée.`,
-        cta: { label: "Voir l'appel", href: `/organisations/${c.organizationId}/opportunites/${c.id}` },
-      });
+      await send(creator ? [creator] : team, (t) => ({ subject: t("{expert} a supprimé son compte — {title}", { expert, title: c.title }), text: t("Bonjour,\n\n{expert} a supprimé son compte KolBase : sa candidature à « {title} » est retirée.", { expert, title: c.title }), cta: { label: t("Voir l'appel"), href: `/organisations/${c.organizationId}/opportunites/${c.id}` } }));
     }
   });
 }
@@ -300,12 +275,7 @@ export function notifyExpertCounter(linkId: string) {
   later(async () => {
     const l = await db.projectExpert.findUnique({ where: { id: linkId }, include: linkInclude });
     if (!l?.desiredFeeCents) return;
-    const before = l.feeCents != null ? `${fmtEur("fr", l.feeCents)} → ` : "";
-    await send(await projectTeam(l.project), {
-      subject: `${expertName(l.practitioner)} propose d'autres honoraires — ${l.project.title}`,
-      text: `Bonjour,\n\n${expertName(l.practitioner)} propose d'autres honoraires pour « ${l.project.title} » : ${before}${fmtEur("fr", l.desiredFeeCents)} HT.${l.responseNote ? `\n\nSon message : ${l.responseNote}` : ""}\n\nLa sollicitation reste ouverte : acceptez ces honoraires, ou proposez d'autres conditions depuis le dossier.`,
-      cta: { label: "Ouvrir le dossier", href: `/organisations/${l.project.organizationId}/dossiers/${l.projectId}` },
-    });
+    await send(await projectTeam(l.project), (t, locale) => ({ subject: t("{expert} propose d'autres honoraires — {project}", { expert: expertName(l.practitioner), project: l.project.title }), text: t("Bonjour,\n\n{expert} propose d'autres honoraires pour « {project} » : {before}{montant} HT.{v}\n\nLa sollicitation reste ouverte : acceptez ces honoraires, ou proposez d'autres conditions depuis le dossier.", { expert: expertName(l.practitioner), project: l.project.title, before: l.feeCents != null ? `${fmtEur(locale, l.feeCents)} → ` : "", montant: fmtEur(locale, l.desiredFeeCents ?? 0), v: l.responseNote ? t("\n\nSon message : {responseNote}", { responseNote: l.responseNote }) : "" }), cta: { label: t("Ouvrir le dossier"), href: `/organisations/${l.project.organizationId}/dossiers/${l.projectId}` } }));
   });
 }
 
@@ -334,15 +304,7 @@ export function notifyProposal(projectId: string) {
     const e = p?.experts[0];
     if (!p || !e) return;
     const type = collabType(p.typeId)?.label;
-    await send(await members(p.organizationId, SOURCING_ROLES), {
-      subject: `Projet proposé par ${expertName(e.practitioner)} : ${p.title}`,
-      text: [
-        "Bonjour,",
-        `${expertName(e.practitioner)} propose un projet à votre organisation : « ${p.title} »${type ? ` (${type.toLowerCase()})` : ""}${e.feeCents != null ? `, honoraires souhaités : ${fmtEur("fr", e.feeCents)} HT` : ""}.`,
-        "Acceptez-le pour ouvrir le circuit habituel (conformité, convention, signature), ou déclinez-le : l'expert est prévenu de votre réponse.",
-      ].join("\n\n"),
-      cta: { label: "Voir la proposition", href: `/organisations/${p.organizationId}/dossiers/${p.id}` },
-    });
+    await send(await members(p.organizationId, SOURCING_ROLES), (t, locale) => ({ subject: t("Projet proposé par {expert} : {title}", { expert: expertName(e.practitioner), title: p.title }), text: [t("Bonjour,"), t("{expert} propose un projet à votre organisation : « {title} »{v}{v2}.", { expert: expertName(e.practitioner), title: p.title, v: type ? ` (${type.toLowerCase()})` : "", v2: e.feeCents != null ? t(", honoraires souhaités : {montant} HT", { montant: fmtEur(locale, e.feeCents) }) : "" }), t("Acceptez-le pour ouvrir le circuit habituel (conformité, convention, signature), ou déclinez-le : l'expert est prévenu de votre réponse.")].join("\n\n"), cta: { label: t("Voir la proposition"), href: `/organisations/${p.organizationId}/dossiers/${p.id}` } }));
   });
 }
 
@@ -352,11 +314,7 @@ export function notifyProposalWithdrawnByExpert(projectId: string) {
     const p = await db.project.findUnique({ where: { id: projectId }, include: { experts: { include: { practitioner: linkInclude.practitioner } } } });
     const e = p?.experts[0];
     if (!p || !e) return;
-    await send(await members(p.organizationId, SOURCING_ROLES), {
-      subject: `Proposition retirée : ${p.title}`,
-      text: `Bonjour,\n\n${expertName(e.practitioner)} a retiré sa proposition « ${p.title} ». Le dossier est clos, il n'y a rien d'autre à faire.`,
-      cta: { label: "Voir le dossier", href: `/organisations/${p.organizationId}/dossiers/${p.id}` },
-    });
+    await send(await members(p.organizationId, SOURCING_ROLES), (t) => ({ subject: t("Proposition retirée : {title}", { title: p.title }), text: t("Bonjour,\n\n{expert} a retiré sa proposition « {title} ». Le dossier est clos, il n'y a rien d'autre à faire.", { expert: expertName(e.practitioner), title: p.title }), cta: { label: t("Voir le dossier"), href: `/organisations/${p.organizationId}/dossiers/${p.id}` } }));
   });
 }
 
@@ -370,11 +328,7 @@ export function notifyApplication(callId: string, practitionerId: string) {
     if (!call || !prac) return;
     const team = await members(call.organizationId, SOURCING_ROLES);
     const creator = team.find((u) => u.id === call.createdById);
-    await send(creator ? [creator] : team, {
-      subject: `Nouvelle candidature : ${call.title}`,
-      text: `Bonjour,\n\n${expertName(prac)} a candidaté à votre appel « ${call.title} ».`,
-      cta: { label: "Voir la candidature", href: `/organisations/${call.organizationId}/opportunites/${call.id}` },
-    });
+    await send(creator ? [creator] : team, (t) => ({ subject: t("Nouvelle candidature : {title}", { title: call.title }), text: t("Bonjour,\n\n{expert} a candidaté à votre appel « {title} ».", { expert: expertName(prac), title: call.title }), cta: { label: t("Voir la candidature"), href: `/organisations/${call.organizationId}/opportunites/${call.id}` } }));
   });
 }
 
@@ -421,22 +375,14 @@ export function notifyFeeNote(noteId: string) {
     const n = await db.feeNote.findUnique({ where: { id: noteId }, include: { projectExpert: { include: linkInclude } } });
     const l = n?.projectExpert;
     if (!n || !l) return;
-    await send(await projectTeam(l.project), {
-      subject: `Note d'honoraires ${n.number} de ${expertName(l.practitioner)}`,
-      text: `Bonjour,\n\n${expertName(l.practitioner)} a établi sa note d'honoraires pour « ${l.project.title} » : ${fmtEur("fr", n.totalCents)} (${n.vatBp ? "TTC" : "TVA non applicable"}).\n\nElle est disponible dans le dossier ; indiquez le paiement une fois le virement fait.`,
-      cta: { label: "Ouvrir le dossier", href: `/organisations/${l.project.organizationId}/dossiers/${l.projectId}` },
-    });
+    await send(await projectTeam(l.project), (t, locale) => ({ subject: t("Note d'honoraires {number} de {expert}", { number: n.number, expert: expertName(l.practitioner) }), text: t("Bonjour,\n\n{expert} a établi sa note d'honoraires pour « {project} » : {montant} ({v}).\n\nElle est disponible dans le dossier ; indiquez le paiement une fois le virement fait.", { expert: expertName(l.practitioner), project: l.project.title, montant: fmtEur(locale, n.totalCents), v: n.vatBp ? "TTC" : t("TVA non applicable") }), cta: { label: t("Ouvrir le dossier"), href: `/organisations/${l.project.organizationId}/dossiers/${l.projectId}` } }));
   });
 }
 
 /** Erreur signalée par un praticien sur une déclaration Transparence Santé : l'équipe conformité est prévenue. */
 export function notifyTransparencyIssue(orgId: string, who: string, label: string, comment: string) {
   later(async () => {
-    await send(await members(orgId, COMPLIANCE_ROLES), {
-      subject: `Transparence Santé : erreur signalée par ${who}`,
-      text: `Bonjour,\n\n${who} signale une erreur sur : ${label}.\n\n« ${comment} »\n\nVérifiez la déclaration avant publication (ou corrigez-la sur la plateforme Transparence Santé).`,
-      cta: { label: "Ouvrir l'espace conformité", href: `/organisations/${orgId}/conformite?onglet=transparence` },
-    });
+    await send(await members(orgId, COMPLIANCE_ROLES), (t) => ({ subject: t("Transparence Santé : erreur signalée par {who}", { who }), text: t("Bonjour,\n\n{who} signale une erreur sur : {label}.\n\n« {comment} »\n\nVérifiez la déclaration avant publication (ou corrigez-la sur la plateforme Transparence Santé).", { who, label, comment }), cta: { label: t("Ouvrir l'espace conformité"), href: `/organisations/${orgId}/conformite?onglet=transparence` } }));
   });
 }
 
@@ -445,11 +391,7 @@ export function notifySupplierReview(reviewId: string) {
   later(async () => {
     const r = await db.supplierReview.findUnique({ where: { id: reviewId }, include: { client: { select: { name: true } } } });
     if (!r) return;
-    await send(await supplierTeam(r.supplierId), {
-      subject: `Nouvel avis ${de(r.client.name)} : ${r.rating}/5`,
-      text: `Bonjour,\n\n${r.client.name} a évalué votre prestation : ${r.rating}/5.${r.comment ? `\n\n« ${r.comment} »` : ""}`,
-      cta: { label: "Voir ma page publique", href: `/structures/${r.supplierId}` },
-    });
+    await send(await supplierTeam(r.supplierId), (t) => ({ subject: t("Nouvel avis {de_org} : {rating}/5", { de_org: de(r.client.name), rating: r.rating }), text: t("Bonjour,\n\n{client} a évalué votre prestation : {rating}/5.{v}", { client: r.client.name, rating: r.rating, v: r.comment ? `\n\n« ${r.comment} »` : "" }), cta: { label: t("Voir ma page publique"), href: `/structures/${r.supplierId}` } }));
   });
 }
 
@@ -460,17 +402,9 @@ export function notifyCompliance(projectId: string, step: "submit" | "validate" 
     if (!p) return;
     const href = `/organisations/${p.organizationId}/dossiers/${p.id}`;
     if (step === "submit") {
-      await send(await members(p.organizationId, COMPLIANCE_ROLES), {
-        subject: `Dossier à valider : ${p.title}`,
-        text: `Bonjour,\n\nLe dossier « ${p.title} » est soumis à la conformité.`,
-        cta: { label: "Examiner le dossier", href },
-      }, actorId);
+      await send(await members(p.organizationId, COMPLIANCE_ROLES), (t) => ({ subject: t("Dossier à valider : {title}", { title: p.title }), text: t("Bonjour,\n\nLe dossier « {title} » est soumis à la conformité.", { title: p.title }), cta: { label: t("Examiner le dossier"), href } }), actorId);
     } else {
-      await send(await projectTeam(p), {
-        subject: `Dossier ${step === "validate" ? "validé" : "bloqué"} par la conformité : ${p.title}`,
-        text: `Bonjour,\n\nLe dossier « ${p.title} » est désormais : ${STATUS_LABEL[p.status]}.${p.complianceNote ? `\n\nCommentaire : ${p.complianceNote}` : ""}`,
-        cta: { label: "Ouvrir le dossier", href },
-      }, actorId);
+      await send(await projectTeam(p), (t) => ({ subject: t("Dossier {v} par la conformité : {title}", { v: step === "validate" ? t("validé") : t("bloqué"), title: p.title }), text: t("Bonjour,\n\nLe dossier « {title} » est désormais : {v}.{v2}", { title: p.title, v: STATUS_LABEL[p.status], v2: p.complianceNote ? t("\n\nCommentaire : {complianceNote}", { complianceNote: p.complianceNote }) : "" }), cta: { label: t("Ouvrir le dossier"), href } }), actorId);
     }
   });
 }
@@ -482,11 +416,7 @@ export function notifyRfqSent(rfqId: string) {
     if (!r) return;
     for (const s of r.suppliers) {
       const team = await db.membership.findMany({ where: { organizationId: s.supplierId }, include: { user: { select: userSelect } } });
-      await send(team.map((m) => m.user), {
-        subject: `Demande de devis ${de(r.organization.name)}`,
-        text: `Bonjour,\n\n${r.organization.name} vous consulte pour une prestation.${r.deadline ? ` Réponse attendue avant le ${r.deadline.toLocaleDateString("fr-FR", { timeZone: "Europe/Paris" })}.` : ""}`,
-        cta: { label: "Répondre à la demande", href: `/organisations/${s.supplierId}/devis` },
-      });
+      await send(team.map((m) => m.user), (t) => ({ subject: t("Demande de devis {de_org}", { de_org: de(r.organization.name) }), text: t("Bonjour,\n\n{organization} vous consulte pour une prestation.{v}", { organization: r.organization.name, v: r.deadline ? t(" Réponse attendue avant le {date}.", { date: r.deadline.toLocaleDateString("fr-FR", { timeZone: "Europe/Paris" }) }) : "" }), cta: { label: t("Répondre à la demande"), href: `/organisations/${s.supplierId}/devis` } }));
     }
   });
 }
@@ -499,11 +429,7 @@ export function notifyQuote(rfqId: string, supplierId: string, revised = false) 
       db.organization.findUnique({ where: { id: supplierId }, select: { name: true } }),
     ]);
     if (!r || !supplier) return;
-    await send(await rfqContacts(r), {
-      subject: revised ? `Devis révisé par ${supplier.name}` : `Devis reçu ${de(supplier.name)}`,
-      text: revised ? `Bonjour,\n\n${supplier.name} a révisé son devis.` : `Bonjour,\n\n${supplier.name} a répondu à votre demande de devis.`,
-      cta: { label: "Comparer les devis", href: `/organisations/${r.organizationId}/prestataires#rfq-${r.id}` },
-    });
+    await send(await rfqContacts(r), (t) => ({ subject: revised ? t("Devis révisé par {name}", { name: supplier.name }) : t("Devis reçu {de_org}", { de_org: de(supplier.name) }), text: revised ? t("Bonjour,\n\n{name} a révisé son devis.", { name: supplier.name }) : t("Bonjour,\n\n{name} a répondu à votre demande de devis.", { name: supplier.name }), cta: { label: t("Comparer les devis"), href: `/organisations/${r.organizationId}/prestataires#rfq-${r.id}` } }));
   });
 }
 
@@ -547,11 +473,7 @@ export function notifyEventConfided(eventId: string) {
   later(async () => {
     const e = await db.event.findUnique({ where: { id: eventId }, include: { organization: { select: { name: true } } } });
     if (!e?.agencyId) return;
-    await send(await supplierTeam(e.agencyId), {
-      subject: `${e.organization.name} vous confie « ${e.title} »`,
-      text: `Bonjour,\n\n${e.organization.name} confie à votre agence l'organisation de l'événement « ${e.title} » (${e.startsAt.toLocaleDateString("fr-FR", { timeZone: "Europe/Paris" })}). Vous y accédez avec votre compte KolBase : inscrits, prestataires et devis.`,
-      cta: { label: "Ouvrir l'événement", href: `/organisations/${e.organizationId}/evenements/${e.id}` },
-    });
+    await send(await supplierTeam(e.agencyId), (t) => ({ subject: t("{organization} vous confie « {title} »", { organization: e.organization.name, title: e.title }), text: t("Bonjour,\n\n{organization} confie à votre agence l'organisation de l'événement « {title} » ({date}). Vous y accédez avec votre compte KolBase : inscrits, prestataires et devis.", { organization: e.organization.name, title: e.title, date: e.startsAt.toLocaleDateString("fr-FR", { timeZone: "Europe/Paris" }) }), cta: { label: t("Ouvrir l'événement"), href: `/organisations/${e.organizationId}/evenements/${e.id}` } }));
   });
 }
 
@@ -560,11 +482,7 @@ export function notifyEventWithdrawn(eventId: string, agencyId: string) {
   later(async () => {
     const e = await db.event.findUnique({ where: { id: eventId }, include: { organization: { select: { name: true } }, agency: { select: { name: true } } } });
     if (!e || e.agencyId === agencyId) return;
-    await send(await supplierTeam(agencyId), {
-      subject: `« ${e.title} » n'est plus confié à votre agence`,
-      text: `Bonjour,\n\n${e.organization.name} ${e.agencyId ? "a confié l'événement à une autre agence" : "reprend l'organisation de l'événement"} « ${e.title} ». Votre équipe n'y a plus accès ; vos devis et échanges en tant que prestataire restent dans vos demandes de devis.`,
-      cta: { label: "Voir mes demandes de devis", href: `/organisations/${agencyId}/devis?onglet=toutes` },
-    });
+    await send(await supplierTeam(agencyId), (t) => ({ subject: t("« {title} » n'est plus confié à votre agence", { title: e.title }), text: t("Bonjour,\n\n{organization} {v} « {title} ». Votre équipe n'y a plus accès ; vos devis et échanges en tant que prestataire restent dans vos demandes de devis.", { organization: e.organization.name, v: e.agencyId ? t("a confié l'événement à une autre agence") : t("reprend l'organisation de l'événement"), title: e.title }), cta: { label: t("Voir mes demandes de devis"), href: `/organisations/${agencyId}/devis?onglet=toutes` } }));
   });
 }
 
@@ -574,11 +492,7 @@ export function notifyMandateEnded(mandateId: string, eventTitles: string[]) {
     const m = await db.mandate.findUnique({ where: { id: mandateId }, include: { mandator: { select: { name: true } } } });
     if (!m) return;
     const list = eventTitles.length ? `\n\nÉvénements concernés : ${eventTitles.map((x) => `« ${x} »`).join(", ")}.` : "";
-    await send(await supplierTeam(m.agencyId), {
-      subject: `Fin du mandat ${de(m.mandator.name)}`,
-      text: `Bonjour,\n\n${m.mandator.name} a mis fin au mandat de votre agence. Votre équipe n'accède plus à son espace ni aux événements qu'elle vous avait confiés.${list}`,
-      cta: { label: "Voir mes demandes de devis", href: `/organisations/${m.agencyId}/devis?onglet=toutes` },
-    });
+    await send(await supplierTeam(m.agencyId), (t) => ({ subject: t("Fin du mandat {de_org}", { de_org: de(m.mandator.name) }), text: t("Bonjour,\n\n{mandator} a mis fin au mandat de votre agence. Votre équipe n'accède plus à son espace ni aux événements qu'elle vous avait confiés.{list}", { mandator: m.mandator.name, list }), cta: { label: t("Voir mes demandes de devis"), href: `/organisations/${m.agencyId}/devis?onglet=toutes` } }));
   });
 }
 
@@ -600,13 +514,7 @@ export function notifyAward(rfqId: string, actorId?: string) {
     const what = r.event ? `pour « ${r.event.title} »` : "";
     for (const q of r.quotes) {
       const kept = q.status === "retained";
-      await send(await supplierTeam(q.supplierId), {
-        subject: kept ? `Votre devis est retenu par ${r.organization.name}` : `Votre devis n'est pas retenu par ${r.organization.name}`,
-        text: kept
-          ? `Bonjour,\n\n${r.organization.name} a retenu votre devis ${what}. Vous pouvez échanger avec l'organisation depuis la demande pour préparer la prestation.`
-          : `Bonjour,\n\n${r.organization.name} a retenu une autre offre ${what}. Merci pour votre proposition.`,
-        cta: { label: "Voir la demande", href: `/organisations/${q.supplierId}/devis?onglet=toutes` },
-      });
+      await send(await supplierTeam(q.supplierId), (t) => ({ subject: kept ? t("Votre devis est retenu par {organization}", { organization: r.organization.name }) : t("Votre devis n'est pas retenu par {organization}", { organization: r.organization.name }), text: kept ? t("Bonjour,\n\n{organization} a retenu votre devis {what}. Vous pouvez échanger avec l'organisation depuis la demande pour préparer la prestation.", { organization: r.organization.name, what }) : t("Bonjour,\n\n{organization} a retenu une autre offre {what}. Merci pour votre proposition.", { organization: r.organization.name, what }), cta: { label: t("Voir la demande"), href: `/organisations/${q.supplierId}/devis?onglet=toutes` } }));
     }
     const kept = r.quotes.find((q) => q.status === "retained");
     const agency = await eventAgency(r.event);
@@ -615,18 +523,10 @@ export function notifyAward(rfqId: string, actorId?: string) {
     const others = r.quotes.length - 1;
     const rest = others > 0 ? ` ${others} autre${others > 1 ? "s" : ""} devis ${others > 1 ? "sont écartés" : "est écarté"}.` : "";
     if (agency.team.some((u) => u.id === actorId)) {
-      await send(await members(r.organizationId, EVENT_ORGANIZER_ROLES), {
-        subject: `${agency.name} a retenu un devis ${what}`.trim(),
-        text: `Bonjour,\n\n${agency.name}, agence mandatée, a retenu en votre nom le devis ${de(quoteSummary(kept))}.${rest}\n\nVous pouvez retirer ce droit à l'agence dans Prestataires › Agences mandatées.`,
-        cta: { label: "Voir la demande", href },
-      }, actorId);
+      await send(await members(r.organizationId, EVENT_ORGANIZER_ROLES), (t) => ({ subject: `${agency.name} a retenu un devis ${what}`.trim(), text: t("Bonjour,\n\n{name}, agence mandatée, a retenu en votre nom le devis {de_org}.{rest}\n\nVous pouvez retirer ce droit à l'agence dans Prestataires › Agences mandatées.", { name: agency.name, de_org: de(quoteSummary(kept)), rest }), cta: { label: t("Voir la demande"), href } }), actorId);
     } else if (!(await agencyConsulted(r.id, agency.id))) {
       // Agence consultée sur la demande : elle a reçu, comme prestataire, la décision sur son devis, sans le montant retenu.
-      await send(agency.team, {
-        subject: `${r.organization.name} a retenu un devis ${what}`.trim(),
-        text: `Bonjour,\n\n${r.organization.name} a retenu le devis ${de(quoteSummary(kept))}.${rest}`,
-        cta: { label: "Voir la demande", href },
-      }, actorId);
+      await send(agency.team, (t) => ({ subject: `${r.organization.name} a retenu un devis ${what}`.trim(), text: t("Bonjour,\n\n{organization} a retenu le devis {de_org}.{rest}", { organization: r.organization.name, de_org: de(quoteSummary(kept)), rest }), cta: { label: t("Voir la demande"), href } }), actorId);
     }
   });
 }
@@ -638,11 +538,7 @@ export function notifyQuoteProposed(rfqId: string, actorId: string) {
     const q = r?.quotes.find((x) => x.id === r.proposedQuoteId);
     const agency = await eventAgency(r?.event ?? null);
     if (!r || !q || !agency) return;
-    await send(await members(r.organizationId, EVENT_ORGANIZER_ROLES), {
-      subject: `Devis à retenir : ${agency.name} propose ${q.supplier.name}`,
-      text: `Bonjour,\n\n${agency.name}, agence mandatée${r.event ? ` pour « ${r.event.title} »` : ""}, vous propose de retenir le devis ${de(quoteSummary(q))}. La décision vous revient : retenez ce devis ou un autre depuis la demande.`,
-      cta: { label: "Décider", href: `/organisations/${r.organizationId}/prestataires#rfq-${r.id}` },
-    }, actorId);
+    await send(await members(r.organizationId, EVENT_ORGANIZER_ROLES), (t) => ({ subject: t("Devis à retenir : {name} propose {supplier}", { name: agency.name, supplier: q.supplier.name }), text: t("Bonjour,\n\n{name}, agence mandatée{v}, vous propose de retenir le devis {de_org}. La décision vous revient : retenez ce devis ou un autre depuis la demande.", { name: agency.name, v: r.event ? t(" pour « {event} »", { event: r.event.title }) : "", de_org: de(quoteSummary(q)) }), cta: { label: t("Décider"), href: `/organisations/${r.organizationId}/prestataires#rfq-${r.id}` } }), actorId);
   });
 }
 
@@ -657,21 +553,13 @@ export function notifyRfqCancelled(rfqId: string, actorId: string) {
     // Brouillon jamais envoyé : les prestataires n'en ont pas eu connaissance.
     for (const s of r.sentAt ? r.suppliers : []) {
       if (s.declined) continue;
-      await send(await supplierTeam(s.supplierId), {
-        subject: `Demande de devis annulée par ${r.organization.name}`,
-        text: `Bonjour,\n\n${r.organization.name} a annulé sa demande de devis${r.event ? ` pour « ${r.event.title} »` : ""}. Aucune réponse n'est plus attendue.`,
-        cta: { label: "Voir mes demandes", href: `/organisations/${s.supplierId}/devis?onglet=toutes` },
-      });
+      await send(await supplierTeam(s.supplierId), (t) => ({ subject: t("Demande de devis annulée par {organization}", { organization: r.organization.name }), text: t("Bonjour,\n\n{organization} a annulé sa demande de devis{v}. Aucune réponse n'est plus attendue.", { organization: r.organization.name, v: r.event ? t(" pour « {event} »", { event: r.event.title }) : "" }), cta: { label: t("Voir mes demandes"), href: `/organisations/${s.supplierId}/devis?onglet=toutes` } }));
     }
     const organizers = await members(r.organizationId, EVENT_ORGANIZER_ROLES);
     if (organizers.some((u) => u.id === actorId)) return;
     const actor = await db.user.findUnique({ where: { id: actorId }, select: { firstName: true, lastName: true, memberships: { where: { organization: { kind: "PRESTATAIRE" } }, select: { organization: { select: { name: true } } } } } });
     const who = actor ? `${actor.firstName} ${actor.lastName}${actor.memberships[0] ? ` (${actor.memberships[0].organization.name})` : ""}` : "L'auteur de la demande";
-    await send(organizers, {
-      subject: `Demande de devis annulée${r.event ? ` : ${r.event.title}` : ""}`,
-      text: `Bonjour,\n\n${who} a annulé la demande de devis${r.event ? ` pour « ${r.event.title} »` : ""} (${supplierCategoryLabel(r.category)}). Les prestataires consultés sont prévenus.`,
-      cta: { label: "Voir la demande", href: `/organisations/${r.organizationId}/prestataires#rfq-${r.id}` },
-    }, actorId);
+    await send(organizers, (t) => ({ subject: t("Demande de devis annulée{v}", { v: r.event ? ` : ${r.event.title}` : "" }), text: t("Bonjour,\n\n{who} a annulé la demande de devis{v} ({supplierCategoryLabel}). Les prestataires consultés sont prévenus.", { who, v: r.event ? t(" pour « {event} »", { event: r.event.title }) : "", supplierCategoryLabel: supplierCategoryLabel(r.category) }), cta: { label: t("Voir la demande"), href: `/organisations/${r.organizationId}/prestataires#rfq-${r.id}` } }), actorId);
   });
 }
 
@@ -684,11 +572,7 @@ export function notifyProposalWithdrawn(rfqId: string, supplierId: string, propo
       db.user.findUnique({ where: { id: proposerId }, select: userSelect }),
     ]);
     if (!r || !supplier || !proposer) return;
-    await send([proposer], {
-      subject: `Devis proposé révisé : ${supplier.name}${r.event ? ` (${r.event.title})` : ""}`,
-      text: `Bonjour,\n\n${supplier.name} a révisé le devis que vous aviez proposé à l'organisation${r.event ? ` pour « ${r.event.title} »` : ""}. Votre proposition portait sur l'ancienne version : elle est retirée. Relisez la nouvelle version et proposez-la de nouveau si elle vous convient.`,
-      cta: { label: "Voir la demande", href: `/organisations/${r.organizationId}/prestataires#rfq-${r.id}` },
-    });
+    await send([proposer], (t) => ({ subject: t("Devis proposé révisé : {name}{v}", { name: supplier.name, v: r.event ? ` (${r.event.title})` : "" }), text: t("Bonjour,\n\n{name} a révisé le devis que vous aviez proposé à l'organisation{v}. Votre proposition portait sur l'ancienne version : elle est retirée. Relisez la nouvelle version et proposez-la de nouveau si elle vous convient.", { name: supplier.name, v: r.event ? t(" pour « {event} »", { event: r.event.title }) : "" }), cta: { label: t("Voir la demande"), href: `/organisations/${r.organizationId}/prestataires#rfq-${r.id}` } }));
   });
 }
 
@@ -701,11 +585,7 @@ export function notifyRfqDeclined(rfqId: string, supplierId: string, actorId: st
     ]);
     if (!r || !invite) return;
     const name = invite.supplier.name;
-    await send(await rfqContacts(r), {
-      subject: `${name} décline votre demande de devis${r.event ? ` (${r.event.title})` : ""}`,
-      text: `Bonjour,\n\n${name} ne répondra pas à votre demande de devis${r.event ? ` pour « ${r.event.title} »` : ""} (${supplierCategoryLabel(r.category)}).${invite.declineNote ? `\n\nMotif : ${invite.declineNote}` : ""}`,
-      cta: { label: "Voir la demande", href: `/organisations/${r.organizationId}/prestataires#rfq-${r.id}` },
-    }, actorId);
+    await send(await rfqContacts(r), (t) => ({ subject: t("{name} décline votre demande de devis{v}", { name, v: r.event ? ` (${r.event.title})` : "" }), text: t("Bonjour,\n\n{name} ne répondra pas à votre demande de devis{v} ({supplierCategoryLabel}).{v2}", { name, v: r.event ? t(" pour « {event} »", { event: r.event.title }) : "", supplierCategoryLabel: supplierCategoryLabel(r.category), v2: invite.declineNote ? t("\n\nMotif : {declineNote}", { declineNote: invite.declineNote }) : "" }), cta: { label: t("Voir la demande"), href: `/organisations/${r.organizationId}/prestataires#rfq-${r.id}` } }), actorId);
   });
 }
 
@@ -718,17 +598,9 @@ export function notifyRfqMessage(rfqId: string, supplierId: string, fromSupplier
     ]);
     if (!r || !supplier) return;
     if (fromSupplier) {
-      await send(await rfqContacts(r), {
-        subject: `Question ${de(supplier.name)} sur votre demande de devis`,
-        text: `Bonjour,\n\n${supplier.name} vous a écrit au sujet de votre demande de devis.`,
-        cta: { label: "Répondre", href: `/organisations/${r.organizationId}/prestataires#rfq-${r.id}` },
-      }, authorId);
+      await send(await rfqContacts(r), (t) => ({ subject: t("Question {de_org} sur votre demande de devis", { de_org: de(supplier.name) }), text: t("Bonjour,\n\n{name} vous a écrit au sujet de votre demande de devis.", { name: supplier.name }), cta: { label: t("Répondre"), href: `/organisations/${r.organizationId}/prestataires#rfq-${r.id}` } }), authorId);
     } else {
-      await send(await supplierTeam(supplierId), {
-        subject: `Message ${de(r.organization.name)} sur une demande de devis`,
-        text: `Bonjour,\n\n${r.organization.name} vous a écrit au sujet de sa demande de devis.`,
-        cta: { label: "Répondre", href: `/organisations/${supplierId}/devis` },
-      }, authorId);
+      await send(await supplierTeam(supplierId), (t) => ({ subject: t("Message {de_org} sur une demande de devis", { de_org: de(r.organization.name) }), text: t("Bonjour,\n\n{organization} vous a écrit au sujet de sa demande de devis.", { organization: r.organization.name }), cta: { label: t("Répondre"), href: `/organisations/${supplierId}/devis` } }), authorId);
     }
   });
 }
@@ -776,42 +648,17 @@ export function notifyOrgDecision(orgId: string, decision: "verify" | "reject" |
     const org = await db.organization.findUnique({ where: { id: orgId }, select: { name: true, kind: true, listed: true } });
     if (!org) return;
     const supplier = org.kind === "PRESTATAIRE";
-    const motif = note ? `\n\nMotif : ${note}` : "";
-    // Prochaines étapes annoncées à la validation : contrat de sous-traitance et abonnement (organisation), abonnement
-    // après le premier devis retenu (prestataire).
-    const next = supplier
-      ? `Le référencement est gratuit ; l'abonnement prestataire (${formatEUR(PLANS.prestataire.cents)} HT par mois) n'est demandé qu'après votre premier devis retenu.`
-      : `Avant votre première action qui engage un tiers (sollicitation, publication, demande de devis), un administrateur accepte le contrat de sous-traitance (données personnelles), puis active l'abonnement (${formatEUR(PLANS.organisation.cents)} HT par mois, premier mois offert) : KolBase vous y guide au moment voulu.`;
-    // Identité à corriger : SIREN, ou RNA pour une association ou une société savante (SIREN facultatif).
-    const identity = rnaAccepted(org.kind) ? "SIREN ou RNA, nom" : "SIREN, nom";
-    const mail =
-      decision === "verify"
-        ? {
-            subject: `${org.name} est validée sur KolBase`,
-            text: `Bonjour,\n\nL'équipe KolBase a validé ${org.name}.${note ? `\n\nNote de l'équipe KolBase : ${note}` : ""}\n\n${
-              supplier
-                ? `Vous pouvez répondre aux demandes de devis des organisations${org.listed ? " ; votre fiche figure dans l'annuaire des prestataires" : " et vous référencer dans l'annuaire des prestataires (catégories de prestation) depuis la page Devis"}.`
-                : "Vous pouvez désormais solliciter des experts, publier vos événements et vos appels à candidatures, et consulter des prestataires. Votre page publique est en ligne ; vous pouvez la retirer de l'annuaire dans Membres et réglages."
-            }\n\n${next}`,
-            cta: { label: supplier ? "Ouvrir mes demandes de devis" : "Ouvrir l'espace de l'organisation", href: supplier ? `/organisations/${orgId}/devis` : `/organisations/${orgId}` },
-          }
-        : decision === "reject"
-          ? {
-              subject: `${org.name} n'a pas été validée sur KolBase`,
-              text: `Bonjour,\n\nL'équipe KolBase n'a pas pu valider ${org.name}.${motif}\n\nCorrigez l'identité de l'organisation (${identity}) dans Membres et réglages : la demande sera examinée de nouveau. Pour toute question, répondez à cet e-mail.`,
-              cta: { label: "Corriger l'identité de l'organisation", href: `/organisations/${orgId}/membres?onglet=organisation` },
-            }
-          : decision === "suspend"
-            ? {
-                subject: `${org.name} est suspendue sur KolBase`,
-                text: `Bonjour,\n\nL'équipe KolBase a suspendu ${org.name}.${motif}\n\nPendant la suspension, votre page publique, vos événements et vos appels à candidatures sont masqués, et l'organisation ne peut plus solliciter d'experts, publier ni envoyer de demandes de devis. Rien n'est supprimé : tout réapparaît tel quel à la réactivation.${billing === "paused" ? " La facturation de votre abonnement est mise en pause : rien n'est facturé pendant la suspension." : ""} Pour en discuter, répondez à cet e-mail.`,
-                cta: { label: "Voir l'organisation", href: `/organisations/${orgId}` },
-              }
-            : {
-                subject: `${org.name} est de nouveau active sur KolBase`,
-                text: `Bonjour,\n\nL'équipe KolBase a levé la suspension ${de(org.name)}. ${supplier ? "Votre fiche prestataire est de nouveau visible et vous pouvez répondre aux demandes de devis." : "Votre page publique, vos événements et vos appels à candidatures sont de nouveau visibles ; vous pouvez de nouveau solliciter des experts, publier et consulter des prestataires."}${billing === "resumed" ? " La facturation de votre abonnement reprend." : billing === "paused" ? " Votre abonnement reste offert jusqu'à la fin de la gratuité en cours ; la facturation reprendra ensuite." : ""}`,
-                cta: { label: "Ouvrir l'espace de l'organisation", href: `/organisations/${orgId}` },
-              };
+    const mail = (t: T, locale: Locale) => {
+      const motif = note ? `\n\n${t("Motif : {note}", { note })}` : "";
+      // Prochaines étapes annoncées à la validation : contrat de sous-traitance et abonnement (organisation), abonnement
+      // après le premier devis retenu (prestataire).
+      const next = supplier
+        ? t("Le référencement est gratuit ; l'abonnement prestataire ({prix} HT par mois) n'est demandé qu'après votre premier devis retenu.", { prix: fmtEur(locale, PLANS.prestataire.cents) })
+        : t("Avant votre première action qui engage un tiers (sollicitation, publication, demande de devis), un administrateur accepte le contrat de sous-traitance (données personnelles), puis active l'abonnement ({prix} HT par mois, premier mois offert) : KolBase vous y guide au moment voulu.", { prix: fmtEur(locale, PLANS.organisation.cents) });
+      // Identité à corriger : SIREN, ou RNA pour une association ou une société savante (SIREN facultatif).
+      const identity = t(rnaAccepted(org.kind) ? "SIREN ou RNA, nom" : "SIREN, nom");
+      return decision === "verify" ? { subject: t("{name} est validée sur KolBase", { name: org.name }), text: t("Bonjour,\n\nL'équipe KolBase a validé {name}.{v}\n\n{v2}\n\n{next}", { name: org.name, v: note ? t("\n\nNote de l'équipe KolBase : {note}", { note }) : "", v2: supplier ? t("Vous pouvez répondre aux demandes de devis des organisations{v}.", { v: org.listed ? t(" ; votre fiche figure dans l'annuaire des prestataires") : t(" et vous référencer dans l'annuaire des prestataires (catégories de prestation) depuis la page Devis") }) : t("Vous pouvez désormais solliciter des experts, publier vos événements et vos appels à candidatures, et consulter des prestataires. Votre page publique est en ligne ; vous pouvez la retirer de l'annuaire dans Membres et réglages."), next }), cta: { label: supplier ? t("Ouvrir mes demandes de devis") : t("Ouvrir l'espace de l'organisation"), href: supplier ? `/organisations/${orgId}/devis` : `/organisations/${orgId}` } } : decision === "reject" ? { subject: t("{name} n'a pas été validée sur KolBase", { name: org.name }), text: t("Bonjour,\n\nL'équipe KolBase n'a pas pu valider {name}.{motif}\n\nCorrigez l'identité de l'organisation ({identity}) dans Membres et réglages : la demande sera examinée de nouveau. Pour toute question, répondez à cet e-mail.", { name: org.name, motif, identity }), cta: { label: t("Corriger l'identité de l'organisation"), href: `/organisations/${orgId}/membres?onglet=organisation` } } : decision === "suspend" ? { subject: t("{name} est suspendue sur KolBase", { name: org.name }), text: t("Bonjour,\n\nL'équipe KolBase a suspendu {name}.{motif}\n\nPendant la suspension, votre page publique, vos événements et vos appels à candidatures sont masqués, et l'organisation ne peut plus solliciter d'experts, publier ni envoyer de demandes de devis. Rien n'est supprimé : tout réapparaît tel quel à la réactivation.{v} Pour en discuter, répondez à cet e-mail.", { name: org.name, motif, v: billing === "paused" ? t(" La facturation de votre abonnement est mise en pause : rien n'est facturé pendant la suspension.") : "" }), cta: { label: t("Voir l'organisation"), href: `/organisations/${orgId}` } } : { subject: t("{name} est de nouveau active sur KolBase", { name: org.name }), text: t("Bonjour,\n\nL'équipe KolBase a levé la suspension {de_org}. {v}{v2}", { de_org: de(org.name), v: supplier ? t("Votre fiche prestataire est de nouveau visible et vous pouvez répondre aux demandes de devis.") : t("Votre page publique, vos événements et vos appels à candidatures sont de nouveau visibles ; vous pouvez de nouveau solliciter des experts, publier et consulter des prestataires."), v2: billing === "resumed" ? t(" La facturation de votre abonnement reprend.") : billing === "paused" ? t(" Votre abonnement reste offert jusqu'à la fin de la gratuité en cours ; la facturation reprendra ensuite.") : "" }), cta: { label: t("Ouvrir l'espace de l'organisation"), href: `/organisations/${orgId}` } };
+    };
     await sendService(await members(orgId, ["ADMIN"]), mail);
   });
 }
@@ -866,20 +713,8 @@ export function notifyExemption(orgId: string, until: Date | null, note: string 
     const org = await db.organization.findUnique({ where: { id: orgId }, select: { name: true, kind: true } });
     if (!org) return;
     const actions = org.kind === "PRESTATAIRE" ? "répondre aux demandes de devis" : "solliciter des experts, publier vos événements et vos appels, envoyer des demandes de devis";
-    const date = until?.toLocaleDateString("fr-FR", { timeZone: "Europe/Paris", day: "numeric", month: "long", year: "numeric" });
-    await sendService(await members(orgId, ["ADMIN"]), until
-      ? {
-          subject: `KolBase vous offre l'abonnement jusqu'au ${date}`,
-          text: `Bonjour,\n\nL'équipe KolBase offre l'abonnement ${de(org.name)} jusqu'au ${date} inclus${note ? ` (${note})` : ""}. D'ici là, vous pouvez ${actions} sans rien payer.${stripeBilling === "paused" ? " La facturation de votre abonnement en cours est suspendue pendant cette période ; elle reprendra d'elle-même ensuite." : ""}`,
-          cta: { label: "Voir l'abonnement", href: `/organisations/${orgId}/abonnement` },
-        }
-      : {
-          subject: "KolBase : gratuité de l'abonnement retirée",
-          text: stripeBilling === "resumed"
-            ? `Bonjour,\n\nL'abonnement ${de(org.name)} n'est plus offert par l'équipe KolBase : la facturation de votre abonnement en cours reprend. Rien ne change pour vos fonctions, dossiers, événements et échanges.`
-            : `Bonjour,\n\nL'abonnement ${de(org.name)} n'est plus offert par l'équipe KolBase. Pour continuer à ${actions}, un administrateur active l'abonnement depuis la page Abonnement. Vos dossiers, événements et échanges restent accessibles.`,
-          cta: { label: "Voir l'abonnement", href: `/organisations/${orgId}/abonnement` },
-        });
+    const dateIn = (locale: Locale) => until?.toLocaleDateString(intlLocale(locale), { timeZone: "Europe/Paris", day: "numeric", month: "long", year: "numeric" });
+    await sendService(await members(orgId, ["ADMIN"]), (t, locale) => (until ? { subject: t("KolBase vous offre l'abonnement jusqu'au {date}", { date: dateIn(locale) }), text: t("Bonjour,\n\nL'équipe KolBase offre l'abonnement {de_org} jusqu'au {date} inclus{v}. D'ici là, vous pouvez {actions} sans rien payer.{v2}", { de_org: de(org.name), date: dateIn(locale), v: note ? ` (${note})` : "", actions: t(actions), v2: stripeBilling === "paused" ? t(" La facturation de votre abonnement en cours est suspendue pendant cette période ; elle reprendra d'elle-même ensuite.") : "" }), cta: { label: t("Voir l'abonnement"), href: `/organisations/${orgId}/abonnement` } } : { subject: t("KolBase : gratuité de l'abonnement retirée"), text: stripeBilling === "resumed" ? t("Bonjour,\n\nL'abonnement {de_org} n'est plus offert par l'équipe KolBase : la facturation de votre abonnement en cours reprend. Rien ne change pour vos fonctions, dossiers, événements et échanges.", { de_org: de(org.name) }) : t("Bonjour,\n\nL'abonnement {de_org} n'est plus offert par l'équipe KolBase. Pour continuer à {actions}, un administrateur active l'abonnement depuis la page Abonnement. Vos dossiers, événements et échanges restent accessibles.", { de_org: de(org.name), actions: t(actions) }), cta: { label: t("Voir l'abonnement"), href: `/organisations/${orgId}/abonnement` } }));
   });
 }
 
@@ -1080,22 +915,14 @@ export async function sendEventFollowUps(eventId: string, now = new Date()) {
 /** Premier devis retenu d'un prestataire : l'abonnement (premier mois offert) est à activer pour continuer. */
 export function notifySupplierBilling(supplierId: string, client: string) {
   later(async () => {
-    await send(await members(supplierId, ["ADMIN"]), {
-      subject: `Félicitations : ${client} a retenu votre devis`,
-      text: `Bonjour,\n\nVotre premier devis retenu via KolBase, bravo !\n\nLe référencement reste gratuit ; pour continuer à répondre à de nouvelles demandes, activez votre abonnement prestataire (249 € HT par mois, premier mois offert, sans engagement). La prestation retenue et vos échanges en cours ne sont pas concernés.`,
-      cta: { label: "Activer mon abonnement", href: `/organisations/${supplierId}/abonnement` },
-    });
+    await send(await members(supplierId, ["ADMIN"]), (t) => ({ subject: t("Félicitations : {client} a retenu votre devis", { client }), text: t("Bonjour,\n\nVotre premier devis retenu via KolBase, bravo !\n\nLe référencement reste gratuit ; pour continuer à répondre à de nouvelles demandes, activez votre abonnement prestataire (249 € HT par mois, premier mois offert, sans engagement). La prestation retenue et vos échanges en cours ne sont pas concernés."), cta: { label: t("Activer mon abonnement"), href: `/organisations/${supplierId}/abonnement` } }));
   });
 }
 
 /** Échec de paiement signalé par Stripe : les administrateurs mettent à jour leur moyen de paiement. */
 export function notifyPaymentFailed(orgId: string) {
   later(async () => {
-    await send(await members(orgId, ["ADMIN"]), {
-      subject: "KolBase : le paiement de votre abonnement a échoué",
-      text: "Bonjour,\n\nLe dernier prélèvement de votre abonnement KolBase n'a pas abouti. Stripe va réessayer ; pour éviter toute interruption, vérifiez votre moyen de paiement.",
-      cta: { label: "Gérer mon abonnement", href: `/organisations/${orgId}/abonnement` },
-    });
+    await send(await members(orgId, ["ADMIN"]), (t) => ({ subject: t("KolBase : le paiement de votre abonnement a échoué"), text: t("Bonjour,\n\nLe dernier prélèvement de votre abonnement KolBase n'a pas abouti. Stripe va réessayer ; pour éviter toute interruption, vérifiez votre moyen de paiement."), cta: { label: t("Gérer mon abonnement"), href: `/organisations/${orgId}/abonnement` } }));
   });
 }
 
@@ -1108,19 +935,23 @@ export function notifyServiceOrder(orderId: string) {
     if (!o) return;
     const user = await db.user.findUnique({ where: { id: o.orderedById }, select: userSelect });
     if (!user) return;
-    const what = `« ${o.label} » pour « ${o.event.title} »`;
-    // « Prochaine facture » seulement si le montant est déjà inscrit sur la facture Stripe de l'abonnement.
-    const amount = `${(o.priceCents / 100).toLocaleString("fr-FR")} € HT${o.packLabel ? ` (part du ${o.packLabel})` : ""}`;
-    const billing = o.priceCents > 0 ? `\n\nMontant : ${amount}, ${o.invoicedAt ? "sur votre prochaine facture" : "facture à venir"}.` : "";
     const until = featuredUntil(o);
-    const feature = until ? `\n\nL'événement est à la une de la page d'accueil de KolBase jusqu'au ${until.toLocaleDateString("fr-FR", { timeZone: "Europe/Paris", day: "numeric", month: "long" })}.` : "";
-    const text =
-      o.status === "planifiee" ? `L'équipe KolBase a planifié ${what}${o.plannedAt ? ` : réalisation prévue le ${o.plannedAt.toLocaleDateString("fr-FR", { timeZone: "Europe/Paris", day: "numeric", month: "long" })}` : ""}.${o.adminNote ? `\n\n${o.adminNote}` : ""}`
-      : o.status === "refusee" ? `L'équipe KolBase ne peut pas réaliser ${what}.\n\n${o.adminNote ?? ""}`
-      : o.status === "realisee" ? `L'équipe KolBase a réalisé ${what}.${feature}${o.resultUrl ? `\n\nRésultat : ${o.resultUrl}` : ""}${o.adminNote ? `\n\n${o.adminNote}` : ""}${billing}`
-      : null;
-    if (!text) return;
-    await send([user], { subject: `Service KolBase : ${o.label}`, text: `Bonjour,\n\n${text}`, cta: { label: "Voir l'événement", href: `/organisations/${o.event.organizationId}/evenements/${o.event.id}` } });
+    if (!["planifiee", "refusee", "realisee"].includes(o.status)) return;
+    // Texte composé dans la langue du destinataire.
+    const compose = (t: T, locale: Locale) => {
+      const day = (d: Date) => d.toLocaleDateString(intlLocale(locale), { timeZone: "Europe/Paris", day: "numeric", month: "long" });
+      const what = t("« {label} » pour « {event} »", { label: o.label, event: o.event.title });
+      // « Prochaine facture » seulement si le montant est déjà inscrit sur la facture Stripe de l'abonnement.
+      const amount = `${fmtEur(locale, o.priceCents)} ${t("HT")}${o.packLabel ? ` (${t("part du {pack}", { pack: o.packLabel })})` : ""}`;
+      const billing = o.priceCents > 0 ? `\n\n${t(o.invoicedAt ? "Montant : {amount}, sur votre prochaine facture." : "Montant : {amount}, facture à venir.", { amount })}` : "";
+      const feature = until ? `\n\n${t("L'événement est à la une de la page d'accueil de KolBase jusqu'au {date}.", { date: day(until) })}` : "";
+      const text =
+        o.status === "planifiee" ? `${o.plannedAt ? t("L'équipe KolBase a planifié {what} : réalisation prévue le {date}.", { what, date: day(o.plannedAt) }) : t("L'équipe KolBase a planifié {what}.", { what })}${o.adminNote ? `\n\n${o.adminNote}` : ""}`
+        : o.status === "refusee" ? `${t("L'équipe KolBase ne peut pas réaliser {what}.", { what })}\n\n${o.adminNote ?? ""}`
+        : `${t("L'équipe KolBase a réalisé {what}.", { what })}${feature}${o.resultUrl ? `\n\n${t("Résultat : {url}", { url: o.resultUrl })}` : ""}${o.adminNote ? `\n\n${o.adminNote}` : ""}${billing}`;
+      return { subject: t("Service KolBase : {label}", { label: o.label }), text: `${t("Bonjour,")}\n\n${text}`, cta: { label: t("Voir l'événement"), href: `/organisations/${o.event.organizationId}/evenements/${o.event.id}` } };
+    };
+    await send([user], compose);
   });
 }
 
@@ -1129,23 +960,26 @@ export async function sendServiceReport(orderId: string, now = new Date()) {
   const o = await db.serviceOrder.findUnique({ where: { id: orderId }, include: { offer: { select: { kind: true } }, event: { select: { id: true, title: true, startsAt: true, organizationId: true } } } });
   if (!o || o.status !== "realisee" || o.reportSentAt || !o.doneAt) return false;
   const s = (await orderStats([o])).get(o.id)!;
-  const done = o.doneAt.toLocaleDateString("fr-FR", { timeZone: "Europe/Paris", day: "numeric", month: "long" });
   const rate = conversion(s);
-  const lines = [
-    `Voici le bilan de « ${o.label} » pour « ${o.event.title} », réalisé le ${done}.`,
-    "",
-    ...reportParts(s, o.offer.kind).map((p) => `- ${p.key.replace("{n}", p.n.toLocaleString("fr-FR"))}`),
-    ...(rate != null ? [`- ${rate} % des visiteurs se sont inscrits`] : []),
-    ...(s.since != null ? [`- ${s.since} inscription${s.since > 1 ? "s" : ""} à l'événement au total depuis le ${done}`] : []),
-    "",
-    "Les visiteurs sont comptés une fois (robots et aperçus de liens exclus) ; une inscription est attribuée au service quand elle suit un clic sur son lien dans les 30 jours.",
-    ...(o.event.startsAt > now ? ["", "Pour relancer avant l'événement, vous pouvez commander un nouveau service depuis la fiche de l'événement."] : []),
-  ];
+  // Texte composé dans la langue du destinataire.
+  const report = (t: T, locale: Locale) => {
+    const done = o.doneAt!.toLocaleDateString(intlLocale(locale), { timeZone: "Europe/Paris", day: "numeric", month: "long" });
+    return [
+      t("Voici le bilan de « {label} » pour « {event} », réalisé le {date}.", { label: o.label, event: o.event.title, date: done }),
+      "",
+      ...reportParts(s, o.offer.kind).map((p) => `- ${t(p.key, { n: p.n.toLocaleString(intlLocale(locale)) })}`),
+      ...(rate != null ? [`- ${t("{rate} % des visiteurs se sont inscrits", { rate })}`] : []),
+      ...(s.since != null ? [`- ${t(s.since > 1 ? "{n} inscriptions à l'événement au total depuis le {date}" : "{n} inscription à l'événement au total depuis le {date}", { n: s.since, date: done })}`] : []),
+      "",
+      t("Les visiteurs sont comptés une fois (robots et aperçus de liens exclus) ; une inscription est attribuée au service quand elle suit un clic sur son lien dans les 30 jours."),
+      ...(o.event.startsAt > now ? ["", t("Pour relancer avant l'événement, vous pouvez commander un nouveau service depuis la fiche de l'événement.")] : []),
+    ].join("\n");
+  };
   const orderer = await db.user.findUnique({ where: { id: o.orderedById }, select: { ...userSelect, memberships: { where: { organizationId: o.organizationId }, select: { id: true } } } });
   const to = orderer && orderer.memberships.length > 0 ? [orderer] : await members(o.organizationId, EVENT_ORGANIZER_ROLES);
   return sendOnce(
     () => db.serviceOrder.updateMany({ where: { id: o.id, reportSentAt: null }, data: { reportSentAt: now } }),
     () => db.serviceOrder.update({ where: { id: o.id }, data: { reportSentAt: null } }),
-    () => send(to, { subject: `Bilan : ${o.label} — ${o.event.title}`, text: `Bonjour,\n\n${lines.join("\n")}`, cta: { label: "Voir l'événement", href: `/organisations/${o.event.organizationId}/evenements/${o.event.id}#services` } }),
+    () => send(to, (t, locale) => ({ subject: t("Bilan : {label} — {event}", { label: o.label, event: o.event.title }), text: `${t("Bonjour,")}\n\n${report(t, locale)}`, cta: { label: t("Voir l'événement"), href: `/organisations/${o.event.organizationId}/evenements/${o.event.id}#services` } })),
   );
 }

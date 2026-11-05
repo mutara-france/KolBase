@@ -26,31 +26,33 @@ const refresh = (orgId: string, projectId: string) => {
 // ─── Budget et dépenses ────────────────────────────────────────────────────
 
 export async function setBudget(_: ActionState, form: FormData): Promise<ActionState> {
+  const { t } = await getT();
   const orgId = str(form, "orgId"); const projectId = str(form, "projectId");
   const { user } = await requireMembership(orgId, PROJECT_ROLES);
   await loadProjectForOrg(orgId, projectId);
   const cents = eurToCents(str(form, "budget"));
-  if (str(form, "budget") && cents === null) return { error: "Montant invalide." };
+  if (str(form, "budget") && cents === null) return { error: t("Montant invalide.") };
   await db.project.update({ where: { id: projectId }, data: { budgetCents: cents } });
   await audit(user.id, "project.budget", "Project", projectId, { budgetCents: cents });
   refresh(orgId, projectId);
-  return { ok: "Budget enregistré." };
+  return { ok: t("Budget enregistré.") };
 }
 
 export async function addExpense(_: ActionState, form: FormData): Promise<ActionState> {
+  const { t } = await getT();
   const orgId = str(form, "orgId"); const projectId = str(form, "projectId");
   const { user } = await requireMembership(orgId, PROJECT_ROLES);
   await loadProjectForOrg(orgId, projectId);
   const label = str(form, "label");
   const amount = eurToCents(str(form, "amount"));
   const date = str(form, "date") ? new Date(`${str(form, "date")}T12:00:00Z`) : new Date();
-  if (!label) return { error: "Indiquez le poste de dépense." };
-  if (amount === null) return { error: "Montant invalide." };
-  if (Number.isNaN(date.getTime())) return { error: "Date invalide." };
+  if (!label) return { error: t("Indiquez le poste de dépense.") };
+  if (amount === null) return { error: t("Montant invalide.") };
+  if (Number.isNaN(date.getTime())) return { error: t("Date invalide.") };
   const e = await db.expense.create({ data: { projectId, label, amountCents: amount, date, status: "engagee" } });
   await audit(user.id, "expense.add", "Project", projectId, { expenseId: e.id, amount });
   refresh(orgId, projectId);
-  return { ok: "Dépense ajoutée." };
+  return { ok: t("Dépense ajoutée.") };
 }
 
 export async function updateExpense(form: FormData) {

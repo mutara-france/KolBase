@@ -15,5 +15,7 @@ export const dpaHref = (orgId: string, motive?: Motive | null, objet?: string | 
   `/organisations/${orgId}/membres?onglet=organisation${motive ? `&motif=${motive}` : ""}${motive && asObjectId(objet) ? `&objet=${objet}` : ""}#sous-traitance`;
 
 /** Message d'une action refusée faute de contrat accepté (chemin de la page donné en clair, lien à côté). */
-export const dpaMessage = (motive: Motive) =>
-  `Pour ${ENGAGING[motive]}, un administrateur de l'organisation doit d'abord accepter le contrat de sous-traitance (RGPD) : Membres et réglages › Organisation.`;
+type Tr = (key: string, vars?: Record<string, string | number>) => string;
+const fr: Tr = (key, vars) => key.replace(/\{(\w+)\}/g, (_, k: string) => String(vars?.[k] ?? ""));
+export const dpaMessage = (motive: Motive, t: Tr = fr) =>
+  t("Pour {motive}, un administrateur de l'organisation doit d'abord accepter le contrat de sous-traitance (RGPD) : Membres et réglages › Organisation.", { motive: t(ENGAGING[motive]) });

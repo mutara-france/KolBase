@@ -4,17 +4,23 @@ import { SectionNav } from "@/components/SectionNav";
 import { orgTabs } from "@/lib/org-overview";
 import { db } from "@/lib/db";
 import { requireMembership } from "@/lib/orgs";
-import { COMPLIANCE_ROLES, EVENT_MANAGER_ROLES, formatDate, formatEUR } from "@/lib/events";
+import { COMPLIANCE_ROLES, EVENT_MANAGER_ROLES } from "@/lib/events";
 import { markDeclared } from "@/lib/event-actions";
-import { complianceSettings, foreignRegime, hospitalityRegime, REGIME_LABEL } from "@/lib/compliance";
+import { complianceSettings, foreignRegime, hospitalityRegime, REGIME_LABEL, regimeReason } from "@/lib/compliance";
 import { practicesInFrance } from "@/lib/countries";
 import { pointedPastEvents } from "@/lib/checkin";
 import { isAbsent } from "@/lib/indicators";
 import { TableWrap } from "@/components/TableWrap";
+import { getT } from "@/lib/i18n/server";
+import { fmtDate, fmtEur, intlLocale } from "@/lib/i18n";
 
-export const metadata = { title: "Hospitalités — KolBase" };
+export async function generateMetadata() {
+  const { t } = await getT();
+  return { title: `${t("Hospitalités")} — KolBase` };
+}
 
 export default async function Page({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: Promise<{ statut?: string }> }) {
+  const { t, locale } = await getT();
   const { id } = await params;
   const { statut = "a-declarer" } = await searchParams;
   const { org, roles } = await requireMembership(id, COMPLIANCE_ROLES);
@@ -54,55 +60,54 @@ export default async function Page({ params, searchParams }: { params: Promise<{
     <>
       <SiteHeader />
       <main className="stack">
-        <SectionNav tabs={sectionTabs} active="hospitalites" label="Rubrique Conformité" />
+        <SectionNav tabs={sectionTabs} active="hospitalites" label={t("Rubrique Conformité")} />
         <div className="actions spread">
-          <h1>Hospitalités</h1>
-          <a className="btn ghost" href={`/organisations/${id}/hospitalites/export?statut=${statut}`}>Exporter (CSV)</a>
+          <h1>{t("Hospitalités")}</h1>
+          <a className="btn ghost" href={`/organisations/${id}/hospitalites/export?statut=${statut}`}>{t("Exporter (CSV)")}</a>
         </div>
         <p className="muted">
-          Avantages acceptés par des professionnels de santé lors de vos événements. Chacun doit faire l&apos;objet d&apos;une convention
-          d&apos;hospitalité et d&apos;une publication sur Transparence Santé. Les inscrits sans avantage n&apos;apparaissent pas ici.
+          {t("Avantages acceptés par des professionnels de santé lors de vos événements. Chacun doit faire l'objet d'une convention d'hospitalité et d'une publication sur Transparence Santé. Les inscrits sans avantage n'apparaissent pas ici.")}
         </p>
         <nav className="tabs">
-          {tabs.map(([k, l]) => <Link key={k} href={`?statut=${k}`} className={k === statut ? "active" : ""}>{l}</Link>)}
+          {tabs.map(([k, l]) => <Link key={k} href={`?statut=${k}`} className={k === statut ? "active" : ""}>{t(l)}</Link>)}
         </nav>
         <div className="stats">
-          <div className="card stat"><span className="muted">Bénéficiaires</span><strong>{counted.length}</strong></div>
-          <div className="card stat"><span className="muted">Valeur totale</span><strong>{formatEUR(sum(counted))} TTC</strong></div>
+          <div className="card stat"><span className="muted">{t("Bénéficiaires")}</span><strong>{counted.length}</strong></div>
+          <div className="card stat"><span className="muted">{t("Valeur totale")}</span><strong>{fmtEur(locale, sum(counted))}{" "}{t("TTC")}</strong></div>
         </div>
-        {regs.length === 0 && <p className="muted">Rien à afficher.</p>}
+        {regs.length === 0 && <p className="muted">{t("Rien à afficher.")}</p>}
         {[...byEvent].map(([eventId, rs]) => (
           <section key={eventId} className="card">
             <h2><Link href={`/organisations/${id}/evenements/${eventId}`}>{rs[0].event.title}</Link></h2>
-            <p className="muted">{formatDate(rs[0].event.startsAt)} · {rs.filter((r) => !absent(r)).length} bénéficiaire{rs.filter((r) => !absent(r)).length > 1 ? "s" : ""} · {formatEUR(sum(rs.filter((r) => !absent(r))))} TTC</p>
-            {rs.some(absent) && <p className="notice warn">{rs.filter(absent).length} inscrit{rs.filter(absent).length > 1 ? "s" : ""} absent{rs.filter(absent).length > 1 ? "s" : ""} au pointage ({formatEUR(sum(rs.filter(absent)))} TTC) : avantage non consommé, non déclaré. {canPoint ? <><Link href={`/organisations/${id}/evenements/${eventId}/pointage`}>Corriger le pointage</Link> si la personne était présente.</> : "Si la personne était présente, l'équipe organisatrice peut corriger le pointage."}</p>}
-            <TableWrap label="Hospitalités">
+            <p className="muted">{t(rs.filter((r) => !absent(r)).length > 1 ? "{date} · {n} bénéficiaires · {montant} TTC" : "{date} · {n} bénéficiaire · {montant} TTC", { date: fmtDate(locale, rs[0].event.startsAt), n: rs.filter((r) => !absent(r)).length, montant: fmtEur(locale, sum(rs.filter((r) => !absent(r)))) })}</p>
+            {rs.some(absent) && <p className="notice warn">{t(rs.filter(absent).length > 1 ? "{n} inscrits absents au pointage ({montant} TTC) : avantage non consommé, non déclaré." : "{n} inscrit absent au pointage ({montant} TTC) : avantage non consommé, non déclaré.", { n: rs.filter(absent).length, montant: fmtEur(locale, sum(rs.filter(absent))) })}{" "}{canPoint ? <><Link href={`/organisations/${id}/evenements/${eventId}/pointage`}>{t("Corriger le pointage")}</Link>{" "}{t("si la personne était présente.")}</> : t("Si la personne était présente, l'équipe organisatrice peut corriger le pointage.")}</p>}
+            <TableWrap label={t("Hospitalités")}>
               <table className="table">
-                <thead><tr><th>Bénéficiaire</th><th>Profession</th><th>Prestations</th><th>Valeur</th><th>Régime</th><th>Convention</th><th>Déclaration</th></tr></thead>
+                <thead><tr><th>{t("Bénéficiaire")}</th><th>{t("Profession")}</th><th>{t("Prestations")}</th><th>{t("Valeur")}</th><th>{t("Régime")}</th><th>{t("Convention")}</th><th>{t("Déclaration")}</th></tr></thead>
                 <tbody>
                   {rs.map((r) => (
                     <tr key={r.id}>
-                      <td data-label="Bénéficiaire">{r.user.lastName.toUpperCase()} {r.user.firstName}{absent(r) && <> <span className="pill wait">Absent au pointage</span></>}</td>
-                      <td data-label="Profession">{r.profession}</td>
-                      <td data-label="Prestations">{r.benefits.map((b) => b.benefit.label).join(", ")}</td>
-                      <td data-label="Valeur">{formatEUR(r.benefits.reduce((s, b) => s + b.valueCents, 0))} TTC</td>
-                      <td data-label="Régime">{(() => { const g = regimeOf(r); return <span className={`pill ${g.regime === "autorisation" ? "wait" : g.regime === "hors_france" ? "" : "ok"}`} title={g.reason}>{REGIME_LABEL[g.regime]}</span>; })()}</td>
+                      <td data-label="Bénéficiaire">{r.user.lastName.toUpperCase()} {r.user.firstName}{absent(r) && <> <span className="pill wait">{t("Absent au pointage")}</span></>}</td>
+                      <td data-label="Profession">{r.profession ? t(r.profession) : "—"}</td>
+                      <td data-label="Prestations">{r.benefits.map((b) => t(b.benefit.label)).join(", ")}</td>
+                      <td data-label="Valeur">{fmtEur(locale, r.benefits.reduce((s, b) => s + b.valueCents, 0))}{" "}{t("TTC")}</td>
+                      <td data-label="Régime">{(() => { const g = regimeOf(r); return <span className={`pill ${g.regime === "autorisation" ? "wait" : g.regime === "hors_france" ? "" : "ok"}`} title={regimeReason(g, t, intlLocale(locale))}>{t(REGIME_LABEL[g.regime])}</span>; })()}</td>
                       <td data-label="Convention"><a href={`/organisations/${id}/hospitalites/convention/${r.id}`} target="_blank" rel="noreferrer">PDF</a></td>
                       <td data-label="Déclaration">
-                        {absent(r) ? <span className="pill">Absent : non déclaré</span> : (
+                        {absent(r) ? <span className="pill">{t("Absent : non déclaré")}</span> : (
                         <form action={markDeclared} className="inline">
                           <input type="hidden" name="orgId" value={id} />
                           <input type="hidden" name="registrationId" value={r.id} />
                           {r.declared ? (
                             <>
-                              <span>Déclaré{r.declarationRef ? ` · ${r.declarationRef}` : ""}</span>
+                              <span>{t("Déclaré")}{r.declarationRef ? ` · ${r.declarationRef}` : ""}</span>
                               <input type="hidden" name="undo" value="1" />
-                              <button className="link">annuler</button>
+                              <button className="link">{t("annuler")}</button>
                             </>
                           ) : (
                             <>
-                              <input name="declarationRef" placeholder="Réf. convention" aria-label="Référence" />
-                              <button className="link">Marquer déclaré</button>
+                              <input name="declarationRef" placeholder={t("Réf. convention")} aria-label={t("Référence")} />
+                              <button className="link">{t("Marquer déclaré")}</button>
                             </>
                           )}
                         </form>

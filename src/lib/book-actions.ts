@@ -9,6 +9,7 @@ import { eurToCents, str } from "@/lib/form";
 import { sniffLogo } from "@/lib/logos";
 import { EQUIPMENT, OFFER_UNITS, PHOTO_MAX, PHOTO_MAX_BYTES, readCapacities } from "@/lib/supplier-book";
 import { notifySupplierReview } from "@/lib/notifications";
+import { getT } from "@/lib/i18n/server";
 
 export type FormState = { error?: string; ok?: string } | undefined;
 
@@ -24,6 +25,7 @@ const refresh = (orgId: string) => {
 };
 
 export async function updateSupplierBook(_: FormState, form: FormData): Promise<FormState> {
+  const { t } = await getT();
   const orgId = str(form, "orgId");
   const { user } = await requireSupplierAdmin(orgId);
   const capacities = readCapacities({ seats: str(form, "seats"), cocktail: str(form, "cocktail"), banquet: str(form, "banquet"), rooms: str(form, "rooms") });
@@ -34,24 +36,25 @@ export async function updateSupplierBook(_: FormState, form: FormData): Promise<
   });
   await audit(user.id, "supplier.book", "Organization", orgId);
   refresh(orgId);
-  return { ok: "Book enregistré." };
+  return { ok: t("Book enregistré.") };
 }
 
 export async function addSupplierPhoto(_: FormState, form: FormData): Promise<FormState> {
+  const { t } = await getT();
   const orgId = str(form, "orgId");
   const { user } = await requireSupplierAdmin(orgId);
   const file = form.get("photo");
-  if (!(file instanceof File) || file.size === 0) return { error: "Choisissez une photo." };
-  if (file.size > PHOTO_MAX_BYTES) return { error: "Photo trop lourde : 800 Ko au maximum." };
+  if (!(file instanceof File) || file.size === 0) return { error: t("Choisissez une photo.") };
+  if (file.size > PHOTO_MAX_BYTES) return { error: t("Photo trop lourde : 800 Ko au maximum.") };
   const bytes = new Uint8Array(await file.arrayBuffer());
   const type = sniffLogo(bytes);
-  if (!type) return { error: "Format non reconnu : PNG, JPEG ou WebP uniquement." };
+  if (!type) return { error: t("Format non reconnu : PNG, JPEG ou WebP uniquement.") };
   const count = await db.organizationPhoto.count({ where: { organizationId: orgId } });
-  if (count >= PHOTO_MAX) return { error: `${PHOTO_MAX} photos au maximum : retirez-en une d'abord.` };
+  if (count >= PHOTO_MAX) return { error: t("{PHOTO_MAX} photos au maximum : retirez-en une d'abord.", { PHOTO_MAX }) };
   const photo = await db.organizationPhoto.create({ data: { organizationId: orgId, data: bytes, contentType: type, caption: str(form, "caption").slice(0, 120) || null, position: count } });
   await audit(user.id, "supplier.photo", "OrganizationPhoto", photo.id, { size: bytes.byteLength });
   refresh(orgId);
-  return { ok: "Photo ajoutée." };
+  return { ok: t("Photo ajoutée.") };
 }
 
 export async function removeSupplierPhoto(form: FormData) {
@@ -63,19 +66,20 @@ export async function removeSupplierPhoto(form: FormData) {
 }
 
 export async function addSupplierOffer(_: FormState, form: FormData): Promise<FormState> {
+  const { t } = await getT();
   const orgId = str(form, "orgId");
   const { user } = await requireSupplierAdmin(orgId);
   const label = str(form, "label").slice(0, 120);
   const unit = str(form, "unit");
   const cents = eurToCents(str(form, "price"), { allowZero: false });
-  if (!label) return { error: "Indiquez la prestation." };
-  if (!cents) return { error: "Prix invalide." };
-  if (!(unit in OFFER_UNITS)) return { error: "Unité invalide." };
-  if ((await db.supplierOffer.count({ where: { organizationId: orgId } })) >= 40) return { error: "40 forfaits au maximum." };
+  if (!label) return { error: t("Indiquez la prestation.") };
+  if (!cents) return { error: t("Prix invalide.") };
+  if (!(unit in OFFER_UNITS)) return { error: t("Unité invalide.") };
+  if ((await db.supplierOffer.count({ where: { organizationId: orgId } })) >= 40) return { error: t("40 forfaits au maximum.") };
   const offer = await db.supplierOffer.create({ data: { organizationId: orgId, label, unit, unitCents: cents } });
   await audit(user.id, "supplier.offer", "SupplierOffer", offer.id);
   refresh(orgId);
-  return { ok: "Forfait ajouté au catalogue." };
+  return { ok: t("Forfait ajouté au catalogue.") };
 }
 
 export async function removeSupplierOffer(form: FormData) {
@@ -91,6 +95,7 @@ export async function removeSupplierOffer(form: FormData) {
  * une fois par demande. Il est publié avec le nom de l'organisation.
  */
 export async function reviewSupplier(_: FormState, form: FormData): Promise<FormState> {
+  const { t } = await getT();
   const orgId = str(form, "orgId");
   const { user } = await requireMembership(orgId, EVENT_ORGANIZER_ROLES);
   const rfq = await db.rfq.findFirst({
@@ -98,14 +103,14 @@ export async function reviewSupplier(_: FormState, form: FormData): Promise<Form
     include: { event: true, quotes: { where: { status: "retained" } } },
   });
   const kept = rfq?.quotes[0];
-  if (!rfq || !kept) return { error: "Demande introuvable ou déjà évaluée." };
-  if (rfq.event && rfq.event.startsAt > new Date()) return { error: "L'avis se dépose après la prestation." };
+  if (!rfq || !kept) return { error: t("Demande introuvable ou déjà évaluée.") };
+  if (rfq.event && rfq.event.startsAt > new Date()) return { error: t("L'avis se dépose après la prestation.") };
   const rating = Number(str(form, "rating"));
-  if (!Number.isInteger(rating) || rating < 1 || rating > 5) return { error: "Choisissez une note de 1 à 5." };
+  if (!Number.isInteger(rating) || rating < 1 || rating > 5) return { error: t("Choisissez une note de 1 à 5.") };
   const review = await db.supplierReview.create({ data: { supplierId: kept.supplierId, clientId: orgId, rfqId: rfq.id, authorId: user.id, rating, comment: str(form, "comment").slice(0, 1000) || null } });
   await audit(user.id, "supplier.review", "SupplierReview", review.id, { rating });
   notifySupplierReview(review.id);
   revalidatePath(`/organisations/${orgId}/prestataires`);
   revalidatePath(`/structures/${kept.supplierId}`);
-  return { ok: "Merci : votre avis est publié sur la page du prestataire." };
+  return { ok: t("Merci : votre avis est publié sur la page du prestataire.") };
 }

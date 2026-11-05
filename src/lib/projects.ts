@@ -25,6 +25,18 @@ export const COLLAB_TYPES = [
 
 export const collabType = (id: string) => COLLAB_TYPES.find((t) => t.id === id);
 
+/** Pluriels irréguliers des unités de prestation (le cas général ajoute un « s »). */
+const UNIT_PLURAL: Record<string, string> = { cas: "cas", "patient inclus": "patients inclus", "cas documenté": "cas documentés" };
+/**
+ * Volume et unité (« 1 journée », « 2 patients inclus ») dans la langue d'affichage : au pluriel, la clé
+ * « {n} journées » porte sa propre traduction (« {n} days »), l'unité seule ne suffisant pas (« cas »).
+ */
+export function unitCount(t: (key: string, vars?: Record<string, string | number>) => string, loc: string, n: number | null, unit: string) {
+  if (n == null) return `— ${t(unit)}`;
+  const shown = n.toLocaleString(loc);
+  return n > 1 ? t(`{n} ${UNIT_PLURAL[unit] ?? `${unit}s`}`, { n: shown }) : `${shown} ${t(unit)}`;
+}
+
 /** Collaborations qui réunissent des participants (réunion, intervention, formation) : elles ont une logistique. */
 const MEETING_TYPES = new Set(["advisory", "comite-sci", "symposium", "pleniere", "table-ronde", "webinaire", "travaux-pratiques", "dpc", "live-surgery"]);
 export const needsMeeting = (typeId: string) => MEETING_TYPES.has(typeId);

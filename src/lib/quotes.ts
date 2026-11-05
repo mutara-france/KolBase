@@ -13,7 +13,8 @@ export const VAT_OPTIONS = [
 export const isVatBp = (n: number) => VAT_OPTIONS.some((v) => v.bp === n);
 /** Taux proposé par défaut : 10 % pour la restauration, l'hébergement et le transport de personnes, 20 % sinon. */
 export const defaultVatBp = (category: string) => (["restauration", "hebergement", "transport"].includes(category) ? 1000 : 2000);
-export const vatLabel = (bp: number) => `${(bp / 100).toLocaleString("fr-FR")} %`;
+/** Taux affiché : « 5,5 % » en français, « 5.5% » en anglais (loc : locale Intl). */
+export const vatLabel = (bp: number, loc = "fr-FR") => `${(bp / 100).toLocaleString(loc)}${loc.startsWith("fr") ? " " : ""}%`;
 
 export const MAX_LINES = 40;
 
@@ -45,10 +46,10 @@ export function mainVat(lines: QuoteLine[], fallback: number) {
 /** Total TTC d'un devis : enregistré (somme des lignes à leur taux), sinon montant HT au taux du devis. */
 export const quoteTtc = (q: { amountCents: number; vatBp: number; ttcCents?: number | null }) => q.ttcCents ?? withVat(q.amountCents, q.vatBp);
 /** Taux affichés d'un devis : « 10 % », ou « 10 % et 20 % » quand les lignes ont des taux différents. */
-export function quoteVatLabel(q: { vatBp: number; lines?: unknown }) {
+export function quoteVatLabel(q: { vatBp: number; lines?: unknown }, loc = "fr-FR", and = " et ") {
   const lines = readLines(q.lines);
   const rates = [...new Set(lines.length ? lines.map((l) => lineVat(l, q.vatBp)) : [q.vatBp])].sort((a, b) => a - b);
-  return rates.map(vatLabel).join(" et ");
+  return rates.map((r) => vatLabel(r, loc)).join(and);
 }
 
 /** Base du coût par personne d'un devis : le couvert commandé (restauration), sinon le participant prévu. */

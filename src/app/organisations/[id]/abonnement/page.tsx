@@ -8,11 +8,17 @@ import { stripeEnabled, syncCheckout } from "@/lib/billing";
 import { asInterval, asMotive, asObjectId, canEngage, displayStatus, ENGAGING, formatPrice, freeMonths, monthlyCents, planFor, planPrice, PLANS, resumeAction, STATUS_LABEL, TRIAL_DAYS } from "@/lib/billing-plans";
 import { openBillingPortal, startSubscription } from "@/lib/billing-actions";
 import { setEventFlag } from "@/lib/event-actions";
-import { formatDate } from "@/lib/events";
+import { getT } from "@/lib/i18n/server";
+import { fmtDate, intlLocale } from "@/lib/i18n";
 
-export const metadata = { title: "Abonnement — KolBase" };
+export async function generateMetadata() {
+  const { t } = await getT();
+  return { title: `${t("Abonnement")} — KolBase` };
+}
 
 export default async function Page({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: Promise<{ session?: string; motif?: string; objet?: string; annule?: string }> }) {
+  const { t, locale } = await getT();
+  const loc = intlLocale(locale);
   const { id } = await params;
   const sp = await searchParams;
   const { org, isAdmin, roles } = await requireMembership(id);
@@ -38,42 +44,42 @@ export default async function Page({ params, searchParams }: { params: Promise<{
     <>
       <SiteHeader />
       <main className="narrow stack">
-        <p className="muted"><Link href={`/organisations/${id}`}>{org.name}</Link> / Abonnement</p>
-        <h1>Abonnement</h1>
-        {!stripeEnabled() && <p className="notice">La facturation n&apos;est pas encore activée sur KolBase : toutes les fonctions restent accessibles.</p>}
+        <p className="muted"><Link href={`/organisations/${id}`}>{org.name}</Link> / {t("Abonnement")}</p>
+        <h1>{t("Abonnement")}</h1>
+        {!stripeEnabled() && <p className="notice">{t("La facturation n'est pas encore activée sur KolBase : toutes les fonctions restent accessibles.")}</p>}
         {sp.session && ok && (
           <div className="notice ok stack-sm" role="status">
-            <span><CheckCircle2 size={15} /> Abonnement activé{status === "essai" ? " : premier mois offert" : ""}. Merci !</span>
+            <span><CheckCircle2 size={15} />{" "}{t("Abonnement activé")}{status === "essai" ? t(" : premier mois offert") : ""}{t(". Merci !")}</span>
             {resume && (
               resume.publish ? (
                 <form action={setEventFlag}>
                   <input type="hidden" name="orgId" value={id} />
                   <input type="hidden" name="eventId" value={resume.publish} />
                   <input type="hidden" name="flag" value="publish" />
-                  <button className="btn small">{resume.label}</button>
+                  <button className="btn small">{t(resume.label)}</button>
                 </form>
-              ) : <Link className="btn small" href={resume.href}>{resume.label}</Link>
+              ) : <Link className="btn small" href={resume.href}>{t(resume.label)}</Link>
             )}
           </div>
         )}
-        {motive && !ok && stripeEnabled() && <p className="notice warn">Pour {ENGAGING[motive]}, l&apos;abonnement de l&apos;organisation doit être activé{isAdmin ? "" : " par un administrateur"}.</p>}
-        {freeSupplier && stripeEnabled() && <p className="notice ok">Référencement gratuit : rien à payer avant votre premier devis retenu. L&apos;abonnement prestataire ne sera demandé qu&apos;ensuite, pour répondre à de nouvelles demandes.</p>}
-        {sp.annule && <p className="notice">Paiement interrompu : rien n&apos;a été souscrit.</p>}
+        {motive && !ok && stripeEnabled() && <p className="notice warn">{t("Pour {motive}, l'abonnement de l'organisation doit être activé", { motive: t(ENGAGING[motive]) })}{isAdmin ? "" : t(" par un administrateur")}.</p>}
+        {freeSupplier && stripeEnabled() && <p className="notice ok">{t("Référencement gratuit : rien à payer avant votre premier devis retenu. L'abonnement prestataire ne sera demandé qu'ensuite, pour répondre à de nouvelles demandes.")}</p>}
+        {sp.annule && <p className="notice">{t("Paiement interrompu : rien n'a été souscrit.")}</p>}
 
         <section className="card stack-sm">
           <div className="actions spread">
             <div>
-              <h2>{PLANS[plan].label}</h2>
-              <p className="muted">{formatPrice(PLANS[plan].cents)} sans engagement, ou {formatPrice(PLANS[plan].yearCents, "year")} ({freeMonths(plan)} mois offerts) ; premier mois offert.</p>
+              <h2>{t(PLANS[plan].label)}</h2>
+              <p className="muted">{t("{montant} sans engagement, ou {montant2} ({freeMonths} mois offerts) ; premier mois offert.", { montant: formatPrice(PLANS[plan].cents, "month", t, loc), montant2: formatPrice(PLANS[plan].yearCents, "year", t, loc), freeMonths: freeMonths(plan) })}</p>
             </div>
-            <span className={`pill ${tone}`}>{STATUS_LABEL[status]}</span>
+            <span className={`pill ${tone}`}>{t(STATUS_LABEL[status])}</span>
           </div>
           <dl className="hero-facts">
-            {status === "offerte" && <div><dt><Gift size={13} /> Offert jusqu&apos;au</dt><dd>{formatDate(sub!.exemptUntil!)}<small>{sub!.exemptNote ?? "accordé par KolBase"}</small></dd></div>}
-            {sub?.status === "essai" && sub.trialEndsAt && <div><dt>Mois offert jusqu&apos;au</dt><dd>{formatDate(sub.trialEndsAt)}<small>premier prélèvement ensuite</small></dd></div>}
-            {sub?.status === "active" && sub.currentPeriodEnd && <div><dt>Prochaine échéance</dt><dd>{formatDate(sub.currentPeriodEnd)}<small>{sub.cancelAtPeriodEnd ? "résiliation programmée à cette date" : asInterval(sub.interval) === "year" ? "renouvellement annuel" : "renouvellement mensuel"}</small></dd></div>}
-            {["essai", "active", "impayee"].includes(sub?.status ?? "") && <div><dt>Formule</dt><dd>{asInterval(sub!.interval) === "year" ? "Annuelle" : "Mensuelle"}<small>{formatPrice(planPrice(plan, asInterval(sub!.interval)), asInterval(sub!.interval))}</small></dd></div>}
-            {sub?.triggeredAt && <div><dt>Déclenché le</dt><dd>{formatDate(sub.triggeredAt)}<small>{sub.triggeredBy}</small></dd></div>}
+            {status === "offerte" && <div><dt><Gift size={13} />{" "}{t("Offert jusqu'au")}</dt><dd>{fmtDate(locale, sub!.exemptUntil!)}<small>{sub!.exemptNote ?? t("accordé par KolBase")}</small></dd></div>}
+            {sub?.status === "essai" && sub.trialEndsAt && <div><dt>{t("Mois offert jusqu'au")}</dt><dd>{fmtDate(locale, sub.trialEndsAt)}<small>{t("premier prélèvement ensuite")}</small></dd></div>}
+            {sub?.status === "active" && sub.currentPeriodEnd && <div><dt>{t("Prochaine échéance")}</dt><dd>{fmtDate(locale, sub.currentPeriodEnd)}<small>{sub.cancelAtPeriodEnd ? t("résiliation programmée à cette date") : asInterval(sub.interval) === "year" ? t("renouvellement annuel") : t("renouvellement mensuel")}</small></dd></div>}
+            {["essai", "active", "impayee"].includes(sub?.status ?? "") && <div><dt>{t("Formule")}</dt><dd>{asInterval(sub!.interval) === "year" ? t("Annuelle") : t("Mensuelle")}<small>{formatPrice(planPrice(plan, asInterval(sub!.interval)), asInterval(sub!.interval), t, loc)}</small></dd></div>}
+            {sub?.triggeredAt && <div><dt>{t("Déclenché le")}</dt><dd>{fmtDate(locale, sub.triggeredAt)}<small>{sub.triggeredBy}</small></dd></div>}
           </dl>
           {isAdmin && stripeEnabled() && (
             <div className="actions">
@@ -83,45 +89,45 @@ export default async function Page({ params, searchParams }: { params: Promise<{
                   {motive && <input type="hidden" name="motif" value={motive} />}
                   {motive && objet && <input type="hidden" name="objet" value={objet} />}
                   <div className="plan-option">
-                    <strong>Mensuel</strong>
-                    <span className="plan-price">{formatPrice(PLANS[plan].cents)}</span>
-                    <span className="text-sm muted">Sans engagement, résiliable à tout moment.{sub?.trialUsed ? "" : ` ${TRIAL_DAYS} jours offerts avant le premier prélèvement.`}</span>
-                    <button className="btn secondary" name="interval" value="month"><CreditCard size={15} /> {sub?.trialUsed ? "Réactiver l'abonnement mensuel" : "Activer l'abonnement mensuel"}</button>
+                    <strong>{t("Mensuel")}</strong>
+                    <span className="plan-price">{formatPrice(PLANS[plan].cents, "month", t, loc)}</span>
+                    <span className="text-sm muted">{t("Sans engagement, résiliable à tout moment.")}{sub?.trialUsed ? "" : ` ${t("{TRIAL_DAYS} jours offerts avant le premier prélèvement.", { TRIAL_DAYS })}`}</span>
+                    <button className="btn secondary" name="interval" value="month"><CreditCard size={15} /> {sub?.trialUsed ? t("Réactiver l'abonnement mensuel") : t("Activer l'abonnement mensuel")}</button>
                   </div>
                   <div className="plan-option recommended">
-                    <strong>Annuel <span className="pill ok">{freeMonths(plan)} mois offerts</span></strong>
-                    <span className="plan-price">{formatPrice(PLANS[plan].yearCents, "year")}</span>
-                    <span className="text-sm muted">Soit {formatPrice(monthlyCents(plan, "year"))}, réglé en une fois.{sub?.trialUsed ? "" : ` ${TRIAL_DAYS} jours offerts avant le premier prélèvement.`}</span>
-                    <button className="btn" name="interval" value="year"><CreditCard size={15} /> {sub?.trialUsed ? "Réactiver l'abonnement annuel" : "Activer l'abonnement annuel"}</button>
+                    <strong>{t("Annuel")}{" "}<span className="pill ok">{t("{freeMonths} mois offerts", { freeMonths: freeMonths(plan) })}</span></strong>
+                    <span className="plan-price">{formatPrice(PLANS[plan].yearCents, "year", t, loc)}</span>
+                    <span className="text-sm muted">{t("Soit {montant}, réglé en une fois.", { montant: formatPrice(monthlyCents(plan, "year"), "month", t, loc) })}{sub?.trialUsed ? "" : ` ${t("{TRIAL_DAYS} jours offerts avant le premier prélèvement.", { TRIAL_DAYS })}`}</span>
+                    <button className="btn" name="interval" value="year"><CreditCard size={15} /> {sub?.trialUsed ? t("Réactiver l'abonnement annuel") : t("Activer l'abonnement annuel")}</button>
                   </div>
                 </form>
               )}
               {sub?.stripeCustomerId && (
                 <form action={openBillingPortal}>
                   <input type="hidden" name="orgId" value={id} />
-                  <button className="btn ghost">Moyen de paiement, factures, résiliation</button>
+                  <button className="btn ghost">{t("Moyen de paiement, factures, résiliation")}</button>
                 </form>
               )}
             </div>
           )}
-          {!isAdmin && !ok && !freeSupplier && stripeEnabled() && <p className="hint">Seul un administrateur peut activer l&apos;abonnement : {admins.map((a) => `${a.user.firstName} ${a.user.lastName}`).join(", ")}.</p>}
-          <p className="hint">Paiement par carte ou prélèvement SEPA, facture envoyée par e-mail à chaque échéance (TVA en sus). Résiliable à tout moment, effet à la fin de la période en cours (mois ou année). En activant l&apos;abonnement, vous acceptez les <Link href="/conditions-de-vente" target="_blank">conditions générales de vente</Link>.</p>
+          {!isAdmin && !ok && !freeSupplier && stripeEnabled() && <p className="hint">{t("Seul un administrateur peut activer l'abonnement : {join}.", { join: admins.map((a) => `${a.user.firstName} ${a.user.lastName}`).join(", ") })}</p>}
+          <p className="hint">{t("Paiement par carte ou prélèvement SEPA, facture envoyée par e-mail à chaque échéance (TVA en sus). Résiliable à tout moment, effet à la fin de la période en cours (mois ou année). En activant l'abonnement, vous acceptez les")}{" "}<Link href="/conditions-de-vente" target="_blank">{t("conditions générales de vente")}</Link>.</p>
         </section>
 
         <section className="card stack-sm">
-          <h2>Ce qui est compris</h2>
+          <h2>{t("Ce qui est compris")}</h2>
           {supplier ? (
             <ul className="plain check-list">
-              <li><CheckCircle2 size={15} /> <span><strong>Gratuit :</strong> référencement dans l&apos;annuaire, book, réception des demandes de devis et réponses jusqu&apos;au premier devis retenu{won ? ` (vous en avez ${won})` : ""}.</span></li>
-              <li><CheckCircle2 size={15} /> <span><strong>Abonnement :</strong> répondre à de nouvelles demandes après un premier devis retenu ; les prestations retenues et les échanges en cours restent toujours accessibles.</span></li>
-              <li><CheckCircle2 size={15} /> <span>Payer ne change jamais votre place dans l&apos;annuaire.</span></li>
+              <li><CheckCircle2 size={15} /> <span><strong>{t("Gratuit :")}</strong>{" "}{t("référencement dans l'annuaire, book, réception des demandes de devis et réponses jusqu'au premier devis retenu")}{won ? ` ${t("(vous en avez {won})", { won })}` : ""}.</span></li>
+              <li><CheckCircle2 size={15} /> <span><strong>{t("Abonnement :")}</strong>{" "}{t("répondre à de nouvelles demandes après un premier devis retenu ; les prestations retenues et les échanges en cours restent toujours accessibles.")}</span></li>
+              <li><CheckCircle2 size={15} /> <span>{t("Payer ne change jamais votre place dans l'annuaire.")}</span></li>
             </ul>
           ) : (
             <ul className="plain check-list">
-              <li><CheckCircle2 size={15} /> <span><strong>Gratuit :</strong> création et validation de l&apos;organisation, invitation de l&apos;équipe, paramétrage, consultation de l&apos;annuaire, brouillons.</span></li>
-              <li><CheckCircle2 size={15} /> <span><strong>L&apos;abonnement démarre</strong> à la première action qui engage un tiers : {Object.values(ENGAGING).slice(0, 4).join(", ")}.</span></li>
-              <li><CheckCircle2 size={15} /> <span>Utilisateurs illimités ; agences mandatées sans surcoût.</span></li>
-              <li><CheckCircle2 size={15} /> <span>Dossiers, conventions, registres et déclarations restent toujours accessibles, même sans abonnement actif.</span></li>
+              <li><CheckCircle2 size={15} /> <span><strong>{t("Gratuit :")}</strong>{" "}{t("création et validation de l'organisation, invitation de l'équipe, paramétrage, consultation de l'annuaire, brouillons.")}</span></li>
+              <li><CheckCircle2 size={15} /> <span><strong>{t("L'abonnement démarre")}</strong>{" "}{t("à la première action qui engage un tiers : {join}.", { join: Object.values(ENGAGING).slice(0, 4).map((x) => t(x)).join(", ") })}</span></li>
+              <li><CheckCircle2 size={15} /> <span>{t("Utilisateurs illimités ; agences mandatées sans surcoût.")}</span></li>
+              <li><CheckCircle2 size={15} /> <span>{t("Dossiers, conventions, registres et déclarations restent toujours accessibles, même sans abonnement actif.")}</span></li>
             </ul>
           )}
         </section>

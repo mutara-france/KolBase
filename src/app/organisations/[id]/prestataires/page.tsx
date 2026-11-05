@@ -9,7 +9,7 @@ import { Avatar } from "@/components/Avatar";
 import { NewRfqForm, RfqMessageForm, SupplierLine } from "@/components/RfqForms";
 import { db } from "@/lib/db";
 import { requireMembership } from "@/lib/orgs";
-import { EVENT_MANAGER_ROLES, EVENT_ORGANIZER_ROLES, eventEnded, eventScope, formatDate, formatEUR } from "@/lib/events";
+import { EVENT_MANAGER_ROLES, EVENT_ORGANIZER_ROLES, eventEnded, eventScope } from "@/lib/events";
 import { canCancelRfq, QUOTE_STATUS, RFQ_STATUS, rfqDisplayStatus, rfqView, SUPPLIER_CATEGORIES, supplierCategoryLabel } from "@/lib/suppliers";
 import { awardQuote, cancelRfq, proposeQuote, sendRfq } from "@/lib/rfq-actions";
 import { endMandate, setMandateAward } from "@/lib/event-actions";
@@ -23,10 +23,16 @@ import { engagementBlock } from "@/lib/billing";
 import { Thread } from "@/components/ProjectBits";
 import { ConfirmButton } from "@/components/ConfirmButton";
 import { de } from "@/lib/elision";
+import { getT } from "@/lib/i18n/server";
+import { fmtDate, fmtEur, intlLocale } from "@/lib/i18n";
 
-export const metadata = { title: "Prestataires — KolBase" };
+export async function generateMetadata() {
+  const { t } = await getT();
+  return { title: `${t("Prestataires")} — KolBase` };
+}
 
 export default async function Page({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: Promise<{ onglet?: string; evenement?: string; cat?: string }> }) {
+  const { t, locale } = await getT();
   const { id } = await params;
   const { evenement, cat } = await searchParams;
   const onglet = (await searchParams).onglet ?? (evenement ? "nouvelle" : "demandes");
@@ -99,8 +105,8 @@ export default async function Page({ params, searchParams }: { params: Promise<{
   const engaged = awarded.reduce((s, r) => s + (r.quotes.find((q) => q.status === "retained")?.amountCents ?? 0), 0);
   const list = cat ? suppliers.filter((s) => s.categories.includes(cat)) : suppliers;
   const tabs = [
-    ["demandes", `Demandes de devis (${rfqs.length})`], ["nouvelle", "Nouvelle demande"], ["annuaire", `Annuaire (${suppliers.length})`],
-    ...(isOrganizer ? [["agences", `Agences mandatées (${mandates.length})`] as const] : []),
+    ["demandes", t("Demandes de devis ({n})", { n: rfqs.length })], ["nouvelle", t("Nouvelle demande")], ["annuaire", t("Annuaire ({n})", { n: suppliers.length })],
+    ...(isOrganizer ? [["agences", t("Agences mandatées ({mandates})", { mandates: mandates.length })] as const] : []),
   ] as const;
 
   const sectionTabs = await orgTabs("evenements", id);
@@ -109,12 +115,12 @@ export default async function Page({ params, searchParams }: { params: Promise<{
       <SiteHeader />
       <main className="stack">
         <BillingNotice orgId={id} motive="devis" />
-        <SectionNav tabs={sectionTabs} active="prestataires" label="Rubrique Événements" />
-        <h1>Prestataires et devis</h1>
+        <SectionNav tabs={sectionTabs} active="prestataires" label={t("Rubrique Événements")} />
+        <h1>{t("Prestataires et devis")}</h1>
         <div className="stats">
-          <div className="card stat"><span className="muted">Devis à comparer</span><strong>{rfqs.filter((r) => r.status === "sent" && r.quotes.length > 0 && !r.conflicted).length}</strong></div>
-          <div className="card stat"><span className="muted">Prestations attribuées</span><strong>{awarded.length}</strong></div>
-          <div className="card stat"><span className="muted">Budget prestataires engagé</span><strong>{formatEUR(engaged)} HT</strong></div>
+          <div className="card stat"><span className="muted">{t("Devis à comparer")}</span><strong>{rfqs.filter((r) => r.status === "sent" && r.quotes.length > 0 && !r.conflicted).length}</strong></div>
+          <div className="card stat"><span className="muted">{t("Prestations attribuées")}</span><strong>{awarded.length}</strong></div>
+          <div className="card stat"><span className="muted">{t("Budget prestataires engagé")}</span><strong>{fmtEur(locale, engaged)}{" "}{t("HT")}</strong></div>
         </div>
         <nav className="tabs">
           {tabs.map(([k, l]) => <Link key={k} href={`?onglet=${k}`} className={k === onglet ? "active" : ""}>{l}</Link>)}
@@ -122,7 +128,7 @@ export default async function Page({ params, searchParams }: { params: Promise<{
 
         {onglet === "demandes" && (
           <>
-            {rfqs.length === 0 && <div className="card empty"><Receipt size={22} /><p className="muted">Aucune demande de devis.</p></div>}
+            {rfqs.length === 0 && <div className="card empty"><Receipt size={22} /><p className="muted">{t("Aucune demande de devis.")}</p></div>}
             {rfqs.map((r) => {
               const st = RFQ_STATUS[rfqDisplayStatus(r)];
               const best = r.quotes.length > 1 && !r.conflicted ? r.quotes[0].id : null;
@@ -136,30 +142,29 @@ export default async function Page({ params, searchParams }: { params: Promise<{
                 <section key={r.id} id={`rfq-${r.id}`} className="card">
                   <div className="card-head">
                     <div>
-                      <div className="eyebrow-sm">{supplierCategoryLabel(r.category)}{r.city ? ` · ${r.city}` : ""}</div>
-                      <h2>{r.event?.title ?? "Demande de devis"}</h2>
-                      {r.event && <div className="muted">{formatDate(r.event.startsAt)}{r.event.venue ? ` · ${r.event.venue}` : ""}{r.headcount ? ` · ${r.headcount} participants attendus` : ""}</div>}
+                      <div className="eyebrow-sm">{t(supplierCategoryLabel(r.category))}{r.city ? ` · ${r.city}` : ""}</div>
+                      <h2>{r.event?.title ?? t("Demande de devis")}</h2>
+                      {r.event && <div className="muted">{fmtDate(locale, r.event.startsAt)}{r.event.venue ? ` · ${r.event.venue}` : ""}{r.headcount ? ` ${t("· {headcount} participants attendus", { headcount: r.headcount })}` : ""}</div>}
                     </div>
-                    <span className={`pill ${st.tone}`}>{st.label}</span>
+                    <span className={`pill ${st.tone}`}>{t(st.label)}</span>
                   </div>
                   <p>{r.needs}</p>
-                  {r.createdById && creators.get(r.createdById) && <p className="text-sm muted">Créée par {creators.get(r.createdById)}</p>}
+                  {r.createdById && creators.get(r.createdById) && <p className="text-sm muted">{t("Créée par {v}", { v: creators.get(r.createdById) })}</p>}
                   {r.status === "cancelled" && r.cancelledAt && (
-                    <p className="text-sm muted">Annulée{r.cancelledById && creators.get(r.cancelledById) ? ` par ${creators.get(r.cancelledById)}` : ""} le {formatDate(r.cancelledAt)}</p>
+                    <p className="text-sm muted">{r.cancelledById && creators.get(r.cancelledById) ? t("Annulée par {v} le {date}", { v: creators.get(r.cancelledById)!, date: fmtDate(locale, r.cancelledAt) }) : t("Annulée le {date}", { date: fmtDate(locale, r.cancelledAt) })}</p>
                   )}
                   {r.conflicted ? (
                     <div className="info-note">
                       <Info size={15} />
                       <span>
-                        Votre organisation est consultée sur cette demande : l&apos;organisation la conduit seule. Vous n&apos;y voyez que votre devis et vos échanges ;
-                        répondez depuis <Link href={`/organisations/${r.suppliers[0]?.supplierId}/devis`}>vos demandes de devis</Link>.
+                        {t("Votre organisation est consultée sur cette demande : l'organisation la conduit seule. Vous n'y voyez que votre devis et vos échanges ; répondez depuis")}{" "}<Link href={`/organisations/${r.suppliers[0]?.supplierId}/devis`}>{t("vos demandes de devis")}</Link>.
                       </span>
                     </div>
                   ) : (
                     <div className="kv">
-                      <div><span>Prestataires consultés</span><span>{r.suppliers.length}</span></div>
-                      <div><span>Devis reçus</span><span>{r.quotes.length}{r.quotes.length ? ` · dès ${formatEUR(quoteTtc(r.quotes[0]))} TTC` : ""}</span></div>
-                      <div><span>Réponse attendue</span><span>{r.deadline ? formatDate(r.deadline) : "à définir"}</span></div>
+                      <div><span>{t("Prestataires consultés")}</span><span>{r.suppliers.length}</span></div>
+                      <div><span>{t("Devis reçus")}</span><span>{r.quotes.length}{r.quotes.length ? ` ${t("· dès {montant} TTC", { montant: fmtEur(locale, quoteTtc(r.quotes[0])) })}` : ""}</span></div>
+                      <div><span>{t("Réponse attendue")}</span><span>{r.deadline ? fmtDate(locale, r.deadline) : t("à définir")}</span></div>
                     </div>
                   )}
                   {r.quotes.length > 0 && (
@@ -178,73 +183,73 @@ export default async function Page({ params, searchParams }: { params: Promise<{
                           <div className="quote-main">
                             <div>
                               <strong>{q.supplier.name}</strong>
-                              {agencyName.has(q.supplierId) && <span className="pill wait"> {q.supplierId === r.event?.agencyId ? "Agence mandatée sur cet événement" : "Agence mandatée"}</span>}
-                              {q.id === best && <span className="pill ok" title="Total TTC le plus bas"> Meilleure offre</span>}
-                              {r.status === "sent" && r.proposedQuoteId === q.id && <span className="pill electric" title={r.proposedById ? `Proposé par ${creators.get(r.proposedById) ?? "l'agence"}` : undefined}> Proposé par l&apos;agence mandatée</span>}
-                              {q.status !== "submitted" && <span className={`pill ${q.status === "retained" ? "ok" : "done"}`}> {QUOTE_STATUS[q.status]}</span>}
-                              {q.revision > 1 && <span className="pill"> Version {q.revision}</span>}
+                              {agencyName.has(q.supplierId) && <span className="pill wait"> {q.supplierId === r.event?.agencyId ? t("Agence mandatée sur cet événement") : t("Agence mandatée")}</span>}
+                              {q.id === best && <span className="pill ok" title={t("Total TTC le plus bas")}>{" "}{t("Meilleure offre")}</span>}
+                              {r.status === "sent" && r.proposedQuoteId === q.id && <span className="pill electric" title={r.proposedById ? t("Proposé par {v}", { v: creators.get(r.proposedById) ?? t("l'agence") }) : undefined}>{" "}{t("Proposé par l'agence mandatée")}</span>}
+                              {q.status !== "submitted" && <span className={`pill ${q.status === "retained" ? "ok" : "done"}`}> {t(QUOTE_STATUS[q.status])}</span>}
+                              {q.revision > 1 && <span className="pill">{" "}{t("Version {revision}", { revision: q.revision })}</span>}
                             </div>
                             <div className="muted">
                               {[
-                                `${formatEUR(ttc)} TTC (TVA ${quoteVatLabel(q)})`,
-                                q.validUntil ? `${expired ? "expiré le" : "valable jusqu'au"} ${formatDate(q.validUntil)}` : null,
+                                t("{amount} TTC (TVA {rate})", { amount: fmtEur(locale, ttc), rate: quoteVatLabel(q, intlLocale(locale), t(" et ")) }),
+                                q.validUntil ? t(expired ? "expiré le {date}" : "valable jusqu'au {date}", { date: fmtDate(locale, q.validUntil) }) : null,
                                 q.delay,
                               ].filter(Boolean).join(" · ")}
                             </div>
                             {pp && (
                               <div className={`text-xs ${pp.over ? "warn-text" : "muted"}`}>
-                                ≈ {pp.each.toLocaleString("fr-FR", { maximumFractionDigits: 2 })} € TTC {perHeadLabel(r.category)}
-                                {pp.limit && (pp.over ? ` · au-dessus du seuil ${pp.limit.of} (${pp.limit.max} € TTC) : autorisation de l'Ordre à prévoir pour les professionnels de santé` : ` · sous le seuil ${pp.limit.of} (${pp.limit.max} € TTC)`)}
+                                {t("≈ {amount} € TTC {per}", { amount: pp.each.toLocaleString(intlLocale(locale), { maximumFractionDigits: 2 }), per: t(perHeadLabel(r.category)) })}
+                                {pp.limit && (pp.over ? ` ${t("· au-dessus du seuil {of} ({max} € TTC) : autorisation de l'Ordre à prévoir pour les professionnels de santé", { of: t(pp.limit.of), max: pp.limit.max })}` : ` ${t("· sous le seuil {of} ({max} € TTC)", { of: t(pp.limit.of), max: pp.limit.max })}`)}
                               </div>
                             )}
                             {head.perPresent != null && (
-                              <div className="text-xs muted">Pour information : {head.perPresent.toLocaleString("fr-FR", { maximumFractionDigits: 2 })} € TTC par présent ({present} au pointage)</div>
+                              <div className="text-xs muted">{t("Pour information : {toLocaleString} € TTC par présent ({present} au pointage)", { toLocaleString: head.perPresent.toLocaleString(intlLocale(locale), { maximumFractionDigits: 2 }), present })}</div>
                             )}
                             {(q.note || q.conditions || lines.length > 0 || q.fileKey) && (
                               <details className="quote-detail">
-                                <summary>Détail de l&apos;offre{lines.length ? ` (${lines.length} ligne${lines.length > 1 ? "s" : ""})` : ""}</summary>
+                                <summary>{t("Détail de l'offre")}{lines.length ? ` ${t(lines.length > 1 ? "({lines} lignes)" : "({lines} ligne)", { lines: lines.length })}` : ""}</summary>
                                 {lines.length > 0 && (
-                                  <table><tbody>{lines.map((l, i) => <tr key={i}><td>{l.label}</td><td>{l.qty} × {formatEUR(l.unitCents)} HT</td><td>TVA {vatLabel(lineVat(l, q.vatBp))}</td><td>{formatEUR(lineTotal(l))} HT</td></tr>)}</tbody></table>
+                                  <table><tbody>{lines.map((l, i) => <tr key={i}><td>{l.label}</td><td>{l.qty.toLocaleString(intlLocale(locale))} × {fmtEur(locale, l.unitCents)} {t("HT")}</td><td>{t("TVA")} {vatLabel(lineVat(l, q.vatBp), intlLocale(locale))}</td><td>{fmtEur(locale, lineTotal(l))} {t("HT")}</td></tr>)}</tbody></table>
                                 )}
                                 {q.note && <p>{q.note}</p>}
-                                {q.conditions && <p className="muted">Conditions : {q.conditions}</p>}
-                                {q.fileKey && <a href={`/devis/${q.id}`} target="_blank" rel="noreferrer">Devis signé (PDF)</a>}
+                                {q.conditions && <p className="muted">{t("Conditions : {conditions}", { conditions: q.conditions })}</p>}
+                                {q.fileKey && <a href={`/devis/${q.id}`} target="_blank" rel="noreferrer">{t("Devis signé (PDF)")}</a>}
                               </details>
                             )}
                           </div>
-                          <span className="amount">{formatEUR(q.amountCents)} <span className="text-xs muted">HT</span></span>
+                          <span className="amount">{fmtEur(locale, q.amountCents)} <span className="text-xs muted">{t("HT")}</span></span>
                           {r.status === "sent" && own(q.supplierId) && (
-                            <span className="text-xs muted" title="Conflit d'intérêts : vous êtes membre de ce prestataire.">À retenir par l&apos;organisation (conflit d&apos;intérêts)</span>
+                            <span className="text-xs muted" title={t("Conflit d'intérêts : vous êtes membre de ce prestataire.")}>{t("À retenir par l'organisation (conflit d'intérêts)")}</span>
                           )}
                           {r.status === "sent" && expired && !own(q.supplierId) && (
-                            <span className="text-xs warn-text" title="Une offre expirée n'engage plus le prestataire.">Offre expirée : demandez une version à jour</span>
+                            <span className="text-xs warn-text" title={t("Une offre expirée n'engage plus le prestataire.")}>{t("Offre expirée : demandez une version à jour")}</span>
                           )}
                           {r.status === "sent" && !expired && !own(q.supplierId) && rightFor(r) === "award" && (
                             <form action={awardQuote} className="award-form">
                               <input type="hidden" name="orgId" value={id} />
                               <input type="hidden" name="quoteId" value={q.id} />
                               <ConfirmButton
-                                confirm={`retenir le devis ${de(q.supplier.name)}`}
+                                confirm={t("retenir le devis {de}", { de: de(q.supplier.name) })}
                                 summary={
                                   <>
-                                    <strong>{q.supplier.name}</strong> : {formatEUR(q.amountCents)} HT, soit {formatEUR(ttc)} TTC (TVA {quoteVatLabel(q)}).
-                                    {r.quotes.length > 1 && <> Devis écartés : {r.quotes.filter((x) => x.id !== q.id).map((x) => `${x.supplier.name} (${formatEUR(x.amountCents)} HT)`).join(", ")}.</>}
-                                    {" "}Chaque prestataire est prévenu par e-mail ; la décision est définitive.
+                                    <strong>{q.supplier.name}</strong>{" "}{t(": {montant} HT, soit {montant2} TTC (TVA {quoteVatLabel}).", { montant: fmtEur(locale, q.amountCents), montant2: fmtEur(locale, ttc), quoteVatLabel: quoteVatLabel(q, intlLocale(locale), t(" et ")) })}
+                                    {r.quotes.length > 1 && <>{" "}{t("Devis écartés : {join}.", { join: r.quotes.filter((x) => x.id !== q.id).map((x) => `${x.supplier.name} (${fmtEur(locale, x.amountCents)} HT)`).join(", ") })}</>}
+                                    {t("Chaque prestataire est prévenu par e-mail ; la décision est définitive.")}
                                   </>
                                 }
                               >
-                                <Check size={13} /> Retenir
+                                <Check size={13} />{" "}{t("Retenir")}
                               </ConfirmButton>
                             </form>
                           )}
                           {r.status === "sent" && !expired && !own(q.supplierId) && rightFor(r) === "propose" && (
                             r.proposedQuoteId === q.id
-                              ? <span className="text-xs muted">Proposé à l&apos;organisation, qui retient</span>
+                              ? <span className="text-xs muted">{t("Proposé à l'organisation, qui retient")}</span>
                               : (
                                 <form action={proposeQuote}>
                                   <input type="hidden" name="orgId" value={id} />
                                   <input type="hidden" name="quoteId" value={q.id} />
-                                  <button className="btn small secondary" title="Votre mandat ne permet pas de retenir un devis : l'organisation décide.">Proposer à l&apos;organisation</button>
+                                  <button className="btn small secondary" title={t("Votre mandat ne permet pas de retenir un devis : l'organisation décide.")}>{t("Proposer à l'organisation")}</button>
                                 </form>
                               )
                           )}
@@ -254,16 +259,16 @@ export default async function Page({ params, searchParams }: { params: Promise<{
                     </div>
                   )}
                   {r.status === "sent" && pending.length > 0 && !r.conflicted && (
-                    <p className="muted">En attente de réponse : {pending.map((s) => s.supplier.name + (agencyName.has(s.supplierId) ? " (agence mandatée)" : "")).join(", ")}.</p>
+                    <p className="muted">{t("En attente de réponse : {join}.", { join: pending.map((s) => s.supplier.name + (agencyName.has(s.supplierId) ? ` (${t("agence mandatée")})` : "")).join(", ") })}</p>
                   )}
                   {(r.status === "sent" || r.status === "awarded") && !r.conflicted && declinedBy.map((s) => (
-                    <p key={s.supplierId} className="muted">{s.supplier.name} a décliné{s.declineNote ? ` : ${s.declineNote}` : "."}</p>
+                    <p key={s.supplierId} className="muted">{t("{name} a décliné", { name: s.supplier.name })}{s.declineNote ? ` : ${s.declineNote}` : "."}</p>
                   ))}
-                  {r.status === "draft" && !r.conflicted && <p className="muted">Prestataires sélectionnés : {r.suppliers.map((s) => s.supplier.name + (agencyName.has(s.supplierId) ? " (agence mandatée)" : "")).join(", ")}.</p>}
-                  {r.status === "sent" && rightFor(r) === "propose" && <p className="hint">Votre mandat ne vous permet pas de retenir un devis : proposez-en un, l&apos;organisation décide.</p>}
+                  {r.status === "draft" && !r.conflicted && <p className="muted">{t("Prestataires sélectionnés : {join}.", { join: r.suppliers.map((s) => s.supplier.name + (agencyName.has(s.supplierId) ? ` (${t("agence mandatée")})` : "")).join(", ") })}</p>}
+                  {r.status === "sent" && rightFor(r) === "propose" && <p className="hint">{t("Votre mandat ne vous permet pas de retenir un devis : proposez-en un, l'organisation décide.")}</p>}
                   {(r.status === "sent" || r.status === "awarded") && (
                     <div className="rfq-threads">
-                      <span className="label">Questions et échanges</span>
+                      <span className="label">{t("Questions et échanges")}</span>
                       {r.suppliers.filter((s) => !s.declined || r.messages.some((m) => m.supplierId === s.supplierId)).map((s) => {
                         const msgs = r.messages.filter((m) => m.supplierId === s.supplierId);
                         const last = msgs.at(-1);
@@ -272,12 +277,12 @@ export default async function Page({ params, searchParams }: { params: Promise<{
                           <details key={s.supplierId} className="rfq-thread" open={toAnswer}>
                             <summary>
                               <strong>{s.supplier.name}</strong>
-                              <span className="muted text-xs">{msgs.length ? `${msgs.length} message${msgs.length > 1 ? "s" : ""}` : "aucun message"}</span>
-                              {toAnswer && <span className="pill electric">Nouveau message</span>}
+                              <span className="muted text-xs">{msgs.length ? t(msgs.length > 1 ? "{msgs} messages" : "{msgs} message", { msgs: msgs.length }) : t("aucun message")}</span>
+                              {toAnswer && <span className="pill electric">{t("Nouveau message")}</span>}
                             </summary>
                             <Thread messages={msgs} meId={user.id} />
                             {!r.conflicted && (r.status === "sent" || r.quotes.some((q) => q.supplierId === s.supplierId && q.status === "retained")) && (
-                              <RfqMessageForm orgId={id} rfqId={r.id} supplierId={s.supplierId} placeholder={`Écrire à ${s.supplier.name}…`} />
+                              <RfqMessageForm orgId={id} rfqId={r.id} supplierId={s.supplierId} placeholder={t("Écrire à {name}…", { name: s.supplier.name })} />
                             )}
                           </details>
                         );
@@ -289,7 +294,7 @@ export default async function Page({ params, searchParams }: { params: Promise<{
                       <form action={sendRfq}>
                         <input type="hidden" name="orgId" value={id} />
                         <input type="hidden" name="rfqId" value={r.id} />
-                        <button className="btn" disabled={!!blocked}><Send size={14} /> {r.suppliers.length > 1 ? `Envoyer aux ${r.suppliers.length} prestataires` : "Envoyer au prestataire"}</button>
+                        <button className="btn" disabled={!!blocked}><Send size={14} /> {r.suppliers.length > 1 ? t("Envoyer aux {suppliers} prestataires", { suppliers: r.suppliers.length }) : t("Envoyer au prestataire")}</button>
                       </form>
                     )}
                     {cancellable && (
@@ -298,19 +303,19 @@ export default async function Page({ params, searchParams }: { params: Promise<{
                         <input type="hidden" name="rfqId" value={r.id} />
                         <ConfirmButton
                           className="btn ghost small"
-                          confirm="annuler la demande"
-                          summary={<>{r.status === "sent" ? `${r.suppliers.length > 1 ? `Les ${r.suppliers.length} prestataires consultés sont prévenus` : "Le prestataire consulté est prévenu"} par e-mail ; aucun devis ne pourra plus être retenu sur cette demande.` : "Le brouillon n'a pas été envoyé : aucun prestataire n'est prévenu."}{!isOrganizer ? " Les organisateurs sont prévenus par e-mail." : ""}</>}
+                          confirm={t("annuler la demande")}
+                          summary={<>{r.status === "sent" ? t(r.suppliers.length > 1 ? "Les {n} prestataires consultés sont prévenus par e-mail ; aucun devis ne pourra plus être retenu sur cette demande." : "Le prestataire consulté est prévenu par e-mail ; aucun devis ne pourra plus être retenu sur cette demande.", { n: r.suppliers.length }) : t("Le brouillon n'a pas été envoyé : aucun prestataire n'est prévenu.")}{!isOrganizer ? t(" Les organisateurs sont prévenus par e-mail.") : ""}</>}
                         >
-                          <X size={13} /> Annuler la demande
+                          <X size={13} />{" "}{t("Annuler la demande")}
                         </ConfirmButton>
                       </form>
                     )}
-                    {kept && <span className="pill ok"><Check size={12} /> Attribué à {kept.supplier.name} — {formatEUR(kept.amountCents)} HT · {formatEUR(quoteTtc(kept))} TTC</span>}
-                    {keptElsewhere && <span className="pill done">Attribuée à {keptElsewhere}</span>}
+                    {kept && <span className="pill ok"><Check size={12} />{" "}{t("Attribué à {name} — {montant} HT · {montant2} TTC", { name: kept.supplier.name, montant: fmtEur(locale, kept.amountCents), montant2: fmtEur(locale, quoteTtc(kept)) })}</span>}
+                    {keptElsewhere && <span className="pill done">{t("Attribuée à {keptElsewhere}", { keptElsewhere })}</span>}
                   </div>
                   {kept && r.status === "awarded" && isOrganizer && (!r.event || r.event.startsAt < new Date()) && (
                     r.review
-                      ? <p className="text-sm muted">Votre avis : <span className="rating">{"★".repeat(r.review.rating)}</span> {r.review.comment ? `« ${r.review.comment} »` : ""}</p>
+                      ? <p className="text-sm muted">{t("Votre avis :")}{" "}<span className="rating">{"★".repeat(r.review.rating)}</span> {r.review.comment ? `« ${r.review.comment} »` : ""}</p>
                       : <ReviewForm orgId={id} rfqId={r.id} supplier={kept.supplier.name} />
                   )}
                 </section>
@@ -324,9 +329,9 @@ export default async function Page({ params, searchParams }: { params: Promise<{
             orgId={id}
             blocked={blocked}
             ai={aiEnabled()}
-            categories={SUPPLIER_CATEGORIES.map((c) => ({ id: c.id, label: c.label }))}
+            categories={SUPPLIER_CATEGORIES.map((c) => ({ id: c.id, label: t(c.label) }))}
             suppliers={suppliers}
-            events={events.map((e) => ({ id: e.id, label: `${formatDate(e.startsAt)} — ${e.title}`, city: e.city, capacity: e.capacity, agencyId: e.agencyId }))}
+            events={events.map((e) => ({ id: e.id, label: `${fmtDate(locale, e.startsAt)} — ${e.title}`, city: e.city, capacity: e.capacity, agencyId: e.agencyId }))}
             defaultEventId={evenement}
             defaultCategory={cat}
           />
@@ -336,16 +341,16 @@ export default async function Page({ params, searchParams }: { params: Promise<{
           <section className="stack">
             <div className="info-note">
               <Info size={15} />
-              <span>Pour confier un événement à une agence, choisissez-la sur la fiche de l&apos;événement (« Agence ») : elle est mandatée au passage et son équipe y accède aussitôt avec son compte. Ici, vous voyez vos agences et pouvez mettre fin à un mandat.</span>
+              <span>{t("Pour confier un événement à une agence, choisissez-la sur la fiche de l'événement (« Agence ») : elle est mandatée au passage et son équipe y accède aussitôt avec son compte. Ici, vous voyez vos agences et pouvez mettre fin à un mandat.")}</span>
             </div>
-            {mandates.length === 0 && <p className="muted">Aucune agence mandatée pour l&apos;instant.</p>}
+            {mandates.length === 0 && <p className="muted">{t("Aucune agence mandatée pour l'instant.")}</p>}
             {mandates.map((m) => (
               <section key={m.id} className="card actions spread">
                 <span>
                   <strong>{m.agency.name}</strong>
                   <br />
                   <span className="muted">
-                    {m.scope ? `${m.scope} · ` : ""}depuis le {formatDate(m.startsAt)} · {m.agency._count.agencyEvents} événement{m.agency._count.agencyEvents > 1 ? "s" : ""} confié{m.agency._count.agencyEvents > 1 ? "s" : ""}
+                    {m.scope ? `${m.scope} · ` : ""}{t(m.agency._count.agencyEvents > 1 ? "depuis le {date} · {agencyEvents} événements confiés" : "depuis le {date} · {agencyEvents} événement confié", { date: fmtDate(locale, m.startsAt), agencyEvents: m.agency._count.agencyEvents })}
                   </span>
                 </span>
                 <span className="actions" style={{ marginTop: 0 }}>
@@ -353,38 +358,37 @@ export default async function Page({ params, searchParams }: { params: Promise<{
                     <input type="hidden" name="orgId" value={id} />
                     <input type="hidden" name="mandateId" value={m.id} />
                     <input type="hidden" name="canAward" value={m.canAward ? "0" : "1"} />
-                    <button className="btn ghost small">{m.canAward ? "Ne plus laisser retenir les devis" : "Autoriser à retenir les devis"}</button>
+                    <button className="btn ghost small">{m.canAward ? t("Ne plus laisser retenir les devis") : t("Autoriser à retenir les devis")}</button>
                   </form>
                   <form action={endMandate}>
                     <input type="hidden" name="orgId" value={id} />
                     <input type="hidden" name="mandateId" value={m.id} />
-                    <button className="btn ghost small">Mettre fin au mandat</button>
+                    <button className="btn ghost small">{t("Mettre fin au mandat")}</button>
                   </form>
                 </span>
                 <span className="text-sm muted" style={{ flexBasis: "100%" }}>
                   {m.canAward
-                    ? "Peut retenir un devis en votre nom sur les événements confiés ; vous êtes prévenu par e-mail de chaque décision."
-                    : "Propose les devis à retenir ; la décision revient à votre équipe."}
+                    ? t("Peut retenir un devis en votre nom sur les événements confiés ; vous êtes prévenu par e-mail de chaque décision.")
+                    : t("Propose les devis à retenir ; la décision revient à votre équipe.")}
                 </span>
               </section>
             ))}
-            {mandates.length > 0 && <p className="hint">Mettre fin au mandat retire aussitôt à l&apos;équipe de l&apos;agence l&apos;accès aux événements qui lui étaient confiés.</p>}
+            {mandates.length > 0 && <p className="hint">{t("Mettre fin au mandat retire aussitôt à l'équipe de l'agence l'accès aux événements qui lui étaient confiés.")}</p>}
           </section>
         )}
 
         {onglet === "annuaire" && (
           <section className="stack">
             <div className="chips">
-              <Link href="?onglet=annuaire" className={`chip${!cat ? " active" : ""}`}>Toutes</Link>
-              {SUPPLIER_CATEGORIES.map((c) => <Link key={c.id} href={`?onglet=annuaire&cat=${c.id}`} className={`chip${cat === c.id ? " active" : ""}`}>{c.label}</Link>)}
+              <Link href="?onglet=annuaire" className={`chip${!cat ? " active" : ""}`}>{t("Toutes")}</Link>
+              {SUPPLIER_CATEGORIES.map((c) => <Link key={c.id} href={`?onglet=annuaire&cat=${c.id}`} className={`chip${cat === c.id ? " active" : ""}`}>{t(c.label)}</Link>)}
             </div>
             {list.map((s) => <SupplierLine key={s.id} s={s} catLabel={s.categories.map(supplierCategoryLabel).join(", ")} />)}
-            {list.length === 0 && <p className="muted">Aucun prestataire référencé dans cette catégorie.</p>}
+            {list.length === 0 && <p className="muted">{t("Aucun prestataire référencé dans cette catégorie.")}</p>}
             <div className="info-note">
               <Info size={15} />
               <span>
-                Le référencement des prestataires est gratuit ; leur abonnement ne paie que les réponses à de nouvelles demandes, après un premier devis retenu.
-                Il ne leur achète ni un meilleur classement, ni une présélection : le choix des prestataires consultés vous appartient entièrement.
+                {t("Le référencement des prestataires est gratuit ; leur abonnement ne paie que les réponses à de nouvelles demandes, après un premier devis retenu. Il ne leur achète ni un meilleur classement, ni une présélection : le choix des prestataires consultés vous appartient entièrement.")}
               </span>
             </div>
           </section>

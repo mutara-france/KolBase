@@ -29,7 +29,7 @@ export default async function Page() {
           <div className="home-wrap">
             {articles.length === 0 ? <p className="muted">{t("Aucune actualité pour l'instant.")}</p> : (
               <div className="news-grid">
-                {articles.map((a) => <NewsCard key={a.id} a={a} dateLabel={fmtDate(locale, a.publishedAt!, { day: "numeric", month: "long", year: "numeric" })} minutesLabel={t("{n} min de lecture")} />)}
+                {articles.map((a) => <NewsCard key={a.id} a={{ ...a, category: t(a.category) }} dateLabel={fmtDate(locale, a.publishedAt!, { day: "numeric", month: "long", year: "numeric" })} minutesLabel={t("{n} min de lecture")} />)}
               </div>
             )}
             <NewsletterCta />

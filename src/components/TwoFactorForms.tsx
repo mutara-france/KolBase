@@ -116,6 +116,7 @@ export function TwoFactorCard({ enabledAt, setup, recoveryLeft, locked }: {
 /** Organisation : exiger la double authentification de tous les membres. */
 export function OrgTwoFactorForm({ orgId, required, adminReady, missing }: { orgId: string; required: boolean; adminReady: boolean; missing: number }) {
   const [state, action, pending] = useActionState(setOrgTwoFactor, undefined);
+  const t = useT();
   return (
     <form action={action} className="form">
       <Notice state={state} />
@@ -123,12 +124,16 @@ export function OrgTwoFactorForm({ orgId, required, adminReady, missing }: { org
       <input type="hidden" name="require" value={required ? "0" : "1"} />
       <p className="muted">
         {required
-          ? "Exigée : chaque membre saisit un code de son application après son mot de passe."
-          : "Facultative : chaque membre peut l'activer depuis « Mon compte »."}
-        {missing > 0 ? ` ${missing} membre${missing > 1 ? "s" : ""} ne l'${missing > 1 ? "ont" : "a"} pas encore activée${required ? " : il leur sera demandé de le faire à leur prochain accès" : ""}.` : " Tous les membres l'ont activée."}
+          ? t("Exigée : chaque membre saisit un code de son application après son mot de passe.")
+          : t("Facultative : chaque membre peut l'activer depuis « Mon compte ».")}{" "}
+        {missing > 0
+          ? required
+            ? t(missing > 1 ? "{n} membres ne l'ont pas encore activée : il leur sera demandé de le faire à leur prochain accès." : "{n} membre ne l'a pas encore activée : il lui sera demandé de le faire à son prochain accès.", { n: missing })
+            : t(missing > 1 ? "{n} membres ne l'ont pas encore activée." : "{n} membre ne l'a pas encore activée.", { n: missing })
+          : t("Tous les membres l'ont activée.")}
       </p>
-      {!required && !adminReady && <p className="hint">Activez-la d&apos;abord sur votre propre compte (<Link href="/compte#securite">Mon compte › Sécurité</Link>).</p>}
-      <button className={`btn small${required ? " ghost" : ""}`} disabled={pending || (!required && !adminReady)}>{required ? "Ne plus l'exiger" : "Exiger la double authentification"}</button>
+      {!required && !adminReady && <p className="hint">{t("Activez-la d'abord sur votre propre compte")} (<Link href="/compte#securite">{t("Mon compte › Sécurité")}</Link>).</p>}
+      <button className={`btn small${required ? " ghost" : ""}`} disabled={pending || (!required && !adminReady)}>{required ? t("Ne plus l'exiger") : t("Exiger la double authentification")}</button>
     </form>
   );
 }

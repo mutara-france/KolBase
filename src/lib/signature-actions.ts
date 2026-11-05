@@ -33,21 +33,22 @@ const failure = (e: unknown) => {
  * qui envoie (pour l'organisation) et l'expert, à l'adresse de son compte. Yousign leur écrit à tous deux.
  */
 export async function sendConventionForSignature(_: ActionState, form: FormData): Promise<ActionState> {
+  const { t } = await getT();
   const orgId = str(form, "orgId");
   const linkId = str(form, "linkId");
-  if (!signatureEnabled()) return { error: "La signature électronique n'est pas configurée." };
+  if (!signatureEnabled()) return { error: t("La signature électronique n'est pas configurée.") };
   const { user } = await requireMembership(orgId, PROJECT_ROLES);
   const link = await db.projectExpert.findFirst({ where: { id: linkId, project: { organizationId: orgId } }, include: { project: true, signature: true } });
-  if (!link || !ENGAGED(link.status)) return { error: "Expert introuvable sur ce dossier." };
-  if (link.project.status !== "SIGNATURE") return { error: "La convention s'envoie en signature quand le dossier est « En signature »." };
-  if (!canSendAgain(link.signature?.status)) return { error: link.signature?.status === "done" ? "Cette convention est déjà signée." : "Une demande de signature est déjà en cours pour cet expert." };
+  if (!link || !ENGAGED(link.status)) return { error: t("Expert introuvable sur ce dossier.") };
+  if (link.project.status !== "SIGNATURE") return { error: t("La convention s'envoie en signature quand le dossier est « En signature ».") };
+  if (!canSendAgain(link.signature?.status)) return { error: link.signature?.status === "done" ? t("Cette convention est déjà signée.") : t("Une demande de signature est déjà en cours pour cet expert.") };
   // Envoi lancé par quelqu'un d'autre il y a moins de deux minutes (ni abouti ni en échec) : on ne le double pas.
   const s = link.signature;
   if (s?.status === "draft" && isPendingRequest(s.requestId) && !s.note && Date.now() - s.updatedAt.getTime() < 120_000)
-    return { error: "Un envoi en signature est déjà en cours pour cet expert. Réessayez dans quelques instants." };
+    return { error: t("Un envoi en signature est déjà en cours pour cet expert. Réessayez dans quelques instants.") };
   const data = await loadCollabConvention(link.id, { organizationId: orgId });
-  if (!data) return { error: "Convention indisponible." };
-  if (data.expert.email.toLowerCase() === user.email.toLowerCase()) return { error: "L'expert ne peut pas signer aussi pour l'organisation." };
+  if (!data) return { error: t("Convention indisponible.") };
+  if (data.expert.email.toLowerCase() === user.email.toLowerCase()) return { error: t("L'expert ne peut pas signer aussi pour l'organisation.") };
 
   // Verrou : une seule demande à la fois par expert (double clic, deux membres de l'équipe en même temps).
   const placeholder = `${PENDING_PREFIX}${link.id}`;
@@ -57,7 +58,7 @@ export async function sendConventionForSignature(_: ActionState, form: FormData)
         data: { requestId: placeholder, documentId: null, status: "draft", note: null, completedAt: null, sentAt: null, sentById: user.id },
       })).count === 1
     : await db.conventionSignature.create({ data: { projectExpertId: link.id, requestId: placeholder, status: "draft", sentById: user.id } }).then(() => true, () => false);
-  if (!locked) return { error: "Une demande de signature est déjà en cours d'envoi pour cet expert." };
+  if (!locked) return { error: t("Une demande de signature est déjà en cours d'envoi pour cet expert.") };
 
   try {
     const { bytes, boxes } = await buildCollaborationConventionForSignature(data);
@@ -84,7 +85,7 @@ export async function sendConventionForSignature(_: ActionState, form: FormData)
     return { error: failure(e) };
   }
   refresh(orgId, link.projectId, link.id);
-  return { ok: `Convention envoyée : Yousign a écrit à ${user.email} et à ${data.expert.email} pour la signer.` };
+  return { ok: t("Convention envoyée : Yousign a écrit à {email} et à {email2} pour la signer.", { email: user.email, email2: data.expert.email }) };
 }
 
 /** « Mettre à jour le statut » : interroge Yousign (sans webhook, ou pour rattraper un événement manqué). */

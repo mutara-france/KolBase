@@ -94,14 +94,16 @@ export function PhotoForm({ name, src, consent, level }: { name: string; src: st
 
 export function OrgVisibilityForm({ orgId, v, listed }: { orgId: string; v: CompanyVisibility; listed: boolean }) {
   const [state, action, pending] = useActionState(updateOrgVisibility, undefined);
+  const t = useT();
+  const levels = VISIBILITY_LEVELS.map((l) => ({ ...l, label: t(l.label), hint: t(l.hint) }));
   return (
     <form action={action} className="card form">
-      <h2>Page publique de l&apos;organisation</h2>
+      <h2>{t("Page publique de l'organisation")}</h2>
       <Notice state={state} />
       <input type="hidden" name="orgId" value={orgId} />
-      <label className="check"><input type="checkbox" name="listed" value="1" defaultChecked={listed} /> Organisation référencée : visible sur le site public</label>
-      {COMPANY_VIS_FIELDS.map((f) => <VisRow key={f.key} name={f.key} label={f.label} desc={f.desc} value={v[f.key]} levels={VISIBILITY_LEVELS} />)}
-      <button className="btn" disabled={pending}>{pending ? "Enregistrement…" : "Enregistrer"}</button>
+      <label className="check"><input type="checkbox" name="listed" value="1" defaultChecked={listed} /> {t("Organisation référencée : visible sur le site public")}</label>
+      {COMPANY_VIS_FIELDS.map((f) => <VisRow key={f.key} name={f.key} label={t(f.label)} desc={t(f.desc)} value={v[f.key]} levels={levels} />)}
+      <button className="btn" disabled={pending}>{pending ? t("Enregistrement…") : t("Enregistrer")}</button>
     </form>
   );
 }

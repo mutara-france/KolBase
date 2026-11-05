@@ -40,56 +40,58 @@ type Org = { id: string; name: string; sector: string | null; headquarters: stri
 
 /** Fiche de l'organisation ; prestataire (`supplier`) : ni domaines thérapeutiques ni politique de collaboration. */
 export function EditOrgForm({ org, supplier = false }: { org: Org; supplier?: boolean }) {
+  const t = useT();
   const [state, action, pending] = useActionState(updateOrganization, undefined);
   return (
     <form action={action} className="card form">
-      <h2>Fiche de l&apos;organisation</h2>
+      <h2>{t("Fiche de l'organisation")}</h2>
       <Notice state={state} />
       <input type="hidden" name="orgId" value={org.id} />
-      <label>Nom<input name="name" maxLength={120} defaultValue={org.name} required /></label>
+      <label>{t("Nom")}<input name="name" maxLength={120} defaultValue={org.name} required /></label>
       <div className="row">
-        <label>Secteur<input name="sector" defaultValue={org.sector ?? ""} /></label>
-        <label>Siège<input name="headquarters" defaultValue={org.headquarters ?? ""} /></label>
+        <label>{t("Secteur")}<input name="sector" defaultValue={org.sector ?? ""} /></label>
+        <label>{t("Siège")}<input name="headquarters" defaultValue={org.headquarters ?? ""} /></label>
       </div>
-      <label>E-mail de contact<input name="contactEmail" type="email" defaultValue={org.contactEmail ?? ""} /></label>
+      <label>{t("E-mail de contact")}<input name="contactEmail" type="email" defaultValue={org.contactEmail ?? ""} /></label>
       {supplier ? (
         <input type="hidden" name="areas" value={org.areas.join(", ")} />
       ) : (
-        <label>Domaines thérapeutiques<input name="areas" defaultValue={org.areas.join(", ")} placeholder="Implantologie, Parodontologie…" />
-          <span className="hint">Séparés par des virgules.</span>
+        <label>{t("Domaines thérapeutiques")}<input name="areas" defaultValue={org.areas.join(", ")} placeholder={t("Implantologie, Parodontologie…")} />
+          <span className="hint">{t("Séparés par des virgules.")}</span>
         </label>
       )}
-      <label>Présentation<textarea name="about" rows={3} defaultValue={org.about ?? ""} placeholder={supplier ? "Vos prestations, votre savoir-faire, vos références…" : undefined} /></label>
-      {supplier ? <input type="hidden" name="policy" value={org.policy ?? ""} /> : <label>Politique de collaboration<textarea name="policy" rows={3} defaultValue={org.policy ?? ""} /></label>}
-      <button className="btn" disabled={pending}>{pending ? "Enregistrement…" : "Enregistrer"}</button>
+      <label>{t("Présentation")}<textarea name="about" rows={3} defaultValue={org.about ?? ""} placeholder={supplier ? t("Vos prestations, votre savoir-faire, vos références…") : undefined} /></label>
+      {supplier ? <input type="hidden" name="policy" value={org.policy ?? ""} /> : <label>{t("Politique de collaboration")}<textarea name="policy" rows={3} defaultValue={org.policy ?? ""} /></label>}
+      <button className="btn" disabled={pending}>{pending ? t("Enregistrement…") : t("Enregistrer")}</button>
     </form>
   );
 }
 
 export function InviteForm({ orgId, roles }: { orgId: string; roles: Opt[] }) {
+  const t = useT();
   const [state, action, pending] = useActionState<InviteState, FormData>(createInvitation, undefined);
   const [copied, setCopied] = useState(false);
   return (
     <form action={action} className="card form">
-      <h2>Inviter un membre</h2>
-      <p className="muted">KolBase génère un lien d&apos;invitation, valable 14 jours et à usage unique. Avec une adresse, l&apos;invitation part par e-mail et seule cette adresse peut l&apos;accepter ; sans adresse, transmettez le lien vous-même.</p>
+      <h2>{t("Inviter un membre")}</h2>
+      <p className="muted">{t("KolBase génère un lien d'invitation, valable 14 jours et à usage unique. Avec une adresse, l'invitation part par e-mail et seule cette adresse peut l'accepter ; sans adresse, transmettez le lien vous-même.")}</p>
       <Notice state={state} />
       {state?.link && (
         <div className="copy">
           <input readOnly value={state.link} onFocus={(e) => e.currentTarget.select()} />
           <button type="button" className="btn ghost" onClick={() => { navigator.clipboard.writeText(state.link!); setCopied(true); }}>
-            {copied ? "Copié" : "Copier"}
+            {copied ? t("Copié") : t("Copier")}
           </button>
         </div>
       )}
       <input type="hidden" name="orgId" value={orgId} />
       <div className="row">
-        <label>Rôle
+        <label>{t("Rôle")}
           <select name="role" defaultValue={roles.find((r) => r.value !== "ADMIN")?.value}>{roles.map((r) => <option key={r.value} value={r.value}>{r.label}</option>)}</select>
         </label>
-        <label>E-mail de la personne invitée (l&apos;invitation lui est envoyée et réservée)<input name="email" type="email" placeholder="Facultatif" /></label>
+        <label>{t("E-mail de la personne invitée (l'invitation lui est envoyée et réservée)")}<input name="email" type="email" placeholder={t("Facultatif")} /></label>
       </div>
-      <button className="btn" disabled={pending} onClick={() => setCopied(false)}>{pending ? "Génération…" : "Générer le lien"}</button>
+      <button className="btn" disabled={pending} onClick={() => setCopied(false)}>{pending ? t("Génération…") : t("Générer le lien")}</button>
     </form>
   );
 }
@@ -110,7 +112,7 @@ export function ExpertProfileForm({ p, types }: { p: Expert; types: string[] }) 
         <label>{t("Sur-spécialité")}<input name="subspecialty" defaultValue={p.subspecialty ?? ""} /></label>
       </div>
       <div className="row">
-        <label>{t("Langues")}<input name="languages" defaultValue={p.languages.join(", ")} placeholder="fr, en" /></label>
+        <label>{t("Langues")}<input name="languages" defaultValue={p.languages.join(", ")} placeholder={t("fr, en")} /></label>
         <label>ORCID<input name="orcid" defaultValue={p.orcid ?? ""} placeholder="0000-0000-0000-0000" /></label>
       </div>
       <fieldset>
@@ -138,6 +140,7 @@ type Verification = {
 
 /** Validation de l'organisation par KolBase : statut et saisie du SIREN (administrateurs). */
 export function VerificationCard({ orgId, v, canEdit }: { orgId: string; v: Verification; canEdit: boolean }) {
+  const t = useT();
   const [state, action, pending] = useActionState(submitSiren, undefined);
   const label = { PENDING: "En attente de validation", VERIFIED: "Validée par KolBase", REJECTED: "Refusée", SUSPENDED: "Suspendue par KolBase" }[v.status];
   const tone = { PENDING: "wait", VERIFIED: "ok", REJECTED: "bad", SUSPENDED: "bad" }[v.status];
@@ -145,35 +148,33 @@ export function VerificationCard({ orgId, v, canEdit }: { orgId: string; v: Veri
   if (v.status === "SUSPENDED")
     return (
       <section className="card form">
-        <h2>Validation de l&apos;organisation <span className={`pill ${tone}`}>{label}</span></h2>
-        <p className="notice error">Organisation suspendue{v.note ? ` : ${inSentence(v.note)}` : ""}.</p>
+        <h2>{t("Validation de l'organisation")}{" "}<span className={`pill ${tone}`}>{t(label)}</span></h2>
+        <p className="notice error">{t("Organisation suspendue")}{v.note ? ` : ${inSentence(v.note)}` : ""}.</p>
         <p className="muted">
-          Votre page publique, vos événements et vos appels à candidatures sont masqués, et aucune nouvelle action n&apos;est possible
-          (sollicitation, publication, demande de devis). Rien n&apos;est supprimé : tout réapparaît à la réactivation par KolBase.
-          Pour en discuter, répondez à l&apos;e-mail de suspension.
+          {t("Votre page publique, vos événements et vos appels à candidatures sont masqués, et aucune nouvelle action n'est possible (sollicitation, publication, demande de devis). Rien n'est supprimé : tout réapparaît à la réactivation par KolBase. Pour en discuter, répondez à l'e-mail de suspension.")}
         </p>
       </section>
     );
   return (
     <section className="card form">
-      <h2>Validation de l&apos;organisation <span className={`pill ${tone}`}>{label}</span></h2>
+      <h2>{t("Validation de l'organisation")}{" "}<span className={`pill ${tone}`}>{t(label)}</span></h2>
       {v.status === "VERIFIED" ? (
         <p className="muted">
-          {v.legalName ? `Raison sociale : ${v.legalName}` : "Organisation validée"}{v.siren ? ` · SIREN ${v.siren}` : ""}. Modifier le nom ou le SIREN relance la validation.
+          {v.legalName ? t("Raison sociale : {legalName}", { legalName: v.legalName }) : t("Organisation validée")}{v.siren ? ` · SIREN ${v.siren}` : ""}. {t("Modifier le nom ou le SIREN relance la validation.")}
         </p>
       ) : (
         <>
           {/* Demande déjà transmise : la date, et non un nouvel « Envoyer pour validation ». */}
           {v.status === "PENDING" && v.requestedAt && (
             <p className="notice ok" role="status">
-              Demande transmise le {v.requestedAt}{v.siren ? ` (SIREN ${v.siren})` : v.rna ? ` (RNA ${v.rna})` : ""} : l&apos;équipe KolBase l&apos;examine et vous prévient par e-mail de sa décision.
+              {t("Demande transmise le {requestedAt}", { requestedAt: v.requestedAt })}{v.siren ? ` (SIREN ${v.siren})` : v.rna ? ` (RNA ${v.rna})` : ""}{" "}{t(": l'équipe KolBase l'examine et vous prévient par e-mail de sa décision.")}
             </p>
           )}
           <p className="muted">
             {v.supplier
-              ? "Tant que KolBase n'a pas validé l'organisation, elle ne peut ni répondre aux demandes de devis, ni figurer dans l'annuaire des prestataires."
-              : "Tant que KolBase n'a pas validé l'organisation, elle ne peut ni solliciter de praticiens, ni publier d'événements ou d'appels, ni apparaître sur le site public."}
-            {v.status === "REJECTED" && v.note ? ` Motif du refus : ${inSentence(v.note)}.` : ""}
+              ? t("Tant que KolBase n'a pas validé l'organisation, elle ne peut ni répondre aux demandes de devis, ni figurer dans l'annuaire des prestataires.")
+              : t("Tant que KolBase n'a pas validé l'organisation, elle ne peut ni solliciter de praticiens, ni publier d'événements ou d'appels, ni apparaître sur le site public.")}
+            {v.status === "REJECTED" && v.note ? ` ${t("Motif du refus : {inSentence}.", { inSentence: inSentence(v.note) })}` : ""}
           </p>
         </>
       )}
@@ -183,14 +184,14 @@ export function VerificationCard({ orgId, v, canEdit }: { orgId: string; v: Veri
           <input type="hidden" name="orgId" value={orgId} />
           <div className="row">
             <label>
-              {v.rnaAccepted ? "SIREN, SIRET ou RNA" : "SIREN ou SIRET"}
-              <input name="siren" defaultValue={v.siren ?? v.rna ?? ""} placeholder={v.rnaAccepted ? "9 ou 14 chiffres, ou W suivi de 9 chiffres" : "9 ou 14 chiffres"} required />
+              {v.rnaAccepted ? t("SIREN, SIRET ou RNA") : t("SIREN ou SIRET")}
+              <input name="siren" defaultValue={v.siren ?? v.rna ?? ""} placeholder={v.rnaAccepted ? t("9 ou 14 chiffres, ou W suivi de 9 chiffres") : t("9 ou 14 chiffres")} required />
             </label>
             <button className="btn secondary" disabled={pending} style={{ alignSelf: "end" }}>
-              {pending ? "Contrôle…" : v.status === "VERIFIED" || (v.status === "PENDING" && v.requestedAt) ? "Mettre à jour" : "Envoyer pour validation"}
+              {pending ? t("Contrôle…") : v.status === "VERIFIED" || (v.status === "PENDING" && v.requestedAt) ? t("Mettre à jour") : t("Envoyer pour validation")}
             </button>
           </div>
-          {v.status === "PENDING" && v.requestedAt && <span className="hint">Corrigez l&apos;identifiant seulement s&apos;il est faux : la demande en cours suffit.</span>}
+          {v.status === "PENDING" && v.requestedAt && <span className="hint">{t("Corrigez l'identifiant seulement s'il est faux : la demande en cours suffit.")}</span>}
         </form>
       )}
     </section>
@@ -199,28 +200,29 @@ export function VerificationCard({ orgId, v, canEdit }: { orgId: string; v: Veri
 
 /** Logo de l'organisation : aperçu, envoi d'une nouvelle image, suppression. */
 export function LogoForm({ orgId, name, src, verified, supplier = false }: { orgId: string; name: string; src: string | null; verified: boolean; supplier?: boolean }) {
+  const t = useT();
   const [state, action, pending] = useActionState(updateOrgLogo, undefined);
   return (
     <section className="card form">
-      <h2>Logo</h2>
+      <h2>{t("Logo")}</h2>
       <Notice state={state} />
       <div className="actions" style={{ alignItems: "center" }}>
         <Avatar name={name} size={64} square src={src} />
         <p className="muted text-sm" style={{ margin: 0 }}>
-          PNG, JPEG ou WebP, 500 Ko au plus, de préférence carré sur fond clair. Il remplace le monogramme {supplier ? "sur votre page prestataire, dans l'annuaire des prestataires et sur vos devis." : "sur votre fiche, l'annuaire des organisations et les appels publiés."}
-          {!verified && " Il ne sera visible publiquement qu'après la validation de l'organisation."} Ne publiez que le logo de votre propre organisation.
+          {t("PNG, JPEG ou WebP, 500 Ko au plus, de préférence carré sur fond clair. Il remplace le monogramme")}{" "}{supplier ? t("sur votre page prestataire, dans l'annuaire des prestataires et sur vos devis.") : t("sur votre fiche, l'annuaire des organisations et les appels publiés.")}
+          {!verified && t(" Il ne sera visible publiquement qu'après la validation de l'organisation.")}{" "}{t("Ne publiez que le logo de votre propre organisation.")}
         </p>
       </div>
       <form action={action} className="inline wrap">
         <input type="hidden" name="orgId" value={orgId} />
-        <label className="sr-only" htmlFor="logo-file">Fichier du logo</label>
+        <label className="sr-only" htmlFor="logo-file">{t("Fichier du logo")}</label>
         <input id="logo-file" name="logo" type="file" accept="image/png,image/jpeg,image/webp" required />
-        <button className="btn secondary" disabled={pending}>{pending ? "Envoi…" : src ? "Remplacer" : "Ajouter le logo"}</button>
+        <button className="btn secondary" disabled={pending}>{pending ? t("Envoi…") : src ? t("Remplacer") : t("Ajouter le logo")}</button>
       </form>
       {src && (
         <form action={removeOrgLogo}>
           <input type="hidden" name="orgId" value={orgId} />
-          <button className="link danger">Retirer le logo</button>
+          <button className="link danger">{t("Retirer le logo")}</button>
         </form>
       )}
     </section>
@@ -229,6 +231,7 @@ export function LogoForm({ orgId, name, src, verified, supplier = false }: { org
 
 /** Rôles d'un membre : chaque case cochée ou décochée est enregistrée aussitôt ; le retrait demande une confirmation. */
 export function MemberRolesForm({ orgId, userId, roles, options, canRemove }: { orgId: string; userId: string; roles: string[]; options: (Opt & { desc?: string })[]; canRemove: boolean }) {
+  const t = useT();
   const [checked, setChecked] = useState(roles);
   const [confirming, setConfirming] = useState(false);
   const [state, action, pending] = useActionState(async (prev: Awaited<ReturnType<typeof setMemberRoles>>, fd: FormData) => {
@@ -249,7 +252,7 @@ export function MemberRolesForm({ orgId, userId, roles, options, canRemove }: { 
   const busy = pending || isPending;
   return (
     <div className="member-roles">
-      <div className="role-chips" role="group" aria-label="Rôles">
+      <div className="role-chips" role="group" aria-label={t("Rôles")}>
         {options.map((o) => (
           <label key={o.value} className="role-chip" title={o.desc}>
             <input
@@ -268,14 +271,14 @@ export function MemberRolesForm({ orgId, userId, roles, options, canRemove }: { 
         ))}
       </div>
       <div className="actions">
-        {canRemove && !confirming && <button type="button" className="link danger" disabled={busy} onClick={() => setConfirming(true)}>Retirer de l&apos;organisation</button>}
+        {canRemove && !confirming && <button type="button" className="link danger" disabled={busy} onClick={() => setConfirming(true)}>{t("Retirer de l'organisation")}</button>}
         {canRemove && confirming && (
           <>
-            <button type="button" className="btn small danger" disabled={busy} onClick={() => submit([], true)}>Confirmer le retrait</button>
-            <button type="button" className="link" onClick={() => setConfirming(false)}>Annuler</button>
+            <button type="button" className="btn small danger" disabled={busy} onClick={() => submit([], true)}>{t("Confirmer le retrait")}</button>
+            <button type="button" className="link" onClick={() => setConfirming(false)}>{t("Annuler")}</button>
           </>
         )}
-        {busy ? <span className="text-xs muted" role="status">Enregistrement…</span> : (state?.error || state?.ok) && <span className={`text-xs ${state?.error ? "error-text" : "muted"}`} role="status">{state?.error ?? state?.ok}</span>}
+        {busy ? <span className="text-xs muted" role="status">{t("Enregistrement…")}</span> : (state?.error || state?.ok) && <span className={`text-xs ${state?.error ? "error-text" : "muted"}`} role="status">{state?.error ?? state?.ok}</span>}
       </div>
     </div>
   );

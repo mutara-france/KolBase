@@ -21,18 +21,19 @@ export function DashHead({ kicker, title, lede, action }: { kicker?: string; tit
 }
 
 /** Bouton « Créer » unique : lien direct s'il n'y a qu'une possibilité, petit menu sinon. */
-export function CreateMenu({ items }: { items: { href: string; label: string }[] }) {
+export async function CreateMenu({ items }: { items: { href: string; label: string }[] }) {
+  const { t } = await getT();
   if (items.length === 0) return null;
   if (items.length === 1)
     return (
       <Link href={items[0].href} className="btn lg">
-        <Plus size={18} aria-hidden /> Créer {items[0].label.toLowerCase()}
+        <Plus size={18} aria-hidden />{" "}{t("Créer {toLowerCase}", { toLowerCase: items[0].label.toLowerCase() })}
       </Link>
     );
   return (
     <details className="create-menu">
       <summary className="btn lg">
-        <Plus size={18} aria-hidden /> Créer <ChevronDown size={16} aria-hidden />
+        <Plus size={18} aria-hidden />{" "}{t("Créer")}{" "}<ChevronDown size={16} aria-hidden />
       </summary>
       <div className="create-list">
         {items.map((i) => (
@@ -60,28 +61,29 @@ export function DashStats({ stats }: { stats: { href: string; value: number | st
 
 /** « À faire » : les urgences d'abord, puis le reste. */
 /** Actions à mener, les urgentes d'abord ; au-delà de `limit` par groupe, un simple décompte. */
-export function TodoGroups({ todos, empty, limit = 15, moreHref }: { todos: TodoItem[]; empty?: string; limit?: number; moreHref?: string }) {
-  const urgent = todos.filter((t) => t.tone === "danger");
-  const rest = todos.filter((t) => t.tone !== "danger");
+export async function TodoGroups({ todos, empty, limit = 15, moreHref }: { todos: TodoItem[]; empty?: string; limit?: number; moreHref?: string }) {
+  const { t } = await getT();
+  const urgent = todos.filter((tk) => tk.tone === "danger");
+  const rest = todos.filter((tk) => tk.tone !== "danger");
   if (todos.length === 0) return <TodoList items={[]} empty={empty} />;
   const more = (n: number) =>
     n > limit && (
       <p className="text-xs muted" style={{ margin: "6px 0 0" }}>
-        … et {n - limit} autre{n - limit > 1 ? "s" : ""}{moreHref && <> · <Link href={moreHref}>tout voir</Link></>}
+        {t("… et")}{" "}{n - limit}{" "}{t(n - limit > 1 ? "autres" : "autre")}{moreHref && <> · <Link href={moreHref}>{t("tout voir")}</Link></>}
       </p>
     );
   return (
     <div className="todo-groups">
       {urgent.length > 0 && (
         <div>
-          <p className="todo-group urgent">Urgent</p>
+          <p className="todo-group urgent">{t("Urgent")}</p>
           <TodoList items={urgent.slice(0, limit)} />
           {more(urgent.length)}
         </div>
       )}
       {rest.length > 0 && (
         <div>
-          {urgent.length > 0 && <p className="todo-group">À traiter</p>}
+          {urgent.length > 0 && <p className="todo-group">{t("À traiter")}</p>}
           <TodoList items={rest.slice(0, limit)} />
           {more(rest.length)}
         </div>

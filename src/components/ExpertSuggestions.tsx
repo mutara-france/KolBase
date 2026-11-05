@@ -3,6 +3,7 @@
 import { useRef, useState, useTransition } from "react";
 import { AlertTriangle, Check, Plus, Sparkles } from "lucide-react";
 import { suggestExpertsAction, type SuggestResult } from "@/lib/ai-actions";
+import { useT } from "@/components/I18nProvider";
 
 type Picked = { id: string; name: string; detail: string; dayRateCents: number | null };
 
@@ -11,6 +12,7 @@ type Picked = { id: string; name: string; detail: string; dayRateCents: number |
  * résumé par l'assistant quand il est activé. Lit les champs du formulaire de dossier.
  */
 export function ExpertSuggestions({ orgId, selected, onAdd }: { orgId: string; selected: string[]; onAdd: (e: Picked) => void }) {
+  const t = useT();
   const ref = useRef<HTMLDivElement>(null);
   const [pending, start] = useTransition();
   const [res, setRes] = useState<SuggestResult | null>(null);
@@ -24,13 +26,13 @@ export function ExpertSuggestions({ orgId, selected, onAdd }: { orgId: string; s
   return (
     <div ref={ref} className="suggest stack-sm">
       <button type="button" className="btn ghost small ai-btn" onClick={run} disabled={pending}>
-        <Sparkles size={14} /> {pending ? "Recherche des profils…" : "Suggérer des experts"}
+        <Sparkles size={14} /> {pending ? t("Recherche des profils…") : t("Suggérer des experts")}
       </button>
       {res?.error && <p className="text-xs error-text" role="alert">{res.error}</p>}
       {res?.suggestions && (
         <div className="suggest-box" role="status">
           {res.suggestions.length === 0 ? (
-            <p className="muted text-sm">Aucun profil ne correspond clairement : précisez le domaine ou l&apos;objet.</p>
+            <p className="muted text-sm">{t("Aucun profil ne correspond clairement : précisez le domaine ou l'objet.")}</p>
           ) : (
             <>
               {res.summary && <p className="suggest-summary"><Sparkles size={13} /> {res.summary}</p>}
@@ -46,13 +48,13 @@ export function ExpertSuggestions({ orgId, selected, onAdd }: { orgId: string; s
                         {s.warnings.map((w) => <div key={w} className="text-xs warn-text"><AlertTriangle size={11} /> {w}</div>)}
                       </div>
                       <button type="button" className={`btn small ${added ? "ghost" : "secondary"}`} disabled={added} onClick={() => onAdd(s)}>
-                        {added ? <><Check size={13} /> Ajouté</> : <><Plus size={13} /> Ajouter</>}
+                        {added ? <><Check size={13} />{" "}{t("Ajouté")}</> : <><Plus size={13} />{" "}{t("Ajouter")}</>}
                       </button>
                     </li>
                   );
                 })}
               </ul>
-              <p className="hint">Classement indicatif : pertinence du profil, diversité des experts sollicités par votre organisation et liens d&apos;intérêts connus. Le choix vous appartient.</p>
+              <p className="hint">{t("Classement indicatif : pertinence du profil, diversité des experts sollicités par votre organisation et liens d'intérêts connus. Le choix vous appartient.")}</p>
             </>
           )}
         </div>

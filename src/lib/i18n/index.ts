@@ -29,6 +29,13 @@ export const intlLocale = (locale: Locale) => (locale === "en" ? "en-GB" : "fr-F
 export const fmtDate = (locale: Locale, d: Date, opts: Intl.DateTimeFormatOptions = { day: "numeric", month: "short", year: "numeric" }) =>
   d.toLocaleDateString(intlLocale(locale), { timeZone: "Europe/Paris", ...opts });
 
+/** Date et heure longues (« jeudi 3 novembre 2026 à 18:00 » / « Thursday 3 November 2026 at 18:00 »), heure de Paris. */
+export const fmtDateTime = (locale: Locale, d: Date) =>
+  d.toLocaleString(intlLocale(locale), { timeZone: "Europe/Paris", weekday: "long", day: "numeric", month: "long", year: "numeric", hour: "2-digit", minute: "2-digit" });
+
+/** Heure (« 18:00 »), heure de Paris. */
+export const fmtTime = (locale: Locale, d: Date) => d.toLocaleTimeString(intlLocale(locale), { timeZone: "Europe/Paris", hour: "2-digit", minute: "2-digit" });
+
 /** Montant en euros (« 1 200 € » / « €1,200 »). */
 export const fmtEur = (locale: Locale, cents: number) =>
   (cents / 100).toLocaleString(intlLocale(locale), { style: "currency", currency: "EUR", maximumFractionDigits: cents % 100 ? 2 : 0 });

@@ -60,12 +60,13 @@ export async function createOrganization(_: FormState, form: FormData): Promise<
 }
 
 export async function updateOrganization(_: FormState, form: FormData): Promise<FormState> {
+  const { t } = await getT();
   const orgId = str(form, "orgId");
   const { user, org } = await requireMembership(orgId, ["ADMIN"], { allowSupplier: true });
   const name = str(form, "name", MAX_NAME);
-  if (!name) return { error: "Le nom est obligatoire." };
+  if (!name) return { error: t("Le nom est obligatoire.") };
   // Suspendue : le nom reste celui que KolBase a validé (il ne repasserait pas par la validation).
-  if (org.verification === "SUSPENDED" && name !== org.name) return { error: "Organisation suspendue : le nom ne peut pas être modifié avant la réactivation par KolBase." };
+  if (org.verification === "SUSPENDED" && name !== org.name) return { error: t("Organisation suspendue : le nom ne peut pas être modifié avant la réactivation par KolBase.") };
   // Changer le nom d'une organisation validée relance la validation (usurpation d'un nom connu).
   const renamed = org.verification === "VERIFIED" && name !== org.name;
   await db.organization.update({
@@ -85,15 +86,16 @@ export async function updateOrganization(_: FormState, form: FormData): Promise<
   if (renamed) notifyPlatformAdmins(`Organisation renommée, à valider : ${name}`, `« ${org.name} » s'appelle désormais « ${name} » et doit être validée à nouveau.`, "/admin");
   revalidatePath(`/organisations/${orgId}`);
   revalidatePath(`/organisations/${orgId}/membres`);
-  return { ok: renamed ? "Organisation mise à jour. Le nom ayant changé, KolBase doit la valider à nouveau." : "Organisation mise à jour." };
+  return { ok: renamed ? t("Organisation mise à jour. Le nom ayant changé, KolBase doit la valider à nouveau.") : t("Organisation mise à jour.") };
 }
 
 /** SIREN de l'organisation : contrôlé auprès du répertoire, puis soumis à la validation de KolBase. */
 export async function submitSiren(_: FormState, form: FormData): Promise<FormState> {
+  const { t } = await getT();
   const orgId = str(form, "orgId");
   const { user, org } = await requireMembership(orgId, ["ADMIN"], { allowSupplier: true });
   // Une suspension se lève par KolBase, pas par une nouvelle demande de validation.
-  if (org.verification === "SUSPENDED") return { error: "Organisation suspendue : la réactivation se fait par l'équipe KolBase, répondez à l'e-mail de suspension." };
+  if (org.verification === "SUSPENDED") return { error: t("Organisation suspendue : la réactivation se fait par l'équipe KolBase, répondez à l'e-mail de suspension.") };
   // Association ou société savante : un numéro RNA tient lieu de SIREN.
   const rna = rnaAccepted(org.kind) ? parseRna(str(form, "siren")) : null;
   if (rna) {
@@ -106,14 +108,14 @@ export async function submitSiren(_: FormState, form: FormData): Promise<FormSta
     if (resubmitRna) notifyPlatformAdmins(`Organisation à valider : ${org.name}`, `${org.name} a renseigné le numéro RNA ${rna}.`, "/admin");
     revalidatePath(`/organisations/${orgId}`);
     revalidatePath(`/organisations/${orgId}/membres`);
-    return { ok: "Numéro RNA enregistré. Un administrateur KolBase va valider votre organisation." };
+    return { ok: t("Numéro RNA enregistré. Un administrateur KolBase va valider votre organisation.") };
   }
   const siren = parseSiren(str(form, "siren"));
   if (!siren || !sirenKeyOk(siren))
-    return { error: rnaAccepted(org.kind) ? "Identifiant invalide : SIREN (9 chiffres), SIRET (14 chiffres) ou numéro RNA (W suivi de 9 chiffres), vérifiez la saisie." : "SIREN invalide : 9 chiffres (ou SIRET de 14 chiffres), vérifiez la saisie." };
+    return { error: rnaAccepted(org.kind) ? t("Identifiant invalide : SIREN (9 chiffres), SIRET (14 chiffres) ou numéro RNA (W suivi de 9 chiffres), vérifiez la saisie.") : t("SIREN invalide : 9 chiffres (ou SIRET de 14 chiffres), vérifiez la saisie.") };
   const { lookup, ...data } = await sirenFields(siren);
-  if (lookup && !lookup.found) return { error: "Ce SIREN est introuvable dans le répertoire des entreprises." };
-  if (lookup?.found && lookup.active === false) return { error: `L'entreprise ${lookup.name} est fermée selon le répertoire des entreprises.` };
+  if (lookup && !lookup.found) return { error: t("Ce SIREN est introuvable dans le répertoire des entreprises.") };
+  if (lookup?.found && lookup.active === false) return { error: t("L'entreprise {name} est fermée selon le répertoire des entreprises.", { name: lookup.name }) };
   // Un SIREN modifié sur une organisation validée repasse en validation.
   const resubmit = org.verification !== "VERIFIED" || org.siren !== siren;
   await db.organization.update({
@@ -124,19 +126,20 @@ export async function submitSiren(_: FormState, form: FormData): Promise<FormSta
   if (resubmit) notifyPlatformAdmins(`Organisation à valider : ${org.name}`, `${org.name} a renseigné le SIREN ${siren}${lookup?.found ? ` (${lookup.name})` : ""}.`, "/admin");
   revalidatePath(`/organisations/${orgId}`);
   revalidatePath(`/organisations/${orgId}/membres`);
-  return { ok: lookup?.found ? `SIREN reconnu : ${lookup.name}. Un administrateur KolBase va valider votre organisation.` : "SIREN enregistré (répertoire indisponible pour le moment). KolBase le vérifiera lors de la validation." };
+  return { ok: lookup?.found ? `SIREN reconnu : ${lookup.name}. Un administrateur KolBase va valider votre organisation.` : t("SIREN enregistré (répertoire indisponible pour le moment). KolBase le vérifiera lors de la validation.") };
 }
 
 export async function createInvitation(_: InviteState, form: FormData): Promise<InviteState> {
+  const { t } = await getT();
   const orgId = str(form, "orgId");
   const { user, org } = await requireMembership(orgId, ["ADMIN"], { allowSupplier: true });
   const role = str(form, "role") as OrgRole;
-  if (!invitableRoles(org.kind).includes(role)) return { error: "Rôle invalide." };
+  if (!invitableRoles(org.kind).includes(role)) return { error: t("Rôle invalide.") };
   const email = str(form, "email", 254).toLowerCase();
   // KolBase n'envoie d'e-mail d'invitation qu'au nom d'une organisation validée, et pas en rafale.
-  if (email && !isVerifiedOrg(org)) return { error: "L'envoi d'invitations par e-mail est possible une fois l'organisation validée par KolBase. Générez le lien sans e-mail et transmettez-le vous-même." };
+  if (email && !isVerifiedOrg(org)) return { error: t("L'envoi d'invitations par e-mail est possible une fois l'organisation validée par KolBase. Générez le lien sans e-mail et transmettez-le vous-même.") };
   const rateKey = `invite:${user.id}`;
-  if (email && blockedFor(rateKey, 30, 60 * 60 * 1000)) return { error: "Trop d'invitations envoyées en peu de temps : réessayez dans une heure." };
+  if (email && blockedFor(rateKey, 30, 60 * 60 * 1000)) return { error: t("Trop d'invitations envoyées en peu de temps : réessayez dans une heure.") };
   if (email) hit(rateKey);
   const token = randomBytes(24).toString("base64url");
   const inv = await db.invitation.create({
@@ -155,7 +158,7 @@ export async function createInvitation(_: InviteState, form: FormData): Promise<
   const link = `${process.env.APP_URL ?? ""}/invitation/${token}`;
   if (email) notifyInvitation(email, org.name, `${user.firstName} ${user.lastName}`, link, roleLabel(role, org.kind));
   return {
-    ok: `${email ? `Invitation envoyée à ${email}. ` : ""}Lien valable ${INVITE_DAYS} jours, à usage unique. Copiez-le maintenant : il ne sera plus affiché.`,
+    ok: `${email ? `${t("Invitation envoyée à {email}.", { email })} ` : ""}${t("Lien valable {INVITE_DAYS} jours, à usage unique. Copiez-le maintenant : il ne sera plus affiché.", { INVITE_DAYS })}`,
     link,
   };
 }
@@ -229,14 +232,15 @@ export async function updateExpertProfile(_: FormState, form: FormData): Promise
 
 /** Logo de l'organisation : PNG, JPEG ou WebP vérifié sur son contenu, 500 Ko au plus. */
 export async function updateOrgLogo(_: FormState, form: FormData): Promise<FormState> {
+  const { t } = await getT();
   const orgId = str(form, "orgId");
   const { user, org } = await requireMembership(orgId, ["ADMIN"], { allowSupplier: true });
   const file = form.get("logo");
-  if (!(file instanceof File) || file.size === 0) return { error: "Choisissez une image." };
-  if (file.size > LOGO_MAX_BYTES) return { error: "Image trop lourde : 500 Ko au maximum." };
+  if (!(file instanceof File) || file.size === 0) return { error: t("Choisissez une image.") };
+  if (file.size > LOGO_MAX_BYTES) return { error: t("Image trop lourde : 500 Ko au maximum.") };
   const bytes = new Uint8Array(await file.arrayBuffer());
   const type = sniffLogo(bytes);
-  if (!type) return { error: "Format non reconnu : PNG, JPEG ou WebP uniquement." };
+  if (!type) return { error: t("Format non reconnu : PNG, JPEG ou WebP uniquement.") };
   const now = new Date();
   await db.$transaction([
     db.organizationLogo.upsert({ where: { organizationId: orgId }, update: { data: bytes, contentType: type }, create: { organizationId: orgId, data: bytes, contentType: type } }),
@@ -247,7 +251,7 @@ export async function updateOrgLogo(_: FormState, form: FormData): Promise<FormS
   if (org.verification === "VERIFIED") notifyPlatformAdmins(`Logo modifié : ${org.name}`, `${org.name} a publié un nouveau logo, visible sur le site public.`, "/admin");
   revalidatePath(`/organisations/${orgId}/membres`);
   revalidatePath(`/structures/${orgId}`);
-  return { ok: org.verification === "VERIFIED" ? "Logo enregistré." : "Logo enregistré. Il sera visible publiquement une fois l'organisation validée par KolBase." };
+  return { ok: org.verification === "VERIFIED" ? t("Logo enregistré.") : t("Logo enregistré. Il sera visible publiquement une fois l'organisation validée par KolBase.") };
 }
 
 export async function removeOrgLogo(form: FormData) {
@@ -267,15 +271,16 @@ export async function removeOrgLogo(form: FormData) {
  * Garde-fous : il reste toujours un administrateur ; une agence mandatée n'a pas de rôle interne.
  */
 export async function setMemberRoles(_: FormState, form: FormData): Promise<FormState> {
+  const { t } = await getT();
   const orgId = str(form, "orgId");
   const { user, org } = await requireMembership(orgId, ["ADMIN"], { allowSupplier: true });
   const memberId = str(form, "userId");
   const allowed = invitableRoles(org.kind);
   const wanted = form.get("remove") === "1" ? [] : [...new Set(form.getAll("role").map(String))].filter((r): r is OrgRole => allowed.includes(r as OrgRole));
   // Décocher tous les rôles ne retire pas la personne : le retrait passe par le bouton dédié.
-  if (wanted.length === 0 && form.get("remove") !== "1") return { error: "Gardez au moins un rôle, ou retirez la personne de l'organisation." };
+  if (wanted.length === 0 && form.get("remove") !== "1") return { error: t("Gardez au moins un rôle, ou retirez la personne de l'organisation.") };
   const current = await db.membership.findMany({ where: { organizationId: orgId, userId: memberId }, select: { role: true } });
-  if (current.length === 0) return { error: "Membre introuvable." };
+  if (current.length === 0) return { error: t("Membre introuvable.") };
   const before = current.map((m) => m.role).sort();
   const result = await db.$transaction(async (tx) => {
     await tx.$queryRaw`SELECT 1 FROM "Organization" WHERE id = ${orgId} FOR UPDATE`;
@@ -288,11 +293,11 @@ export async function setMemberRoles(_: FormState, form: FormData): Promise<Form
       await tx.membership.upsert({ where: { userId_organizationId_role: { userId: memberId, organizationId: orgId, role } }, update: {}, create: { userId: memberId, organizationId: orgId, role } });
     return "ok" as const;
   });
-  if (result === "last-admin") return { error: "L'organisation doit garder au moins un administrateur." };
+  if (result === "last-admin") return { error: t("L'organisation doit garder au moins un administrateur.") };
   await audit(user.id, wanted.length ? "org.member_roles" : "org.member_remove", "Organization", orgId, { userId: memberId, from: before, to: wanted });
   revalidatePath(`/organisations/${orgId}`);
   revalidatePath(`/organisations/${orgId}/membres`);
-  return { ok: wanted.length ? "Rôles enregistrés." : "Membre retiré de l'organisation." };
+  return { ok: wanted.length ? t("Rôles enregistrés.") : t("Membre retiré de l'organisation.") };
 }
 
 /** Contrat de sous-traitance (RGPD) accepté au nom de l'organisation, dans sa version en vigueur. */

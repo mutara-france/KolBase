@@ -47,7 +47,7 @@ export default async function Page({ searchParams }: { searchParams: Promise<{ o
                 name: o.name,
                 kind: t(ORG_KIND_LABEL[o.kind]),
                 // Secteur et domaines, sans répéter le type (« Société savante · Société savante ») ni un même mot.
-                detail: [...new Map([o.sector, ...o.areas.slice(0, 2)].filter((x): x is string => !!x && x.toLowerCase() !== ORG_KIND_LABEL[o.kind].toLowerCase()).map((x) => [x.toLowerCase(), x])).values()].join(" · "),
+                detail: [...new Map([o.sector ? t(o.sector) : null, ...o.areas.slice(0, 2).map((a) => t(a))].filter((x): x is string => !!x && x.toLowerCase() !== ORG_KIND_LABEL[o.kind].toLowerCase()).map((x) => [x.toLowerCase(), x])).values()].join(" · "),
                 logo: logoSrc(o),
                 pending: awaiting.has(o.id),
               }))}

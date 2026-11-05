@@ -3,7 +3,7 @@ import { cookies } from "next/headers";
 import type { TodoItem } from "@/components/Todo";
 import { getCurrentUser } from "@/lib/auth";
 import { db } from "@/lib/db";
-import { COMPLIANCE_ROLES, EVENT_MANAGER_ROLES, EVENT_ORGANIZER_ROLES, eventEnded, eventScope, formatDate, needsOnlineLink } from "@/lib/events";
+import { COMPLIANCE_ROLES, EVENT_MANAGER_ROLES, EVENT_ORGANIZER_ROLES, eventEnded, eventScope, needsOnlineLink } from "@/lib/events";
 import { PROJECT_ROLES, PROJECT_VIEW_ROLES, recruitmentOpen, REVIEW_ROLES, SOURCING_ROLES } from "@/lib/projects";
 import { orgSectionTabs, tabCount, type OrgSectionKey, type SectionTab } from "@/lib/nav";
 import type { OrgRole } from "@/generated/prisma/client";
@@ -15,6 +15,7 @@ import { activeMandate } from "@/lib/mandates";
 import { de } from "@/lib/elision";
 import { rfqConflict } from "@/lib/suppliers";
 import { getT } from "@/lib/i18n/server";
+import { fmtDate } from "@/lib/i18n";
 import { complianceSettings, hospitalityRegime } from "@/lib/compliance";
 import { practicesInFrance } from "@/lib/countries";
 
@@ -116,34 +117,38 @@ export const orgOverview = cache(async (orgId: string) => {
   // Hospitalités à déclarer : pas celles des absents au pointage (avantage non consommé).
   const pointed = await pointedPastEvents(undeclared.map((r) => r.eventId));
   const hosp = undeclared.filter((r) => toDeclare(r, pointed.has(r.eventId)));
+  const { t, locale } = await getT();
+  const day = (d: Date) => fmtDate(locale, d);
+  // Élision française (« Question d'Agence… ») ; en anglais, la tournure de la clé.
+  const from = (key: string, name: string) => (locale === "fr" ? `${key.replace(" de {name}", "")} ${de(name)}` : t(key, { name }));
   const todos: TodoItem[] = [];
   const dossier = (p: (typeof projects)[number]) => `${base}/dossiers/${p.id}`;
   if (can.project) {
     for (const p of projects) {
-      if (p.status === "ATT_IND") todos.push({ href: dossier(p), title: "Proposition d'expert à examiner", detail: p.title, icon: "Inbox" });
-      if (p.status === "ACCORD") todos.push({ href: dossier(p), title: `Soumettre à la conformité : ${p.title}`, detail: "Accord de principe obtenu", icon: "ShieldCheck" });
-      if (p.status === "BLOQUE") todos.push({ href: dossier(p), title: `Reprendre le dossier : ${p.title}`, detail: p.complianceNote ?? "Bloqué par la conformité", icon: "AlertTriangle", tone: "danger" });
-      if (p.status === "VALIDE") todos.push({ href: dossier(p), title: `Choisir le régime : ${p.title}`, detail: "Déclaration simple ou autorisation de l'Ordre", icon: "CircleDot" });
-      if (p.status === "ORDRE") todos.push({ href: dossier(p), title: `Réponse de l'Ordre attendue : ${p.title}`, detail: p.ordreRef ?? undefined, icon: "CalendarClock", tone: "warn" });
-      if (p.status === "SIGNATURE") todos.push({ href: dossier(p), title: `Convention à faire signer : ${p.title}`, icon: "FileSignature", tone: "warn" });
+      if (p.status === "ATT_IND") todos.push({ href: dossier(p), title: t("Proposition d'expert à examiner"), detail: p.title, icon: "Inbox" });
+      if (p.status === "ACCORD") todos.push({ href: dossier(p), title: t("Soumettre à la conformité : {title}", { title: p.title }), detail: t("Accord de principe obtenu"), icon: "ShieldCheck" });
+      if (p.status === "BLOQUE") todos.push({ href: dossier(p), title: t("Reprendre le dossier : {title}", { title: p.title }), detail: p.complianceNote ?? t("Bloqué par la conformité"), icon: "AlertTriangle", tone: "danger" });
+      if (p.status === "VALIDE") todos.push({ href: dossier(p), title: t("Choisir le régime : {title}", { title: p.title }), detail: t("Déclaration simple ou autorisation de l'Ordre"), icon: "CircleDot" });
+      if (p.status === "ORDRE") todos.push({ href: dossier(p), title: t("Réponse de l'Ordre attendue : {title}", { title: p.title }), detail: p.ordreRef ?? undefined, icon: "CalendarClock", tone: "warn" });
+      if (p.status === "SIGNATURE") todos.push({ href: dossier(p), title: t("Convention à faire signer : {title}", { title: p.title }), icon: "FileSignature", tone: "warn" });
       // Contre-proposition d'un expert : accepter ses honoraires ou lui renvoyer une proposition.
       if (recruitmentOpen(p.status) && p.experts.some((e) => e.status === "ATT_EXPERTS" && e.desiredFeeCents != null))
-        todos.push({ href: dossier(p), title: `Honoraires proposés par un expert : ${p.title}`, detail: "Accepter ou proposer d'autres conditions", icon: "Inbox", tone: "warn" });
+        todos.push({ href: dossier(p), title: t("Honoraires proposés par un expert : {title}", { title: p.title }), detail: t("Accepter ou proposer d'autres conditions"), icon: "Inbox", tone: "warn" });
       if (p.status === "ATT_EXPERTS" && now.getTime() - p.updatedAt.getTime() > 5 * DAY)
-        todos.push({ href: dossier(p), title: `Relancer les experts : ${p.title}`, detail: `Sans réponse depuis le ${formatDate(p.updatedAt)}`, icon: "Inbox", tone: "warn" });
+        todos.push({ href: dossier(p), title: t("Relancer les experts : {title}", { title: p.title }), detail: t("Sans réponse depuis le {date}", { date: day(p.updatedAt) }), icon: "Inbox", tone: "warn" });
     }
   }
   if (can.sourcing) {
     for (const c of calls)
       if (c.applications.length)
-        todos.push({ href: `${base}/opportunites/${c.id}`, title: `${c.applications.length} candidature${c.applications.length > 1 ? "s" : ""} à examiner`, detail: c.title, icon: "UserRound" });
+        todos.push({ href: `${base}/opportunites/${c.id}`, title: t(c.applications.length > 1 ? "{n} candidatures à examiner" : "{n} candidature à examiner", { n: c.applications.length }), detail: c.title, icon: "UserRound" });
   }
   if (can.compliance) {
     for (const p of projects)
       if ((p.status === "SIGNE" || p.status === "TERMINE") && !p.declared)
-        todos.push({ href: `${base}/conformite?onglet=transparence`, title: `Publier sur Transparence Santé : ${p.title}`, detail: "Convention signée", icon: "FileSignature", tone: "warn" });
+        todos.push({ href: `${base}/conformite?onglet=transparence`, title: t("Publier sur Transparence Santé : {title}", { title: p.title }), detail: t("Convention signée"), icon: "FileSignature", tone: "warn" });
     for (const p of projects)
-      if (p.status === "EN_VALID") todos.push({ href: dossier(p), title: `Valider : ${p.title}`, detail: `Soumis le ${formatDate(p.updatedAt)}`, icon: "ShieldCheck", tone: "warn", tab: "a-valider" });
+      if (p.status === "EN_VALID") todos.push({ href: dossier(p), title: t("Valider : {title}", { title: p.title }), detail: t("Soumis le {date}", { date: day(p.updatedAt) }), icon: "ShieldCheck", tone: "warn", tab: "a-valider" });
     const byEvent = new Map<string, { title: string; n: number; past: boolean }>();
     for (const r of hosp) {
       const e = byEvent.get(r.eventId) ?? { title: r.event.title, n: 0, past: eventEnded(r.event, now) };
@@ -151,45 +156,45 @@ export const orgOverview = cache(async (orgId: string) => {
       byEvent.set(r.eventId, e);
     }
     for (const [, e] of byEvent)
-      if (e.past) todos.push({ href: `${base}/hospitalites`, title: `Déclarer les hospitalités : ${e.title}`, detail: `${e.n} bénéficiaire${e.n > 1 ? "s" : ""} · événement passé`, icon: "FileSignature", tone: "danger" });
+      if (e.past) todos.push({ href: `${base}/hospitalites`, title: t("Déclarer les hospitalités : {title}", { title: e.title }), detail: t(e.n > 1 ? "{n} bénéficiaires · événement passé" : "{n} bénéficiaire · événement passé", { n: e.n }), icon: "FileSignature", tone: "danger" });
     for (const [, e] of authByEvent) {
       const by = new Date(e.startsAt.getTime() - limits.authorizationDays * DAY);
       todos.push({
-        href: `${base}/conformite?onglet=autorisations`, title: `Autorisation d'hospitalité à demander : ${e.title}`,
-        detail: `${e.n} bénéficiaire${e.n > 1 ? "s" : ""} · ${by < now ? "délai d'autorisation dépassé" : `avant le ${formatDate(by)}`}`,
+        href: `${base}/conformite?onglet=autorisations`, title: t("Autorisation d'hospitalité à demander : {title}", { title: e.title }),
+        detail: `${t(e.n > 1 ? "{n} bénéficiaires" : "{n} bénéficiaire", { n: e.n })} · ${by < now ? t("délai d'autorisation dépassé") : t("avant le {date}", { date: day(by) })}`,
         icon: "ShieldCheck", tone: by < now ? "danger" : "warn", tab: "autorisations",
       });
     }
   }
   for (const v of reviewQueue)
-    todos.push({ href: `${base}/relecture`, title: `Support à relire : ${v.material.title} (v${v.version})`, detail: v.material.project.title, icon: "CircleDot" });
+    todos.push({ href: `${base}/relecture`, title: t("Support à relire : {title} (v{version})", { title: v.material.title, version: v.version }), detail: v.material.project.title, icon: "CircleDot" });
   if (can.events) {
     for (const e of events)
       if (!e.publishedAt && !e.internal && !e.cancelledAt && e.startsAt >= now)
-        todos.push({ href: `${base}/evenements/${e.id}`, title: `Brouillon à publier : ${e.title}`, detail: formatDate(e.startsAt), icon: "CalendarClock", tone: "warn" });
+        todos.push({ href: `${base}/evenements/${e.id}`, title: t("Brouillon à publier : {title}", { title: e.title }), detail: day(e.startsAt), icon: "CalendarClock", tone: "warn" });
     // Événement en ligne ou hybride à deux jours sans lien de connexion : les inscrits ne pourraient pas se connecter.
     for (const e of events)
       if (!e.cancelledAt && needsOnlineLink(e, now))
-        todos.push({ href: `${base}/evenements/${e.id}#modifier`, title: `Ajouter le lien de connexion : ${e.title}`, detail: `${formatDate(e.startsAt)} · ${e._count.registrations} inscrit${e._count.registrations > 1 ? "s" : ""}`, icon: "AlertTriangle", tone: "danger" });
+        todos.push({ href: `${base}/evenements/${e.id}#modifier`, title: t("Ajouter le lien de connexion : {title}", { title: e.title }), detail: `${day(e.startsAt)} · ${t(e._count.registrations > 1 ? "{n} inscrits" : "{n} inscrit", { n: e._count.registrations })}`, icon: "AlertTriangle", tone: "danger" });
   }
   // Organisateurs, et agence mandatée pour les événements qui lui sont confiés.
   if (can.events) {
     for (const r of rfqs) {
       // Agence consultée sur la demande : l'organisation la conduit seule, rien à faire ici pour l'agence.
       if (rfqConflict(r.suppliers.map((s) => s.supplierId), ownOrgs)) continue;
-      const label = r.event?.title ?? "Demande de devis";
-      if (r.status === "draft") todos.push({ href: `${base}/prestataires`, title: `Demande de devis à envoyer : ${label}`, icon: "Receipt" });
+      const label = r.event?.title ?? t("Demande de devis");
+      if (r.status === "draft") todos.push({ href: `${base}/prestataires`, title: t("Demande de devis à envoyer : {title}", { title: label }), icon: "Receipt" });
       else if (r.proposedQuoteId && can.organizer)
-        todos.push({ href: `${base}/prestataires#rfq-${r.id}`, title: `Devis à retenir : ${label}`, detail: "Proposé par l'agence mandatée", icon: "Receipt", tone: "warn" });
+        todos.push({ href: `${base}/prestataires#rfq-${r.id}`, title: t("Devis à retenir : {title}", { title: label }), detail: t("Proposé par l'agence mandatée"), icon: "Receipt", tone: "warn" });
       else if (r._count.quotes > 0)
-        todos.push({ href: `${base}/prestataires`, title: `Devis à comparer : ${label}`, detail: `${r._count.quotes} devis reçu${r._count.quotes > 1 ? "s" : ""} sur ${r._count.suppliers} prestataire${r._count.suppliers > 1 ? "s" : ""}`, icon: "Receipt", tone: "warn" });
+        todos.push({ href: `${base}/prestataires`, title: t("Devis à comparer : {title}", { title: label }), detail: t(r._count.suppliers > 1 ? (r._count.quotes > 1 ? "{n} devis reçus sur {m} prestataires" : "{n} devis reçu sur {m} prestataires") : "{n} devis reçu sur {m} prestataire", { n: r._count.quotes, m: r._count.suppliers }), icon: "Receipt", tone: "warn" });
     }
   }
   for (const w of waitingQuotes)
-    todos.push({ href: `${base}/devis`, title: `Devis demandé par ${w.rfq.organization.name}`, detail: w.rfq.event?.title ?? w.rfq.needs.slice(0, 60), icon: "Receipt", tone: "warn" });
+    todos.push({ href: `${base}/devis`, title: t("Devis demandé par {name}", { name: w.rfq.organization.name }), detail: w.rfq.event?.title ?? w.rfq.needs.slice(0, 60), icon: "Receipt", tone: "warn" });
   // Prestataire : après un premier devis retenu, l'abonnement est à activer pour répondre à de nouvelles demandes.
   if (org.kind === "PRESTATAIRE" && roles.includes("ADMIN") && (await billingBlocked(orgId, "reponse")))
-    todos.unshift({ href: subscribeHref(orgId, "reponse"), title: "Activer l'abonnement", detail: "Premier devis retenu : l'abonnement (premier mois offert) permet de répondre à de nouvelles demandes", icon: "Receipt", tone: "warn" });
+    todos.unshift({ href: subscribeHref(orgId, "reponse"), title: t("Activer l'abonnement"), detail: t("Premier devis retenu : l'abonnement (premier mois offert) permet de répondre à de nouvelles demandes"), icon: "Receipt", tone: "warn" });
 
   // Questions sur les demandes de devis restées sans réponse : la dernière parole revient à l'autre partie.
   const isSupplier = org.kind === "PRESTATAIRE";
@@ -214,9 +219,9 @@ export const orgOverview = cache(async (orgId: string) => {
       if (seen.has(key)) continue;
       seen.add(key);
       if (isSupplier && !m.fromSupplier)
-        todos.push({ href: `${base}/devis`, title: `Message ${de(m.rfq.organization.name)}`, detail: m.rfq.event?.title ?? "Demande de devis", icon: "MessageSquare", tone: "warn" });
+        todos.push({ href: `${base}/devis`, title: from("Message de {name}", m.rfq.organization.name), detail: m.rfq.event?.title ?? t("Demande de devis"), icon: "MessageSquare", tone: "warn" });
       if (!isSupplier && m.fromSupplier)
-        todos.push({ href: `${base}/prestataires#rfq-${m.rfqId}`, title: `Question ${de(m.supplier.name)}`, detail: m.rfq.event?.title ?? "Demande de devis", icon: "MessageSquare", tone: "warn" });
+        todos.push({ href: `${base}/prestataires#rfq-${m.rfqId}`, title: from("Question de {name}", m.supplier.name), detail: m.rfq.event?.title ?? t("Demande de devis"), icon: "MessageSquare", tone: "warn" });
     }
   }
 
@@ -234,14 +239,14 @@ export const orgOverview = cache(async (orgId: string) => {
     });
     for (const r of confided) {
       const href = `/organisations/${r.organizationId}/prestataires#rfq-${r.id}`;
-      const label = r.event?.title ?? "Demande de devis";
+      const label = r.event?.title ?? t("Demande de devis");
       if (r._count.quotes > 0 && !r.proposedQuoteId)
-        todos.push({ href, title: `Devis à comparer : ${label}`, detail: `${r.organization.name} · ${r._count.quotes} devis reçu${r._count.quotes > 1 ? "s" : ""}`, icon: "Receipt", tone: "warn" });
+        todos.push({ href, title: t("Devis à comparer : {title}", { title: label }), detail: `${r.organization.name} · ${t(r._count.quotes > 1 ? "{n} devis reçus" : "{n} devis reçu", { n: r._count.quotes })}`, icon: "Receipt", tone: "warn" });
       const seen = new Set<string>();
       for (const m of r.messages) {
         if (seen.has(m.supplierId)) continue;
         seen.add(m.supplierId);
-        if (m.fromSupplier) todos.push({ href, title: `Question ${de(m.supplier.name)}`, detail: `${label} · ${r.organization.name}`, icon: "MessageSquare", tone: "warn" });
+        if (m.fromSupplier) todos.push({ href, title: from("Question de {name}", m.supplier.name), detail: `${label} · ${r.organization.name}`, icon: "MessageSquare", tone: "warn" });
       }
     }
   }

@@ -1,6 +1,6 @@
 import { db } from "@/lib/db";
 import { collabType } from "@/lib/projects";
-import { complianceSettings, foreignRegime, hospitalityRegime, remunerationRegime, type Regime } from "@/lib/compliance";
+import { complianceSettings, foreignRegime, hospitalityRegime, remunerationRegime, type Regime, type RegimeWhy } from "@/lib/compliance";
 import { practicesInFrance } from "@/lib/countries";
 import type { ProjectStatus } from "@/generated/prisma/client";
 
@@ -18,9 +18,12 @@ export type RegisterRow = {
   city: string | null;
   subject: string;
   nature: string;
+  /** Libellés des prestations d'une hospitalité (traduits à l'affichage). */
+  benefits?: string[];
   amountCents: number;
   regime: Regime;
   reason: string;
+  why: RegimeWhy;
   status: string;
   declared: boolean;
   declarationRef: string | null;
@@ -51,7 +54,7 @@ export async function registerRows(orgId: string, year: number | null, rawSettin
     rows.push({
       kind: "remuneration", date: l.project.updatedAt, lastName: l.practitioner.user.lastName, firstName: l.practitioner.user.firstName,
       rpps: l.practitioner.rpps, country: c, license: l.practitioner.licenseNumber, city: l.practitioner.city, subject: l.project.title, nature: t?.label ?? l.project.typeId,
-      amountCents: l.feeCents ?? 0, regime: r.regime, reason: r.reason, status: l.project.status,
+      amountCents: l.feeCents ?? 0, regime: r.regime, reason: r.reason, why: r.why, status: l.project.status,
       declared: l.project.declared, declarationRef: l.project.declarationRef, href: `/organisations/${orgId}/dossiers/${l.projectId}`,
     });
   }
@@ -61,8 +64,8 @@ export async function registerRows(orgId: string, year: number | null, rawSettin
     rows.push({
       kind: "hospitalite", date: g.event.startsAt, lastName: g.user.lastName, firstName: g.user.firstName,
       rpps: g.user.practitioner?.rpps ?? null, country: c, license: g.user.practitioner?.licenseNumber ?? null, city: g.user.practitioner?.city ?? null, subject: g.event.title,
-      nature: "Hospitalité : " + g.benefits.map((b) => b.benefit.label).join(", "),
-      amountCents: g.benefits.reduce((x, b) => x + b.valueCents, 0), regime: r.regime, reason: r.reason, status: "",
+      nature: "Hospitalité : " + g.benefits.map((b) => b.benefit.label).join(", "), benefits: g.benefits.map((b) => b.benefit.label),
+      amountCents: g.benefits.reduce((x, b) => x + b.valueCents, 0), regime: r.regime, reason: r.reason, why: r.why, status: "",
       declared: g.declared, declarationRef: g.declarationRef, href: `/organisations/${orgId}/hospitalites`,
     });
   }

@@ -11,6 +11,7 @@ import { checkoutUrl, portalUrl, stripeEnabled, syncStripePause } from "@/lib/bi
 import { asInterval, asMotive, asObjectId, exempt, planFor } from "@/lib/billing-plans";
 import { notifyExemption } from "@/lib/notifications";
 import { parseParisDateTime } from "@/lib/events";
+import { getT } from "@/lib/i18n/server";
 
 /** Activation de l'abonnement par un administrateur : page de paiement Stripe. */
 export async function startSubscription(form: FormData) {
@@ -41,16 +42,17 @@ export type ExemptionState = { error?: string } | undefined;
  * suspendue).
  */
 async function applyExemption(form: FormData): Promise<ExemptionState> {
+  const { t } = await getT();
   const admin = await requirePlatformAdmin();
   const orgId = str(form, "orgId");
   const org = await db.organization.findUnique({ where: { id: orgId }, select: { kind: true } });
-  if (!org) return { error: "Organisation introuvable." };
+  if (!org) return { error: t("Organisation introuvable.") };
   const remove = form.get("remove") === "1";
   const until = str(form, "until");
   // Fin de la journée choisie, heure de Paris (la date affichée est bien celle saisie).
   const date = /^\d{4}-\d{2}-\d{2}$/.test(until) ? parseParisDateTime(`${until}T23:59`) : null;
-  if (!remove && !date) return { error: "Indiquez le dernier jour offert." };
-  if (!remove && date! < new Date()) return { error: "Date passée : choisissez aujourd'hui ou un jour à venir." };
+  if (!remove && !date) return { error: t("Indiquez le dernier jour offert.") };
+  if (!remove && date! < new Date()) return { error: t("Date passée : choisissez aujourd'hui ou un jour à venir.") };
   const data = remove ? { exemptUntil: null, exemptNote: null } : { exemptUntil: date, exemptNote: str(form, "note").slice(0, 200) || null };
   const before = await db.subscription.findUnique({ where: { organizationId: orgId }, select: { status: true, exemptUntil: true } });
   await db.subscription.upsert({ where: { organizationId: orgId }, update: data, create: { organizationId: orgId, plan: planFor(org.kind), ...data } });

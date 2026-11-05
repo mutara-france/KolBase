@@ -26,9 +26,10 @@ export async function updateKolVisibility(_: ActionState, form: FormData): Promi
 }
 
 export async function updateOrgVisibility(_: ActionState, form: FormData): Promise<ActionState> {
+  const { t } = await getT();
   const orgId = str(form, "orgId");
   const { user, org } = await requireMembership(orgId, ["ADMIN"]);
-  if (form.get("listed") === "1" && !isVerifiedOrg(org)) return { error: `Page publique indisponible pour l'instant : ${notVerified(org)}` };
+  if (form.get("listed") === "1" && !isVerifiedOrg(org)) return { error: t("Page publique indisponible pour l'instant : {reason}", { reason: t(notVerified(org)) }) };
   const raw: Record<string, string> = {};
   for (const f of COMPANY_VIS_FIELDS) raw[f.key] = str(form, f.key);
   const visibility = companyVisibility(raw);
@@ -36,7 +37,7 @@ export async function updateOrgVisibility(_: ActionState, form: FormData): Promi
   await audit(user.id, "org.visibility", "Organization", orgId, visibility);
   revalidatePath(`/organisations/${orgId}`);
   revalidatePath(`/organisations/${orgId}/membres`);
-  return { ok: "Visibilité de la page publique enregistrée." };
+  return { ok: t("Visibilité de la page publique enregistrée.") };
 }
 
 export async function addPublication(_: ActionState, form: FormData): Promise<ActionState> {
