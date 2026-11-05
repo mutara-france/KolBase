@@ -21,24 +21,26 @@ async function managedEvent(form: FormData) {
 
 /** Rappel envoyé tout de suite aux inscrits qui ne l'ont pas encore reçu (sinon : automatiquement la veille). */
 export async function sendRemindersNow(_: FormState, form: FormData): Promise<FormState> {
+  const { t } = await getT();
   const { orgId, user, event } = await managedEvent(form);
-  if (!event) return { error: "Événement introuvable." };
-  if (event.startsAt <= new Date()) return { error: "L'événement a commencé : le rappel n'a plus lieu d'être." };
+  if (!event) return { error: t("Événement introuvable.") };
+  if (event.startsAt <= new Date()) return { error: t("L'événement a commencé : le rappel n'a plus lieu d'être.") };
   const n = await sendEventReminders(event.id);
   await audit(user.id, "event.reminders", "Event", event.id, { sent: n });
   revalidatePath(`/organisations/${orgId}/evenements/${event.id}`);
-  return n ? { ok: `Rappel envoyé à ${n} inscrit${n > 1 ? "s" : ""}.` } : { ok: "Tous les inscrits ont déjà reçu le rappel." };
+  return n ? { ok: t("Rappel envoyé à {n} inscrit{v}.", { n, v: n > 1 ? "s" : "" }) } : { ok: t("Tous les inscrits ont déjà reçu le rappel.") };
 }
 
 /** Remerciement, attestation et questionnaire envoyés tout de suite (sinon : automatiquement après l'événement). */
 export async function sendFollowUpsNow(_: FormState, form: FormData): Promise<FormState> {
+  const { t } = await getT();
   const { orgId, user, event } = await managedEvent(form);
-  if (!event) return { error: "Événement introuvable." };
-  if (!eventEnded(event)) return { error: "L'envoi se fait une fois l'événement terminé." };
+  if (!event) return { error: t("Événement introuvable.") };
+  if (!eventEnded(event)) return { error: t("L'envoi se fait une fois l'événement terminé.") };
   const n = await sendEventFollowUps(event.id);
   await audit(user.id, "event.followups", "Event", event.id, { sent: n });
   revalidatePath(`/organisations/${orgId}/evenements/${event.id}`);
-  return n ? { ok: `Envoyé à ${n} participant${n > 1 ? "s" : ""}.` } : { ok: "Tous les participants l'ont déjà reçu." };
+  return n ? { ok: t("Envoyé à {n} participant{v}.", { n, v: n > 1 ? "s" : "" }) } : { ok: t("Tous les participants l'ont déjà reçu.") };
 }
 
 const rating = (form: FormData, key: string, required: boolean) => {

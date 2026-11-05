@@ -10,11 +10,16 @@ import { matches } from "@/lib/search";
 import { canSee, kolVisibility } from "@/lib/visibility";
 import { expertPhotoSrc } from "@/lib/expert-photo";
 import { country, practicesInFrance } from "@/lib/countries";
+import { getT } from "@/lib/i18n/server";
 
-export const metadata = { title: "Annuaire des experts — KolBase" };
+export async function generateMetadata() {
+  const { t } = await getT();
+  return { title: `${t("Annuaire des experts")} — KolBase` };
+}
 
 export default async function Page({ searchParams }: { searchParams: Promise<{ q?: string; ville?: string }> }) {
   await requireDirectoryAccess();
+  const { t, locale } = await getT();
   const { q = "", ville = "" } = await searchParams;
   const and: Prisma.PractitionerProfileWhereInput[] = [{ listed: true }];
   for (const word of q.trim().split(/\s+/).filter(Boolean)) {
@@ -41,7 +46,8 @@ export default async function Page({ searchParams }: { searchParams: Promise<{ q
       return { ...e, city: contact ? e.city : null, hospital: contact ? e.hospital : null };
     })
     .filter((e) =>
-      matches(q, e.user.firstName, e.user.lastName, e.specialty, e.subspecialty, e.bio, e.hospital, e.profession, country(e.country).name, ...e.interventionTypes)
+      matches(q, e.user.firstName, e.user.lastName, e.specialty, e.subspecialty, e.bio, e.hospital, e.profession, country(e.country).name, ...e.interventionTypes,
+        ...(locale === "fr" ? [] : [e.specialty, e.profession, country(e.country).name, ...e.interventionTypes].filter((x): x is string => !!x).map((x) => t(x))))
       && matches(ville, e.city, country(e.country).name),
     )
     .slice(0, 100);
@@ -52,16 +58,16 @@ export default async function Page({ searchParams }: { searchParams: Promise<{ q
     <>
       <SiteHeader />
       <main className="stack">
-        <SectionNav tabs={sectionTabs} active="rechercher" label="Rubrique Praticiens" />
-        <h1>Annuaire des experts</h1>
+        <SectionNav tabs={sectionTabs} active="rechercher" label={t("Rubrique Praticiens")} />
+        <h1>{t("Annuaire des experts")}</h1>
         <form className="card form search">
           <div className="row">
-            <label>Recherche<input name="q" defaultValue={q} placeholder="Nom, spécialité, type d'intervention…" /></label>
-            <label>Ville<input name="ville" defaultValue={ville} /></label>
+            <label>{t("Recherche")}<input name="q" defaultValue={q} placeholder={t("Nom, spécialité, type d'intervention…")} /></label>
+            <label>{t("Ville")}<input name="ville" defaultValue={ville} /></label>
           </div>
-          <button className="btn">Rechercher</button>
+          <button className="btn">{t("Rechercher")}</button>
         </form>
-        <p className="muted">{experts.length} expert{experts.length > 1 ? "s" : ""} référencé{experts.length > 1 ? "s" : ""}</p>
+        <p className="muted">{t(experts.length > 1 ? "{n} experts référencés" : "{n} expert référencé", { n: experts.length })}</p>
         <div className="grid">
           {experts.map((e) => (
             <Link key={e.id} href={`/experts/${e.id}`} className="card tile">
@@ -70,10 +76,10 @@ export default async function Page({ searchParams }: { searchParams: Promise<{ q
                 <span>
                   <strong>Dr {e.user.firstName} {e.user.lastName}</strong>
                   <br />
-                  <span className="muted">{[e.specialty || e.profession, e.city, practicesInFrance(e.country) ? null : country(e.country).name].filter(Boolean).join(" · ")}</span>
+                  <span className="muted">{[e.specialty ? t(e.specialty) : e.profession ? t(e.profession) : null, e.city, practicesInFrance(e.country) ? null : t(country(e.country).name)].filter(Boolean).join(" · ")}</span>
                 </span>
               </span>
-              {e.interventionTypes.length > 0 && <span className="tags">{e.interventionTypes.slice(0, 3).map((t) => <span key={t} className="tag">{t}</span>)}</span>}
+              {e.interventionTypes.length > 0 && <span className="tags">{e.interventionTypes.slice(0, 3).map((x) => <span key={x} className="tag">{t(x)}</span>)}</span>}
             </Link>
           ))}
         </div>

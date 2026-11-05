@@ -7,11 +7,16 @@ import { MaterialsPanel } from "@/components/DossierSections";
 import { db } from "@/lib/db";
 import { requireMembership } from "@/lib/orgs";
 import { collabType, PROJECT_VIEW_ROLES, REVIEW_ROLES } from "@/lib/projects";
+import { getT } from "@/lib/i18n/server";
 
-export const metadata = { title: "Revue documentaire — KolBase" };
+export async function generateMetadata() {
+  const { t } = await getT();
+  return { title: `${t("Revue documentaire")} — KolBase` };
+}
 
 /** Espace de la relecture médico-réglementaire (MLR) : les supports à relire, sans le reste du dossier (budget, honoraires, conflits). */
 export default async function Page({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: Promise<{ onglet?: string }> }) {
+  const { t } = await getT();
   const { id } = await params;
   const { onglet = "a-relire" } = await searchParams;
   const { roles } = await requireMembership(id, REVIEW_ROLES);
@@ -25,24 +30,24 @@ export default async function Page({ params, searchParams }: { params: Promise<{
   const pending = (p: (typeof projects)[number]) => p.materials.filter((m) => m.versions[0]?.status === "submitted").length;
   const toReview = projects.filter((p) => pending(p) > 0);
   const shown = onglet === "a-relire" ? toReview : projects;
-  const tabs = [["a-relire", `À relire (${toReview.reduce((s, p) => s + pending(p), 0)})`], ["tous", `Tous les supports (${projects.reduce((s, p) => s + p.materials.length, 0)})`]] as const;
+  const tabs = [["a-relire", t("À relire ({n})", { n: toReview.reduce((s, p) => s + pending(p), 0) })], ["tous", t("Tous les supports ({n})", { n: projects.reduce((s, p) => s + p.materials.length, 0) })]] as const;
 
   const sectionTabs = await orgTabs("conformite", id);
   return (
     <>
       <SiteHeader />
       <main className="stack">
-        <SectionNav tabs={sectionTabs} active="relecture" label="Rubrique Conformité" />
-        <h1>Supports à relire</h1>
-        <p className="muted">Supports soumis par les experts et les équipes : approuvez-les ou demandez des modifications avant toute diffusion.</p>
+        <SectionNav tabs={sectionTabs} active="relecture" label={t("Rubrique Conformité")} />
+        <h1>{t("Supports à relire")}</h1>
+        <p className="muted">{t("Supports soumis par les experts et les équipes : approuvez-les ou demandez des modifications avant toute diffusion.")}</p>
         <nav className="tabs">
           {tabs.map(([k, l]) => <Link key={k} href={`?onglet=${k}`} className={k === onglet ? "active" : ""}>{l}</Link>)}
         </nav>
-        {shown.length === 0 && <div className="card empty"><FlaskConical size={22} /><p>Aucun support {onglet === "a-relire" ? "en attente de relecture" : "soumis"}.</p></div>}
+        {shown.length === 0 && <div className="card empty"><FlaskConical size={22} /><p>{t("Aucun support")}{" "}{onglet === "a-relire" ? t("en attente de relecture") : t("soumis")}.</p></div>}
         {shown.map((p) => (
           <section key={p.id} className="stack-sm">
             <div className="eyebrow-sm">
-              {collabType(p.typeId)?.label ?? p.typeId}{p.therapeuticArea ? ` · ${p.therapeuticArea}` : ""}
+              {t(collabType(p.typeId)?.label ?? p.typeId)}{p.therapeuticArea ? ` · ${p.therapeuticArea}` : ""}
             </div>
             <h2 style={{ margin: 0 }}>{canOpenDossier ? <Link href={`/organisations/${id}/dossiers/${p.id}`}>{p.title}</Link> : p.title}</h2>
             <MaterialsPanel orgId={id} projectId={p.id} canSubmit={false} canReview />

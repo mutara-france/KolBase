@@ -24,26 +24,27 @@ import { hasMemberRole } from "@/lib/org-roles";
 export type ActionState = { error?: string; ok?: string; fix?: GateLink } | undefined;
 
 export async function createProject(_: ActionState, form: FormData): Promise<ActionState> {
+  const { t } = await getT();
   const orgId = str(form, "orgId");
   const { user, org } = await requireMembership(orgId, SOURCING_ROLES);
-  if (!isVerifiedOrg(org)) return { error: notVerified(org) };
+  if (!isVerifiedOrg(org)) return { error: t(notVerified(org)) };
   const gate = await engagementGate(orgId, "sollicitation");
   if (gate) return gate;
   const title = str(form, "title");
   const typeId = str(form, "typeId");
-  if (!title) return { error: "Le titre est obligatoire." };
-  if (!collabType(typeId)) return { error: "Type de collaboration invalide." };
+  if (!title) return { error: t("Le titre est obligatoire.") };
+  if (!collabType(typeId)) return { error: t("Type de collaboration invalide.") };
 
   const expertIds = [...new Set(form.getAll("expertId").map(String).filter(Boolean))];
-  if (expertIds.length === 0) return { error: "Sélectionnez au moins un expert." };
+  if (expertIds.length === 0) return { error: t("Sélectionnez au moins un expert.") };
   const listed = await db.practitionerProfile.findMany({ where: { id: { in: expertIds }, listed: true }, select: { id: true } });
-  if (listed.length !== expertIds.length) return { error: "Un des experts sélectionnés n'est plus référencé." };
+  if (listed.length !== expertIds.length) return { error: t("Un des experts sélectionnés n'est plus référencé.") };
 
   const experts = [];
   for (const id of expertIds) {
     const fee = eurToCents(str(form, `fee_${id}`));
     const units = unitsOrNull(str(form, `units_${id}`));
-    if (fee === null) return { error: "Indiquez des honoraires pour chaque expert (0 si bénévole)." };
+    if (fee === null) return { error: t("Indiquez des honoraires pour chaque expert (0 si bénévole).") };
     if (units === undefined) return { error: UNITS_INVALID };
     experts.push({ practitionerId: id, feeCents: fee, days: units });
   }
@@ -270,29 +271,31 @@ async function signaturesStarted(projectId: string) {
 
 /** Dossier de l'organisation, modifiable par l'équipe Projets (recrutement en cours). */
 async function editableProject(orgId: string, projectId: string) {
+  const { t } = await getT();
   const ctx = await requireMembership(orgId, PROJECT_ROLES);
   const project = await db.project.findFirst({ where: { id: projectId, organizationId: orgId } });
-  if (!project) return { ...ctx, project: null, error: "Dossier introuvable." };
+  if (!project) return { ...ctx, project: null, error: t("Dossier introuvable.") };
   if (!projectEditable(project.status))
-    return { ...ctx, project: null, error: "Ce dossier n'est plus modifiable à cette étape : remettez-le d'abord en accord de principe." };
+    return { ...ctx, project: null, error: t("Ce dossier n'est plus modifiable à cette étape : remettez-le d'abord en accord de principe.") };
   return { ...ctx, project, error: null };
 }
 
 /** Objet du dossier : titre, domaine, objet et déroulé. */
 export async function updateProjectObject(_: ActionState, form: FormData): Promise<ActionState> {
+  const { t } = await getT();
   const orgId = str(form, "orgId");
   const projectId = str(form, "projectId");
   const { user, project, error } = await editableProject(orgId, projectId);
   if (!project) return { error: error ?? "Dossier introuvable." };
   const title = str(form, "title");
-  if (!title) return { error: "Le titre est obligatoire." };
+  if (!title) return { error: t("Le titre est obligatoire.") };
   const data = { title, therapeuticArea: str(form, "therapeuticArea") || null, description: str(form, "description") || null };
   const changed = (Object.keys(data) as (keyof typeof data)[]).filter((k) => (project[k] ?? null) !== data[k]);
-  if (changed.length === 0) return { ok: "Aucune modification." };
+  if (changed.length === 0) return { ok: t("Aucune modification.") };
   await db.project.update({ where: { id: projectId }, data });
   await audit(user.id, "project.edit", "Project", projectId, { fields: changed });
   revalidatePath(`/organisations/${orgId}/dossiers/${projectId}`);
-  return { ok: "Objet du dossier enregistré." };
+  return { ok: t("Objet du dossier enregistré.") };
 }
 
 /**
@@ -300,18 +303,19 @@ export async function updateProjectObject(_: ActionState, form: FormData): Promi
  * attendue, e-mail « Nouvelle proposition »), et le statut du dossier suit les réponses des experts.
  */
 export async function updateExpertTerms(_: ActionState, form: FormData): Promise<ActionState> {
+  const { t } = await getT();
   const orgId = str(form, "orgId");
   const projectId = str(form, "projectId");
   const { user, project, error } = await editableProject(orgId, projectId);
   if (!project) return { error: error ?? "Dossier introuvable." };
   const link = await db.projectExpert.findFirst({ where: { id: str(form, "linkId"), projectId } });
-  if (!link) return { error: "Expert introuvable dans ce dossier." };
+  if (!link) return { error: t("Expert introuvable dans ce dossier.") };
   const fee = eurToCents(str(form, "fee"));
   const units = unitsOrNull(str(form, "units"));
-  if (fee === null) return { error: "Indiquez des honoraires (0 si bénévole)." };
+  if (fee === null) return { error: t("Indiquez des honoraires (0 si bénévole).") };
   if (units === undefined) return { error: UNITS_INVALID };
   const next = { feeCents: fee, days: units };
-  if (!termsChanged(link, next)) return { ok: "Conditions inchangées." };
+  if (!termsChanged(link, next)) return { ok: t("Conditions inchangées.") };
   await db.projectExpert.update({
     where: { id: link.id },
     // Honoraires changés : l'ancien montant est rappelé à l'expert (« 1 500 € → 1 800 € HT »).
@@ -321,25 +325,26 @@ export async function updateExpertTerms(_: ActionState, form: FormData): Promise
   await audit(user.id, "project.terms", "ProjectExpert", link.id, { projectId, from: { feeCents: link.feeCents, days: link.days }, to: next, previousStatus: link.status });
   notifyNewProposal(link.id);
   revalidatePath(`/organisations/${orgId}/dossiers/${projectId}`);
-  return { ok: "Nouvelle proposition envoyée à l'expert : sa réponse est de nouveau attendue." };
+  return { ok: t("Nouvelle proposition envoyée à l'expert : sa réponse est de nouveau attendue.") };
 }
 
 /** Ajouter un expert au dossier : il reçoit la sollicitation comme les premiers experts. */
 export async function addProjectExpert(_: ActionState, form: FormData): Promise<ActionState> {
+  const { t } = await getT();
   const orgId = str(form, "orgId");
   const projectId = str(form, "projectId");
   const { user, org, project, error } = await editableProject(orgId, projectId);
   if (!project) return { error: error ?? "Dossier introuvable." };
-  if (!isVerifiedOrg(org)) return { error: notVerified(org) };
+  if (!isVerifiedOrg(org)) return { error: t(notVerified(org)) };
   const gate = await engagementGate(orgId, "sollicitation", projectId);
   if (gate) return gate;
   const practitionerId = str(form, "expertId");
   const expert = await db.practitionerProfile.findFirst({ where: { id: practitionerId, listed: true }, select: { id: true } });
-  if (!expert) return { error: "Choisissez un expert référencé." };
-  if (await db.projectExpert.findUnique({ where: { projectId_practitionerId: { projectId, practitionerId } } })) return { error: "Cet expert est déjà sollicité dans ce dossier." };
+  if (!expert) return { error: t("Choisissez un expert référencé.") };
+  if (await db.projectExpert.findUnique({ where: { projectId_practitionerId: { projectId, practitionerId } } })) return { error: t("Cet expert est déjà sollicité dans ce dossier.") };
   const fee = eurToCents(str(form, "fee"));
   const units = unitsOrNull(str(form, "units"));
-  if (fee === null) return { error: "Indiquez des honoraires (0 si bénévole)." };
+  if (fee === null) return { error: t("Indiquez des honoraires (0 si bénévole).") };
   if (units === undefined) return { error: UNITS_INVALID };
   const link = await db.projectExpert.create({ data: { projectId, practitionerId, feeCents: fee, days: units } });
   const message = str(form, "message");
@@ -347,5 +352,5 @@ export async function addProjectExpert(_: ActionState, form: FormData): Promise<
   await audit(user.id, "project.add_expert", "ProjectExpert", link.id, { projectId, feeCents: fee, days: units });
   notifySolicitations(projectId, "sollicitation", [link.id]);
   revalidatePath(`/organisations/${orgId}/dossiers/${projectId}`);
-  return { ok: "Expert ajouté : la sollicitation lui est envoyée." };
+  return { ok: t("Expert ajouté : la sollicitation lui est envoyée.") };
 }

@@ -108,17 +108,23 @@ export function resumeAction(orgId: string, motive: Motive | null, objet?: strin
     default: return null;
   }
 }
-export const formatPrice = (cents: number, interval: Interval = "month") => `${(cents / 100).toLocaleString("fr-FR")} € HT par ${interval === "year" ? "an" : "mois"}`;
+/** Traduction (t de la langue d'affichage) ; par défaut, le texte français avec ses variables. */
+type Tr = (key: string, vars?: Record<string, string | number>) => string;
+const fr: Tr = (key, vars) => key.replace(/\{(\w+)\}/g, (_, k: string) => String(vars?.[k] ?? ""));
+export const formatPrice = (cents: number, interval: Interval = "month", t: Tr = fr, loc = "fr-FR") =>
+  t(interval === "year" ? "{amount} € HT par an" : "{amount} € HT par mois", { amount: (cents / 100).toLocaleString(loc) });
 
 /** Ce que l'abonnement représente pour l'organisation, en une phrase (prise en main). */
-export function billingInfo(kind: string, s: SubLike, now = new Date()) {
+export function billingInfo(kind: string, s: SubLike, now = new Date(), t: Tr = fr, loc = "fr-FR") {
   const status = displayStatus(s, now);
-  if (status === "offerte") return `Abonnement : offert par KolBase jusqu'au ${s!.exemptUntil!.toLocaleDateString("fr-FR", { timeZone: "Europe/Paris", day: "numeric", month: "long", year: "numeric" })}.`;
-  if (status === "essai" || status === "active") return `Abonnement : ${STATUS_LABEL[status].toLowerCase()}.`;
-  if (status === "impayee") return "Abonnement : paiement en attente, vérifiez votre moyen de paiement.";
+  if (status === "offerte") return t("Abonnement : offert par KolBase jusqu'au {date}.", { date: s!.exemptUntil!.toLocaleDateString(loc, { timeZone: "Europe/Paris", day: "numeric", month: "long", year: "numeric" }) });
+  if (status === "essai" || status === "active") return t("Abonnement : {status}.", { status: t(STATUS_LABEL[status]).toLowerCase() });
+  if (status === "impayee") return t("Abonnement : paiement en attente, vérifiez votre moyen de paiement.");
+  const price = formatPrice(PLANS[planFor(kind)].cents, "month", t, loc);
+  const yearPrice = formatPrice(PLANS.organisation.yearCents, "year", t, loc);
   return kind === "PRESTATAIRE"
-    ? `Abonnement : référencement gratuit ; ${formatPrice(PLANS.prestataire.cents)} seulement après un premier devis retenu, pour répondre à de nouvelles demandes (premier mois offert).`
+    ? t("Abonnement : référencement gratuit ; {price} seulement après un premier devis retenu, pour répondre à de nouvelles demandes (premier mois offert).", { price })
     : FREE_EVENT_KINDS.includes(kind)
-      ? `Abonnement : création, équipe, annuaire, brouillons et publication d'événements gratuits ; ${formatPrice(PLANS.organisation.cents)} (ou ${formatPrice(PLANS.organisation.yearCents, "year")}) dès la première sollicitation, le premier appel à candidatures ou la première demande de devis, premier mois offert.`
-      : `Abonnement : création, équipe, annuaire et brouillons gratuits ; ${formatPrice(PLANS.organisation.cents)} (ou ${formatPrice(PLANS.organisation.yearCents, "year")}) dès la première action qui engage un tiers, premier mois offert.`;
+      ? t("Abonnement : création, équipe, annuaire, brouillons et publication d'événements gratuits ; {price} (ou {yearPrice}) dès la première sollicitation, le premier appel à candidatures ou la première demande de devis, premier mois offert.", { price, yearPrice })
+      : t("Abonnement : création, équipe, annuaire et brouillons gratuits ; {price} (ou {yearPrice}) dès la première action qui engage un tiers, premier mois offert.", { price, yearPrice });
 }

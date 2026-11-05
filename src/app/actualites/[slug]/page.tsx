@@ -62,7 +62,7 @@ export default async function Page({ params }: { params: Promise<{ slug: string 
         <article className="article">
           <p className="muted"><Link href="/actualites">← {t("Toutes les actualités")}</Link></p>
           {!a.publishedAt && <p className="notice warn">{t("Brouillon : visible de l'équipe KolBase seulement.")} <Link href={`/admin/actualites/${a.id}`}>{t("Modifier")}</Link></p>}
-          <span className="eyebrow-sm">{a.category}{a.publishedAt ? ` · ${fmtDate(locale, a.publishedAt, { day: "numeric", month: "long", year: "numeric" })}` : ""} · {t("{n} min de lecture", { n: readingMinutes(a.body) })}</span>
+          <span className="eyebrow-sm">{t(a.category)}{a.publishedAt ? ` · ${fmtDate(locale, a.publishedAt, { day: "numeric", month: "long", year: "numeric" })}` : ""} · {t("{n} min de lecture", { n: readingMinutes(a.body) })}</span>
           <h1>{a.title}</h1>
           <p className="lead">{a.excerpt}</p>
           {/* eslint-disable-next-line @next/next/no-img-element */}
@@ -76,7 +76,7 @@ export default async function Page({ params }: { params: Promise<{ slug: string 
             <div className="home-wrap">
               <h2>{t("À lire aussi")}</h2>
               <div className="news-grid">
-                {others.map((o) => <NewsCard key={o.id} a={o} dateLabel={fmtDate(locale, o.publishedAt!, { day: "numeric", month: "long", year: "numeric" })} minutesLabel={t("{n} min de lecture")} />)}
+                {others.map((o) => <NewsCard key={o.id} a={{ ...o, category: t(o.category) }} dateLabel={fmtDate(locale, o.publishedAt!, { day: "numeric", month: "long", year: "numeric" })} minutesLabel={t("{n} min de lecture")} />)}
               </div>
             </div>
           </section>

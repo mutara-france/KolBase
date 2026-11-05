@@ -2,6 +2,8 @@
 
 import { useState, type PointerEvent as RPointerEvent } from "react";
 import { TableWrap } from "@/components/TableWrap";
+import { useLocale, useT } from "@/components/I18nProvider";
+import { intlLocale } from "@/lib/i18n/core";
 
 /**
  * Graphiques légers en HTML (aucune dépendance) : colonnes empilées, barres classées, jauge.
@@ -11,12 +13,13 @@ import { TableWrap } from "@/components/TableWrap";
 
 export type ValueFormat = "eur" | "int" | "days";
 
-function fmtValue(v: number, f: ValueFormat, compact = false) {
-  if (f === "int") return v.toLocaleString("fr-FR");
-  if (f === "days") return `${v.toLocaleString("fr-FR", { maximumFractionDigits: 1 })} j`;
+/** Valeur formatée dans la langue de la page (loc : locale Intl, « fr-FR » ou « en-GB »). */
+function fmtValue(loc: string, v: number, f: ValueFormat, compact = false) {
+  if (f === "int") return v.toLocaleString(loc);
+  if (f === "days") return `${v.toLocaleString(loc, { maximumFractionDigits: 1 })} ${loc === "fr-FR" ? "j" : "d"}`;
   const eur = v / 100;
-  if (compact && Math.abs(eur) >= 1000) return `${(eur / 1000).toLocaleString("fr-FR", { maximumFractionDigits: eur >= 10000 ? 0 : 1 })} k€`;
-  return eur.toLocaleString("fr-FR", { style: "currency", currency: "EUR", maximumFractionDigits: 0 });
+  if (compact && Math.abs(eur) >= 1000) return `${(eur / 1000).toLocaleString(loc, { maximumFractionDigits: eur >= 10000 ? 0 : 1 })} k€`;
+  return eur.toLocaleString(loc, { style: "currency", currency: "EUR", maximumFractionDigits: 0 });
 }
 
 /** Graduations « rondes » : 0 et 3 ou 4 paliers jusqu'au maximum. */
@@ -67,13 +70,14 @@ export type StackSeries = { key: string; label: string };
 
 /** Colonnes empilées (≤ 3 séries) : total au sommet, légende, info-bulle par colonne, vue tableau. */
 export function StackedColumns({ series, rows, format, caption }: { series: StackSeries[]; rows: { label: string; values: Record<string, number> }[]; format: ValueFormat; caption: string }) {
+  const loc = intlLocale(useLocale());
   const { tip, place, hide } = useTip();
   const totals = rows.map((r) => series.reduce((s, x) => s + (r.values[x.key] ?? 0), 0));
   const ticks = niceTicks(Math.max(...totals, 0));
   const top = ticks[ticks.length - 1] || 1;
   const content = (i: number) => ({
-    title: `${rows[i].label} · ${fmtValue(totals[i], format)}`,
-    rows: series.map((s, k) => ({ label: s.label, value: fmtValue(rows[i].values[s.key] ?? 0, format), slot: k + 1 })),
+    title: `${rows[i].label} · ${fmtValue(loc, totals[i], format)}`,
+    rows: series.map((s, k) => ({ label: s.label, value: fmtValue(loc, rows[i].values[s.key] ?? 0, format), slot: k + 1 })),
   });
   return (
     <figure className="viz" aria-label={caption}>
@@ -82,7 +86,7 @@ export function StackedColumns({ series, rows, format, caption }: { series: Stac
       </div>
       <div className="viz-cols" onPointerLeave={hide}>
         <div className="viz-grid" aria-hidden>
-          {ticks.map((t) => <div key={t} style={{ bottom: `${(t / top) * 100}%` }}><span>{fmtValue(t, format, true)}</span></div>)}
+          {ticks.map((tk) => <div key={tk} style={{ bottom: `${(tk / top) * 100}%` }}><span>{fmtValue(loc, tk, format, true)}</span></div>)}
         </div>
         <div className="viz-bands">
           {rows.map((r, i) => (
@@ -96,7 +100,7 @@ export function StackedColumns({ series, rows, format, caption }: { series: Stac
               onBlur={hide}
             >
               <div className="viz-col" style={{ height: `${(totals[i] / top) * 100}%` }}>
-                {totals[i] > 0 && <span className="viz-cap">{fmtValue(totals[i], format, true)}</span>}
+                {totals[i] > 0 && <span className="viz-cap">{fmtValue(loc, totals[i], format, true)}</span>}
                 {series.map((s, k) => {
                   const v = r.values[s.key] ?? 0;
                   return v > 0 ? <div key={s.key} className={`viz-seg s${k + 1}`} style={{ flexGrow: v }} /> : null;
@@ -108,34 +112,36 @@ export function StackedColumns({ series, rows, format, caption }: { series: Stac
         </div>
         <Tooltip tip={tip} />
       </div>
-      <DataTable caption={caption} head={["", ...series.map((s) => s.label), "Total"]} rows={rows.map((r, i) => [r.label, ...series.map((s) => fmtValue(r.values[s.key] ?? 0, format)), fmtValue(totals[i], format)])} />
+      <DataTable caption={caption} head={["", ...series.map((s) => s.label), "Total"]} rows={rows.map((r, i) => [r.label, ...series.map((s) => fmtValue(loc, r.values[s.key] ?? 0, format)), fmtValue(loc, totals[i], format)])} />
     </figure>
   );
 }
 
 /** Barres horizontales classées, une seule teinte, valeur au bout de la barre. */
 export function RankedBars({ rows, format, caption, empty = "Aucune donnée sur la période." }: { rows: { label: string; value: number; note?: string }[]; format: ValueFormat; caption: string; empty?: string }) {
+  const loc = intlLocale(useLocale());
   const { tip, place, hide } = useTip();
-  if (rows.length === 0) return <p className="muted">{empty}</p>;
+  const t = useT();
+  if (rows.length === 0) return <p className="muted">{t(empty)}</p>;
   const max = Math.max(...rows.map((r) => r.value), 1);
   return (
     <figure className="viz" aria-label={caption}>
       <ul className="viz-bars" onPointerLeave={hide}>
         {rows.map((r) => {
-          const c = { title: r.label, rows: [{ label: r.note ?? "", value: fmtValue(r.value, format) }] };
+          const c = { title: r.label, rows: [{ label: r.note ?? "", value: fmtValue(loc, r.value, format) }] };
           return (
-            <li key={r.label} tabIndex={0} aria-label={`${r.label} : ${fmtValue(r.value, format)}${r.note ? `, ${r.note}` : ""}`} onPointerMove={(e) => place(e, c)} onFocus={(e) => place(e, c)} onBlur={hide}>
+            <li key={r.label} tabIndex={0} aria-label={`${r.label} : ${fmtValue(loc, r.value, format)}${r.note ? `, ${r.note}` : ""}`} onPointerMove={(e) => place(e, c)} onFocus={(e) => place(e, c)} onBlur={hide}>
               <span className="viz-bar-label">{r.label}</span>
               <span className="viz-bar-track">
                 <span className="viz-bar" style={{ width: `max(4px, calc((100% - 88px) * ${r.value / max}))` }} />
-                <span className="viz-bar-value">{fmtValue(r.value, format)}</span>
+                <span className="viz-bar-value">{fmtValue(loc, r.value, format)}</span>
               </span>
             </li>
           );
         })}
       </ul>
       <Tooltip tip={tip} />
-      <DataTable caption={caption} head={["", "Valeur", ...(rows.some((r) => r.note) ? ["Détail"] : [])]} rows={rows.map((r) => [r.label, fmtValue(r.value, format), ...(rows.some((x) => x.note) ? [r.note ?? ""] : [])])} />
+      <DataTable caption={caption} head={["", t("Valeur"), ...(rows.some((r) => r.note) ? [t("Détail")] : [])]} rows={rows.map((r) => [r.label, fmtValue(loc, r.value, format), ...(rows.some((x) => x.note) ? [r.note ?? ""] : [])])} />
     </figure>
   );
 }
@@ -151,9 +157,10 @@ export function Meter({ value, label }: { value: number; label: string }) {
 }
 
 function DataTable({ caption, head, rows }: { caption: string; head: string[]; rows: string[][] }) {
+  const t = useT();
   return (
     <details className="viz-table">
-      <summary>Voir les données</summary>
+      <summary>{t("Voir les données")}</summary>
       <TableWrap label={caption}>
         <table className="table">
           <caption className="sr-only">{caption}</caption>

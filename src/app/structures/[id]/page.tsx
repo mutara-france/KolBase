@@ -85,7 +85,7 @@ export default async function Page({ params }: { params: Promise<{ id: string }>
             <div className="grow">
               <span className="sector-tag">{t(ORG_KIND_LABEL[o.kind])}</span>
               <h1 className="profile-name">{o.name}</h1>
-              <p className="text-sm">{[o.sector, o.headquarters].filter(Boolean).join(" · ")}</p>
+              <p className="text-sm">{[o.sector ? t(o.sector) : null, o.headquarters].filter(Boolean).join(" · ")}</p>
             </div>
             {isMember ? <Link className="btn ghost" href={`/organisations/${o.id}`}>{t("Gérer l'organisation")}</Link> : <FollowButton type="organization" id={o.id} userId={user?.id ?? null} label={t("cette organisation")} />}
           </section>

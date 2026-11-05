@@ -10,6 +10,7 @@ import { BENEFIT_CATALOG, COMPLIANCE_ROLES, EVENT_MANAGER_ROLES, EVENT_ORGANIZER
 import { EventFormat } from "@/generated/prisma/enums";
 import { eurToCents, intOrNull, str } from "@/lib/form";
 import { getT } from "@/lib/i18n/server";
+import type { T } from "@/lib/i18n";
 import { engagementGate } from "@/lib/billing";
 import type { GateLink } from "@/lib/billing-plans";
 import { notifyEventCancelled, notifyEventChanged, notifyEventConfided, notifyEventWithdrawn, notifyMandateEnded, notifyRegistration, notifyRegistrationCancelled } from "@/lib/notifications";
@@ -20,23 +21,23 @@ import { deletableDraft, DRAFT_COUNTS } from "@/lib/event-drafts";
 export type ActionState = { error?: string; ok?: string; fix?: GateLink } | undefined;
 
 /** Champs communs à la création et à la modification d'un événement (valeurs lues et contrôlées). */
-function readEventFields(form: FormData) {
+function readEventFields(form: FormData, t: T) {
   const title = str(form, "title");
   const typeId = str(form, "typeId");
   const startsAt = parseParisDateTime(str(form, "startsAt"));
   const format = str(form, "format") as EventFormat;
-  if (!title) return { error: "Le titre est obligatoire." } as const;
-  if (!EVENT_TYPES.some((t) => t.id === typeId)) return { error: "Type d'événement invalide." } as const;
-  if (!startsAt) return { error: "Date et heure invalides." } as const;
-  if (!Object.values(EventFormat).includes(format)) return { error: "Format invalide." } as const;
+  if (!title) return { error: t("Le titre est obligatoire.") } as const;
+  if (!EVENT_TYPES.some((t) => t.id === typeId)) return { error: t("Type d'événement invalide.") } as const;
+  if (!startsAt) return { error: t("Date et heure invalides.") } as const;
+  if (!Object.values(EventFormat).includes(format)) return { error: t("Format invalide.") } as const;
   // Lien de connexion : pour un événement en ligne ou hybride seulement.
   const onlineUrl = format === "PRESENTIEL" ? null : parseOnlineUrl(str(form, "onlineUrl", 500));
-  if (onlineUrl === undefined) return { error: ONLINE_URL_INVALID } as const;
+  if (onlineUrl === undefined) return { error: t(ONLINE_URL_INVALID) } as const;
   const benefits: { catalogId: string; label: string; valueCents: number }[] = [];
   for (const b of BENEFIT_CATALOG) {
     if (!form.get(`benefit_${b.id}`)) continue;
     const cents = eurToCents(str(form, `value_${b.id}`) || String(b.typical));
-    if (cents === null) return { error: `Montant invalide pour « ${b.label} ».` } as const;
+    if (cents === null) return { error: t("Montant invalide pour « {label} ».", { label: t(b.label) }) } as const;
     benefits.push({ catalogId: b.id, label: b.label, valueCents: cents });
   }
   return {
@@ -54,13 +55,14 @@ function readEventFields(form: FormData) {
 }
 
 export async function createEvent(_: ActionState, form: FormData): Promise<ActionState> {
+  const { t } = await getT();
   const orgId = str(form, "orgId");
   const { user, org } = await requireMembership(orgId, EVENT_ORGANIZER_ROLES);
 
-  const read = readEventFields(form);
+  const read = readEventFields(form, t);
   if ("error" in read) return { error: read.error };
   const { fields, benefits } = read;
-  if (fields.startsAt < new Date()) return { error: "La date doit être dans le futur." };
+  if (fields.startsAt < new Date()) return { error: t("La date doit être dans le futur.") };
 
   // Rattachement à un dossier de l'organisation (événement créé depuis la fiche du dossier).
   const projectId = str(form, "projectId");
@@ -69,9 +71,9 @@ export async function createEvent(_: ActionState, form: FormData): Promise<Actio
   // Réunion interne (board, comité) : jamais publiée, sans inscriptions en ligne.
   const internal = form.get("internal") === "1";
   const publish = !internal && form.get("publish") === "1";
-  if (publish && !isVerifiedOrg(org)) return { error: `Publication impossible pour l'instant : ${notVerified(org)} Enregistrez l'événement en brouillon.` };
+  if (publish && !isVerifiedOrg(org)) return { error: t("Publication impossible pour l'instant : {v} Enregistrez l'événement en brouillon.", { v: t(notVerified(org)) }) };
   const gate = publish ? await engagementGate(orgId, "evenement") : null;
-  if (gate) return { ...gate, error: `${gate.error} Vous pouvez l'enregistrer en brouillon.` };
+  if (gate) return { ...gate, error: t("{error} Vous pouvez l'enregistrer en brouillon.", { error: gate.error }) };
   const event = await db.event.create({
     data: {
       organizationId: orgId,
@@ -94,6 +96,7 @@ export async function createEvent(_: ActionState, form: FormData): Promise<Actio
  * tant qu'aucun inscrit n'en a accepté ; ensuite elles sont figées (valeurs déclarées).
  */
 export async function updateEvent(_: ActionState, form: FormData): Promise<ActionState> {
+  const { t } = await getT();
   const orgId = str(form, "orgId");
   const eventId = str(form, "eventId");
   const { user, roles } = await requireMembership(orgId, EVENT_MANAGER_ROLES);
@@ -101,15 +104,15 @@ export async function updateEvent(_: ActionState, form: FormData): Promise<Actio
     where: { id: eventId, organizationId: orgId, ...eventScope(user, roles) },
     include: { benefits: { include: { _count: { select: { accepted: true } } } }, _count: { select: { registrations: true } } },
   });
-  if (!event) return { error: "Événement introuvable." };
-  if (event.cancelledAt) return { error: "Cet événement est annulé : il ne se modifie plus." };
-  const read = readEventFields(form);
+  if (!event) return { error: t("Événement introuvable.") };
+  if (event.cancelledAt) return { error: t("Cet événement est annulé : il ne se modifie plus.") };
+  const read = readEventFields(form, t);
   if ("error" in read) return { error: read.error };
   const { fields, benefits } = read;
   // Un événement passé peut être corrigé (lieu, description…) ; une nouvelle date doit être à venir.
-  if (fields.startsAt.getTime() !== event.startsAt.getTime() && fields.startsAt < new Date()) return { error: "La nouvelle date doit être dans le futur." };
+  if (fields.startsAt.getTime() !== event.startsAt.getTime() && fields.startsAt < new Date()) return { error: t("La nouvelle date doit être dans le futur.") };
   if (fields.capacity && fields.capacity < event._count.registrations)
-    return { error: `Capacité trop faible : ${event._count.registrations} personnes sont déjà inscrites.` };
+    return { error: t("Capacité trop faible : {registrations} personnes sont déjà inscrites.", { registrations: event._count.registrations }) };
 
   const frozen = event.benefits.some((b) => b._count.accepted > 0);
   const changes = eventChanges(event, fields);
@@ -134,7 +137,7 @@ export async function updateEvent(_: ActionState, form: FormData): Promise<Actio
   revalidatePath("/evenements");
   const n = event._count.registrations;
   const told = changes.length > 0 && n > 0 ? (n > 1 ? ` Les ${n} inscrits sont prévenus par e-mail.` : " L'inscrit est prévenu par e-mail.") : "";
-  return { ok: `Événement mis à jour.${told}` };
+  return { ok: t("Événement mis à jour.{told}", { told }) };
 }
 
 /** Supprimer un brouillon jamais publié, sans inscrit ni demande rattachée (devis, appel, service). */
@@ -367,15 +370,16 @@ export async function setMandateAward(form: FormData) {
 
 /** Programme scientifique (déroulé horaire) : rédigé par l'organisateur ou son agence, affiché sur la page publique. */
 export async function saveEventProgram(_: ActionState, form: FormData): Promise<ActionState> {
+  const { t } = await getT();
   const orgId = str(form, "orgId");
   const eventId = str(form, "eventId");
   const { user, roles } = await requireMembership(orgId, EVENT_MANAGER_ROLES);
   const program = str(form, "program");
-  if (program.length > 8000) return { error: "Programme trop long (8 000 caractères au maximum)." };
+  if (program.length > 8000) return { error: t("Programme trop long (8 000 caractères au maximum).") };
   const { count } = await db.event.updateMany({ where: { id: eventId, organizationId: orgId, ...eventScope(user, roles) }, data: { program: program || null } });
-  if (!count) return { error: "Événement introuvable." };
+  if (!count) return { error: t("Événement introuvable.") };
   await audit(user.id, "event.program", "Event", eventId);
   revalidatePath(`/organisations/${orgId}/evenements/${eventId}`);
   revalidatePath(`/evenements/${eventId}`);
-  return { ok: program ? "Programme enregistré." : "Programme retiré." };
+  return { ok: program ? t("Programme enregistré.") : t("Programme retiré.") };
 }

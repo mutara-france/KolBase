@@ -13,6 +13,7 @@ import { suggestExperts, type Suggestion } from "@/lib/expert-suggest";
 import { supplierCategoryLabel } from "@/lib/suppliers";
 import { drPrefix } from "@/lib/professions";
 import { str } from "@/lib/form";
+import { getT } from "@/lib/i18n/server";
 
 export type AiResult = { text?: string; error?: string };
 
@@ -55,10 +56,11 @@ async function eventContext(eventId: string, orgId: string, scope: object) {
  * seuls quelques champs du formulaire en cours sont repris. L'appel est tracé, sans son contenu.
  */
 export async function aiDraft(form: FormData): Promise<AiResult> {
+  const { t } = await getT();
   const user = await requireUser();
-  if (!aiEnabled()) return { error: "L'assistant de rédaction n'est pas activé sur cette plateforme." };
+  if (!aiEnabled()) return { error: t("L'assistant de rédaction n'est pas activé sur cette plateforme.") };
   const key = `ai:${user.id}`;
-  if (await blockedFor(key, PER_HOUR, 60 * 60 * 1000)) return { error: "Vous avez beaucoup sollicité l'assistant : réessayez dans une heure." };
+  if (await blockedFor(key, PER_HOUR, 60 * 60 * 1000)) return { error: t("Vous avez beaucoup sollicité l'assistant : réessayez dans une heure.") };
   const kind = str(form, "aiKind");
   const orgId = str(form, "orgId");
   let prompt: string | null = null;
@@ -66,7 +68,7 @@ export async function aiDraft(form: FormData): Promise<AiResult> {
   if (kind === "programme") {
     const { user: u, roles } = await requireMembership(orgId, EVENT_MANAGER_ROLES);
     const ctx = await eventContext(str(form, "eventId"), orgId, eventScope(u, roles));
-    if (!ctx) return { error: "Événement introuvable." };
+    if (!ctx) return { error: t("Événement introuvable.") };
     const current = str(form, "program");
     prompt = `${ctx.text}\n\n${current ? `Programme actuel, à améliorer :\n${cut(current)}\n\n` : ""}Rédige le programme scientifique de cet événement sous forme de déroulé horaire : une ligne par séquence, au format « 18:30 – 18:45  Titre de la séquence — intervenant ». Commence à l'heure de début, respecte la durée, place l'accueil, les sessions scientifiques, les temps d'échange avec la salle et les pauses ou le cocktail prévus. Répartis les intervenants confirmés sur des sujets cohérents avec le domaine ; s'il en manque, écris [intervenant à confirmer]. Termine par une courte phrase sur les objectifs pédagogiques.`;
   } else if (kind === "besoin") {
@@ -88,15 +90,15 @@ export async function aiDraft(form: FormData): Promise<AiResult> {
     prompt = `Appel à candidatures publié par une organisation du secteur dentaire : « ${cut(str(form, "title"), 200) || "[titre à compléter]"} ».\nType de collaboration : ${type?.label ?? "[à compléter]"}.${str(form, "specialty") ? ` Spécialité recherchée : ${cut(str(form, "specialty"), 100)}.` : ""}${budget ? ` Budget : ${budget} € HT.` : ""}${str(form, "slots") ? ` Places : ${str(form, "slots")}.` : ""}\n${ctx ? `Appel rattaché à cet événement, où la personne retenue interviendra :\n${ctx.text}\n` : ""}${str(form, "description") ? `Notes : ${cut(str(form, "description"), 800)}\n` : ""}\nRédige la description de l'appel (6 à 10 lignes) : contexte, mission proposée${ctx ? " (thème, format et durée de l'intervention)" : ""}, profil recherché, engagement attendu (dates [à compléter] si inconnues), modalités de sélection. Précise qu'une convention écrite encadre la collaboration.`;
   } else if (kind === "offre") {
     const { org } = await requireMembership(orgId);
-    if (org.kind !== "PRESTATAIRE") return { error: "Action réservée aux prestataires." };
+    if (org.kind !== "PRESTATAIRE") return { error: t("Action réservée aux prestataires.") };
     const invite = await db.rfqSupplier.findUnique({ where: { rfqId_supplierId: { rfqId: str(form, "rfqId"), supplierId: orgId } }, include: { rfq: { include: { event: true } } } });
-    if (!invite) return { error: "Demande introuvable." };
+    if (!invite) return { error: t("Demande introuvable.") };
     const r = invite.rfq;
     const labels = form.getAll("line_label").map(String), qtys = form.getAll("line_qty").map(String), units = form.getAll("line_unit").map(String);
     const lines = labels.map((l, i) => (l ? `- ${cut(l, 120)} : ${qtys[i] || 1} × ${units[i] || "?"} € HT` : "")).filter(Boolean).slice(0, 20);
     prompt = `Demande de devis (${supplierCategoryLabel(r.category)})${r.event ? ` pour l'événement « ${r.event.title} » du ${when(r.event.startsAt)}${r.event.city ? ` à ${r.event.city}` : ""}` : ""}.${r.headcount ? ` Participants : ${r.headcount}.` : ""}\nBesoin exprimé : ${cut(r.needs, 1000)}\n${lines.length ? `Lignes du devis :\n${lines.join("\n")}\n` : ""}${str(form, "note") ? `Notes du prestataire : ${cut(str(form, "note"), 600)}\n` : ""}\nRédige la présentation de l'offre (5 à 8 lignes) : ce qui est inclus, comment l'offre répond au besoin, options éventuelles, organisation le jour J. Ne mentionne pas de prix qui ne figurent pas dans les lignes.`;
   } else {
-    return { error: "Demande inconnue." };
+    return { error: t("Demande inconnue.") };
   }
 
   await hit(key);
@@ -106,7 +108,7 @@ export async function aiDraft(form: FormData): Promise<AiResult> {
     return { text };
   } catch (e) {
     console.error("[assistant]", e);
-    return { error: "L'assistant n'a pas pu répondre. Réessayez dans un instant." };
+    return { error: t("L'assistant n'a pas pu répondre. Réessayez dans un instant.") };
   }
 }
 
@@ -119,10 +121,11 @@ export type SuggestResult = { suggestions?: Suggestion[]; summary?: string; erro
  * résume en quelques lignes quels profils solliciter et pourquoi, à partir des seules données transmises.
  */
 export async function suggestExpertsAction(form: FormData): Promise<SuggestResult> {
+  const { t } = await getT();
   const orgId = str(form, "orgId");
   const { user } = await requireMembership(orgId, SOURCING_ROLES);
   const need = { title: cut(str(form, "title"), 200), typeId: str(form, "typeId"), area: cut(str(form, "therapeuticArea"), 100), description: cut(str(form, "description"), 1500) };
-  if (!need.title && !need.area && !need.description) return { error: "Renseignez au moins le titre ou le domaine thérapeutique." };
+  if (!need.title && !need.area && !need.description) return { error: t("Renseignez au moins le titre ou le domaine thérapeutique.") };
   const suggestions = await suggestExperts(orgId, need);
   if (suggestions.length === 0) return { suggestions, summary: undefined };
   let summary: string | undefined;
@@ -143,11 +146,12 @@ export async function suggestExpertsAction(form: FormData): Promise<SuggestResul
 
 /** Relecture assistée d'un dossier pour l'équipe conformité : points à vérifier, avis proposé, message au chef de projet. */
 export async function aiReviewProject(form: FormData): Promise<AiResult> {
+  const { t } = await getT();
   const orgId = str(form, "orgId");
   const { user, org } = await requireMembership(orgId, COMPLIANCE_ROLES);
-  if (!aiEnabled()) return { error: "L'assistant n'est pas activé sur cette plateforme." };
+  if (!aiEnabled()) return { error: t("L'assistant n'est pas activé sur cette plateforme.") };
   const key = `ai:${user.id}`;
-  if (await blockedFor(key, PER_HOUR, 60 * 60 * 1000)) return { error: "Vous avez beaucoup sollicité l'assistant : réessayez dans une heure." };
+  if (await blockedFor(key, PER_HOUR, 60 * 60 * 1000)) return { error: t("Vous avez beaucoup sollicité l'assistant : réessayez dans une heure.") };
   const p = await db.project.findFirst({
     where: { id: str(form, "projectId"), organizationId: orgId },
     include: {
@@ -157,7 +161,7 @@ export async function aiReviewProject(form: FormData): Promise<AiResult> {
       expenses: { select: { label: true, amountCents: true } },
     },
   });
-  if (!p) return { error: "Dossier introuvable." };
+  if (!p) return { error: t("Dossier introuvable.") };
   const settings = complianceSettings(org.complianceSettings);
   const type = collabType(p.typeId);
   const regime = projectRegime(settings, type?.unit ?? "", p.experts.map((e) => ({ ...e, country: e.practitioner.country })));
@@ -192,6 +196,6 @@ export async function aiReviewProject(form: FormData): Promise<AiResult> {
     return { text };
   } catch (e) {
     console.error("[assistant]", e);
-    return { error: "L'assistant n'a pas pu répondre. Réessayez dans un instant." };
+    return { error: t("L'assistant n'a pas pu répondre. Réessayez dans un instant.") };
   }
 }

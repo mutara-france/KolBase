@@ -4,15 +4,20 @@ import { SiteHeader } from "@/components/SiteHeader";
 import { Meter, RankedBars, StackedColumns } from "@/components/Charts";
 import { requireMembership } from "@/lib/orgs";
 import { orgStats, STATS_ROLES } from "@/lib/org-stats";
-import { formatDate, formatEUR } from "@/lib/events";
 import { TableWrap } from "@/components/TableWrap";
+import { getT } from "@/lib/i18n/server";
+import { fmtDate, fmtEur, type T } from "@/lib/i18n";
 
-export const metadata = { title: "Statistiques — KolBase" };
+export async function generateMetadata() {
+  const { t } = await getT();
+  return { title: `${t("Statistiques")} — KolBase` };
+}
 
-const days = (d: number | null) => (d == null ? "—" : `${d < 1 ? "< 1" : Math.round(d).toLocaleString("fr-FR")} j`);
+const days = (t: T, d: number | null) => (d == null ? "—" : t("{n} j", { n: d < 1 ? "< 1" : Math.round(d) }));
 const pct = (x: number) => `${Math.round(x * 100)} %`;
 
 export default async function Page({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: Promise<{ annee?: string }> }) {
+  const { t, locale } = await getT();
   const { id } = await params;
   const sp = await searchParams;
   await requireMembership(id, STATS_ROLES);
@@ -31,91 +36,91 @@ export default async function Page({ params, searchParams }: { params: Promise<{
       <main className="stack">
         <div className="actions spread">
           <div>
-            <h1>Statistiques</h1>
-            <p className="muted">Budget engagé, experts, événements, délais et conformité de l&apos;organisation, année par année.</p>
+            <h1>{t("Statistiques")}</h1>
+            <p className="muted">{t("Budget engagé, experts, événements, délais et conformité de l'organisation, année par année.")}</p>
           </div>
-          <a className="btn ghost small" href={`${base}/statistiques/export?annee=${year}`}><Download size={14} /> Exporter {year} (CSV)</a>
+          <a className="btn ghost small" href={`${base}/statistiques/export?annee=${year}`}><Download size={14} />{" "}{t("Exporter {year} (CSV)", { year })}</a>
         </div>
-        <nav className="chips" aria-label="Année">
+        <nav className="chips" aria-label={t("Année")}>
           {s.years.map((y) => <Link key={y} href={`?annee=${y}`} className={`chip${y === year ? " active" : ""}`} aria-current={y === year ? "page" : undefined}>{y}</Link>)}
         </nav>
 
         <dl className="hero-facts">
           <div>
-            <dt><Euro size={13} /> Budget engagé (HT)</dt>
-            <dd>{formatEUR(s.totals.ht)}<small>{delta != null ? `${delta >= 0 ? "+" : "−"}${pct(Math.abs(delta))} par rapport à ${year - 1}` : `en ${year}`} · hors hospitalités ({formatEUR(s.totals.hospitality)} TTC)</small></dd>
+            <dt><Euro size={13} />{" "}{t("Budget engagé (HT)")}</dt>
+            <dd>{fmtEur(locale, s.totals.ht)}<small>{delta != null ? t("{v}{pct} par rapport à {v2}", { v: delta >= 0 ? "+" : "−", pct: pct(Math.abs(delta)), v2: year - 1 }) : t("en {year}", { year })}{" "}{t("· hors hospitalités ({montant} TTC)", { montant: fmtEur(locale, s.totals.hospitality) })}</small></dd>
           </div>
-          <div><dt><Users size={13} /> Experts rémunérés</dt><dd>{s.expertCount}<small>{s.engagedProjects} dossier{s.engagedProjects > 1 ? "s" : ""} engagé{s.engagedProjects > 1 ? "s" : ""}</small></dd></div>
-          <div><dt><CalendarDays size={13} /> Événements</dt><dd>{s.events.length}<small>{s.participants} participant{s.participants > 1 ? "s" : ""} inscrit{s.participants > 1 ? "s" : ""}</small></dd></div>
-          <div><dt><Star size={13} /> Satisfaction</dt><dd>{s.satisfaction.average != null ? `${s.satisfaction.average.toFixed(1).replace(".", ",")} / 5` : "—"}<small>{s.satisfaction.responses} avis de participants</small></dd></div>
-          <div><dt><ShieldCheck size={13} /> Transparence Santé</dt><dd>{declaredTotal ? `${s.compliance.declared} / ${declaredTotal}` : "—"}<small>dossiers déclarés</small></dd></div>
+          <div><dt><Users size={13} />{" "}{t("Experts rémunérés")}</dt><dd>{s.expertCount}<small>{t(s.engagedProjects > 1 ? "{engagedProjects} dossiers engagés" : "{engagedProjects} dossier engagé", { engagedProjects: s.engagedProjects })}</small></dd></div>
+          <div><dt><CalendarDays size={13} />{" "}{t("Événements")}</dt><dd>{s.events.length}<small>{t(s.participants > 1 ? "{participants} participants inscrits" : "{participants} participant inscrit", { participants: s.participants })}</small></dd></div>
+          <div><dt><Star size={13} />{" "}{t("Satisfaction")}</dt><dd>{s.satisfaction.average != null ? `${s.satisfaction.average.toFixed(1).replace(".", ",")} / 5` : "—"}<small>{t("{responses} avis de participants", { responses: s.satisfaction.responses })}</small></dd></div>
+          <div><dt><ShieldCheck size={13} />{" "}{t("Transparence Santé")}</dt><dd>{declaredTotal ? `${s.compliance.declared} / ${declaredTotal}` : "—"}<small>{t("dossiers déclarés")}</small></dd></div>
         </dl>
 
         <section className="card stack-sm">
           <div>
-            <h2>Budget engagé par trimestre</h2>
-            <p className="muted">Honoraires des experts engagés à la date de leur accord ; logistique (devis retenus et dépenses) et hospitalités à la date de l&apos;événement.</p>
+            <h2>{t("Budget engagé par trimestre")}</h2>
+            <p className="muted">{t("Honoraires des experts engagés à la date de leur accord ; logistique (devis retenus et dépenses) et hospitalités à la date de l'événement.")}</p>
           </div>
           <StackedColumns
-            caption={`Budget engagé par trimestre en ${year}`}
+            caption={t("Budget engagé par trimestre en {year}", { year })}
             format="eur"
-            series={[{ key: "fees", label: `Honoraires des experts (HT) · ${formatEUR(s.totals.fees)}` }, { key: "logistics", label: `Logistique (HT) · ${formatEUR(s.totals.logistics)}` }, { key: "hospitality", label: `Hospitalités (TTC) · ${formatEUR(s.totals.hospitality)}` }]}
-            rows={s.quarters.map((q) => ({ label: q.label, values: { fees: q.fees, logistics: q.logistics, hospitality: q.hospitality } }))}
+            series={[{ key: "fees", label: t("Honoraires des experts (HT) · {montant}", { montant: fmtEur(locale, s.totals.fees) }) }, { key: "logistics", label: t("Logistique (HT) · {montant}", { montant: fmtEur(locale, s.totals.logistics) }) }, { key: "hospitality", label: t("Hospitalités (TTC) · {montant}", { montant: fmtEur(locale, s.totals.hospitality) }) }]}
+            rows={s.quarters.map((q) => ({ label: t(q.label), values: { fees: q.fees, logistics: q.logistics, hospitality: q.hospitality } }))}
           />
         </section>
 
         <div className="stats-grid">
           <section className="card stack-sm">
-            <h2>Honoraires par type de collaboration</h2>
-            <RankedBars caption="Honoraires par type de collaboration" format="eur" rows={s.byType.map((t) => ({ label: t.label, value: t.cents, note: `${t.projects} dossier${t.projects > 1 ? "s" : ""}` }))} />
+            <h2>{t("Honoraires par type de collaboration")}</h2>
+            <RankedBars caption={t("Honoraires par type de collaboration")} format="eur" rows={s.byType.map((tk) => ({ label: t(tk.label), value: tk.cents, note: t(tk.projects > 1 ? "{projects} dossiers" : "{projects} dossier", { projects: tk.projects }) }))} />
           </section>
           <section className="card stack-sm">
-            <h2>Concentration des honoraires</h2>
-            {s.top5Share == null ? <p className="muted">Aucun honoraire engagé sur la période.</p> : (
+            <h2>{t("Concentration des honoraires")}</h2>
+            {s.top5Share == null ? <p className="muted">{t("Aucun honoraire engagé sur la période.")}</p> : (
               <>
-                <p className="text-sm"><strong>{pct(s.top5Share)}</strong> des honoraires vont aux {Math.min(5, s.expertCount)} premiers experts, sur {s.expertCount} rémunéré{s.expertCount > 1 ? "s" : ""}.</p>
-                <Meter value={s.top5Share} label="Part des cinq premiers experts dans les honoraires" />
+                <p className="text-sm"><strong>{pct(s.top5Share)}</strong>{" "}{t(s.expertCount > 1 ? "des honoraires vont aux {min} premiers experts, sur {expertCount} rémunérés." : "des honoraires vont aux {min} premiers experts, sur {expertCount} rémunéré.", { min: Math.min(5, s.expertCount), expertCount: s.expertCount })}</p>
+                <Meter value={s.top5Share} label={t("Part des cinq premiers experts dans les honoraires")} />
                 <ol className="top-list">
-                  {s.top.map((e) => <li key={e.name}><span>{e.name}</span><span>{formatEUR(e.cents)} · {pct(e.share)}</span></li>)}
+                  {s.top.map((e) => <li key={e.name}><span>{e.name}</span><span>{fmtEur(locale, e.cents)} · {pct(e.share)}</span></li>)}
                 </ol>
-                <p className="hint">Varier les experts sollicités limite les liens d&apos;intérêts durables et facilite la justification du besoin.</p>
+                <p className="hint">{t("Varier les experts sollicités limite les liens d'intérêts durables et facilite la justification du besoin.")}</p>
               </>
             )}
           </section>
           <section className="card stack-sm">
-            <h2>Experts par spécialité</h2>
-            <RankedBars caption="Experts rémunérés par spécialité" format="int" rows={s.specialties.map((x) => ({ label: x.label, value: x.count, note: `${x.count} expert${x.count > 1 ? "s" : ""}` }))} />
+            <h2>{t("Experts par spécialité")}</h2>
+            <RankedBars caption={t("Experts rémunérés par spécialité")} format="int" rows={s.specialties.map((x) => ({ label: t(x.label), value: x.count, note: t(x.count > 1 ? "{count} experts" : "{count} expert", { count: x.count }) }))} />
           </section>
           <section className="card stack-sm">
-            <h2>Délais</h2>
-            <p className="muted">Médianes sur l&apos;année, d&apos;après l&apos;historique des dossiers.</p>
+            <h2>{t("Délais")}</h2>
+            <p className="muted">{t("Médianes sur l'année, d'après l'historique des dossiers.")}</p>
             <ul className="delay-list">
-              <li><Clock size={15} aria-hidden /><span>Réponse des experts<small>sur {s.delays.expertResponse.n} sollicitation{s.delays.expertResponse.n > 1 ? "s" : ""}</small></span><strong>{days(s.delays.expertResponse.days)}</strong></li>
-              <li><ShieldCheck size={15} aria-hidden /><span>Validation par la conformité<small>sur {s.delays.compliance.n} examen{s.delays.compliance.n > 1 ? "s" : ""}</small></span><strong>{days(s.delays.compliance.days)}</strong></li>
-              <li><Clock size={15} aria-hidden /><span>De la création à la signature<small>sur {s.delays.toSignature.n} dossier{s.delays.toSignature.n > 1 ? "s" : ""}</small></span><strong>{days(s.delays.toSignature.days)}</strong></li>
+              <li><Clock size={15} aria-hidden /><span>{t("Réponse des experts")}<small>{t(s.delays.expertResponse.n > 1 ? "sur {n} sollicitations" : "sur {n} sollicitation", { n: s.delays.expertResponse.n })}</small></span><strong>{days(t, s.delays.expertResponse.days)}</strong></li>
+              <li><ShieldCheck size={15} aria-hidden /><span>{t("Validation par la conformité")}<small>{t(s.delays.compliance.n > 1 ? "sur {n} examens" : "sur {n} examen", { n: s.delays.compliance.n })}</small></span><strong>{days(t, s.delays.compliance.days)}</strong></li>
+              <li><Clock size={15} aria-hidden /><span>{t("De la création à la signature")}<small>{t(s.delays.toSignature.n > 1 ? "sur {n} dossiers" : "sur {n} dossier", { n: s.delays.toSignature.n })}</small></span><strong>{days(t, s.delays.toSignature.days)}</strong></li>
             </ul>
           </section>
         </div>
 
         <section className="card stack-sm">
-          <h2>Événements {year}</h2>
-          {s.events.length === 0 ? <p className="muted">Aucun événement sur l&apos;année.</p> : (
-            <TableWrap label={`Événements ${year}`}>
+          <h2>{t("Événements {year}", { year })}</h2>
+          {s.events.length === 0 ? <p className="muted">{t("Aucun événement sur l'année.")}</p> : (
+            <TableWrap label={t("Événements {year}", { year })}>
               <table className="table stats-table">
-                <caption className="sr-only">Événements {year} : inscrits, présents, hospitalités et prestataires, au total et par présent</caption>
+                <caption className="sr-only">{t("Événements {year} : inscrits, présents, hospitalités et prestataires, au total et par présent", { year })}</caption>
                 <thead>
-                  <tr><th>Événement</th><th>Date</th><th className="num">Inscrits</th><th className="num">Présents</th><th className="num">Hospitalités (TTC)</th><th className="num">Prestataires (HT)</th><th className="num">Avis</th></tr>
+                  <tr><th>{t("Événement")}</th><th>{t("Date")}</th><th className="num">{t("Inscrits")}</th><th className="num">{t("Présents")}</th><th className="num">{t("Hospitalités (TTC)")}</th><th className="num">{t("Prestataires (HT)")}</th><th className="num">{t("Avis")}</th></tr>
                 </thead>
                 <tbody>
                   {s.events.map((e) => (
                     <tr key={e.id}>
-                      <td data-label="Événement"><Link href={`${base}/evenements/${e.id}`}>{e.title}</Link>{e.internal && <span className="muted text-xs"> · réunion interne</span>}</td>
-                      <td data-label="Date">{formatDate(e.date)}{!e.past && <span className="muted text-xs"> · à venir</span>}</td>
+                      <td data-label="Événement"><Link href={`${base}/evenements/${e.id}`}>{e.title}</Link>{e.internal && <span className="muted text-xs">{" "}{t("· réunion interne")}</span>}</td>
+                      <td data-label="Date">{fmtDate(locale, e.date)}{!e.past && <span className="muted text-xs">{" "}{t("· à venir")}</span>}</td>
                       <td data-label="Inscrits" className="num">{e.registrations}{e.capacity ? <span className="muted"> / {e.capacity}</span> : null}</td>
                       <td data-label="Présents" className="num">{e.present || (e.past ? "—" : "")}</td>
                       {/* Coût par présent (ou par inscrit tant que la présence n'est pas connue) sous le total : deux colonnes de moins. */}
-                      <td data-label="Hospitalités (TTC)" className="num">{formatEUR(e.hospitality)}{e.hospitalityPer != null && <div className="muted text-xs">{formatEUR(e.hospitalityPer)} {e.presenceKnown ? "par présent" : "par inscrit"}</div>}</td>
-                      <td data-label="Prestataires (HT)" className="num">{formatEUR(e.suppliers)}{e.suppliersPer != null && <div className="muted text-xs">{formatEUR(e.suppliersPer)} {e.presenceKnown ? "par présent" : "par inscrit"}</div>}</td>
+                      <td data-label="Hospitalités (TTC)" className="num">{fmtEur(locale, e.hospitality)}{e.hospitalityPer != null && <div className="muted text-xs">{fmtEur(locale, e.hospitalityPer)} {e.presenceKnown ? t("par présent") : t("par inscrit")}</div>}</td>
+                      <td data-label="Prestataires (HT)" className="num">{fmtEur(locale, e.suppliers)}{e.suppliersPer != null && <div className="muted text-xs">{fmtEur(locale, e.suppliersPer)} {e.presenceKnown ? t("par présent") : t("par inscrit")}</div>}</td>
                       <td data-label="Avis" className="num">{e.rating != null ? `${e.rating.toFixed(1).replace(".", ",")} ★` : "—"}</td>
                     </tr>
                   ))}
@@ -123,32 +128,32 @@ export default async function Page({ params, searchParams }: { params: Promise<{
               </table>
             </TableWrap>
           )}
-          {s.events.length > 0 && <p className="hint">Hospitalités en valeur déclarée (TTC), prestataires selon les devis retenus (HT), rapportés séparément à l&apos;effectif. Après un événement pointé, les absents sont exclus et l&apos;effectif est celui des présents ; avant, ou sans pointage, celui des inscrits.</p>}
+          {s.events.length > 0 && <p className="hint">{t("Hospitalités en valeur déclarée (TTC), prestataires selon les devis retenus (HT), rapportés séparément à l'effectif. Après un événement pointé, les absents sont exclus et l'effectif est celui des présents ; avant, ou sans pointage, celui des inscrits.")}</p>}
         </section>
 
         <section className="card stack-sm">
-          <h2>Conformité {year}</h2>
+          <h2>{t("Conformité {year}", { year })}</h2>
           <div className="stats-grid">
             <div className="stack-sm">
-              <p className="text-sm"><ShieldCheck size={14} /> <strong>Transparence Santé</strong> : {declaredTotal ? `${s.compliance.declared} dossier${s.compliance.declared > 1 ? "s" : ""} déclaré${s.compliance.declared > 1 ? "s" : ""} sur ${declaredTotal} validé${declaredTotal > 1 ? "s" : ""}` : "aucun dossier validé"}.</p>
-              {declaredTotal > 0 && <Meter value={s.compliance.declared / declaredTotal} label="Part des dossiers validés déclarés sur Transparence Santé" />}
-              {s.compliance.toDeclare > 0 && <Link className="text-sm" href={`${base}/conformite?onglet=transparence`}>Voir les déclarations à faire</Link>}
+              <p className="text-sm"><ShieldCheck size={14} /> <strong>{t("Transparence Santé")}</strong> : {declaredTotal ? t(s.compliance.declared > 1 ? (declaredTotal > 1 ? "{n} dossiers déclarés sur {m} validés" : "{n} dossiers déclarés sur {m} validé") : declaredTotal > 1 ? "{n} dossier déclaré sur {m} validés" : "{n} dossier déclaré sur {m} validé", { n: s.compliance.declared, m: declaredTotal }) : t("aucun dossier validé")}.</p>
+              {declaredTotal > 0 && <Meter value={s.compliance.declared / declaredTotal} label={t("Part des dossiers validés déclarés sur Transparence Santé")} />}
+              {s.compliance.toDeclare > 0 && <Link className="text-sm" href={`${base}/conformite?onglet=transparence`}>{t("Voir les déclarations à faire")}</Link>}
             </div>
             <ul className="top-list">
-              <li><span>{s.compliance.fmvOver > 0 ? <AlertTriangle size={13} className="warn-text" /> : <ShieldCheck size={13} />} Honoraires au-dessus de la fourchette de juste contrepartie</span><span>{s.compliance.fmvOver}</span></li>
-              <li><span>{s.compliance.blocked > 0 ? <AlertTriangle size={13} className="warn-text" /> : <ShieldCheck size={13} />} Dossiers bloqués par la conformité</span><span>{s.compliance.blocked}</span></li>
-              <li><span><Truck size={13} /> Logistique engagée (devis et dépenses, HT)</span><span>{formatEUR(s.totals.logistics)}</span></li>
-              <li><span><Gift size={13} /> Hospitalités accordées (valeur déclarée, TTC)</span><span>{formatEUR(s.totals.hospitality)}</span></li>
+              <li><span>{s.compliance.fmvOver > 0 ? <AlertTriangle size={13} className="warn-text" /> : <ShieldCheck size={13} />}{" "}{t("Honoraires au-dessus de la fourchette de juste contrepartie")}</span><span>{s.compliance.fmvOver}</span></li>
+              <li><span>{s.compliance.blocked > 0 ? <AlertTriangle size={13} className="warn-text" /> : <ShieldCheck size={13} />}{" "}{t("Dossiers bloqués par la conformité")}</span><span>{s.compliance.blocked}</span></li>
+              <li><span><Truck size={13} />{" "}{t("Logistique engagée (devis et dépenses, HT)")}</span><span>{fmtEur(locale, s.totals.logistics)}</span></li>
+              <li><span><Gift size={13} />{" "}{t("Hospitalités accordées (valeur déclarée, TTC)")}</span><span>{fmtEur(locale, s.totals.hospitality)}</span></li>
             </ul>
           </div>
         </section>
 
         <section className="card stack-sm" aria-labelledby="definitions">
-          <h2 id="definitions">Définitions</h2>
+          <h2 id="definitions">{t("Définitions")}</h2>
           <ul className="hint">
-            <li><strong>Engagé</strong> : l&apos;expert a accepté la proposition (accord de principe ou étape suivante, dossier non abandonné), comme sur l&apos;accueil et les dossiers. Ses honoraires comptent dans le budget à la date de son accord.</li>
-            <li><strong>Budget engagé</strong> : honoraires des experts engagés et logistique (devis retenus, dépenses), hors taxes. Les hospitalités, en valeur déclarée toutes taxes comprises, sont présentées à part.</li>
-            <li><strong>Présents</strong> : après un événement pointé à l&apos;accueil, les inscrits non pointés sont absents ; leurs hospitalités, non consommées, ne sont pas comptées.</li>
+            <li><strong>{t("Engagé")}</strong>{" "}{t(": l'expert a accepté la proposition (accord de principe ou étape suivante, dossier non abandonné), comme sur l'accueil et les dossiers. Ses honoraires comptent dans le budget à la date de son accord.")}</li>
+            <li><strong>{t("Budget engagé")}</strong>{" "}{t(": honoraires des experts engagés et logistique (devis retenus, dépenses), hors taxes. Les hospitalités, en valeur déclarée toutes taxes comprises, sont présentées à part.")}</li>
+            <li><strong>{t("Présents")}</strong>{" "}{t(": après un événement pointé à l'accueil, les inscrits non pointés sont absents ; leurs hospitalités, non consommées, ne sont pas comptées.")}</li>
           </ul>
         </section>
       </main>

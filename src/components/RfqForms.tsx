@@ -9,6 +9,8 @@ import { BLOCKED_UNTIL, type Blocked } from "@/lib/billing-plans";
 import { defaultVatBp, VAT_OPTIONS, vatLabel } from "@/lib/quotes";
 import { Avatar } from "@/components/Avatar";
 import { AiDraft } from "@/components/AiDraft";
+import { useLocale, useT } from "@/components/I18nProvider";
+import { intlLocale, type Locale } from "@/lib/i18n/core";
 
 type Cat = { id: string; label: string };
 type Supplier = { id: string; name: string; categories: string[]; city: string | null; coverage: string | null; about: string | null; since: number; rating?: number | null; reviews?: number };
@@ -19,26 +21,27 @@ type EventOpt = { id: string; label: string; city: string | null; capacity: numb
  * possible (choix conscient du client) ; elle ne verra alors sur la demande que son propre devis.
  */
 export function SupplierLine({ s, catLabel, selected, onToggle, eventAgency = false }: { s: Supplier; catLabel: string; selected?: boolean; onToggle?: () => void; eventAgency?: boolean }) {
+  const t = useT();
   return (
     <div className={`supplier${selected ? " selected" : ""}`}>
       <Avatar name={s.name} size={38} square />
       <div className="supplier-body">
         <div>
-          <strong>{s.name}</strong> <span className="pill electric">Référencé</span>
-          {eventAgency && <span className="pill wait"> Agence de cet événement</span>}
-          {s.rating != null && <span className="rating"> ★ {s.rating.toFixed(1).replace(".", ",")} <span className="muted text-xs">({s.reviews} avis)</span></span>}
+          <strong>{s.name}</strong> <span className="pill electric">{t("Référencé")}</span>
+          {eventAgency && <span className="pill wait">{" "}{t("Agence de cet événement")}</span>}
+          {s.rating != null && <span className="rating"> ★ {s.rating.toFixed(1).replace(".", ",")} <span className="muted text-xs">{t("({reviews} avis)", { reviews: s.reviews })}</span></span>}
         </div>
-        <div className="muted">{catLabel}{s.coverage ? ` · ${s.coverage}` : s.city ? ` · ${s.city}` : ""} · référencé depuis {s.since} · <a href={`/structures/${s.id}`} target="_blank" rel="noreferrer">voir le book</a></div>
+        <div className="muted">{catLabel}{s.coverage ? ` · ${s.coverage}` : s.city ? ` · ${s.city}` : ""}{" "}{t("· référencé depuis {since} ·", { since: s.since })}{" "}<a href={`/structures/${s.id}`} target="_blank" rel="noreferrer">{t("voir le book")}</a></div>
         {!onToggle && s.about && <p>{s.about}</p>}
         {eventAgency && (
           <p className="text-xs warn-text">
-            L&apos;événement lui est confié : si vous la consultez, elle répond comme les autres prestataires, ne voit sur cette demande que son propre devis, et la décision revient à votre équipe.
+            {t("L'événement lui est confié : si vous la consultez, elle répond comme les autres prestataires, ne voit sur cette demande que son propre devis, et la décision revient à votre équipe.")}
           </p>
         )}
       </div>
       {onToggle && (
         <button type="button" className={selected ? "btn small" : "btn ghost small"} onClick={onToggle}>
-          {selected ? <><Check size={13} /> Sélectionné</> : <><Plus size={13} /> Consulter</>}
+          {selected ? <><Check size={13} />{" "}{t("Sélectionné")}</> : <><Plus size={13} />{" "}{t("Consulter")}</>}
         </button>
       )}
     </div>
@@ -46,6 +49,7 @@ export function SupplierLine({ s, catLabel, selected, onToggle, eventAgency = fa
 }
 
 export function NewRfqForm({ orgId, categories, suppliers, events, defaultEventId, defaultCategory, ai = false, blocked = null }: { orgId: string; categories: Cat[]; suppliers: Supplier[]; events: EventOpt[]; defaultEventId?: string; defaultCategory?: string; ai?: boolean; blocked?: Blocked }) {
+  const t = useT();
   const [state, action, pending] = useActionState(createRfq, undefined);
   const [category, setCategory] = useState(categories.some((c) => c.id === defaultCategory) ? defaultCategory! : categories[0].id);
   const [picked, setPicked] = useState<string[]>([]);
@@ -55,43 +59,43 @@ export function NewRfqForm({ orgId, categories, suppliers, events, defaultEventI
   const toggle = (id: string) => setPicked((p) => (p.includes(id) ? p.filter((x) => x !== id) : [...p, id]));
   return (
     <ActionForm action={action} className="card form">
-      <h2>Nouvelle demande de devis</h2>
-      <p className="muted">Consultez en une fois les prestataires référencés. Ils répondent directement sur KolBase, depuis leur espace prestataire.</p>
+      <h2>{t("Nouvelle demande de devis")}</h2>
+      <p className="muted">{t("Consultez en une fois les prestataires référencés. Ils répondent directement sur KolBase, depuis leur espace prestataire.")}</p>
       <Notice state={state} />
       <input type="hidden" name="orgId" value={orgId} />
       <input type="hidden" name="category" value={category} />
       {picked.map((id) => <input key={id} type="hidden" name="supplierIds" value={id} />)}
-      <label>Événement concerné
+      <label>{t("Événement concerné")}
         <select name="eventId" value={eventId} onChange={(e) => setEventId(e.target.value)}>
-          <option value="">— aucun —</option>
+          <option value="">{t("— aucun —")}</option>
           {events.map((e) => <option key={e.id} value={e.id}>{e.label}</option>)}
         </select>
       </label>
-      <span className="label">Type de prestation</span>
+      <span className="label">{t("Type de prestation")}</span>
       <div className="chips">
         {categories.map((c) => (
           <button key={c.id} type="button" className={`chip${c.id === category ? " active" : ""}`} onClick={() => { setCategory(c.id); setPicked([]); }}>{c.label}</button>
         ))}
       </div>
       <span className="label flex-between">
-        <span>Prestataires à consulter — {picked.length} sélectionné{picked.length > 1 ? "s" : ""}</span>
+        <span>{t(picked.length > 1 ? "Prestataires à consulter — {picked} sélectionnés" : "Prestataires à consulter — {picked} sélectionné", { picked: picked.length })}</span>
         <SelectAll count={matching.length} all={matching.length > 0 && matching.every((m) => picked.includes(m.id))} onAll={() => setPicked(matching.every((m) => picked.includes(m.id)) ? [] : matching.map((m) => m.id))} />
       </span>
       <div className="stack-sm">
         {matching.map((s) => <SupplierLine key={s.id} s={s} catLabel={categories.find((c) => c.id === category)!.label} selected={picked.includes(s.id)} onToggle={() => toggle(s.id)} eventAgency={!!ev?.agencyId && ev.agencyId === s.id} />)}
-        {matching.length === 0 && <p className="muted">Aucun prestataire référencé dans cette catégorie pour l&apos;instant.</p>}
+        {matching.length === 0 && <p className="muted">{t("Aucun prestataire référencé dans cette catégorie pour l'instant.")}</p>}
       </div>
-      <label>Besoin<textarea name="needs" rows={ai ? 6 : 3} required placeholder="Prestations attendues, contraintes horaires, niveau de service…" /></label>
-      {ai && <AiDraft kind="besoin" target="needs" label="Rédiger le besoin avec l'IA" />}
+      <label>{t("Besoin")}<textarea name="needs" rows={ai ? 6 : 3} required placeholder={t("Prestations attendues, contraintes horaires, niveau de service…")} /></label>
+      {ai && <AiDraft kind="besoin" target="needs" label={t("Rédiger le besoin avec l'IA")} />}
       <div className="row">
-        <label>Participants attendus<input key={eventId} name="headcount" type="number" min={1} defaultValue={ev?.capacity ?? undefined} placeholder="Selon l'événement" /></label>
-        <label>Réponse attendue avant<input name="deadline" type="date" /></label>
+        <label>{t("Participants attendus")}<input key={eventId} name="headcount" type="number" min={1} defaultValue={ev?.capacity ?? undefined} placeholder={t("Selon l'événement")} /></label>
+        <label>{t("Réponse attendue avant")}<input name="deadline" type="date" /></label>
       </div>
       <div className="actions">
-        <button className="btn" name="intent" value="send" disabled={pending || picked.length === 0 || !!blocked}><Send size={14} /> {picked.length > 1 ? `Envoyer aux ${picked.length} prestataires` : "Envoyer au prestataire"}</button>
-        <button className="btn ghost" name="intent" value="draft" disabled={pending || picked.length === 0}>Enregistrer en brouillon</button>
+        <button className="btn" name="intent" value="send" disabled={pending || picked.length === 0 || !!blocked}><Send size={14} /> {picked.length > 1 ? t("Envoyer aux {picked} prestataires", { picked: picked.length }) : t("Envoyer au prestataire")}</button>
+        <button className="btn ghost" name="intent" value="draft" disabled={pending || picked.length === 0}>{t("Enregistrer en brouillon")}</button>
       </div>
-      {blocked && <p className="hint">Envoi possible {BLOCKED_UNTIL[blocked]} ; le brouillon reste possible dès maintenant.</p>}
+      {blocked && <p className="hint">{t("Envoi possible {blocked} ; le brouillon reste possible dès maintenant.", { blocked: t(BLOCKED_UNTIL[blocked]) })}</p>}
     </ActionForm>
   );
 }
@@ -99,7 +103,7 @@ export function NewRfqForm({ orgId, categories, suppliers, events, defaultEventI
 type QuoteCurrent = { amount: string; delay: string; note: string; lines: { label: string; qty: number; unit: string; vatBp: number }[]; vatBp: number; validUntil: string; conditions: string; revision: number; fileName: string | null };
 type Row = { key: number; label: string; qty: string; unit: string; vat: number };
 
-const eur = (n: number) => n.toLocaleString("fr-FR", { style: "currency", currency: "EUR" });
+const eur = (locale: Locale, n: number) => n.toLocaleString(intlLocale(locale), { style: "currency", currency: "EUR" });
 const num = (v: string) => { const n = Number(v.replace(/\s/g, "").replace(",", ".")); return Number.isFinite(n) ? n : 0; };
 
 /** Exemple de ligne selon la prestation demandée. */
@@ -116,6 +120,8 @@ const LINE_EXAMPLE: Record<string, string> = {
 
 /** Devis du prestataire : détail ligne par ligne, chaque ligne à son taux de TVA (totaux calculés), validité, conditions et PDF signé. */
 export function QuoteForm({ orgId, rfqId, category, current, headcount, uploads, ai = false, offers = [], blocked = false }: { orgId: string; rfqId: string; category: string; current?: QuoteCurrent; headcount: number | null; uploads: boolean; ai?: boolean; offers?: { label: string; unit: string; unitCents: number }[]; blocked?: boolean }) {
+  const t = useT();
+  const locale = useLocale();
   const [state, action, pending] = useActionState(submitQuote, undefined);
   const [open, setOpen] = useState(!current);
   // Taux proposé pour une nouvelle ligne : celui de la catégorie (10 % restauration, hébergement, transport ; 20 % sinon).
@@ -125,7 +131,7 @@ export function QuoteForm({ orgId, rfqId, category, current, headcount, uploads,
     current?.lines.length
       ? current.lines.map((l, i) => ({ key: i, label: l.label, qty: String(l.qty), unit: l.unit, vat: l.vatBp }))
       : current?.amount
-        ? [{ key: 0, label: "Forfait", qty: "1", unit: current.amount, vat: current.vatBp }]
+        ? [{ key: 0, label: t("Forfait"), qty: "1", unit: current.amount, vat: current.vatBp }]
         : [{ key: 0, label: "", qty: "1", unit: "", vat }],
   );
   // Devis envoyé : le formulaire se referme (la saisie reste pour une révision).
@@ -137,7 +143,7 @@ export function QuoteForm({ orgId, rfqId, category, current, headcount, uploads,
   if (!open) return (
     <div className="stack-sm">
       <Notice state={state?.ok ? state : undefined} />
-      <button type="button" className="btn ghost small" onClick={() => setOpen(true)}>Réviser mon devis</button>
+      <button type="button" className="btn ghost small" onClick={() => setOpen(true)}>{t("Réviser mon devis")}</button>
     </div>
   );
   const detailed = rows.some((r) => r.label || r.unit);
@@ -149,26 +155,26 @@ export function QuoteForm({ orgId, rfqId, category, current, headcount, uploads,
       <Notice state={state} />
       <input type="hidden" name="orgId" value={orgId} />
       <input type="hidden" name="rfqId" value={rfqId} />
-      <span className="label">Détail de la proposition</span>
-      <div className="quote-lines" role="table" aria-label="Lignes du devis">
-        <div className="quote-line head" role="row"><span>Désignation</span><span>Qté</span><span>Prix unitaire HT</span><span>TVA</span><span>Total HT</span><span /></div>
+      <span className="label">{t("Détail de la proposition")}</span>
+      <div className="quote-lines" role="table" aria-label={t("Lignes du devis")}>
+        <div className="quote-line head" role="row"><span>{t("Désignation")}</span><span>{t("Qté")}</span><span>{t("Prix unitaire HT")}</span><span>{t("TVA")}</span><span>{t("Total HT")}</span><span /></div>
         {rows.map((r) => (
           <div key={r.key} className="quote-line" role="row">
-            <input name="line_label" value={r.label} onChange={(e) => update(r.key, { label: e.target.value })} placeholder={LINE_EXAMPLE[category] ?? "Désignation de la prestation"} aria-label="Désignation" />
-            <input name="line_qty" value={r.qty} onChange={(e) => update(r.key, { qty: e.target.value })} inputMode="decimal" aria-label="Quantité" />
-            <input name="line_unit" value={r.unit} onChange={(e) => update(r.key, { unit: e.target.value })} inputMode="decimal" placeholder="0,00" aria-label="Prix unitaire HT" />
-            <select name="line_vat" value={r.vat} onChange={(e) => update(r.key, { vat: Number(e.target.value) })} aria-label="Taux de TVA de la ligne">
-              {VAT_OPTIONS.map((v) => <option key={v.bp} value={v.bp}>{vatLabel(v.bp)}</option>)}
+            <input name="line_label" value={r.label} onChange={(e) => update(r.key, { label: e.target.value })} placeholder={LINE_EXAMPLE[category] ? t(LINE_EXAMPLE[category]) : t("Désignation de la prestation")} aria-label={t("Désignation")} />
+            <input name="line_qty" value={r.qty} onChange={(e) => update(r.key, { qty: e.target.value })} inputMode="decimal" aria-label={t("Quantité")} />
+            <input name="line_unit" value={r.unit} onChange={(e) => update(r.key, { unit: e.target.value })} inputMode="decimal" placeholder="0,00" aria-label={t("Prix unitaire HT")} />
+            <select name="line_vat" value={r.vat} onChange={(e) => update(r.key, { vat: Number(e.target.value) })} aria-label={t("Taux de TVA de la ligne")}>
+              {VAT_OPTIONS.map((v) => <option key={v.bp} value={v.bp}>{vatLabel(v.bp, intlLocale(locale))}</option>)}
             </select>
-            <span className="mono">{eur(num(r.qty) * num(r.unit))}</span>
-            <button type="button" className="link danger" aria-label="Retirer la ligne" onClick={() => setRows((rs) => (rs.length > 1 ? rs.filter((x) => x.key !== r.key) : [{ key: Date.now(), label: "", qty: "1", unit: "", vat }]))}>×</button>
+            <span className="mono">{eur(locale, num(r.qty) * num(r.unit))}</span>
+            <button type="button" className="link danger" aria-label={t("Retirer la ligne")} onClick={() => setRows((rs) => (rs.length > 1 ? rs.filter((x) => x.key !== r.key) : [{ key: Date.now(), label: "", qty: "1", unit: "", vat }]))}>×</button>
           </div>
         ))}
         <div className="actions">
-          <button type="button" className="link" onClick={() => setRows((rs) => [...rs, { key: Date.now(), label: "", qty: "1", unit: "", vat }])}><Plus size={13} /> Ajouter une ligne</button>
+          <button type="button" className="link" onClick={() => setRows((rs) => [...rs, { key: Date.now(), label: "", qty: "1", unit: "", vat }])}><Plus size={13} />{" "}{t("Ajouter une ligne")}</button>
           {offers.length > 0 && (
             <select
-              aria-label="Ajouter depuis mon catalogue"
+              aria-label={t("Ajouter depuis mon catalogue")}
               value=""
               onChange={(e) => {
                 const o = offers[Number(e.target.value)];
@@ -179,66 +185,68 @@ export function QuoteForm({ orgId, rfqId, category, current, headcount, uploads,
                 setRows((rs) => (rs.length === 1 && !rs[0].label && !rs[0].unit ? [row] : [...rs, row]));
               }}
             >
-              <option value="">+ Depuis mon catalogue…</option>
-              {offers.map((o, i) => <option key={i} value={i}>{o.label} ({(o.unitCents / 100).toLocaleString("fr-FR")} € HT)</option>)}
+              <option value="">{t("+ Depuis mon catalogue…")}</option>
+              {offers.map((o, i) => <option key={i} value={i}>{o.label} ({t("{amount} HT", { amount: eur(locale, o.unitCents / 100) })})</option>)}
             </select>
           )}
         </div>
       </div>
-      <p className="hint">TVA par ligne : 10 % pour la restauration, l&apos;hébergement et le transport de personnes, 20 % pour les boissons alcoolisées et la plupart des autres prestations.</p>
+      <p className="hint">{t("TVA par ligne : 10 % pour la restauration, l'hébergement et le transport de personnes, 20 % pour les boissons alcoolisées et la plupart des autres prestations.")}</p>
       <div className="row">
-        <label>Offre valable jusqu&apos;au<input name="validUntil" type="date" defaultValue={current?.validUntil} /></label>
+        <label>{t("Offre valable jusqu'au")}<input name="validUntil" type="date" defaultValue={current?.validUntil} /></label>
       </div>
       {detailed && (
         <div className="quote-totals">
-          <span>Total HT <strong>{eur(ht)}</strong></span>
-          <span>TVA <strong>{eur(ttc - ht)}</strong></span>
-          <span>TTC <strong>{eur(ttc)}</strong></span>
-          {headcount ? <span>Par participant <strong>{eur(ttc / headcount)}</strong> TTC</span> : null}
+          <span>{t("Total HT")}{" "}<strong>{eur(locale, ht)}</strong></span>
+          <span>{t("TVA")} <strong>{eur(locale, ttc - ht)}</strong></span>
+          <span>{t("TTC")} <strong>{eur(locale, ttc)}</strong></span>
+          {headcount ? <span>{t("Par participant")}{" "}<strong>{eur(locale, ttc / headcount)}</strong> {t("TTC")}</span> : null}
         </div>
       )}
       <div className="row">
-        <label>Délai / disponibilité<input name="delay" defaultValue={current?.delay} placeholder="Confirmation sous 48 h" /></label>
-        <label>Conditions<input name="conditions" defaultValue={current?.conditions} placeholder="Acompte 30 %, annulation sans frais jusqu'à J-15…" /></label>
+        <label>{t("Délai / disponibilité")}<input name="delay" defaultValue={current?.delay} placeholder={t("Confirmation sous 48 h")} /></label>
+        <label>{t("Conditions")}<input name="conditions" defaultValue={current?.conditions} placeholder={t("Acompte 30 %, annulation sans frais jusqu'à J-15…")} /></label>
       </div>
-      <label>Présentation de l&apos;offre<textarea name="note" rows={ai ? 4 : 2} defaultValue={current?.note} placeholder="Ce qui est inclus, options, références…" /></label>
-      {ai && <AiDraft kind="offre" target="note" label="Rédiger la présentation avec l'IA" />}
+      <label>{t("Présentation de l'offre")}<textarea name="note" rows={ai ? 4 : 2} defaultValue={current?.note} placeholder={t("Ce qui est inclus, options, références…")} /></label>
+      {ai && <AiDraft kind="offre" target="note" label={t("Rédiger la présentation avec l'IA")} />}
       {uploads && (
-        <label>Devis signé (PDF, facultatif){current?.fileName ? <span className="hint"> Actuel : {current.fileName}</span> : null}
+        <label>{t("Devis signé (PDF, facultatif)")}{current?.fileName ? <span className="hint">{" "}{t("Actuel : {fileName}", { fileName: current.fileName })}</span> : null}
           <input name="file" type="file" accept="application/pdf" />
         </label>
       )}
       {/* Nouvelle réponse après un premier devis retenu : abonnement requis (les révisions restent libres). */}
-      <button className="btn" disabled={pending || (blocked && !current)}><Send size={14} /> {pending ? "Envoi…" : current ? `Envoyer la version ${current.revision + 1}` : "Envoyer le devis"}</button>
-      {blocked && !current && <p className="hint">Réponse possible une fois l&apos;abonnement prestataire activé (voir le bandeau en haut de la page).</p>}
+      <button className="btn" disabled={pending || (blocked && !current)}><Send size={14} /> {pending ? t("Envoi…") : current ? t("Envoyer la version {v}", { v: current.revision + 1 }) : t("Envoyer le devis")}</button>
+      {blocked && !current && <p className="hint">{t("Réponse possible une fois l'abonnement prestataire activé (voir le bandeau en haut de la page).")}</p>}
     </ActionForm>
   );
 }
 
 /** Sélection rapide de tous les prestataires de la catégorie (le choix reste modifiable un par un). */
 function SelectAll({ count, all, onAll }: { count: number; all: boolean; onAll: () => void }) {
+  const t = useT();
   if (count < 2) return null;
-  return <button type="button" className="link" onClick={onAll}>{all ? "Tout désélectionner" : `Consulter les ${count} prestataires de la catégorie`}</button>;
+  return <button type="button" className="link" onClick={onAll}>{all ? t("Tout désélectionner") : t("Consulter les {count} prestataires de la catégorie", { count })}</button>;
 }
 
 export function SupplierProfileForm({ orgId, categories, current, canEdit }: { orgId: string; categories: Cat[]; current: { categories: string[]; coverage: string; listed: boolean }; canEdit: boolean }) {
+  const t = useT();
   const [state, action, pending] = useActionState(updateSupplierProfile, undefined);
   // ActionForm : la saisie (catégories, zone) reste après une erreur.
   return (
     <ActionForm action={action} className="card form">
-      <h2>Fiche prestataire</h2>
-      <p className="muted">Les organisations consultent l&apos;annuaire par catégorie. Être référencé ne donne aucune priorité : elles choisissent librement qui consulter.</p>
+      <h2>{t("Fiche prestataire")}</h2>
+      <p className="muted">{t("Les organisations consultent l'annuaire par catégorie. Être référencé ne donne aucune priorité : elles choisissent librement qui consulter.")}</p>
       <Notice state={state} />
       <input type="hidden" name="orgId" value={orgId} />
-      <span className="label">Catégories de prestation</span>
+      <span className="label">{t("Catégories de prestation")}</span>
       <div className="checks">
         {categories.map((c) => (
           <label key={c.id} className="check"><input type="checkbox" name="categories" value={c.id} defaultChecked={current.categories.includes(c.id)} disabled={!canEdit} /> {c.label}</label>
         ))}
       </div>
-      <label>Zone couverte<input name="coverage" defaultValue={current.coverage} placeholder="France entière, Grand Ouest…" disabled={!canEdit} /></label>
-      <label className="check"><input type="checkbox" name="listed" defaultChecked={current.listed} disabled={!canEdit} /> Apparaître dans l&apos;annuaire des prestataires</label>
-      {canEdit && <button className="btn" disabled={pending}>{pending ? "Enregistrement…" : "Enregistrer"}</button>}
+      <label>{t("Zone couverte")}<input name="coverage" defaultValue={current.coverage} placeholder={t("France entière, Grand Ouest…")} disabled={!canEdit} /></label>
+      <label className="check"><input type="checkbox" name="listed" defaultChecked={current.listed} disabled={!canEdit} />{" "}{t("Apparaître dans l'annuaire des prestataires")}</label>
+      {canEdit && <button className="btn" disabled={pending}>{pending ? t("Enregistrement…") : t("Enregistrer")}</button>}
     </ActionForm>
   );
 }
@@ -246,6 +254,7 @@ export function SupplierProfileForm({ orgId, categories, current, canEdit }: { o
 
 /** Question ou réponse dans le fil privé d'une demande de devis (demandeur ↔ prestataire). */
 export function RfqMessageForm({ orgId, rfqId, supplierId, placeholder }: { orgId: string; rfqId: string; supplierId: string; placeholder: string }) {
+  const t = useT();
   const [state, action, pending] = useActionState(postRfqMessage, undefined);
   return (
     <form action={action} className="stack-sm" key={state?.ok ? Date.now() : "rfq-msg"}>
@@ -255,7 +264,7 @@ export function RfqMessageForm({ orgId, rfqId, supplierId, placeholder }: { orgI
         <input type="hidden" name="orgId" value={orgId} />
         <input type="hidden" name="rfqId" value={rfqId} />
         <input type="hidden" name="supplierId" value={supplierId} />
-        <button className="btn small" disabled={pending}>{pending ? "Envoi…" : "Envoyer"}</button>
+        <button className="btn small" disabled={pending}>{pending ? t("Envoi…") : t("Envoyer")}</button>
       </div>
     </form>
   );

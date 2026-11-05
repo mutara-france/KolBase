@@ -8,26 +8,28 @@ import { COMPLIANCE_ROLES } from "@/lib/events";
 import { SETTING_FIELDS, complianceSettings, legalBound } from "@/lib/compliance";
 import { declarationRows, parseSemester, semesterKey } from "@/lib/transparence";
 import { str } from "@/lib/form";
+import { getT } from "@/lib/i18n/server";
 
 export type ActionState = { error?: string; ok?: string } | undefined;
 
 export async function updateComplianceSettings(_: ActionState, form: FormData): Promise<ActionState> {
+  const { t } = await getT();
   const orgId = str(form, "orgId");
   const { user } = await requireMembership(orgId, COMPLIANCE_ROLES);
   const raw: Record<string, number> = {};
   for (const f of SETTING_FIELDS) {
     const v = Number(str(form, f.key).replace(",", "."));
-    if (!Number.isFinite(v) || v < 0) return { error: `Valeur invalide : ${f.label}.` };
+    if (!Number.isFinite(v) || v < 0) return { error: t("Valeur invalide : {label}.", { label: f.label }) };
     const bound = legalBound(f.key);
-    if (bound?.max != null && v > bound.max) return { error: `${f.label} : ${bound.max} ${f.unit} au maximum (seuil réglementaire, qui ne peut qu'être abaissé).` };
-    if (bound?.min != null && v < bound.min) return { error: `${f.label} : ${bound.min} ${f.unit} au minimum (délai réglementaire, qui ne peut qu'être allongé).` };
+    if (bound?.max != null && v > bound.max) return { error: t("{label} : {max} {unit} au maximum (seuil réglementaire, qui ne peut qu'être abaissé).", { label: f.label, max: bound.max, unit: f.unit }) };
+    if (bound?.min != null && v < bound.min) return { error: t("{label} : {min} {unit} au minimum (délai réglementaire, qui ne peut qu'être allongé).", { label: f.label, min: bound.min, unit: f.unit }) };
     raw[f.key] = v;
   }
   const settings = complianceSettings(raw);
   await db.organization.update({ where: { id: orgId }, data: { complianceSettings: settings } });
   await audit(user.id, "compliance.settings", "Organization", orgId, settings);
   revalidatePath(`/organisations/${orgId}/conformite`);
-  return { ok: "Paramètres enregistrés." };
+  return { ok: t("Paramètres enregistrés.") };
 }
 
 /** Marque la publication Transparence Santé d'un dossier (convention et rémunérations). */

@@ -76,25 +76,41 @@ export const legalBound = (key: keyof ComplianceSettings) =>
 export type Regime = "declaration" | "autorisation" | "hors_france";
 export const REGIME_LABEL: Record<Regime, string> = { declaration: "Déclaration", autorisation: "Autorisation", hors_france: "Hors France" };
 
+/**
+ * Motif d'un régime : texte français à traduire à l'affichage (clé du dictionnaire), montants à formater selon la
+ * langue (n) et mots à traduire (s). `reason` en est la version française (registre, conventions, exports).
+ */
+export type RegimeWhy = { key: string; n?: Record<string, number>; s?: Record<string, string> };
+export type RegimeResult = { regime: Regime; reason: string; why: RegimeWhy };
+const fill = (key: string, v: Record<string, string>) => key.replace(/\{(\w+)\}/g, (_, k: string) => v[k] ?? "");
+const nums = (loc: string, n: Record<string, number> = {}) =>
+  Object.fromEntries(Object.entries(n).map(([k, x]) => [k, x.toLocaleString(loc, { maximumFractionDigits: 2 })]));
+const result = (regime: Regime, why: RegimeWhy): RegimeResult => ({ regime, why, reason: fill(why.key, { ...nums("fr-FR", why.n), ...why.s }) });
+/** Motif dans la langue d'affichage : t traduit, loc est la locale Intl (fr-FR, en-GB). */
+export const regimeReason = (r: { why: RegimeWhy }, t: (key: string, vars?: Record<string, string | number>) => string, loc: string) =>
+  t(r.why.key, { ...nums(loc, r.why.n), ...Object.fromEntries(Object.entries(r.why.s ?? {}).map(([k, x]) => [k, t(x)])) });
+
 /** Praticien exerçant hors de France : le dispositif anti-cadeaux français (EPS) ne s'applique pas. */
-export function foreignRegime(code: string): { regime: Regime; reason: string } {
-  return { regime: "hors_france", reason: `Exerce ${country(code).in} : règles du pays d'exercice` };
+export function foreignRegime(code: string): RegimeResult {
+  return result("hors_france", { key: "Exerce {where} : règles du pays d'exercice", s: { where: country(code).in } });
 }
 
 /** Régime d'une rémunération : autorisation au-delà du seuil par convention ou du taux horaire. */
-export function remunerationRegime(s: ComplianceSettings, feeCents: number | null, units: number | null, unit: string): { regime: Regime; reason: string } {
+export function remunerationRegime(s: ComplianceSettings, feeCents: number | null, units: number | null, unit: string): RegimeResult {
   const fee = (feeCents ?? 0) / 100;
-  if (fee > s.remunerationConventionMax) return { regime: "autorisation", reason: `${fee.toLocaleString("fr-FR")} € > ${s.remunerationConventionMax.toLocaleString("fr-FR")} € par convention` };
+  if (fee > s.remunerationConventionMax) return result("autorisation", { key: "{fee} € > {max} € par convention", n: { fee, max: s.remunerationConventionMax } });
   // Volume absent ou incohérent : on compte une seule unité, l'hypothèse la plus prudente.
   const known = units != null && Number.isFinite(units) && units > 0;
   const n = known ? units : 1;
-  const unknown = known ? "" : " (volume non renseigné : compté pour 1)";
   if (unit === "heure" && fee / n > s.remunerationHourlyMax)
-    return { regime: "autorisation", reason: `${Math.round(fee / n)} €/h > ${s.remunerationHourlyMax} €/h${unknown}` };
+    return result("autorisation", { key: known ? "{rate} €/h > {max} €/h" : "{rate} €/h > {max} €/h (volume non renseigné : compté pour 1)", n: { rate: Math.round(fee / n), max: s.remunerationHourlyMax } });
   // Une journée compte deux demi-journées.
   if (unit === "journée" && fee / n > 2 * s.remunerationHalfDayMax)
-    return { regime: "autorisation", reason: `${Math.round(fee / n).toLocaleString("fr-FR")} € par journée > ${s.remunerationHalfDayMax} € par demi-journée${unknown}` };
-  return { regime: "declaration", reason: "Sous les seuils d'autorisation" };
+    return result("autorisation", {
+      key: known ? "{rate} € par journée > {max} € par demi-journée" : "{rate} € par journée > {max} € par demi-journée (volume non renseigné : compté pour 1)",
+      n: { rate: Math.round(fee / n), max: s.remunerationHalfDayMax },
+    });
+  return result("declaration", { key: "Sous les seuils d'autorisation" });
 }
 
 /**
@@ -109,7 +125,7 @@ export function projectRegime(s: ComplianceSettings, unit: string, experts: { st
   const french = engaged.filter((e) => practicesInFrance(e.country));
   if (engaged.length > 0 && french.length === 0) {
     const codes = [...new Set(engaged.map((e) => e.country ?? "XX"))];
-    return codes.length === 1 ? foreignRegime(codes[0]) : { regime: "hors_france" as Regime, reason: "Experts exerçant hors de France : règles de leurs pays d'exercice" };
+    return codes.length === 1 ? foreignRegime(codes[0]) : result("hors_france", { key: "Experts exerçant hors de France : règles de leurs pays d'exercice" });
   }
   const regimes = french.map((e) => remunerationRegime(s, e.feeCents, e.days, unit));
   return regimes.find((r) => r.regime === "autorisation") ?? regimes[0] ?? null;
@@ -129,14 +145,14 @@ export function benefitLimit(s: HospitalityLimits, catalogId: string): { max: nu
 /** Libellé du régime d'une hospitalité (convention, fiche de l'événement, saisie). */
 
 /** Régime d'une hospitalité : autorisation si nuitée, repas ou total dépassent les seuils. Une prestation seule : son seuil et le total. */
-export function hospitalityRegime(s: HospitalityLimits, benefits: { catalogId: string; valueCents: number }[]): { regime: Regime; reason: string } {
+export function hospitalityRegime(s: HospitalityLimits, benefits: { catalogId: string; valueCents: number }[]): RegimeResult {
   const total = benefits.reduce((x, b) => x + b.valueCents, 0) / 100;
   const night = benefits.find((b) => b.catalogId === "nuitee" && b.valueCents / 100 > s.hospitalityNightMax);
-  if (night) return { regime: "autorisation", reason: `Nuitée ${night.valueCents / 100} € > ${s.hospitalityNightMax} €` };
+  if (night) return result("autorisation", { key: "Nuitée {value} € > {max} €", n: { value: night.valueCents / 100, max: s.hospitalityNightMax } });
   const meal = benefits.find((b) => ["dejeuner", "cocktail"].includes(b.catalogId) && b.valueCents / 100 > s.hospitalityMealMax);
-  if (meal) return { regime: "autorisation", reason: `Repas ${meal.valueCents / 100} € > ${s.hospitalityMealMax} €` };
+  if (meal) return result("autorisation", { key: "Repas {value} € > {max} €", n: { value: meal.valueCents / 100, max: s.hospitalityMealMax } });
   const snack = benefits.find((b) => b.catalogId === "cafe" && b.valueCents / 100 > s.hospitalityCollationMax);
-  if (snack) return { regime: "autorisation", reason: `Collation ${snack.valueCents / 100} € > ${s.hospitalityCollationMax} €` };
-  if (total > s.hospitalityTotalMax) return { regime: "autorisation", reason: `Total ${total} € > ${s.hospitalityTotalMax} €` };
-  return { regime: "declaration", reason: "Sous les seuils d'autorisation" };
+  if (snack) return result("autorisation", { key: "Collation {value} € > {max} €", n: { value: snack.valueCents / 100, max: s.hospitalityCollationMax } });
+  if (total > s.hospitalityTotalMax) return result("autorisation", { key: "Total {value} € > {max} €", n: { value: total, max: s.hospitalityTotalMax } });
+  return result("declaration", { key: "Sous les seuils d'autorisation" });
 }

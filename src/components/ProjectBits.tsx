@@ -39,16 +39,19 @@ export async function Pipeline({ status, viewer }: { status: ProjectStatus; view
   );
 }
 
-export function FmvBadge({ typeId, feeCents, units }: { typeId: string; feeCents: number | null; units: number | null }) {
+export async function FmvBadge({ typeId, feeCents, units }: { typeId: string; feeCents: number | null; units: number | null }) {
   const c = fmvCheck(typeId, feeCents, units);
   if (!c) return null;
-  const txt = `${Math.round(c.perUnit).toLocaleString("fr-FR")} €/${c.unit}`;
+  const { t, locale } = await getT();
+  const loc = intlLocale(locale);
+  const unit = t(c.unit);
+  const txt = t("{amount} €/{unit}", { amount: Math.round(c.perUnit).toLocaleString(loc), unit });
   // Repère indicatif interne (non réglementaire, non sourcé) : il éclaire la discussion, il ne vaut pas conformité.
-  const range = `${c.min.toLocaleString("fr-FR")}–${c.max.toLocaleString("fr-FR")} €`;
-  const title = `Repère indicatif KolBase : ${range} par ${c.unit}. Ce n'est pas un seuil réglementaire.`;
-  if (c.verdict === "ok") return <span className="pill" title={title}>{txt} · dans le repère indicatif</span>;
-  if (c.verdict === "below") return <span className="pill" title={title}>{txt} · sous le repère indicatif ({range})</span>;
-  return <span className="pill wait" title={title}>{txt} · au-dessus du repère indicatif ({range}) : justification à documenter</span>;
+  const range = t("{min}–{max} €", { min: c.min.toLocaleString(loc), max: c.max.toLocaleString(loc) });
+  const title = t("Repère indicatif KolBase : {range} par {unit}. Ce n'est pas un seuil réglementaire.", { range, unit });
+  if (c.verdict === "ok") return <span className="pill" title={title}>{t("{txt} · dans le repère indicatif", { txt })}</span>;
+  if (c.verdict === "below") return <span className="pill" title={title}>{t("{txt} · sous le repère indicatif ({range})", { txt, range })}</span>;
+  return <span className="pill wait" title={title}>{t("{txt} · au-dessus du repère indicatif ({range}) : justification à documenter", { txt, range })}</span>;
 }
 
 type Msg = { id: string; body: string; createdAt: Date; author: { firstName: string; lastName: string }; authorId: string };

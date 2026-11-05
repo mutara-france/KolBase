@@ -7,7 +7,7 @@ import { ExpertLinkPill, Pipeline, Thread } from "@/components/ProjectBits";
 import { MessageForm, RespondForm } from "@/components/ProjectForms";
 import { db } from "@/lib/db";
 import { requireUser } from "@/lib/auth";
-import { collabType, expertLinkState, PROPOSAL_ORIGIN } from "@/lib/projects";
+import { collabType, expertLinkState, PROPOSAL_ORIGIN, unitCount } from "@/lib/projects";
 import { withdrawProposal } from "@/lib/proposal-actions";
 import { ConfirmButton } from "@/components/ConfirmButton";
 import { orgIsPublic } from "@/lib/org-roles";
@@ -46,9 +46,8 @@ export default async function Page({ params }: { params: Promise<{ linkId: strin
   const closed = state === "clos";
   const { t, locale } = await getT();
   const num = (n: number) => n.toLocaleString(intlLocale(locale));
-  // Unité de prestation (« journée », « séance »…) : le pluriel français ajoute un « s », l'anglais a sa propre clé.
+  // Unité de prestation (« journée », « séance »…), traduite avec son pluriel.
   const unit = type?.unit ?? "unité";
-  const units = (link.days ?? 0) > 1 ? t(`${unit}s`) : t(unit);
 
   const engaged = link.status !== "ATT_EXPERTS" && link.status !== "DECLINE" && !abandoned;
   // Convention signée : électroniquement (Yousign) ou déposée signée dans Documents.
@@ -83,11 +82,11 @@ export default async function Page({ params }: { params: Promise<{ linkId: strin
           title={p.title}
           lead={p.description}
           facts={[
-            { icon: <CalendarDays size={13} />, label: t("Prestation"), value: `${link.days ?? "—"} ${units}` },
+            { icon: <CalendarDays size={13} />, label: t("Prestation"), value: unitCount(t, intlLocale(locale), link.days, unit) },
             // Montant précédent rappelé (« 1 500 € → 1 800 € HT ») ; contre-proposition en attente de l'organisation.
             { icon: <Euro size={13} />, label: proposal ? t("Honoraires souhaités") : t("Honoraires proposés"), value: link.feeCents != null ? t("{amount} HT", { amount: link.previousFeeCents != null ? `${fmtEur(locale, link.previousFeeCents)} → ${fmtEur(locale, link.feeCents)}` : fmtEur(locale, link.feeCents) }) : "—", sub: state === "contre" && link.desiredFeeCents != null ? t("votre proposition : {amount} HT", { amount: fmtEur(locale, link.desiredFeeCents) }) : undefined },
             ...(type ? [{ icon: <Scale size={13} />, label: t("Référence de marché"), value: t("{min} à {max} € HT", { min: num(type.fmv[0]), max: num(type.fmv[1]) }), sub: t("par {unit}", { unit: t(type.unit) }) }] : []),
-            { icon: <Building2 size={13} />, label: t("Organisation"), value: p.organization.name, sub: p.organization.sector ?? undefined },
+            { icon: <Building2 size={13} />, label: t("Organisation"), value: p.organization.name, sub: p.organization.sector ? t(p.organization.sector) : undefined },
           ]}
         >
           {engaged && <Pipeline viewer="expert" status={link.status} />}

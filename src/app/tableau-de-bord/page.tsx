@@ -200,7 +200,7 @@ export default async function Page({ searchParams }: { searchParams: Promise<{ a
                 ) : (
                   suggested.map((c) => (
                     <Link key={c.id} href={`/opportunites/${c.id}`} className="suggest-card">
-                      <span className="suggest-kind">{c.specialty || t(collabType(c.typeId)?.label ?? "")}</span>
+                      <span className="suggest-kind">{c.specialty ? t(c.specialty) : t(collabType(c.typeId)?.label ?? "")}</span>
                       <strong>{c.title}</strong>
                       <span>{c.organization.name}{c.event ? ` · ${t("intervention le {date}", { date: fmtDate(locale, c.event.startsAt) })}` : ""}{c.deadline ? ` · ${t("jusqu'au {date}", { date: fmtDate(locale, c.deadline) })}` : ""}</span>
                     </Link>

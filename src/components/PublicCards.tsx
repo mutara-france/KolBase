@@ -129,7 +129,7 @@ export async function OrgCard({ o }: { o: OrgCardData }) {
         <span className="sector-tag">{t(o.kind)}</span>
       </div>
       <h3 className="kol-name">{o.name}</h3>
-      {o.sector && <p className="text-sm">{o.sector}</p>}
+      {o.sector && <p className="text-sm">{t(o.sector)}</p>}
       {o.hq && <div className="meta-line mt-1"><MapPin size={13} /> {o.hq}</div>}
       {o.about && <p className="text-sm mt-2 clamp-4">{o.about}</p>}
       {/* Prestataire : ses prestations et sa zone ; autres organisations : domaines, appels et collaborations. */}

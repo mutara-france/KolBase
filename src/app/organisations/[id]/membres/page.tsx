@@ -13,17 +13,21 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 import { OrgVisibilityForm } from "@/components/ProfileForms";
 import { DPA_VERSION } from "@/lib/dpa";
-import { formatDate } from "@/lib/events";
 import { ShieldCheck } from "lucide-react";
 import { companyVisibility } from "@/lib/visibility";
 import { OrgTwoFactorForm } from "@/components/TwoFactorForms";
 import { TableWrap } from "@/components/TableWrap";
+import { getT } from "@/lib/i18n/server";
+import { fmtDate } from "@/lib/i18n";
 
-export const metadata = { title: "Membres et réglages — KolBase" };
+export async function generateMetadata() {
+  const { t } = await getT();
+  return { title: `${t("Membres et réglages")} — KolBase` };
+}
 
-const fmt = (d: Date) => d.toLocaleDateString("fr-FR", { day: "numeric", month: "short", year: "numeric" });
 
 export default async function Page({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: Promise<{ onglet?: string; motif?: string; objet?: string }> }) {
+  const { t, locale } = await getT();
   const { id } = await params;
   const sp = await searchParams;
   const onglet = sp.onglet === "organisation" ? "organisation" : "equipe";
@@ -45,7 +49,7 @@ export default async function Page({ params, searchParams }: { params: Promise<{
           orderBy: { startsAt: "asc" },
         }),
   ]);
-  const roleOpts = invitableRoles(org.kind).map((value) => ({ value, label: roleLabel(value, org.kind), desc: org.kind === "PRESTATAIRE" ? (value === "ADMIN" ? "Équipe, fiche prestataire et devis." : "Répond aux demandes de devis.") : ROLE_DESC[value] }));
+  const roleOpts = invitableRoles(org.kind).map((value) => ({ value, label: t(roleLabel(value, org.kind)), desc: t(org.kind === "PRESTATAIRE" ? (value === "ADMIN" ? "Équipe, fiche prestataire et devis." : "Répond aux demandes de devis.") : ROLE_DESC[value]) }));
   // Une ligne par personne, avec l'ensemble de ses rôles.
   const people = [...members.reduce((acc, m) => {
     const p = acc.get(m.userId) ?? { userId: m.userId, user: m.user, roles: [] as OrgRole[], since: m.createdAt };
@@ -60,40 +64,40 @@ export default async function Page({ params, searchParams }: { params: Promise<{
   const dpaOk = org.dpaVersion === DPA_VERSION && !!org.dpaAcceptedAt;
   const resume = motive && dpaOk ? resumeAction(id, motive, asObjectId(sp.objet)) : null;
 
-  const tabs = [["equipe", `Équipe (${people.length})`], ["organisation", "Organisation"]] as const;
+  const tabs = [["equipe", t("Équipe ({n})", { n: people.length })], ["organisation", t("Organisation")]] as const;
   return (
     <>
       <SiteHeader />
       <main className="stack">
         <div>
-          <p className="muted"><Link href={`/organisations/${id}`}>{org.name}</Link> / Membres et réglages</p>
-          <h1>Membres et réglages</h1>
+          <p className="muted"><Link href={`/organisations/${id}`}>{org.name}</Link> / {t("Membres et réglages")}</p>
+          <h1>{t("Membres et réglages")}</h1>
         </div>
-        <nav className="tabs" aria-label="Membres et réglages">
+        <nav className="tabs" aria-label={t("Membres et réglages")}>
           {tabs.map(([k, l]) => <Link key={k} href={`?onglet=${k}`} className={k === onglet ? "active" : ""}>{l}</Link>)}
         </nav>
 
         {onglet === "equipe" ? (
           <>
             <section className="card">
-              <h2>Membres ({people.length})</h2>
+              <h2>{t("Membres ({people})", { people: people.length })}</h2>
               {isAdmin && (
                 <ul className="role-legend">
                   {roleOpts.map((r) => <li key={r.value}><strong>{r.label}</strong> : {r.desc}</li>)}
                 </ul>
               )}
-              {isAdmin && <p className="hint">Cochez ou décochez un rôle : la modification est enregistrée aussitôt.</p>}
+              {isAdmin && <p className="hint">{t("Cochez ou décochez un rôle : la modification est enregistrée aussitôt.")}</p>}
               <ul className="member-list">
                 {people.map((p) => (
                   <li key={p.userId} className="member-row">
                     <Avatar name={`${p.user.firstName} ${p.user.lastName}`} size={40} />
                     <div className="grow" style={{ minWidth: 0 }}>
-                      <strong>{p.user.firstName} {p.user.lastName}</strong>{p.userId === user.id && <span className="muted"> (vous)</span>}
-                      <div className="text-xs muted">{p.user.email} · membre depuis le {fmt(p.since)}{isAdmin ? (p.user.totpEnabledAt ? " · double authentification activée" : " · sans double authentification") : ""}</div>
+                      <strong>{p.user.firstName} {p.user.lastName}</strong>{p.userId === user.id && <span className="muted">{" "}{t("(vous)")}</span>}
+                      <div className="text-xs muted">{t("{email} · membre depuis le {v}", { email: p.user.email, v: fmtDate(locale, p.since) })}{isAdmin ? (p.user.totpEnabledAt ? t(" · double authentification activée") : t(" · sans double authentification")) : ""}</div>
                       {isAdmin ? (
                         <MemberRolesForm orgId={id} userId={p.userId} roles={p.roles} options={roleOpts} canRemove={!(p.roles.includes("ADMIN") && adminCount <= 1)} />
                       ) : (
-                        <div className="role-chips mt-1">{p.roles.map((r) => <span key={r} className="pill">{roleLabel(r, org.kind)}</span>)}</div>
+                        <div className="role-chips mt-1">{p.roles.map((r) => <span key={r} className="pill">{t(roleLabel(r, org.kind))}</span>)}</div>
                       )}
                     </div>
                   </li>
@@ -103,19 +107,19 @@ export default async function Page({ params, searchParams }: { params: Promise<{
 
             {!isSupplier && (
               <section className="card stack-sm">
-                <h2>Agences mandatées ({mandates.length})</h2>
-                <p className="muted text-sm">L&apos;équipe d&apos;une agence mandatée accède avec son propre compte aux seuls événements que vous lui confiez, sans invitation ; l&apos;accès cesse à la fin du mandat.</p>
+                <h2>{t("Agences mandatées ({mandates})", { mandates: mandates.length })}</h2>
+                <p className="muted text-sm">{t("L'équipe d'une agence mandatée accède avec son propre compte aux seuls événements que vous lui confiez, sans invitation ; l'accès cesse à la fin du mandat.")}</p>
                 {mandates.length > 0 && (
                   <ul className="plain stack-sm">
                     {mandates.map((m) => (
                       <li key={m.id} className="flex-between">
-                        <span><strong>{m.agency.name}</strong> <span className="muted text-sm">· {m.agency._count.members} personne{m.agency._count.members > 1 ? "s" : ""} · depuis le {fmt(m.startsAt)}</span></span>
-                        <span className="pill">Agence mandatée</span>
+                        <span><strong>{m.agency.name}</strong> <span className="muted text-sm">{t(m.agency._count.members > 1 ? "· {members} personnes · depuis le {v}" : "· {members} personne · depuis le {v}", { members: m.agency._count.members, v: fmtDate(locale, m.startsAt) })}</span></span>
+                        <span className="pill">{t("Agence mandatée")}</span>
                       </li>
                     ))}
                   </ul>
                 )}
-                <Link className="link" href={`/organisations/${id}/prestataires?onglet=agences`}>Gérer les mandats</Link>
+                <Link className="link" href={`/organisations/${id}/prestataires?onglet=agences`}>{t("Gérer les mandats")}</Link>
               </section>
             )}
 
@@ -124,21 +128,21 @@ export default async function Page({ params, searchParams }: { params: Promise<{
                 <InviteForm orgId={id} roles={roleOpts} />
                 {invitations.length > 0 && (
                   <section className="card">
-                    <h2>Invitations en attente</h2>
-                    <TableWrap label="Invitations en attente">
+                    <h2>{t("Invitations en attente")}</h2>
+                    <TableWrap label={t("Invitations en attente")}>
                       <table className="table">
-                        <thead><tr><th>Rôle</th><th>Mémo</th><th>Expire le</th><th /></tr></thead>
+                        <thead><tr><th>{t("Rôle")}</th><th>{t("Mémo")}</th><th>{t("Expire le")}</th><th /></tr></thead>
                         <tbody>
                           {invitations.map((i) => (
                             <tr key={i.id}>
-                              <td data-label="Rôle">{roleLabel(i.role, org.kind)}</td>
+                              <td data-label="Rôle">{t(roleLabel(i.role, org.kind))}</td>
                               <td data-label="Mémo">{i.email ?? "—"}</td>
-                              <td data-label="Expire le">{fmt(i.expiresAt)}</td>
+                              <td data-label="Expire le">{fmtDate(locale, i.expiresAt)}</td>
                               <td>
                                 <form action={revokeInvitation}>
                                   <input type="hidden" name="orgId" value={id} />
                                   <input type="hidden" name="invitationId" value={i.id} />
-                                  <button className="link danger">Révoquer</button>
+                                  <button className="link danger">{t("Révoquer")}</button>
                                 </form>
                               </td>
                             </tr>
@@ -158,47 +162,47 @@ export default async function Page({ params, searchParams }: { params: Promise<{
               canEdit={isAdmin}
               v={{
                 status: org.verification, siren: org.siren, legalName: org.legalName, note: org.verificationNote, rna: org.rna, rnaAccepted: rnaAccepted(org.kind), supplier: org.kind === "PRESTATAIRE",
-                requestedAt: org.verification === "PENDING" && org.verificationRequestedAt ? formatDate(org.verificationRequestedAt) : null,
+                requestedAt: org.verification === "PENDING" && org.verificationRequestedAt ? fmtDate(locale, org.verificationRequestedAt) : null,
               }}
             />
             <section className="card stack-sm" id="double-authentification">
-              <h2 className="section-title"><ShieldCheck size={15} /> Double authentification</h2>
+              <h2 className="section-title"><ShieldCheck size={15} />{" "}{t("Double authentification")}</h2>
               {isAdmin ? (
                 <OrgTwoFactorForm orgId={id} required={org.require2fa} adminReady={!!user.totpEnabledAt} missing={people.filter((p) => !p.user.totpEnabledAt).length} />
               ) : (
-                <p className="muted">{org.require2fa ? "Exigée par l'organisation pour tous ses membres." : "Facultative : vous pouvez l'activer depuis « Mon compte »."}</p>
+                <p className="muted">{org.require2fa ? t("Exigée par l'organisation pour tous ses membres.") : t("Facultative : vous pouvez l'activer depuis « Mon compte ».")}</p>
               )}
             </section>
             {!isSupplier && (
               <section className="card stack-sm" id="sous-traitance">
-                <h2 className="section-title"><ShieldCheck size={15} /> Contrat de sous-traitance (RGPD)</h2>
+                <h2 className="section-title"><ShieldCheck size={15} />{" "}{t("Contrat de sous-traitance (RGPD)")}</h2>
                 <p className="muted">
-                  Votre organisation est responsable des données qu&apos;elle traite dans KolBase (experts, inscrits, conventions) ; l&apos;éditeur de KolBase agit comme sous-traitant.{" "}
-                  <Link href="/sous-traitance" target="_blank">Lire le contrat (version {DPA_VERSION})</Link>
+                  {t("Votre organisation est responsable des données qu'elle traite dans KolBase (experts, inscrits, conventions) ; l'éditeur de KolBase agit comme sous-traitant.")}
+                  <Link href="/sous-traitance" target="_blank">{t("Lire le contrat (version {DPA_VERSION})", { DPA_VERSION })}</Link>
                 </p>
-                {motive && !dpaOk && <p className="notice warn">Pour {ENGAGING[motive]}, ce contrat doit d&apos;abord être accepté{isAdmin ? "" : " par un administrateur de l'organisation"}.</p>}
+                {motive && !dpaOk && <p className="notice warn">{t("Pour {motive}, ce contrat doit d'abord être accepté", { motive: t(ENGAGING[motive]) })}{isAdmin ? "" : t(" par un administrateur de l'organisation")}.</p>}
                 {dpaOk ? (
-                  <p className="pill ok">Accepté le {formatDate(org.dpaAcceptedAt!)}{dpaBy ? ` par ${dpaBy}` : ""}</p>
+                  <p className="pill ok">{t("Accepté le {date}", { date: fmtDate(locale, org.dpaAcceptedAt!) })}{dpaBy ? ` ${t("par {dpaBy}", { dpaBy })}` : ""}</p>
                 ) : isAdmin ? (
                   <form action={acceptDpa} className="inline wrap">
                     <input type="hidden" name="orgId" value={id} />
-                    {org.dpaVersion && <span className="text-sm warn-text">Le contrat a changé depuis la version {org.dpaVersion} acceptée.</span>}
-                    <button className="btn small">Accepter au nom de {org.name}</button>
+                    {org.dpaVersion && <span className="text-sm warn-text">{t("Le contrat a changé depuis la version {dpaVersion} acceptée.", { dpaVersion: org.dpaVersion })}</span>}
+                    <button className="btn small">{t("Accepter au nom de {name}", { name: org.name })}</button>
                   </form>
                 ) : (
-                  <p className="hint">À accepter par un administrateur de l&apos;organisation.</p>
+                  <p className="hint">{t("À accepter par un administrateur de l'organisation.")}</p>
                 )}
                 {resume && (
                   <div className="notice ok inline wrap" role="status">
-                    <span>Contrat accepté : vous pouvez reprendre votre action.</span>
+                    <span>{t("Contrat accepté : vous pouvez reprendre votre action.")}</span>
                     {resume.publish ? (
                       <form action={setEventFlag}>
                         <input type="hidden" name="orgId" value={id} />
                         <input type="hidden" name="eventId" value={resume.publish} />
                         <input type="hidden" name="flag" value="publish" />
-                        <button className="btn small">{resume.label}</button>
+                        <button className="btn small">{t(resume.label)}</button>
                       </form>
-                    ) : <Link className="btn small" href={resume.href}>{resume.label}</Link>}
+                    ) : <Link className="btn small" href={resume.href}>{t(resume.label)}</Link>}
                   </div>
                 )}
               </section>
@@ -211,7 +215,7 @@ export default async function Page({ params, searchParams }: { params: Promise<{
                 {!isSupplier && <OrgVisibilityForm orgId={id} v={companyVisibility(org.visibility)} listed={org.listed} />}
               </>
             ) : (
-              <p className="muted">Seuls les administrateurs modifient la fiche, le logo et la page publique de l&apos;organisation.</p>
+              <p className="muted">{t("Seuls les administrateurs modifient la fiche, le logo et la page publique de l'organisation.")}</p>
             )}
           </>
         )}

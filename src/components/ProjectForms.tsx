@@ -7,12 +7,15 @@ import { createProject, postMessage, respondToSolicitation } from "@/lib/project
 import { Notice } from "@/components/AuthForms";
 import { ActionForm } from "@/components/ActionForm";
 import { BLOCKED_UNTIL, type Blocked } from "@/lib/billing-plans";
-import { useT } from "@/components/I18nProvider";
+import { useLocale, useT } from "@/components/I18nProvider";
+import { intlLocale } from "@/lib/i18n/core";
 
 type CType = { id: string; label: string; category: string; unit: string; fmv: readonly number[] };
 type Expert = { id: string; name: string; detail: string; dayRateCents: number | null };
 
 export function NewProjectForm({ orgId, types, experts, preselected, ai = false, blocked = null }: { orgId: string; types: readonly CType[]; experts: Expert[]; preselected: string[]; ai?: boolean; blocked?: Blocked }) {
+  const t = useT();
+  const locale = useLocale();
   const [state, action, pending] = useActionState(createProject, undefined);
   const [typeId, setTypeId] = useState(types[0].id);
   const [selected, setSelected] = useState<string[]>(preselected);
@@ -28,27 +31,27 @@ export function NewProjectForm({ orgId, types, experts, preselected, ai = false,
 
   return (
     <ActionForm action={action} className="card form">
-      <h1>Nouveau dossier</h1>
-      <p className="muted">Sollicitez un ou plusieurs experts. Chacun reçoit la proposition dans son espace et y répond.</p>
+      <h1>{t("Nouveau dossier")}</h1>
+      <p className="muted">{t("Sollicitez un ou plusieurs experts. Chacun reçoit la proposition dans son espace et y répond.")}</p>
       <Notice state={state} />
       <input type="hidden" name="orgId" value={orgId} />
-      <label>Titre du dossier<input name="title" required placeholder="Ex. : Board implantologie — printemps" /></label>
+      <label>{t("Titre du dossier")}<input name="title" required placeholder={t("Ex. : Board implantologie — printemps")} /></label>
       <div className="row">
-        <label>Type de collaboration
+        <label>{t("Type de collaboration")}
           <select name="typeId" value={typeId} onChange={(e) => setTypeId(e.target.value)}>
             {categories.map((c) => (
-              <optgroup key={c} label={c}>{types.filter((t) => t.category === c).map((t) => <option key={t.id} value={t.id}>{t.label}</option>)}</optgroup>
+              <optgroup key={c} label={t(c)}>{types.filter((ty) => ty.category === c).map((ty) => <option key={ty.id} value={ty.id}>{t(ty.label)}</option>)}</optgroup>
             ))}
           </select>
         </label>
-        <label>Domaine thérapeutique<input name="therapeuticArea" /></label>
+        <label>{t("Domaine thérapeutique")}<input name="therapeuticArea" /></label>
       </div>
-      <p className="hint">Repère indicatif KolBase (non réglementaire) : {type.fmv[0].toLocaleString("fr-FR")} à {type.fmv[1].toLocaleString("fr-FR")} € HT par {type.unit}. La juste contrepartie reste à documenter par votre organisation.</p>
-      <label>Objet et déroulé<textarea name="description" rows={ai ? 6 : 4} placeholder="Contexte, livrables attendus, dates…" /></label>
-      {ai && <AiDraft kind="objet" target="description" label="Rédiger l'objet avec l'IA" />}
+      <p className="hint">{t("Repère indicatif KolBase (non réglementaire) : {toLocaleString} à {toLocaleString2} € HT par {unit}. La juste contrepartie reste à documenter par votre organisation.", { toLocaleString: type.fmv[0].toLocaleString(intlLocale(locale)), toLocaleString2: type.fmv[1].toLocaleString(intlLocale(locale)), unit: t(type.unit) })}</p>
+      <label>{t("Objet et déroulé")}<textarea name="description" rows={ai ? 6 : 4} placeholder={t("Contexte, livrables attendus, dates…")} /></label>
+      {ai && <AiDraft kind="objet" target="description" label={t("Rédiger l'objet avec l'IA")} />}
 
       <fieldset>
-        <legend>Experts sollicités</legend>
+        <legend>{t("Experts sollicités")}</legend>
         <ExpertSuggestions
           orgId={orgId}
           selected={selected}
@@ -57,7 +60,7 @@ export function NewProjectForm({ orgId, types, experts, preselected, ai = false,
             setSelected((sel) => (sel.includes(e.id) ? sel : [...sel, e.id]));
           }}
         />
-        <input className="filter" placeholder="Filtrer par nom, spécialité, ville…" value={filter} onChange={(e) => setFilter(e.target.value)} />
+        <input className="filter" placeholder={t("Filtrer par nom, spécialité, ville…")} value={filter} onChange={(e) => setFilter(e.target.value)} />
         <div className="expert-pick">
           {visible.map((e) => (
             <label key={e.id} className="check">
@@ -69,13 +72,13 @@ export function NewProjectForm({ orgId, types, experts, preselected, ai = false,
               <span><strong>{e.name}</strong> <span className="muted">{e.detail}</span></span>
             </label>
           ))}
-          {visible.length === 0 && <p className="muted">Aucun expert référencé ne correspond.</p>}
+          {visible.length === 0 && <p className="muted">{t("Aucun expert référencé ne correspond.")}</p>}
         </div>
       </fieldset>
 
       {selected.length > 0 && (
         <fieldset>
-          <legend>Conditions proposées</legend>
+          <legend>{t("Conditions proposées")}</legend>
           {selected.map((id) => {
             const e = all.find((x) => x.id === id);
             if (!e) return null;
@@ -83,16 +86,16 @@ export function NewProjectForm({ orgId, types, experts, preselected, ai = false,
               <div key={id} className="fee-row">
                 <input type="hidden" name="expertId" value={id} />
                 <strong>{e.name}</strong>
-                <label>Unités ({type.unit})<input name={`units_${id}`} inputMode="decimal" defaultValue="1" /></label>
-                <label>Honoraires totaux (€ HT)<input name={`fee_${id}`} inputMode="decimal" defaultValue={e.dayRateCents != null ? String(e.dayRateCents / 100) : ""} required /></label>
+                <label>{t("Unités ({unit})", { unit: t(type.unit) })}<input name={`units_${id}`} inputMode="decimal" defaultValue="1" /></label>
+                <label>{t("Honoraires totaux (€ HT)")}<input name={`fee_${id}`} inputMode="decimal" defaultValue={e.dayRateCents != null ? String(e.dayRateCents / 100) : ""} required /></label>
               </div>
             );
           })}
         </fieldset>
       )}
-      <label>Message d&apos;accompagnement<textarea name="message" rows={3} placeholder="Message envoyé à chaque expert sollicité" /></label>
-      <button className="btn" disabled={pending || !!blocked}>{pending ? "Envoi…" : "Envoyer les sollicitations"}</button>
-      {blocked && <p className="hint">Envoi possible {BLOCKED_UNTIL[blocked]} (voir le bandeau en haut de la page).</p>}
+      <label>{t("Message d'accompagnement")}<textarea name="message" rows={3} placeholder={t("Message envoyé à chaque expert sollicité")} /></label>
+      <button className="btn" disabled={pending || !!blocked}>{pending ? t("Envoi…") : t("Envoyer les sollicitations")}</button>
+      {blocked && <p className="hint">{t("Envoi possible {blocked} (voir le bandeau en haut de la page).", { blocked: t(BLOCKED_UNTIL[blocked]) })}</p>}
     </ActionForm>
   );
 }

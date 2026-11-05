@@ -12,8 +12,8 @@ import { expertPhotoSrc, photoPath } from "@/lib/expert-photo";
 import { BillingNotice } from "@/components/BillingNotice";
 import { db } from "@/lib/db";
 import { requireMembership } from "@/lib/orgs";
-import { COMPLIANCE_ROLES, formatDate, formatDateTime, formatEUR, parisToday } from "@/lib/events";
-import { ACCOUNT_DELETED, PROPOSAL_ORIGIN, PROPOSAL_WITHDRAWN, collabType, needsMeeting, PROJECT_ROLES, PROJECT_VIEW_ROLES, projectEditable, recruitmentOpen, REVIEW_ROLES, STATUS_LABEL, TRANSITIONS, type TransitionKey } from "@/lib/projects";
+import { COMPLIANCE_ROLES, parisToday } from "@/lib/events";
+import { ACCOUNT_DELETED, PROPOSAL_ORIGIN, PROPOSAL_WITHDRAWN, collabType, needsMeeting, PROJECT_ROLES, PROJECT_VIEW_ROLES, projectEditable, recruitmentOpen, REVIEW_ROLES, STATUS_LABEL, TRANSITIONS, unitCount, type TransitionKey } from "@/lib/projects";
 import { storageEnabled } from "@/lib/storage";
 import { acceptCounterOffer, advanceProject } from "@/lib/project-actions";
 import { ConfirmButton } from "@/components/ConfirmButton";
@@ -24,14 +24,19 @@ import { missingSignedConventions } from "@/lib/project-documents";
 import { FOUR_EYES_BLOCKED, FOUR_EYES_JUSTIFY, fourEyes, projectAuthors } from "@/lib/four-eyes";
 import { RFQ_STATUS, rfqDisplayStatus, supplierCategoryLabel } from "@/lib/suppliers";
 import type { ProjectStatus } from "@/generated/prisma/client";
-import { complianceSettings, projectRegime, REGIME_LABEL } from "@/lib/compliance";
+import { complianceSettings, projectRegime, REGIME_LABEL, regimeReason } from "@/lib/compliance";
 import { country, foreignObligations, practicesInFrance } from "@/lib/countries";
 import { drPrefix } from "@/lib/professions";
 import { AiReview } from "@/components/AiReview";
 import { signatureEnabled } from "@/lib/yousign";
 import { engagementBlock } from "@/lib/billing";
+import { getT } from "@/lib/i18n/server";
+import { fmtDate, fmtDateTime, fmtEur, intlLocale } from "@/lib/i18n";
 
-export const metadata = { title: "Dossier — KolBase" };
+export async function generateMetadata() {
+  const { t } = await getT();
+  return { title: `${t("Dossier")} — KolBase` };
+}
 
 const ACTION_LABEL: Record<string, string> = {
   "project.create": "Dossier créé",
@@ -104,6 +109,7 @@ const DANGER: TransitionKey[] = ["abandon", "block", "ordre_ko", "decline_propos
 
 
 export default async function Page({ params, searchParams }: { params: Promise<{ id: string; projectId: string }>; searchParams: Promise<{ modifier?: string }> }) {
+  const { t, locale } = await getT();
   const { id, projectId } = await params;
   const { modifier } = await searchParams;
   const { org, roles, user } = await requireMembership(id, PROJECT_VIEW_ROLES);
@@ -191,6 +197,7 @@ export default async function Page({ params, searchParams }: { params: Promise<{
   }).sort((a, b) => Number(DANGER.includes(a)) - Number(DANGER.includes(b)));
   const needsNote = (k: TransitionKey) => k === "block" || k === "validate" || k === "ordre" || k === "abandon" || k === "decline_proposal";
   const notePlaceholder = (k: TransitionKey) => (k === "ordre" ? "Référence de la demande" : k === "validate" && fourEyesRule === "justify" ? "Justification (obligatoire)" : k === "block" ? "Motif du blocage (obligatoire)" : k === "abandon" ? "Motif de l'abandon (obligatoire)" : k === "decline_proposal" ? "Motif, transmis à l'expert (facultatif)" : "Commentaire (facultatif)");
+  // Libellés français ci-dessus, traduits à l'affichage.
 
   // Engagé = experts ayant accepté ; les honoraires proposés sans réponse sont indiqués à part (même définition
   // dans le budget plus bas).
@@ -210,13 +217,13 @@ export default async function Page({ params, searchParams }: { params: Promise<{
     // Jamais de code technique : libellé connu, sinon l'étape atteinte, sinon une mention générique.
     const what = d?.title ?? d?.name;
     const label = ACTION_LABEL[h.action]
-      ? `${ACTION_LABEL[h.action]}${what ? ` : ${what}${d?.version ? ` (v${d.version})` : ""}` : ""}${d?.ref ? ` (réf. ${d.ref})` : ""}`
-      : d?.to ? `Étape : ${STATUS_LABEL[d.to as keyof typeof STATUS_LABEL] ?? "mise à jour"}` : "Mise à jour du dossier";
+      ? `${t(ACTION_LABEL[h.action])}${what ? ` : ${what}${d?.version ? ` (v${d.version})` : ""}` : ""}${d?.ref ? ` (${t("réf. {ref}", { ref: d.ref })})` : ""}`
+      : d?.to ? t("Étape : {step}", { step: t(STATUS_LABEL[d.to as keyof typeof STATUS_LABEL] ?? "mise à jour") }) : t("Mise à jour du dossier");
     return (
       <li key={h.id}>
         <div>
-          <span>{label}{d?.note ? ` — ${d.note}` : ""}{d?.selfValidated ? " (validé par son auteur, seul habilité : justification conservée)" : ""}</span>
-          <span className="when">{h.createdAt.toLocaleString("fr-FR", { timeZone: "Europe/Paris", dateStyle: "short", timeStyle: "short" })} · {h.actor ? `${h.actor.firstName} ${h.actor.lastName}` : "système"}</span>
+          <span>{label}{d?.note ? ` — ${d.note}` : ""}{d?.selfValidated ? t(" (validé par son auteur, seul habilité : justification conservée)") : ""}</span>
+          <span className="when">{h.createdAt.toLocaleString(intlLocale(locale), { timeZone: "Europe/Paris", dateStyle: "short", timeStyle: "short" })} · {h.actor ? `${h.actor.firstName} ${h.actor.lastName}` : t("système")}</span>
         </div>
       </li>
     );
@@ -226,51 +233,51 @@ export default async function Page({ params, searchParams }: { params: Promise<{
     <>
       <SiteHeader />
       <main className="stack">
-        <p className="muted"><Link href={`/organisations/${id}`}>{org.name}</Link> / <Link href={`/organisations/${id}/dossiers`}>Dossiers</Link></p>
+        <p className="muted"><Link href={`/organisations/${id}`}>{org.name}</Link> / <Link href={`/organisations/${id}/dossiers`}>{t("Dossiers")}</Link></p>
 
         <header className="page-hero">
           <div className="hero-top">
-            <span className="eyebrow-sm">{type?.label ?? project.typeId}{project.therapeuticArea ? ` · ${project.therapeuticArea}` : ""}</span>
+            <span className="eyebrow-sm">{t(type?.label ?? project.typeId)}{project.therapeuticArea ? ` · ${t(project.therapeuticArea)}` : ""}</span>
             <StatusPill status={project.status} />
           </div>
           <h1>{project.title}</h1>
           {project.description && <p className="lead">{project.description}</p>}
           <dl className="hero-facts">
             <div>
-              <dt><Users size={13} /> Experts</dt>
-              <dd>{engaged.length} engagé{engaged.length > 1 ? "s" : ""}<small>{waiting.length ? `${waiting.length} réponse${waiting.length > 1 ? "s" : ""} attendue${waiting.length > 1 ? "s" : ""}` : `${live.length} sollicité${live.length > 1 ? "s" : ""}`}</small></dd>
+              <dt><Users size={13} />{" "}{t("Experts")}</dt>
+              <dd>{t(engaged.length > 1 ? "{engaged} engagés" : "{engaged} engagé", { engaged: engaged.length })}<small>{waiting.length ? t(waiting.length > 1 ? "{waiting} réponses attendues" : "{waiting} réponse attendue", { waiting: waiting.length }) : t(live.length > 1 ? "{live} sollicités" : "{live} sollicité", { live: live.length })}</small></dd>
             </div>
             <div>
-              <dt><Euro size={13} /> Honoraires engagés</dt>
-              <dd>{formatEUR(total)} HT<small>{proposed > 0 ? `${formatEUR(proposed)} HT proposés, sans réponse` : "honoraires acceptés"}</small></dd>
+              <dt><Euro size={13} />{" "}{t("Honoraires engagés")}</dt>
+              <dd>{fmtEur(locale, total)}{" "}{t("HT")}<small>{proposed > 0 ? t("{montant} HT proposés, sans réponse", { montant: fmtEur(locale, proposed) }) : t("honoraires acceptés")}</small></dd>
             </div>
             <div>
-              <dt><Wallet size={13} /> Budget</dt>
-              <dd>{project.budgetCents != null ? `${formatEUR(project.budgetCents)} HT` : "Non défini"}<small>{budgetPct != null ? `${budgetPct} % engagé${supplierCents ? ", prestataires compris" : ""}${proposed > 0 ? ` ; ${formatEUR(proposed)} HT proposés en plus` : ""}` : "à renseigner plus bas"}</small></dd>
+              <dt><Wallet size={13} />{" "}{t("Budget")}</dt>
+              <dd>{project.budgetCents != null ? `${fmtEur(locale, project.budgetCents)} ${t("HT")}` : t("Non défini")}<small>{budgetPct != null ? `${t(supplierCents ? "{budgetPct} % engagé, prestataires compris" : "{budgetPct} % engagé", { budgetPct })}${proposed > 0 ? ` ; ${t("{montant} HT proposés en plus", { montant: fmtEur(locale, proposed) })}` : ""}` : t("à renseigner plus bas")}</small></dd>
             </div>
             <div>
-              <dt><Scale size={13} /> Régime</dt>
-              <dd>{regime ? REGIME_LABEL[regime.regime] : "À déterminer"}<small>{regime ? regime.reason : "selon les experts engagés"}</small></dd>
+              <dt><Scale size={13} />{" "}{t("Régime")}</dt>
+              <dd>{regime ? t(REGIME_LABEL[regime.regime]) : t("À déterminer")}<small>{regime ? regimeReason(regime, t, intlLocale(locale)) : t("selon les experts engagés")}</small></dd>
             </div>
             <div>
-              <dt><User size={13} /> Responsable</dt>
-              <dd>{owner ? `${owner.firstName} ${owner.lastName}` : "—"}<small>ouvert le {formatDate(project.createdAt)}</small></dd>
+              <dt><User size={13} />{" "}{t("Responsable")}</dt>
+              <dd>{owner ? `${owner.firstName} ${owner.lastName}` : "—"}<small>{t("ouvert le {date}", { date: fmtDate(locale, project.createdAt) })}</small></dd>
             </div>
           </dl>
           <Pipeline status={project.status} />
         </header>
 
-        {project.status === "ATT_IND" && <p className="notice warn">Projet proposé par l&apos;expert : acceptez-le pour ouvrir le circuit (conformité, convention, signature), ou déclinez-le. Le motif éventuel lui est transmis dans vos échanges.</p>}
+        {project.status === "ATT_IND" && <p className="notice warn">{t("Projet proposé par l'expert : acceptez-le pour ouvrir le circuit (conformité, convention, signature), ou déclinez-le. Le motif éventuel lui est transmis dans vos échanges.")}</p>}
         {proposalBlocked && <BillingNotice orgId={id} motive="proposition" objet={projectId} />}
 
         <div className="page-grid">
           <div className="page-main">
             <section className="stack-sm">
               <div className="block-head">
-                <h2>Experts</h2>
-                <span className="muted text-sm">{engaged.length} engagé{engaged.length > 1 ? "s" : ""} sur {project.experts.length} sollicité{project.experts.length > 1 ? "s" : ""}</span>
+                <h2>{t("Experts")}</h2>
+                <span className="muted text-sm">{t(project.experts.length > 1 ? (engaged.length > 1 ? "{n} engagés sur {m} sollicités" : "{n} engagé sur {m} sollicités") : "{n} engagé sur {m} sollicité", { n: engaged.length, m: project.experts.length })}</span>
               </div>
-              {project.experts.length === 0 && <div className="card empty"><p className="muted">Aucun expert sollicité pour l&apos;instant.</p></div>}
+              {project.experts.length === 0 && <div className="card empty"><p className="muted">{t("Aucun expert sollicité pour l'instant.")}</p></div>}
               {project.experts.map((e) => {
                 const name = `${drPrefix(e.practitioner.profession)}${e.practitioner.user.firstName} ${e.practitioner.user.lastName}`;
                 const active = e.status !== "ATT_EXPERTS" && e.status !== "DECLINE";
@@ -287,28 +294,27 @@ export default async function Page({ params, searchParams }: { params: Promise<{
                       <div className="who">
                         <h3><Link href={`/annuaire/${e.practitionerId}`}>{name}</Link></h3>
                         <div className="muted text-sm">
-                          {[e.practitioner.specialty ?? e.practitioner.profession, e.practitioner.city, !practicesInFrance(e.practitioner.country) ? country(e.practitioner.country).name : null].filter(Boolean).join(" · ")}
+                          {[t(e.practitioner.specialty ?? e.practitioner.profession), e.practitioner.city, !practicesInFrance(e.practitioner.country) ? country(e.practitioner.country).name : null].filter(Boolean).join(" · ")}
                         </div>
                         {/* Expert engagé qui a donné son accord : sa photo en grand format pour le programme, les affiches, les posts. */}
                         {active && photo && e.practitioner.photoConsentAt && e.practitioner.photoUpdatedAt && (
-                          <a className="text-xs" href={photoPath(e.practitionerId, e.practitioner.photoUpdatedAt, "grande")} download>Photo pour vos supports (accord de l&apos;expert)</a>
+                          <a className="text-xs" href={photoPath(e.practitionerId, e.practitioner.photoUpdatedAt, "grande")} download>{t("Photo pour vos supports (accord de l'expert)")}</a>
                         )}
                       </div>
                       <span className={`pill ${e.status === "DECLINE" ? "done" : e.status === "ATT_EXPERTS" ? "wait" : "ok"}`}>
-                        {e.status === "ATT_EXPERTS" ? (closed ? "Sans réponse, recrutement clos" : counter ? "Contre-proposition" : "Réponse attendue") : e.status === "DECLINE" ? (e.responseNote === ACCOUNT_DELETED ? "Retiré : compte supprimé" : e.responseNote === PROPOSAL_WITHDRAWN ? "Proposition retirée par l'expert" : project.origin === PROPOSAL_ORIGIN ? "Dossier clos" : "A décliné") : STATUS_LABEL[e.status]}
+                        {e.status === "ATT_EXPERTS" ? (closed ? t("Sans réponse, recrutement clos") : counter ? t("Contre-proposition") : t("Réponse attendue")) : e.status === "DECLINE" ? (e.responseNote === ACCOUNT_DELETED ? t("Retiré : compte supprimé") : e.responseNote === PROPOSAL_WITHDRAWN ? t("Proposition retirée par l'expert") : project.origin === PROPOSAL_ORIGIN ? t("Dossier clos") : t("A décliné")) : t(STATUS_LABEL[e.status])}
                       </span>
                     </div>
                     <div className="terms">
-                      <span className="term"><CalendarDays size={13} /> {e.days ?? "—"} {type?.unit ?? "unité"}{(e.days ?? 0) > 1 ? "s" : ""}</span>
-                      <span className="term"><Euro size={13} /> {e.feeCents != null ? formatEUR(e.feeCents) : "—"} HT</span>
+                      <span className="term"><CalendarDays size={13} /> {unitCount(t, intlLocale(locale), e.days, type?.unit ?? "unité")}</span>
+                      <span className="term"><Euro size={13} /> {e.feeCents != null ? fmtEur(locale, e.feeCents) : "—"}{" "}{t("HT")}</span>
                       <FmvBadge typeId={project.typeId} feeCents={e.feeCents} units={e.days} />
-                      {e.desiredFeeCents != null && e.status === "ATT_EXPERTS" && <span className="term desired"><Euro size={13} /> Souhaités par l&apos;expert : {formatEUR(e.desiredFeeCents)} HT</span>}
+                      {e.desiredFeeCents != null && e.status === "ATT_EXPERTS" && <span className="term desired"><Euro size={13} />{" "}{t("Souhaités par l'expert : {montant} HT", { montant: fmtEur(locale, e.desiredFeeCents) })}</span>}
                     </div>
                     {counter && (
                       <div className="notice warn stack-sm">
                         <span>
-                          {name} propose d&apos;autres honoraires : {e.feeCents != null ? `${formatEUR(e.feeCents)} → ` : ""}{formatEUR(e.desiredFeeCents!)} HT.
-                          {e.responseNote ? ` « ${e.responseNote} »` : ""}
+                          {t("{name} propose d'autres honoraires :", { name })}{" "}{e.feeCents != null ? `${fmtEur(locale, e.feeCents)} → ` : ""}{fmtEur(locale, e.desiredFeeCents!)}{" "}{t("HT")}{". "}{e.responseNote ? ` « ${e.responseNote} »` : ""}
                         </span>
                         {isProject && editable && (
                           <span className="actions" style={{ marginTop: 0 }}>
@@ -316,11 +322,11 @@ export default async function Page({ params, searchParams }: { params: Promise<{
                               <input type="hidden" name="orgId" value={id} />
                               <input type="hidden" name="projectId" value={projectId} />
                               <input type="hidden" name="linkId" value={e.id} />
-                              <ConfirmButton className="btn small" confirm="accepter ces honoraires" summary={<>Les honoraires de {name} passent à {formatEUR(e.desiredFeeCents!)} HT et l&apos;expert est engagé (accord de principe) ; il en est prévenu par e-mail.</>}>
-                                Accepter ces honoraires
+                              <ConfirmButton className="btn small" confirm={t("accepter ces honoraires")} summary={<>{t("Les honoraires de {name} passent à {montant} HT et l'expert est engagé (accord de principe) ; il en est prévenu par e-mail.", { name, montant: fmtEur(locale, e.desiredFeeCents!) })}</>}>
+                                {t("Accepter ces honoraires")}
                               </ConfirmButton>
                             </form>
-                            <a className="btn ghost small" href="?modifier=1#modifier">Proposer d&apos;autres conditions</a>
+                            <a className="btn ghost small" href="?modifier=1#modifier">{t("Proposer d'autres conditions")}</a>
                           </span>
                         )}
                       </div>
@@ -329,10 +335,10 @@ export default async function Page({ params, searchParams }: { params: Promise<{
                       <div className="expert-docs">
                         <span className="actions">
                           <a className="btn ghost small" href={`/organisations/${id}/dossiers/${projectId}/convention/${e.id}`} target="_blank" rel="noreferrer">
-                            Convention (PDF)
+                            {t("Convention (PDF)")}
                           </a>
-                          <a className="link" href={`/organisations/${id}/dossiers/${projectId}/convention/${e.id}?lang=en`} target="_blank" rel="noreferrer" title="Traduction de courtoisie : la version française fait foi">
-                            version anglaise
+                          <a className="link" href={`/organisations/${id}/dossiers/${projectId}/convention/${e.id}?lang=en`} target="_blank" rel="noreferrer" title={t("Traduction de courtoisie : la version française fait foi")}>
+                            {t("version anglaise")}
                           </a>
                         </span>
                         <ConventionSignatureBlock orgId={id} linkId={e.id} signature={e.signature} projectStatus={project.status} canSend={isProject} deposited={e.documents.length > 0} />
@@ -342,41 +348,41 @@ export default async function Page({ params, searchParams }: { params: Promise<{
                       <div className="payment-row">
                         {e.paidAt ? (
                           <>
-                            <span className="pill ok">Honoraires payés le {formatDate(e.paidAt)} · {formatEUR(e.paidCents ?? 0)} HT</span>
+                            <span className="pill ok">{t("Honoraires payés le {date} · {montant} HT", { date: fmtDate(locale, e.paidAt), montant: fmtEur(locale, e.paidCents ?? 0) })}</span>
                             {isProject && (
                               <form action={markExpertPaid}>
                                 <input type="hidden" name="orgId" value={id} /><input type="hidden" name="linkId" value={e.id} /><input type="hidden" name="undo" value="1" />
-                                <button className="link">Annuler</button>
+                                <button className="link">{t("Annuler")}</button>
                               </form>
                             )}
                           </>
                         ) : isProject ? (
                           <form action={markExpertPaid} className="inline wrap">
                             <input type="hidden" name="orgId" value={id} /><input type="hidden" name="linkId" value={e.id} />
-                            <span className="text-sm">Paiement des honoraires</span>
-                            <input name="amount" inputMode="decimal" defaultValue={e.feeCents != null ? String(e.feeCents / 100) : ""} aria-label="Montant payé (€ HT)" />
-                            <input name="date" type="date" defaultValue={parisToday()} max={parisToday()} aria-label="Date du paiement" />
-                            <button className="btn ghost small">Marquer payé</button>
+                            <span className="text-sm">{t("Paiement des honoraires")}</span>
+                            <input name="amount" inputMode="decimal" defaultValue={e.feeCents != null ? String(e.feeCents / 100) : ""} aria-label={t("Montant payé (€ HT)")} />
+                            <input name="date" type="date" defaultValue={parisToday()} max={parisToday()} aria-label={t("Date du paiement")} />
+                            <button className="btn ghost small">{t("Marquer payé")}</button>
                           </form>
                         ) : (
-                          <span className="pill wait">Honoraires à payer</span>
+                          <span className="pill wait">{t("Honoraires à payer")}</span>
                         )}
                         {e.feeNote ? (
-                          <a className="fee-note-link" href={`/notes-honoraires/${e.feeNote.id}`}>Note d&apos;honoraires {e.feeNote.number} · {formatEUR(e.feeNote.totalCents)} {e.feeNote.vatBp ? "TTC" : "(TVA non applicable)"}</a>
+                          <a className="fee-note-link" href={`/notes-honoraires/${e.feeNote.id}`}>{t("Note d'honoraires {number} · {montant}", { number: e.feeNote.number, montant: fmtEur(locale, e.feeNote.totalCents) })}{" "}{e.feeNote.vatBp ? "TTC" : t("(TVA non applicable)")}</a>
                         ) : (
-                          <span className="text-xs muted">Note d&apos;honoraires : pas encore établie par l&apos;expert (depuis « Mes revenus »).</span>
+                          <span className="text-xs muted">{t("Note d'honoraires : pas encore établie par l'expert (depuis « Mes revenus »).")}</span>
                         )}
                       </div>
                     )}
                     <div className="exchanges">
                       <div className="exchanges-head">
-                        <span className="label">Échanges{e.messages.length ? ` (${e.messages.length})` : ""}</span>
-                        {toAnswer && e.status !== "DECLINE" && <span className="pill electric">À vous de répondre</span>}
-                        {last && <span className="muted text-xs">dernier message le {formatDateTime(last.createdAt)}</span>}
+                        <span className="label">{t("Échanges")}{e.messages.length ? ` (${e.messages.length})` : ""}</span>
+                        {toAnswer && e.status !== "DECLINE" && <span className="pill electric">{t("À vous de répondre")}</span>}
+                        {last && <span className="muted text-xs">{t("dernier message le {date}", { date: fmtDateTime(locale, last.createdAt) })}</span>}
                       </div>
                       {earlier.length > 0 && (
                         <details className="older">
-                          <summary>Afficher {earlier.length > 1 ? `les ${earlier.length} messages précédents` : "le message précédent"}</summary>
+                          <summary>{t("Afficher")}{" "}{earlier.length > 1 ? t("les {earlier} messages précédents", { earlier: earlier.length }) : t("le message précédent")}</summary>
                           <Thread messages={earlier} meId={user.id} />
                         </details>
                       )}
@@ -390,37 +396,37 @@ export default async function Page({ params, searchParams }: { params: Promise<{
 
             {editable && (
               <details className="card edit-block" id="modifier" open={modifier === "1"}>
-                <summary><h2>Modifier le dossier</h2></summary>
+                <summary><h2>{t("Modifier le dossier")}</h2></summary>
                 <div className="stack">
-                  <p className="hint">Tant que le dossier n&apos;est pas soumis à la conformité, vous pouvez en modifier l&apos;objet et les conditions de chaque expert, ou solliciter un expert de plus. Des unités ou des honoraires modifiés renvoient la proposition à l&apos;expert : sa réponse est de nouveau attendue.</p>
+                  <p className="hint">{t("Tant que le dossier n'est pas soumis à la conformité, vous pouvez en modifier l'objet et les conditions de chaque expert, ou solliciter un expert de plus. Des unités ou des honoraires modifiés renvoient la proposition à l'expert : sa réponse est de nouveau attendue.")}</p>
                   <ProjectObjectForm orgId={id} projectId={projectId} title={project.title} area={project.therapeuticArea ?? ""} description={project.description ?? ""} />
                   {project.experts.length > 0 && (
                     <div className="stack-sm">
-                      <h3>Conditions proposées</h3>
+                      <h3>{t("Conditions proposées")}</h3>
                       {project.experts.map((e) => (
                         <ExpertTermsForm
                           key={e.id}
                           orgId={id} projectId={projectId} linkId={e.id}
-                          name={`${drPrefix(e.practitioner.profession)}${e.practitioner.user.firstName} ${e.practitioner.user.lastName}${e.status === "DECLINE" ? " (a décliné)" : ""}`}
-                          unit={type?.unit ?? "unité"}
+                          name={`${drPrefix(e.practitioner.profession)}${e.practitioner.user.firstName} ${e.practitioner.user.lastName}${e.status === "DECLINE" ? ` (${t("a décliné")})` : ""}`}
+                          unit={type?.unit ?? t("unité")}
                           units={e.days != null ? String(e.days).replace(".", ",") : ""}
                           fee={e.feeCents != null ? String(e.feeCents / 100).replace(".", ",") : ""}
-                          desired={e.desiredFeeCents != null ? formatEUR(e.desiredFeeCents) : null}
+                          desired={e.desiredFeeCents != null ? fmtEur(locale, e.desiredFeeCents) : null}
                         />
                       ))}
                     </div>
                   )}
                   <div className="stack-sm">
-                    <h3>Solliciter un autre expert</h3>
+                    <h3>{t("Solliciter un autre expert")}</h3>
                     <AddExpertForm
-                      orgId={id} projectId={projectId} unit={type?.unit ?? "unité"}
+                      orgId={id} projectId={projectId} unit={type?.unit ?? t("unité")}
                       blocked={await engagementBlock(id, "sollicitation")}
                       experts={candidates.map((c) => {
                         const v = kolVisibility(c.visibility);
                         return {
                           id: c.id,
                           name: `${drPrefix(c.profession)}${c.user.firstName} ${c.user.lastName}`,
-                          detail: [c.specialty || c.profession, canSee(v.contact, "membre") ? c.city : null].filter(Boolean).join(" · "),
+                          detail: [t(c.specialty || c.profession), canSee(v.contact, "membre") ? c.city : null].filter(Boolean).join(" · "),
                           dayRateCents: canSee(v.tarif, "membre") ? c.dayRateCents : null,
                         };
                       })}
@@ -435,13 +441,13 @@ export default async function Page({ params, searchParams }: { params: Promise<{
             <BudgetPanel orgId={id} projectId={projectId} canEdit={isProject} />
 
             <section className="card">
-              <h2 className="section-title"><Clock size={15} /> Historique</h2>
-              {history.length === 0 ? <p className="muted">Aucune action enregistrée.</p> : (
+              <h2 className="section-title"><Clock size={15} />{" "}{t("Historique")}</h2>
+              {history.length === 0 ? <p className="muted">{t("Aucune action enregistrée.")}</p> : (
                 <>
                   <ol className="audit-trail">{recent.map(historyItem)}</ol>
                   {older.length > 0 && (
                     <details className="older">
-                      <summary>Voir les {older.length} actions précédentes</summary>
+                      <summary>{t("Voir les {older} actions précédentes", { older: older.length })}</summary>
                       <ol className="audit-trail">{older.map(historyItem)}</ol>
                     </details>
                   )}
@@ -452,9 +458,9 @@ export default async function Page({ params, searchParams }: { params: Promise<{
 
           <aside className="page-aside">
             <section className="card next-step">
-              <span className="eyebrow-sm">Prochaine étape</span>
-              <p className="next-hint">{NEXT_HINT[project.status]}</p>
-              {project.status === "EN_VALID" && !isCompliance && <p className="hint">En attente de l&apos;équipe Conformité.</p>}
+              <span className="eyebrow-sm">{t("Prochaine étape")}</span>
+              <p className="next-hint">{t(NEXT_HINT[project.status] ?? "")}</p>
+              {project.status === "EN_VALID" && !isCompliance && <p className="hint">{t("En attente de l'équipe Conformité.")}</p>}
               {fourEyesRule === "blocked" && <p className="notice warn">{FOUR_EYES_BLOCKED}</p>}
               {fourEyesRule === "justify" && <p className="hint">{FOUR_EYES_JUSTIFY}</p>}
               {available.length > 0 && (
@@ -464,67 +470,67 @@ export default async function Page({ params, searchParams }: { params: Promise<{
                       <input type="hidden" name="orgId" value={id} />
                       <input type="hidden" name="projectId" value={projectId} />
                       <input type="hidden" name="transition" value={k} />
-                      {needsNote(k) && <input name="note" aria-label={notePlaceholder(k)} placeholder={notePlaceholder(k)} required={k === "block" || k === "abandon" || (k === "validate" && fourEyesRule === "justify")} />}
+                      {needsNote(k) && <input name="note" aria-label={t(notePlaceholder(k))} placeholder={t(notePlaceholder(k))} required={k === "block" || k === "abandon" || (k === "validate" && fourEyesRule === "justify")} />}
                       {k === "signed" && attestable && (
                         <label className="check text-sm">
-                          <input type="checkbox" name="attest" value="1" required /> J&apos;atteste que la convention de {unsigned.join(", ")} est signée par les deux parties et conservée par l&apos;organisation.
+                          <input type="checkbox" name="attest" value="1" required />{" "}{t("J'atteste que la convention de {join} est signée par les deux parties et conservée par l'organisation.", { join: unsigned.join(", ") })}
                         </label>
                       )}
                       {k === "submit" && waiting.length > 0 ? (
                         <ConfirmButton
                           className="btn"
-                          confirm="soumettre à la conformité"
-                          summary={<>{waiting.length > 1 ? `${waiting.length} réponses attendues seront closes` : "1 réponse attendue sera close"} ({waiting.map((w) => `${drPrefix(w.practitioner.profession)}${w.practitioner.user.firstName} ${w.practitioner.user.lastName}${w.desiredFeeCents != null ? ", qui propose d'autres honoraires" : ""}`).join(" ; ")}) : {waiting.length > 1 ? "ces experts sont prévenus" : "l'expert est prévenu"} par e-mail que le recrutement est clos.</>}
+                          confirm={t("soumettre à la conformité")}
+                          summary={<>{waiting.length > 1 ? t("{waiting} réponses attendues seront closes", { waiting: waiting.length }) : t("1 réponse attendue sera close")} ({waiting.map((w) => `${drPrefix(w.practitioner.profession)}${w.practitioner.user.firstName} ${w.practitioner.user.lastName}${w.desiredFeeCents != null ? `, ${t("qui propose d'autres honoraires")}` : ""}`).join(" ; ")}) : {waiting.length > 1 ? t("ces experts sont prévenus") : t("l'expert est prévenu")}{" "}{t("par e-mail que le recrutement est clos.")}</>}
                         >
-                          {TRANSITIONS[k].label}
+                          {t(TRANSITIONS[k].label)}
                         </ConfirmButton>
                       ) : (
-                        <button className={DANGER.includes(k) ? "btn ghost" : "btn"}>{TRANSITIONS[k].label}</button>
+                        <button className={DANGER.includes(k) ? "btn ghost" : "btn"}>{t(TRANSITIONS[k].label)}</button>
                       )}
                     </form>
                   ))}
                 </div>
               )}
               {signStarted && isProject && (
-                <p className="hint">Une convention est en cours de signature ou déjà signée : le retour en accord de principe n&apos;est plus possible. Si les conditions doivent changer, abandonnez le dossier (motif obligatoire) et ouvrez-en un nouveau.</p>
+                <p className="hint">{t("Une convention est en cours de signature ou déjà signée : le retour en accord de principe n'est plus possible. Si les conditions doivent changer, abandonnez le dossier (motif obligatoire) et ouvrez-en un nouveau.")}</p>
               )}
               {unsigned.length > 0 && !attestable && (
                 <p className="hint">
-                  Déposez la convention signée de {unsigned.join(", ")} (rubrique Documents){signatureEnabled() ? " ou faites-la signer électroniquement (fiche de l'expert)" : ""} pour passer le dossier en « Signé ».
+                  {t("Déposez la convention signée de {join} (rubrique Documents)", { join: unsigned.join(", ") })}{signatureEnabled() ? t(" ou faites-la signer électroniquement (fiche de l'expert)") : ""}{" "}{t("pour passer le dossier en « Signé ».")}
                 </p>
               )}
               {attestable && (
                 <p className="hint">
-                  Le dépôt de documents n&apos;est pas encore activé sur KolBase{signatureEnabled() ? " (la signature électronique reste possible depuis la fiche de l'expert)" : ""} : passer en « Signé » exige votre attestation, enregistrée à votre nom avec la date.
+                  {t("Le dépôt de documents n'est pas encore activé sur KolBase")}{signatureEnabled() ? t(" (la signature électronique reste possible depuis la fiche de l'expert)") : ""}{" "}{t(": passer en « Signé » exige votre attestation, enregistrée à votre nom avec la date.")}
                 </p>
               )}
             </section>
 
             {isCompliance && aiEnabled() && (
               <section className="card stack-sm">
-                <h2 className="section-title"><Sparkles size={15} /> Relecture assistée</h2>
+                <h2 className="section-title"><Sparkles size={15} />{" "}{t("Relecture assistée")}</h2>
                 <AiReview orgId={id} projectId={projectId} />
               </section>
             )}
 
             <section className="card stack-sm">
-              <h2 className="section-title"><Scale size={15} /> Conformité</h2>
+              <h2 className="section-title"><Scale size={15} />{" "}{t("Conformité")}</h2>
               {regime ? (
                 <p className="text-sm">
-                  Régime : <span className={`pill ${regime.regime === "autorisation" ? "wait" : regime.regime === "hors_france" ? "" : "ok"}`}>{REGIME_LABEL[regime.regime]}</span>{" "}
-                  ({regime.reason}).{" "}
+                  {t("Régime :")}{" "}<span className={`pill ${regime.regime === "autorisation" ? "wait" : regime.regime === "hors_france" ? "" : "ok"}`}>{t(REGIME_LABEL[regime.regime])}</span>{" "}
+                  ({regimeReason(regime, t, intlLocale(locale))}).{" "}
                   {regime.regime === "hors_france"
-                    ? "Pas de démarche sur la plateforme EPS ; vérifiez les obligations du pays d'exercice avant la signature."
+                    ? t("Pas de démarche sur la plateforme EPS ; vérifiez les obligations du pays d'exercice avant la signature.")
                     : regime.regime === "autorisation"
-                      ? `Demande d'autorisation à adresser au moins ${settings.authorizationDays} jours avant l'exécution ; la déclaration simple n'est pas possible.`
-                      : `Déclaration à effectuer au moins ${settings.declarationDays} jours ouvrables avant l'exécution. Si une hospitalité dépasse les seuils, demandez l'autorisation.`}
+                      ? t("Demande d'autorisation à adresser au moins {authorizationDays} jours avant l'exécution ; la déclaration simple n'est pas possible.", { authorizationDays: settings.authorizationDays })
+                      : t("Déclaration à effectuer au moins {declarationDays} jours ouvrables avant l'exécution. Si une hospitalité dépasse les seuils, demandez l'autorisation.", { declarationDays: settings.declarationDays })}
                 </p>
-              ) : <p className="muted text-sm">Le régime (déclaration ou autorisation) sera déterminé dès qu&apos;un expert aura accepté.</p>}
-              {project.complianceNote && <p className={`notice ${project.status === "BLOQUE" ? "error" : "ok"}`}>Conformité : {project.complianceNote}</p>}
-              {project.ordreRef && <p className="muted text-sm">Demande à l&apos;Ordre : {project.ordreRef}</p>}
+              ) : <p className="muted text-sm">{t("Le régime (déclaration ou autorisation) sera déterminé dès qu'un expert aura accepté.")}</p>}
+              {project.complianceNote && <p className={`notice ${project.status === "BLOQUE" ? "error" : "ok"}`}>{t("Conformité : {complianceNote}", { complianceNote: project.complianceNote })}</p>}
+              {project.ordreRef && <p className="muted text-sm">{t("Demande à l'Ordre : {ordreRef}", { ordreRef: project.ordreRef })}</p>}
               {project.signatureAttestedAt && (
                 <p className="notice warn">
-                  Signature attestée par {attester ? `${attester.firstName} ${attester.lastName}` : "un membre de l'organisation"} le {project.signatureAttestedAt.toLocaleDateString("fr-FR", { timeZone: "Europe/Paris" })} : convention signée conservée hors de KolBase, non déposée.
+                  {t("Signature attestée par")}{" "}{attester ? `${attester.firstName} ${attester.lastName}` : t("un membre de l'organisation")}{" "}{t("le {date} : convention signée conservée hors de KolBase, non déposée.", { date: project.signatureAttestedAt.toLocaleDateString("fr-FR", { timeZone: "Europe/Paris" }) })}
                 </p>
               )}
             </section>
@@ -533,31 +539,31 @@ export default async function Page({ params, searchParams }: { params: Promise<{
 
             {foreignExperts.length > 0 && (
               <section className="card stack-sm">
-                <h2 className="section-title">Experts exerçant hors de France</h2>
+                <h2 className="section-title">{t("Experts exerçant hors de France")}</h2>
                 {foreignExperts.map((e) => (
                   <div key={e.id}>
                     <strong>{drPrefix(e.practitioner.profession)}{e.practitioner.user.firstName} {e.practitioner.user.lastName}</strong> · {country(e.practitioner.country).name}
                     <ul className="text-sm">{foreignObligations(e.practitioner.country).map((o) => <li key={o}>{o}</li>)}</ul>
                   </div>
                 ))}
-                <p className="text-xs muted">Repères donnés à titre indicatif, à faire valider par votre service juridique.</p>
+                <p className="text-xs muted">{t("Repères donnés à titre indicatif, à faire valider par votre service juridique.")}</p>
               </section>
             )}
 
             {showLogistics && <section className="card stack-sm">
-              <h2 className="section-title"><CalendarDays size={15} /> Événement et logistique</h2>
+              <h2 className="section-title"><CalendarDays size={15} />{" "}{t("Événement et logistique")}</h2>
               {project.events.length === 0 && callEvent ? (
                 <div className="stack-sm">
-                  <p className="muted text-sm">Dossier né de l&apos;appel à candidatures « {isProject ? <Link href={`/organisations/${id}/opportunites/${fromCall!.openCall.id}`}>{fromCall!.openCall.title}</Link> : fromCall!.openCall.title} » : l&apos;intervention a lieu à cet événement, où se gèrent la logistique et les devis.</p>
+                  <p className="muted text-sm">{t("Dossier né de l'appel à candidatures «")}{" "}{isProject ? <Link href={`/organisations/${id}/opportunites/${fromCall!.openCall.id}`}>{fromCall!.openCall.title}</Link> : fromCall!.openCall.title}{" "}{t("» : l'intervention a lieu à cet événement, où se gèrent la logistique et les devis.")}</p>
                   <ul className="linked-events">
                     <li>
                       <Link href={`/organisations/${id}/evenements/${callEvent.id}`}><strong>{callEvent.title}</strong></Link>
-                      <span className="muted text-xs">{formatDateTime(callEvent.startsAt)}{callEvent.city ? ` · ${callEvent.city}` : ""}</span>
+                      <span className="muted text-xs">{fmtDateTime(locale, callEvent.startsAt)}{callEvent.city ? ` · ${callEvent.city}` : ""}</span>
                     </li>
                   </ul>
                 </div>
               ) : project.events.length === 0 ? (
-                <p className="muted text-sm">Réunion, formation ou symposium : créez l&apos;événement rattaché au dossier pour consulter les prestataires (salle, traiteur, hébergement, transport) et comparer leurs devis.</p>
+                <p className="muted text-sm">{t("Réunion, formation ou symposium : créez l'événement rattaché au dossier pour consulter les prestataires (salle, traiteur, hébergement, transport) et comparer leurs devis.")}</p>
               ) : (
                 <ul className="linked-events">
                   {project.events.map((ev) => {
@@ -565,13 +571,13 @@ export default async function Page({ params, searchParams }: { params: Promise<{
                     return (
                       <li key={ev.id}>
                         <Link href={`/organisations/${id}/evenements/${ev.id}`}><strong>{ev.title}</strong></Link>
-                        <span className="muted text-xs">{formatDateTime(ev.startsAt)}{ev.city ? ` · ${ev.city}` : ""}</span>
-                        {ev.rfqs.length === 0 ? <span className="text-xs muted">Aucune demande de devis</span> : (
+                        <span className="muted text-xs">{fmtDateTime(locale, ev.startsAt)}{ev.city ? ` · ${ev.city}` : ""}</span>
+                        {ev.rfqs.length === 0 ? <span className="text-xs muted">{t("Aucune demande de devis")}</span> : (
                           <span className="chips">
-                            {ev.rfqs.map((r) => { const st = RFQ_STATUS[rfqDisplayStatus(r)]; return <span key={r.id} className={`pill ${st.tone}`}>{supplierCategoryLabel(r.category)} · {st.label}</span>; })}
+                            {ev.rfqs.map((r) => { const st = RFQ_STATUS[rfqDisplayStatus(r)]; return <span key={r.id} className={`pill ${st.tone}`}>{t(supplierCategoryLabel(r.category))} · {t(st.label)}</span>; })}
                           </span>
                         )}
-                        {ev.rfqs.length > 0 && <span className="text-xs muted">{answered} demande{answered > 1 ? "s" : ""} avec devis sur {ev.rfqs.length}</span>}
+                        {ev.rfqs.length > 0 && <span className="text-xs muted">{t(answered > 1 ? "{answered} demandes avec devis sur {rfqs}" : "{answered} demande avec devis sur {rfqs}", { answered, rfqs: ev.rfqs.length })}</span>}
                       </li>
                     );
                   })}
@@ -579,10 +585,10 @@ export default async function Page({ params, searchParams }: { params: Promise<{
               )}
               {isProject && !finished && (project.events[0] || !callEvent) && (
                 <Link className="btn ghost small" href={project.events[0] ? `/organisations/${id}/prestataires?onglet=nouvelle&evenement=${project.events[0].id}` : `/organisations/${id}/evenements/nouveau?dossier=${projectId}`}>
-                  {project.events[0] ? "Demander des devis" : "Créer l'événement du dossier"}
+                  {project.events[0] ? t("Demander des devis") : t("Créer l'événement du dossier")}
                 </Link>
               )}
-              {callEvent && project.events.length === 0 && <Link className="btn ghost small" href={`/organisations/${id}/evenements/${callEvent.id}`}>Voir l&apos;événement</Link>}
+              {callEvent && project.events.length === 0 && <Link className="btn ghost small" href={`/organisations/${id}/evenements/${callEvent.id}`}>{t("Voir l'événement")}</Link>}
             </section>}
           </aside>
         </div>

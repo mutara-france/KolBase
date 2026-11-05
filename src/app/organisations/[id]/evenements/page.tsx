@@ -4,15 +4,19 @@ import { SectionNav } from "@/components/SectionNav";
 import { orgTabs } from "@/lib/org-overview";
 import { db } from "@/lib/db";
 import { requireMembership } from "@/lib/orgs";
-import { EVENT_MANAGER_ROLES, EVENT_ORGANIZER_ROLES, eventMoment, eventScope, eventTypeLabel, formatDate, FORMAT_LABEL, orgEventStatus } from "@/lib/events";
+import { EVENT_MANAGER_ROLES, EVENT_ORGANIZER_ROLES, eventMoment, eventScope, eventTypeLabel, FORMAT_LABEL, orgEventStatus } from "@/lib/events";
 import { isSuspendedOrg } from "@/lib/org-roles";
+import { getT } from "@/lib/i18n/server";
+import { fmtDate } from "@/lib/i18n";
 
-export const metadata = { title: "Événements — KolBase" };
+export async function generateMetadata() {
+  const { t } = await getT();
+  return { title: `${t("Événements")} — KolBase` };
+}
 
-const DAY = (d: Date) => d.toLocaleDateString("fr-FR", { timeZone: "Europe/Paris", day: "numeric" });
-const MONTH = (d: Date) => d.toLocaleDateString("fr-FR", { timeZone: "Europe/Paris", month: "short" });
 
 export default async function Page({ params }: { params: Promise<{ id: string }> }) {
+  const { t } = await getT();
   const { id } = await params;
   const { roles, user, org } = await requireMembership(id, EVENT_MANAGER_ROLES);
   const isOrganizer = roles.some((r) => EVENT_ORGANIZER_ROLES.includes(r));
@@ -33,26 +37,31 @@ export default async function Page({ params }: { params: Promise<{ id: string }>
   const past = events.filter((e) => eventMoment(e, now) === "passe").reverse();
   const sectionTabs = await orgTabs("evenements", id);
 
-  const Row = ({ e }: { e: (typeof events)[number] }) => {
+  const Row = async ({ e }: { e: (typeof events)[number] }) => {
+    const { t, locale } = await getT();
     const status = orgEventStatus(e, e._count.registrations, { suspended: isSuspendedOrg(org) }, now);
     const toCompare = e.rfqs.filter((r) => r.status === "sent" && r._count.quotes > 0).length;
     const awarded = e.rfqs.filter((r) => r.status === "awarded").length;
-    const logistics = e.rfqs.length === 0 ? null : toCompare ? `${toCompare} demande${toCompare > 1 ? "s" : ""} de devis à comparer` : `${awarded}/${e.rfqs.length} prestation${e.rfqs.length > 1 ? "s" : ""} attribuée${awarded > 1 ? "s" : ""}`;
+    const logistics = e.rfqs.length === 0
+      ? null
+      : toCompare
+        ? t(toCompare > 1 ? "{n} demandes de devis à comparer" : "{n} demande de devis à comparer", { n: toCompare })
+        : t(e.rfqs.length > 1 ? (awarded > 1 ? "{n}/{m} prestations attribuées" : "{n}/{m} prestations attribuée") : "{n}/{m} prestation attribuée", { n: awarded, m: e.rfqs.length });
     const participants = e.internal ? e.project?._count.experts ?? 0 : e._count.registrations;
     return (
       <Link href={`/organisations/${id}/evenements/${e.id}`} className="row-item">
-        <span className="date-block" aria-hidden><strong>{DAY(e.startsAt)}</strong><small>{MONTH(e.startsAt)}</small></span>
+        <span className="date-block" aria-hidden><strong>{fmtDate(locale, e.startsAt, { day: "numeric" })}</strong><small>{fmtDate(locale, e.startsAt, { month: "short" })}</small></span>
         <span className="row-main">
           <strong>{e.title}</strong>
-          <span className="muted text-sm">{formatDate(e.startsAt)} · {eventTypeLabel(e.typeId)} · {e.format === "DISTANCIEL" ? "en ligne" : e.city ?? FORMAT_LABEL[e.format]}{e.agency && isOrganizer ? ` · confié à ${e.agency.name}` : ""}</span>
+          <span className="muted text-sm">{fmtDate(locale, e.startsAt)} · {t(eventTypeLabel(e.typeId))} · {e.format === "DISTANCIEL" ? t("en ligne") : e.city ?? t(FORMAT_LABEL[e.format])}{e.agency && isOrganizer ? ` ${t("· confié à {name}", { name: e.agency.name })}` : ""}</span>
         </span>
         <span className="row-status">
-          <span className={`pill ${status.tone}`}>{status.label}</span>
+          <span className={`pill ${status.tone}`}>{t(status.label)}</span>
           {logistics && <span className={`text-xs ${toCompare ? "warn-text" : "muted"}`}>{logistics}</span>}
         </span>
         <span className="row-figures">
           <strong>{participants}{e.capacity ? ` / ${e.capacity}` : ""}</strong>
-          <span className="text-xs muted">{e.internal ? "participants" : "inscrits"}</span>
+          <span className="text-xs muted">{e.internal ? t("participants") : t("inscrits")}</span>
         </span>
       </Link>
     );
@@ -62,31 +71,31 @@ export default async function Page({ params }: { params: Promise<{ id: string }>
     <>
       <SiteHeader />
       <main className="stack">
-        <SectionNav tabs={sectionTabs} active="evenements" label="Rubrique Événements" />
+        <SectionNav tabs={sectionTabs} active="evenements" label={t("Rubrique Événements")} />
         <div className="actions spread">
-          <h1>{isOrganizer ? "Événements" : "Événements confiés"}</h1>
+          <h1>{isOrganizer ? t("Événements") : t("Événements confiés")}</h1>
           <div className="actions">
-            <a className="link" href={`/organisations/${id}/evenements/calendrier`}>Ajouter à mon agenda (.ics)</a>
-            {isOrganizer && <Link className="btn" href={`/organisations/${id}/evenements/nouveau`}>Nouvel événement</Link>}
+            <a className="link" href={`/organisations/${id}/evenements/calendrier`}>{t("Ajouter à mon agenda (.ics)")}</a>
+            {isOrganizer && <Link className="btn" href={`/organisations/${id}/evenements/nouveau`}>{t("Nouvel événement")}</Link>}
           </div>
         </div>
         {events.length === 0 ? (
-          <div className="card empty"><p className="muted">Aucun événement pour l&apos;instant.</p></div>
+          <div className="card empty"><p className="muted">{t("Aucun événement pour l'instant.")}</p></div>
         ) : (
           <>
             {ongoing.length > 0 && (
-              <section className="card row-list" aria-label="Événements en cours">
-                <h2 className="section-title">En cours ({ongoing.length})</h2>
+              <section className="card row-list" aria-label={t("Événements en cours")}>
+                <h2 className="section-title">{t("En cours ({ongoing})", { ongoing: ongoing.length })}</h2>
                 {ongoing.map((e) => <Row key={e.id} e={e} />)}
               </section>
             )}
-            <section className="card row-list" aria-label="Événements à venir">
-              <h2 className="section-title">À venir ({upcoming.length})</h2>
-              {upcoming.length === 0 ? <p className="muted">Aucun événement à venir.</p> : upcoming.map((e) => <Row key={e.id} e={e} />)}
+            <section className="card row-list" aria-label={t("Événements à venir")}>
+              <h2 className="section-title">{t("À venir ({upcoming})", { upcoming: upcoming.length })}</h2>
+              {upcoming.length === 0 ? <p className="muted">{t("Aucun événement à venir.")}</p> : upcoming.map((e) => <Row key={e.id} e={e} />)}
             </section>
             {past.length > 0 && (
-              <section className="card row-list" aria-label="Événements passés">
-                <h2 className="section-title">Passés ({past.length})</h2>
+              <section className="card row-list" aria-label={t("Événements passés")}>
+                <h2 className="section-title">{t("Passés ({past})", { past: past.length })}</h2>
                 {past.map((e) => <Row key={e.id} e={e} />)}
               </section>
             )}

@@ -1,7 +1,6 @@
 import { AlertTriangle, ExternalLink, FileSignature, FileText, Info, ShieldAlert, Wallet } from "lucide-react";
 import { db } from "@/lib/db";
 import { detectConflicts } from "@/lib/conflicts";
-import { formatDate, formatEUR } from "@/lib/events";
 import { MATERIAL_KINDS, MATERIAL_STATUS, recruitmentOpen, REVIEW_ROLES } from "@/lib/projects";
 import { expertSplit } from "@/lib/indicators";
 import { supplierCategoryLabel } from "@/lib/suppliers";
@@ -12,18 +11,19 @@ import { BudgetForm, DocumentUploadForm, ExpenseForm, MaterialForm, RefreshSigna
 import { deleteDocument } from "@/lib/document-actions";
 import { storageEnabled } from "@/lib/storage";
 import { drPrefix } from "@/lib/professions";
-import { fmtDate, type Locale, type T } from "@/lib/i18n";
+import { fmtDate, fmtEur, type Locale, type T } from "@/lib/i18n";
 import { getT } from "@/lib/i18n/server";
 import { canSendAgain, SIGNATURE_LABEL, signatureEnabled } from "@/lib/yousign";
 import type { ConventionSignature, ProjectStatus } from "@/generated/prisma/client";
 import { TableWrap } from "@/components/TableWrap";
 
 export async function ConflictsPanel({ projectId }: { projectId: string }) {
-  const conflicts = await detectConflicts(projectId);
+  const { t, locale } = await getT();
+  const conflicts = await detectConflicts(projectId, t, locale);
   return (
     <section className="card">
-      <h2 className="section-title"><ShieldAlert size={15} /> Points d&apos;attention (conflits d&apos;intérêts possibles)</h2>
-      {conflicts.length === 0 ? <p className="todo-empty">Aucun point d&apos;attention dans les données KolBase. Les liens d&apos;intérêts noués en dehors de KolBase ne sont pas connus : l&apos;expert les déclare lui-même.</p> : (
+      <h2 className="section-title"><ShieldAlert size={15} />{" "}{t("Points d'attention (conflits d'intérêts possibles)")}</h2>
+      {conflicts.length === 0 ? <p className="todo-empty">{t("Aucun point d'attention dans les données KolBase. Les liens d'intérêts noués en dehors de KolBase ne sont pas connus : l'expert les déclare lui-même.")}</p> : (
         <ul className="conflict-list">
           {conflicts.map((c, i) => (
             <li key={i} className={`conflict ${c.severity}`}>
@@ -38,6 +38,7 @@ export async function ConflictsPanel({ projectId }: { projectId: string }) {
 }
 
 export async function BudgetPanel({ orgId, projectId, canEdit }: { orgId: string; projectId: string; canEdit: boolean }) {
+  const { t, locale } = await getT();
   const project = await db.project.findUnique({ where: { id: projectId }, include: { experts: { where: { status: { notIn: ["DECLINE"] } } }, expenses: { orderBy: { date: "asc" } } } });
   if (!project) return null;
   // Devis retenus pour les événements rattachés au dossier : ils comptent dans le budget (HT).
@@ -58,43 +59,43 @@ export async function BudgetPanel({ orgId, projectId, canEdit }: { orgId: string
   return (
     <section className="card">
       <div className="flex-between mb-2">
-        <h2 className="section-title" style={{ margin: 0 }}><Wallet size={15} /> Budget et dépenses</h2>
+        <h2 className="section-title" style={{ margin: 0 }}><Wallet size={15} />{" "}{t("Budget et dépenses")}</h2>
         {canEdit && <BudgetForm orgId={orgId} projectId={projectId} budgetCents={budget} />}
       </div>
       <div className="stats-row" style={{ marginBottom: 12 }}>
-        <div className="stat-card"><div className="stat-value">{budget != null ? formatEUR(budget) : "—"}</div><div className="stat-label">Budget prévu (HT)</div></div>
-        <div className="stat-card"><div className="stat-value">{formatEUR(fees)}</div><div className="stat-label">Honoraires engagés (HT)</div></div>
-        {proposed > 0 && <div className="stat-card"><div className="stat-value muted">{formatEUR(proposed)}</div><div className="stat-label">Honoraires proposés, sans réponse (HT)</div></div>}
-        {sup > 0 && <div className="stat-card"><div className="stat-value">{formatEUR(sup)} HT</div><div className="stat-label">Prestataires (devis retenus)</div></div>}
-        <div className="stat-card"><div className="stat-value">{formatEUR(exp)}</div><div className="stat-label">Autres dépenses (HT)</div></div>
-        <div className="stat-card"><div className={`stat-value${over ? " tone-danger" : " tone-electric"}`}>{formatEUR(total)}</div><div className="stat-label">Total engagé (HT){realPct != null ? ` · ${realPct} % du budget` : ""}</div></div>
+        <div className="stat-card"><div className="stat-value">{budget != null ? fmtEur(locale, budget) : "—"}</div><div className="stat-label">{t("Budget prévu (HT)")}</div></div>
+        <div className="stat-card"><div className="stat-value">{fmtEur(locale, fees)}</div><div className="stat-label">{t("Honoraires engagés (HT)")}</div></div>
+        {proposed > 0 && <div className="stat-card"><div className="stat-value muted">{fmtEur(locale, proposed)}</div><div className="stat-label">{t("Honoraires proposés, sans réponse (HT)")}</div></div>}
+        {sup > 0 && <div className="stat-card"><div className="stat-value">{fmtEur(locale, sup)}{" "}{t("HT")}</div><div className="stat-label">{t("Prestataires (devis retenus)")}</div></div>}
+        <div className="stat-card"><div className="stat-value">{fmtEur(locale, exp)}</div><div className="stat-label">{t("Autres dépenses (HT)")}</div></div>
+        <div className="stat-card"><div className={`stat-value${over ? " tone-danger" : " tone-electric"}`}>{fmtEur(locale, total)}</div><div className="stat-label">{t("Total engagé (HT)")}{realPct != null ? ` ${t("· {realPct} % du budget", { realPct })}` : ""}</div></div>
       </div>
       {pct != null && <div className="gauge-track"><div className={`gauge-fill${over ? " over" : ""}`} style={{ width: `${pct}%` }} /></div>}
-      {over && <p className="notice error mt-2">Le total engagé dépasse le budget prévu de {formatEUR(total - budget!)}.</p>}
+      {over && <p className="notice error mt-2">{t("Le total engagé dépasse le budget prévu de {montant}.", { montant: fmtEur(locale, total - budget!) })}</p>}
       {(project.expenses.length > 0 || quotes.length > 0) && (
-        <TableWrap label="Dépenses et devis retenus">
+        <TableWrap label={t("Dépenses et devis retenus")}>
           <table className="table mt-3">
-            <thead><tr><th>Date</th><th>Poste</th><th>Montant HT</th><th>Statut</th>{canEdit && <th />}</tr></thead>
+            <thead><tr><th>{t("Date")}</th><th>{t("Poste")}</th><th>{t("Montant HT")}</th><th>{t("Statut")}</th>{canEdit && <th />}</tr></thead>
             <tbody>
               {quotes.map((q) => (
                 <tr key={q.id}>
-                  <td data-label="Date">{formatDate(q.updatedAt)}</td>
-                  <td data-label="Poste">{supplierCategoryLabel(q.rfq.category)} : {q.supplier.name}</td>
-                  <td data-label="Montant HT">{formatEUR(q.amountCents)}</td>
-                  <td data-label="Statut"><span className="pill ok">Devis retenu</span></td>
-                  {canEdit && <td><a className="link" href={`/organisations/${orgId}/prestataires#rfq-${q.rfqId}`}>Voir le devis</a></td>}
+                  <td data-label="Date">{fmtDate(locale, q.updatedAt)}</td>
+                  <td data-label="Poste">{t(supplierCategoryLabel(q.rfq.category))} : {q.supplier.name}</td>
+                  <td data-label="Montant HT">{fmtEur(locale, q.amountCents)}</td>
+                  <td data-label="Statut"><span className="pill ok">{t("Devis retenu")}</span></td>
+                  {canEdit && <td><a className="link" href={`/organisations/${orgId}/prestataires#rfq-${q.rfqId}`}>{t("Voir le devis")}</a></td>}
                 </tr>
               ))}
               {project.expenses.map((e) => (
                 <tr key={e.id}>
-                  <td data-label="Date">{formatDate(e.date)}</td><td data-label="Poste">{e.label}</td><td data-label="Montant HT">{formatEUR(e.amountCents)}</td>
-                  <td data-label="Statut"><span className={`pill ${e.status === "payee" ? "ok" : "wait"}`}>{e.status === "payee" ? "Payée" : "Engagée"}</span></td>
+                  <td data-label="Date">{fmtDate(locale, e.date)}</td><td data-label="Poste">{e.label}</td><td data-label="Montant HT">{fmtEur(locale, e.amountCents)}</td>
+                  <td data-label="Statut"><span className={`pill ${e.status === "payee" ? "ok" : "wait"}`}>{e.status === "payee" ? t("Payée") : t("Engagée")}</span></td>
                   {canEdit && (
                     <td>
                       <form action={updateExpense} className="inline">
                         <input type="hidden" name="orgId" value={orgId} /><input type="hidden" name="projectId" value={projectId} /><input type="hidden" name="expenseId" value={e.id} />
-                        {e.status !== "payee" && <button className="link" name="status" value="payee">Marquer payée</button>}
-                        <button className="link danger" name="remove" value="1">Retirer</button>
+                        {e.status !== "payee" && <button className="link" name="status" value="payee">{t("Marquer payée")}</button>}
+                        <button className="link danger" name="remove" value="1">{t("Retirer")}</button>
                       </form>
                     </td>
                   )}
@@ -106,7 +107,7 @@ export async function BudgetPanel({ orgId, projectId, canEdit }: { orgId: string
       )}
       {canEdit && (
         <details className="disclosure mt-3">
-          <summary>Ajouter une dépense</summary>
+          <summary>{t("Ajouter une dépense")}</summary>
           <ExpenseForm orgId={orgId} projectId={projectId} />
         </details>
       )}
@@ -160,9 +161,9 @@ export async function MaterialsPanel({ orgId, projectId, canSubmit, canReview }:
                       return (
                         <form action={reviewMaterial} className="inline wrap mt-2">
                           <input type="hidden" name="orgId" value={orgId} /><input type="hidden" name="versionId" value={v.id} />
-                          <input name="comment" required={own} placeholder={own ? "Justification obligatoire (support que vous avez soumis)" : "Commentaire (obligatoire pour demander des modifications)"} style={{ width: 320 }} />
-                          <button className="btn small" name="decision" value="approve">Approuver</button>
-                          <button className="btn ghost small" name="decision" value="changes">Demander des modifications</button>
+                          <input name="comment" required={own} placeholder={own ? t("Justification obligatoire (support que vous avez soumis)") : t("Commentaire (obligatoire pour demander des modifications)")} style={{ width: 320 }} />
+                          <button className="btn small" name="decision" value="approve">{t("Approuver")}</button>
+                          <button className="btn ghost small" name="decision" value="changes">{t("Demander des modifications")}</button>
                         </form>
                       );
                     })()}
@@ -204,7 +205,7 @@ export async function DocumentsPanel({ projectId, linkId, canUpload, openUpload 
   const locked = ["SIGNE", "TERMINE"].includes(project.status);
   return (
     <section className="card stack-sm">
-      <h2 className="section-title"><FileText size={15} /> Documents</h2>
+      <h2 className="section-title"><FileText size={15} />{" "}{t("Documents")}</h2>
       {project.documents.length === 0 ? <p className="muted">{t("Aucun document déposé.")}</p> : (
         <ul className="pub-list">
           {project.documents.map((d) => (
@@ -249,9 +250,10 @@ const SIGNATURE_TONE = { draft: "wait", ongoing: "wait", done: "ok", declined: "
  * suivi, mise à jour du statut et téléchargement de la convention signée. Rien sans Yousign configuré ni demande passée.
  * Une convention signée déposée à la main clôt la demande (plus d'envoi proposé).
  */
-export function ConventionSignatureBlock({ orgId, linkId, signature, projectStatus, canSend, deposited = false }: {
+export async function ConventionSignatureBlock({ orgId, linkId, signature, projectStatus, canSend, deposited = false }: {
   orgId: string; linkId: string; signature: ConventionSignature | null; projectStatus: ProjectStatus; canSend: boolean; deposited?: boolean;
 }) {
+  const { t, locale } = await getT();
   const enabled = signatureEnabled();
   const s = signature;
   const sendable = enabled && canSend && projectStatus === "SIGNATURE" && !deposited && canSendAgain(s?.status);
@@ -259,21 +261,21 @@ export function ConventionSignatureBlock({ orgId, linkId, signature, projectStat
   return (
     <div className="stack-sm mt-3">
       <p className="text-sm">
-        <FileSignature size={14} /> Signature électronique{" "}
-        {s && <span className={`pill ${SIGNATURE_TONE[s.status]}`}>{SIGNATURE_LABEL[s.status]}</span>}
+        <FileSignature size={14} />{" "}{t("Signature électronique")}
+        {s && <span className={`pill ${SIGNATURE_TONE[s.status]}`}>{t(SIGNATURE_LABEL[s.status])}</span>}
       </p>
       {s?.status === "ongoing" && (
-        <p className="text-xs">Envoyée{s.sentAt ? ` le ${formatDate(s.sentAt)}` : ""} : Yousign a écrit à chaque signataire (l&apos;expert et la personne qui a envoyé la convention), qui signe depuis le lien reçu.</p>
+        <p className="text-xs">{t("Envoyée")}{s.sentAt ? ` ${t("le {date}", { date: fmtDate(locale, s.sentAt) })}` : ""}{" "}{t(": Yousign a écrit à chaque signataire (l'expert et la personne qui a envoyé la convention), qui signe depuis le lien reçu.")}</p>
       )}
       {s?.status === "done" && (
         <p className="text-xs">
-          Signée par les deux parties{s.completedAt ? ` le ${formatDate(s.completedAt)}` : ""}. <a href={`/signatures/${linkId}`}>Convention signée (PDF)</a>
+          {t("Signée par les deux parties")}{s.completedAt ? ` ${t("le {date}", { date: fmtDate(locale, s.completedAt) })}` : ""}. <a href={`/signatures/${linkId}`}>{t("Convention signée (PDF)")}</a>
         </p>
       )}
-      {s?.status === "declined" && <p className="text-xs">Un signataire a refusé de signer{s.note ? ` : « ${s.note} »` : ""}.</p>}
-      {s?.status === "expired" && <p className="text-xs">La demande a expiré sans être signée.</p>}
-      {s?.status === "canceled" && <p className="text-xs">{s.note ?? "La demande a été annulée chez Yousign."}</p>}
-      {s?.status === "draft" && <p className="text-xs">{s.note ? "L'envoi précédent a échoué." : "Envoi en cours ou interrompu."}</p>}
+      {s?.status === "declined" && <p className="text-xs">{t("Un signataire a refusé de signer")}{s.note ? ` : « ${s.note} »` : ""}.</p>}
+      {s?.status === "expired" && <p className="text-xs">{t("La demande a expiré sans être signée.")}</p>}
+      {s?.status === "canceled" && <p className="text-xs">{s.note ?? t("La demande a été annulée chez Yousign.")}</p>}
+      {s?.status === "draft" && <p className="text-xs">{s.note ? t("L'envoi précédent a échoué.") : t("Envoi en cours ou interrompu.")}</p>}
       {enabled && s?.status === "ongoing" && <RefreshSignatureForm linkId={linkId} />}
       {sendable && <SendSignatureForm orgId={orgId} linkId={linkId} again={!!s && s.status !== "draft"} />}
     </div>

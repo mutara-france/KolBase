@@ -60,7 +60,7 @@ describe("seuils d'hospitalité visibles à la saisie et dans les conventions", 
   });
 
   it("régime par prestation : son seuil et le total", () => {
-    expect(hospitalityRegime(s, [{ catalogId: "nuitee", valueCents: 18000 }])).toEqual({ regime: "autorisation", reason: "Nuitée 180 € > 150 €" });
+    expect(hospitalityRegime(s, [{ catalogId: "nuitee", valueCents: 18000 }])).toMatchObject({ regime: "autorisation", reason: "Nuitée 180 € > 150 €" });
     expect(hospitalityRegime(s, [{ catalogId: "transport", valueCents: 250000 }]).regime).toBe("autorisation");
     expect(hospitalityRegime(s, [{ catalogId: "transport", valueCents: 9500 }]).regime).toBe("declaration");
   });

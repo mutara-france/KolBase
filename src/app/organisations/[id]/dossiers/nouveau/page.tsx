@@ -8,10 +8,15 @@ import { COLLAB_TYPES, SOURCING_ROLES } from "@/lib/projects";
 import { BillingNotice } from "@/components/BillingNotice";
 import { engagementBlock } from "@/lib/billing";
 import { canSee, kolVisibility } from "@/lib/visibility";
+import { getT } from "@/lib/i18n/server";
 
-export const metadata = { title: "Nouveau dossier — KolBase" };
+export async function generateMetadata() {
+  const { t } = await getT();
+  return { title: `${t("Nouveau dossier")} — KolBase` };
+}
 
 export default async function Page({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: Promise<{ expert?: string }> }) {
+  const { t } = await getT();
   const { id } = await params;
   const { expert } = await searchParams;
   const { org } = await requireMembership(id, SOURCING_ROLES);
@@ -20,11 +25,11 @@ export default async function Page({ params, searchParams }: { params: Promise<{
       <>
         <SiteHeader />
         <main className="narrow stack">
-          <p className="muted"><Link href={`/organisations/${id}`}>{org.name}</Link> / <Link href={`/organisations/${id}/dossiers`}>Dossiers</Link></p>
+          <p className="muted"><Link href={`/organisations/${id}`}>{org.name}</Link> / <Link href={`/organisations/${id}/dossiers`}>{t("Dossiers")}</Link></p>
           <section className="card stack-sm">
-            <h1>Nouveau dossier</h1>
-            <p>{notVerified(org)}</p>
-            <p><Link className="btn secondary" href={`/organisations/${id}/membres?onglet=organisation`}>Suivre la validation</Link></p>
+            <h1>{t("Nouveau dossier")}</h1>
+            <p>{t(notVerified(org))}</p>
+            <p><Link className="btn secondary" href={`/organisations/${id}/membres?onglet=organisation`}>{t("Suivre la validation")}</Link></p>
           </section>
         </main>
       </>
@@ -42,7 +47,7 @@ export default async function Page({ params, searchParams }: { params: Promise<{
       <SiteHeader />
       <main className="narrow stack">
         <BillingNotice orgId={id} motive="sollicitation" />
-        <p className="muted"><Link href={`/organisations/${id}`}>{org.name}</Link> / <Link href={`/organisations/${id}/dossiers`}>Dossiers</Link></p>
+        <p className="muted"><Link href={`/organisations/${id}`}>{org.name}</Link> / <Link href={`/organisations/${id}/dossiers`}>{t("Dossiers")}</Link></p>
         <NewProjectForm
           ai={aiEnabled()}
           blocked={await engagementBlock(id, "sollicitation")}
@@ -55,7 +60,7 @@ export default async function Page({ params, searchParams }: { params: Promise<{
             return {
               id: e.id,
               name: `Dr ${e.user.firstName} ${e.user.lastName}`,
-              detail: [e.specialty || e.profession, canSee(v.contact, "membre") ? e.city : null].filter(Boolean).join(" · "),
+              detail: [t(e.specialty || e.profession), canSee(v.contact, "membre") ? e.city : null].filter(Boolean).join(" · "),
               dayRateCents: canSee(v.tarif, "membre") ? e.dayRateCents : null,
             };
           })}

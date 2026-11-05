@@ -1,7 +1,7 @@
 import "server-only";
 import { db } from "@/lib/db";
 import { complianceSettings } from "@/lib/compliance";
-import { formatEUR } from "@/lib/events";
+import { fmtEur, makeT, type Locale, type T } from "@/lib/i18n";
 
 export type Conflict = { kind: "concurrent" | "beneficiaire" | "structure" | "cumul"; who: string; detail: string; severity: "warn" | "danger" | "info" };
 
@@ -9,7 +9,7 @@ const CLOSED = ["TERMINE", "DECLINE", "REFUS_ORDRE"] as const;
 const ENGAGED = { notIn: ["ATT_EXPERTS", "DECLINE"] as ("ATT_EXPERTS" | "DECLINE")[] };
 
 /** Détection des conflits d'intérêts et points d'attention d'un dossier (reprise de « detectConflicts » du prototype). */
-export async function detectConflicts(projectId: string): Promise<Conflict[]> {
+export async function detectConflicts(projectId: string, t: T = makeT("fr"), locale: Locale = "fr"): Promise<Conflict[]> {
   const project = await db.project.findUnique({
     where: { id: projectId },
     include: {
@@ -54,25 +54,25 @@ export async function detectConflicts(projectId: string): Promise<Conflict[]> {
       if (orgs > 0)
         out.push({
           kind: "concurrent", who: name, severity: "warn",
-          detail: `Collaboration en cours avec ${orgs > 1 ? `${orgs} autres organisations` : "une autre organisation"} en ${project.therapeuticArea}. Les détails restent confidentiels : demandez à l'expert de déclarer ses liens d'intérêts.`,
+          detail: t(orgs > 1 ? "Collaboration en cours avec {n} autres organisations en {area}. Les détails restent confidentiels : demandez à l'expert de déclarer ses liens d'intérêts." : "Collaboration en cours avec une autre organisation en {area}. Les détails restent confidentiels : demandez à l'expert de déclarer ses liens d'intérêts.", { n: orgs, area: t(project.therapeuticArea) }),
         });
     }
 
     // 2. Structure bénéficiaire détenue majoritairement par le praticien.
     for (const s of e.practitioner.structures.filter((s) => s.isPayee && (s.sharePercent ?? 0) >= 50))
-      out.push({ kind: "beneficiaire", who: name, severity: "info", detail: `Rémunération versée à ${s.name} (${s.legalForm}), détenue à ${s.sharePercent} % par le praticien.` });
+      out.push({ kind: "beneficiaire", who: name, severity: "info", detail: t("Rémunération versée à {name} ({form}), détenue à {share} % par le praticien.", { name: s.name, form: t(s.legalForm), share: s.sharePercent ?? 0 }) });
 
     // 3. Cumul annuel avec la même organisation.
     const total = links.reduce((s, l) => s + (l.feeCents ?? 0), 0) + (links.some((l) => l.projectId === project.id) ? 0 : e.feeCents ?? 0);
     if (total > CUMUL_ALERT_EUR * 100)
-      out.push({ kind: "cumul", who: name, severity: "danger", detail: `Cumul sur 12 mois avec cette organisation : ${formatEUR(total)} HT (seuil d'alerte ${formatEUR(CUMUL_ALERT_EUR * 100)}).` });
+      out.push({ kind: "cumul", who: name, severity: "danger", detail: t("Cumul sur 12 mois avec cette organisation : {total} HT (seuil d'alerte {max}).", { total: fmtEur(locale, total), max: fmtEur(locale, CUMUL_ALERT_EUR * 100) }) });
   }
 
   // 4. Deux experts du dossier liés à une même structure.
   const byStructure = new Map<string, string[]>();
   for (const e of project.experts)
     for (const s of e.practitioner.structures) byStructure.set(s.name.toLowerCase(), [...(byStructure.get(s.name.toLowerCase()) ?? []), `Dr ${e.practitioner.user.lastName}`]);
-  for (const [, who] of byStructure) if (who.length > 1) out.push({ kind: "structure", who: who.join(" et "), severity: "warn", detail: `${who.join(" et ")} sont tous deux liés à une même structure juridique.` });
+  for (const [, who] of byStructure) if (who.length > 1) out.push({ kind: "structure", who: who.join(t(" et ")), severity: "warn", detail: t("{who} sont tous deux liés à une même structure juridique.", { who: who.join(t(" et ")) }) });
 
   return out;
 }

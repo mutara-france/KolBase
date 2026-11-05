@@ -14,6 +14,7 @@ import { engagementGate, gateMessage, markSupplierTriggered, stripeEnabled, supp
 import type { GateLink } from "@/lib/billing-plans";
 import { awardRight } from "@/lib/mandates";
 import { notifyAward, notifyProposalWithdrawn, notifyQuote, notifyRfqDeclined, notifyQuoteProposed, notifyRfqCancelled, notifyRfqMessage, notifyRfqSent, notifySupplierBilling } from "@/lib/notifications";
+import { getT } from "@/lib/i18n/server";
 
 export type ActionState = { error?: string; ok?: string; fix?: GateLink } | undefined;
 
@@ -38,32 +39,33 @@ async function rfqConflicted(rfqId: string, user: Parameters<typeof eventScope>[
 }
 
 export async function createRfq(_: ActionState, form: FormData): Promise<ActionState> {
+  const { t } = await getT();
   const orgId = str(form, "orgId");
   const { user, roles, org } = await requireMembership(orgId, EVENT_MANAGER_ROLES);
   const scope = eventScope(user, roles);
   const category = str(form, "category");
-  if (!SUPPLIER_CATEGORIES.some((c) => c.id === category)) return { error: "Type de prestation invalide." };
+  if (!SUPPLIER_CATEGORIES.some((c) => c.id === category)) return { error: t("Type de prestation invalide.") };
   const eventId = str(form, "eventId") || null;
-  if (!eventId && Object.keys(scope).length) return { error: "Choisissez l'événement qui vous est confié." };
+  if (!eventId && Object.keys(scope).length) return { error: t("Choisissez l'événement qui vous est confié.") };
   const event = eventId ? await db.event.findFirst({ where: { id: eventId, organizationId: orgId, ...scope } }) : null;
-  if (eventId && !event) return { error: "Événement introuvable." };
+  if (eventId && !event) return { error: t("Événement introuvable.") };
   const supplierIds = [...new Set(form.getAll("supplierIds").map(String))];
-  if (supplierIds.length === 0) return { error: "Sélectionnez au moins un prestataire." };
+  if (supplierIds.length === 0) return { error: t("Sélectionnez au moins un prestataire.") };
   const suppliers = await db.organization.findMany({ where: { id: { in: supplierIds }, kind: "PRESTATAIRE", listed: true, verification: "VERIFIED", supplierCategories: { has: category } } });
-  if (suppliers.length !== supplierIds.length) return { error: "Un des prestataires sélectionnés n'est pas référencé dans cette catégorie." };
+  if (suppliers.length !== supplierIds.length) return { error: t("Un des prestataires sélectionnés n'est pas référencé dans cette catégorie.") };
   // Une agence mandatée ne se consulte pas elle-même : l'organisation la consulte directement si elle le souhaite.
   const own = suppliers.find((s) => user.memberships.some((m) => m.organizationId === s.id));
-  if (own) return { error: `${own.name} est votre propre organisation : vous ne pouvez pas la consulter pour le compte du client. Retirez-la de la sélection.` };
+  if (own) return { error: t("{name} est votre propre organisation : vous ne pouvez pas la consulter pour le compte du client. Retirez-la de la sélection.", { name: own.name }) };
   const needs = str(form, "needs");
-  if (needs.length < 10) return { error: "Décrivez votre besoin." };
+  if (needs.length < 10) return { error: t("Décrivez votre besoin.") };
   const deadlineRaw = str(form, "deadline");
   const deadline = deadlineRaw ? parseParisDateTime(`${deadlineRaw}T23:59`) : null;
-  if (deadlineRaw && (!deadline || deadline < new Date())) return { error: "Date de réponse invalide ou passée." };
+  if (deadlineRaw && (!deadline || deadline < new Date())) return { error: t("Date de réponse invalide ou passée.") };
   const headcount = intOrNull(str(form, "headcount")) || event?.capacity || null;
   const send = str(form, "intent") === "send";
-  if (send && !isVerifiedOrg(org)) return { error: `Envoi impossible pour l'instant : ${notVerified(org)} Enregistrez la demande en brouillon.` };
+  if (send && !isVerifiedOrg(org)) return { error: t("Envoi impossible pour l'instant : {v} Enregistrez la demande en brouillon.", { v: t(notVerified(org)) }) };
   const gate = send ? await engagementGate(orgId, "devis") : null;
-  if (gate) return { ...gate, error: `${gate.error} Vous pouvez l'enregistrer en brouillon.` };
+  if (gate) return { ...gate, error: t("{error} Vous pouvez l'enregistrer en brouillon.", { error: gate.error }) };
 
   const rfq = await db.rfq.create({
     data: {
@@ -182,26 +184,27 @@ export async function applyQuoteToBenefit(form: FormData) {
 
 /** Message dans le fil privé entre le demandeur et un prestataire consulté (de part et d'autre). */
 export async function postRfqMessage(_: ActionState, form: FormData): Promise<ActionState> {
+  const { t } = await getT();
   const orgId = str(form, "orgId");
   const rfqId = str(form, "rfqId");
   const supplierId = str(form, "supplierId");
   const body = str(form, "body");
-  if (!body) return { error: "Écrivez votre message." };
-  if (body.length > 4000) return { error: "Message trop long (4 000 caractères au maximum)." };
+  if (!body) return { error: t("Écrivez votre message.") };
+  if (body.length > 4000) return { error: t("Message trop long (4 000 caractères au maximum).") };
   const { user, roles, org } = await requireMembership(orgId);
   const fromSupplier = org.kind === "PRESTATAIRE" && orgId === supplierId;
-  if (!fromSupplier && (org.kind === "PRESTATAIRE" || !roles.some((r) => EVENT_MANAGER_ROLES.includes(r)))) return { error: "Action non autorisée." };
+  if (!fromSupplier && (org.kind === "PRESTATAIRE" || !roles.some((r) => EVENT_MANAGER_ROLES.includes(r)))) return { error: t("Action non autorisée.") };
   const invite = await db.rfqSupplier.findFirst({
     where: { rfqId, supplierId, rfq: { status: { in: ["sent", "awarded"] }, ...(fromSupplier ? {} : { organizationId: orgId, ...rfqScope(user, roles) }) } },
   });
-  if (!invite) return { error: "Cette demande n'accepte plus de messages." };
+  if (!invite) return { error: t("Cette demande n'accepte plus de messages.") };
   // Agence consultée sur la demande : elle n'écrit pas aux prestataires au nom du client.
-  if (!fromSupplier && (await rfqConflicted(rfqId, user))) return { error: "Votre organisation est consultée sur cette demande : vous y répondez comme prestataire, depuis vos demandes de devis." };
+  if (!fromSupplier && (await rfqConflicted(rfqId, user))) return { error: t("Votre organisation est consultée sur cette demande : vous y répondez comme prestataire, depuis vos demandes de devis.") };
   await db.rfqMessage.create({ data: { rfqId, supplierId, authorId: user.id, body, fromSupplier } });
   await audit(user.id, "rfq.message", "Rfq", rfqId, { supplierId, fromSupplier });
   notifyRfqMessage(rfqId, supplierId, fromSupplier, user.id);
   revalidatePath(fromSupplier ? `/organisations/${orgId}/devis` : `/organisations/${orgId}/prestataires`);
-  return { ok: "Message envoyé." };
+  return { ok: t("Message envoyé.") };
 }
 
 // ─── Côté prestataire ───────────────────────────────────────────────────────
@@ -213,18 +216,19 @@ async function requireSupplier(orgId: string) {
 }
 
 export async function submitQuote(_: ActionState, form: FormData): Promise<ActionState> {
+  const { t } = await getT();
   const orgId = str(form, "orgId");
   const { user, org } = await requireSupplier(orgId);
   if (isSuspendedOrg(org)) return { error: ORG_SUSPENDED };
   const rfqId = str(form, "rfqId");
   const invite = await db.rfqSupplier.findUnique({ where: { rfqId_supplierId: { rfqId, supplierId: orgId } }, include: { rfq: true } });
-  if (!invite || invite.rfq.status !== "sent") return { error: "Cette demande n'accepte plus de devis." };
+  if (!invite || invite.rfq.status !== "sent") return { error: t("Cette demande n'accepte plus de devis.") };
   // Après un premier devis retenu, répondre à une nouvelle demande suppose l'abonnement (les révisions restent libres).
-  if (!(await db.quote.findFirst({ where: { rfqId, supplierId: orgId }, select: { id: true } })) && !(await supplierCanQuote(orgId))) return { error: gateMessage("reponse") };
+  if (!(await db.quote.findFirst({ where: { rfqId, supplierId: orgId }, select: { id: true } })) && !(await supplierCanQuote(orgId))) return { error: gateMessage("reponse", t) };
 
   // Devis détaillé (lignes, chacune à son taux de TVA) ou montant global.
   const fallbackVat = Number(str(form, "vat") || defaultVatBp(invite.rfq.category));
-  if (!isVatBp(fallbackVat)) return { error: "Taux de TVA invalide." };
+  if (!isVatBp(fallbackVat)) return { error: t("Taux de TVA invalide.") };
   const labels = form.getAll("line_label").map((v) => String(v).trim().slice(0, 200));
   const qtys = form.getAll("line_qty").map(String);
   const units = form.getAll("line_unit").map(String);
@@ -234,29 +238,29 @@ export async function submitQuote(_: ActionState, form: FormData): Promise<Actio
     if (!labels[i] && !units[i]) continue;
     const qty = Number((qtys[i] ?? "1").replace(",", "."));
     const unitCents = eurToCents(units[i] ?? "");
-    if (!labels[i] || !Number.isFinite(qty) || qty <= 0 || qty > 100000 || unitCents === null) return { error: `Ligne ${i + 1} incomplète : désignation, quantité positive et prix unitaire.` };
+    if (!labels[i] || !Number.isFinite(qty) || qty <= 0 || qty > 100000 || unitCents === null) return { error: t("Ligne {v} incomplète : désignation, quantité positive et prix unitaire.", { v: i + 1 }) };
     const vatBp = vats[i] ? Number(vats[i]) : fallbackVat;
-    if (!isVatBp(vatBp)) return { error: `Ligne ${i + 1} : taux de TVA invalide.` };
+    if (!isVatBp(vatBp)) return { error: t("Ligne {v} : taux de TVA invalide.", { v: i + 1 }) };
     lines.push({ label: labels[i], qty, unitCents, vatBp });
   }
   const amountCents = lines.length ? linesTotal(lines) : eurToCents(str(form, "amount"), { allowZero: false });
-  if (!amountCents) return { error: "Détaillez votre offre ligne par ligne : désignation, quantité et prix unitaire." };
-  if (amountCents > 1_000_000_000) return { error: "Montant trop élevé." };
+  if (!amountCents) return { error: t("Détaillez votre offre ligne par ligne : désignation, quantité et prix unitaire.") };
+  if (amountCents > 1_000_000_000) return { error: t("Montant trop élevé.") };
   // Taux du devis (unique, ou principal) et total TTC : somme des lignes à leur taux.
   const vatBp = lines.length ? mainVat(lines, fallbackVat) : fallbackVat;
   const ttcCents = lines.length ? linesTtc(lines, fallbackVat) : withVat(amountCents, vatBp);
   const validRaw = str(form, "validUntil");
   const validUntil = validRaw ? parseParisDateTime(`${validRaw}T23:59`) : null;
-  if (validRaw && (!validUntil || validUntil < new Date())) return { error: "Date de validité invalide ou passée." };
+  if (validRaw && (!validUntil || validUntil < new Date())) return { error: t("Date de validité invalide ou passée.") };
 
   // Pièce jointe : le devis signé au format PDF (si le stockage de documents est configuré).
   const file = form.get("file");
   let upload: { bytes: Uint8Array; name: string } | null = null;
   if (file instanceof File && file.size > 0) {
-    if (!storageEnabled()) return { error: "Le dépôt de fichiers n'est pas encore activé : détaillez votre devis ligne par ligne." };
-    if (file.size > MAX_UPLOAD_BYTES) return { error: "Fichier trop lourd : 10 Mo au maximum." };
+    if (!storageEnabled()) return { error: t("Le dépôt de fichiers n'est pas encore activé : détaillez votre devis ligne par ligne.") };
+    if (file.size > MAX_UPLOAD_BYTES) return { error: t("Fichier trop lourd : 10 Mo au maximum.") };
     const bytes = new Uint8Array(await file.arrayBuffer());
-    if (String.fromCharCode(...bytes.subarray(0, 5)) !== "%PDF-") return { error: "Joignez le devis au format PDF." };
+    if (String.fromCharCode(...bytes.subarray(0, 5)) !== "%PDF-") return { error: t("Joignez le devis au format PDF.") };
     upload = { bytes, name: safeFileName(file.name || "devis.pdf") };
   }
 
@@ -282,7 +286,7 @@ export async function submitQuote(_: ActionState, form: FormData): Promise<Actio
   await audit(user.id, existing ? "quote.revise" : "quote.submit", "Quote", q.id, { rfqId, amountCents, revision: existing ? existing.revision + 1 : 1 });
   notifyQuote(rfqId, orgId, !!existing);
   revalidatePath(`/organisations/${orgId}/devis`);
-  return { ok: existing ? `Devis révisé (version ${existing.revision + 1}).` : "Devis transmis." };
+  return { ok: existing ? `Devis révisé (version ${existing.revision + 1}).` : t("Devis transmis.") };
 }
 
 /** Le prestataire décline une demande (motif facultatif, montré au client) : les interlocuteurs de la demande sont prévenus. */
@@ -299,19 +303,20 @@ export async function declineRfq(form: FormData) {
 }
 
 export async function updateSupplierProfile(_: ActionState, form: FormData): Promise<ActionState> {
+  const { t } = await getT();
   const orgId = str(form, "orgId");
   const { user, isAdmin, org: ctxOrg } = await requireSupplier(orgId);
-  if (!isAdmin) return { error: "Réservé aux administrateurs." };
+  if (!isAdmin) return { error: t("Réservé aux administrateurs.") };
   const categories = form.getAll("categories").map(String).filter((c) => SUPPLIER_CATEGORIES.some((x) => x.id === c));
   const asked = form.get("listed") === "on";
-  if (asked && categories.length === 0) return { error: "Choisissez au moins une catégorie pour être référencé." };
+  if (asked && categories.length === 0) return { error: t("Choisissez au moins une catégorie pour être référencé.") };
   // En attente de validation : catégories et zone sont enregistrées ; le référencement suivra la validation.
   const listed = asked && isVerifiedOrg(ctxOrg);
   await db.organization.update({ where: { id: orgId }, data: { supplierCategories: categories, coverage: str(form, "coverage") || null, listed } });
   await audit(user.id, "supplier.profile", "Organization", orgId, { categories, listed });
   revalidatePath(`/organisations/${orgId}/devis`);
   if (asked && !listed)
-    return { ok: isSuspendedOrg(ctxOrg) ? `Catégories et zone enregistrées. ${ORG_SUSPENDED}` : "Catégories et zone enregistrées. Le référencement dans l'annuaire suivra la validation de l'organisation par KolBase." };
-  return { ok: "Fiche prestataire enregistrée." };
+    return { ok: isSuspendedOrg(ctxOrg) ? `Catégories et zone enregistrées. ${ORG_SUSPENDED}` : t("Catégories et zone enregistrées. Le référencement dans l'annuaire suivra la validation de l'organisation par KolBase.") };
+  return { ok: t("Fiche prestataire enregistrée.") };
 }
 

@@ -15,29 +15,31 @@ type Hidden = { orgId: string; projectId: string };
 const H = ({ orgId, projectId }: Hidden) => (<><input type="hidden" name="orgId" value={orgId} /><input type="hidden" name="projectId" value={projectId} /></>);
 
 export function BudgetForm({ orgId, projectId, budgetCents }: Hidden & { budgetCents: number | null }) {
+  const t = useT();
   const [state, action, pending] = useActionState(setBudget, undefined);
   return (
     <form action={action} className="inline wrap">
       <H orgId={orgId} projectId={projectId} />
-      <input name="budget" inputMode="decimal" defaultValue={budgetCents != null ? String(budgetCents / 100) : ""} placeholder="Budget total € HT" aria-label="Budget" />
-      <button className="btn ghost small" disabled={pending}>Enregistrer</button>
+      <input name="budget" inputMode="decimal" defaultValue={budgetCents != null ? String(budgetCents / 100) : ""} placeholder={t("Budget total € HT")} aria-label={t("Budget")} />
+      <button className="btn ghost small" disabled={pending}>{t("Enregistrer")}</button>
       {state?.error && <span className="text-xs" style={{ color: "var(--danger)" }}>{state.error}</span>}
     </form>
   );
 }
 
 export function ExpenseForm(p: Hidden) {
+  const t = useT();
   const [state, action, pending] = useActionState(addExpense, undefined);
   return (
     <form action={action} className="form" key={state?.ok ? Date.now() : "exp"}>
       <Notice state={state?.error ? state : undefined} />
       <H {...p} />
       <div className="row">
-        <label>Poste<input name="label" placeholder="Location de salle, traiteur, déplacement…" required /></label>
-        <label>Montant (€ HT)<input name="amount" inputMode="decimal" required /></label>
-        <label>Date<input name="date" type="date" /></label>
+        <label>{t("Poste")}<input name="label" placeholder={t("Location de salle, traiteur, déplacement…")} required /></label>
+        <label>{t("Montant (€ HT)")}<input name="amount" inputMode="decimal" required /></label>
+        <label>{t("Date")}<input name="date" type="date" /></label>
       </div>
-      <button className="btn secondary small" disabled={pending}>Ajouter la dépense</button>
+      <button className="btn secondary small" disabled={pending}>{t("Ajouter la dépense")}</button>
     </form>
   );
 }
@@ -112,6 +114,7 @@ export function DocumentUploadForm({ projectId, experts, ownLinkId, defaultKind 
 
 /** Envoi de la convention d'un expert en signature électronique (Yousign). */
 export function SendSignatureForm({ orgId, linkId, again }: { orgId: string; linkId: string; again?: boolean }) {
+  const t = useT();
   const [state, action, pending] = useActionState(sendConventionForSignature, undefined);
   return (
     <form action={action} className="stack-sm">
@@ -120,7 +123,7 @@ export function SendSignatureForm({ orgId, linkId, again }: { orgId: string; lin
       <input type="hidden" name="linkId" value={linkId} />
       {!state?.ok && (
         <span>
-          <button className="btn small" disabled={pending}>{pending ? "Envoi en cours…" : again ? "Envoyer de nouveau en signature électronique" : "Envoyer en signature électronique"}</button>
+          <button className="btn small" disabled={pending}>{pending ? t("Envoi en cours…") : again ? t("Envoyer de nouveau en signature électronique") : t("Envoyer en signature électronique")}</button>
         </span>
       )}
     </form>
@@ -145,23 +148,25 @@ export function RefreshSignatureForm({ linkId }: { linkId: string }) {
 
 /** Objet du dossier : titre, domaine thérapeutique, objet et déroulé. */
 export function ProjectObjectForm({ orgId, projectId, title, area, description }: Hidden & { title: string; area: string; description: string }) {
+  const t = useT();
   const [state, action, pending] = useActionState(updateProjectObject, undefined);
   return (
     <ActionForm action={action} className="form">
       <Notice state={state} />
       <H orgId={orgId} projectId={projectId} />
       <div className="row">
-        <label>Titre du dossier<input name="title" required defaultValue={title} /></label>
-        <label>Domaine thérapeutique<input name="therapeuticArea" defaultValue={area} /></label>
+        <label>{t("Titre du dossier")}<input name="title" required defaultValue={title} /></label>
+        <label>{t("Domaine thérapeutique")}<input name="therapeuticArea" defaultValue={area} /></label>
       </div>
-      <label>Objet et déroulé<textarea name="description" rows={4} defaultValue={description} /></label>
-      <button className="btn ghost small" disabled={pending}>{pending ? "Enregistrement…" : "Mettre à jour l'objet"}</button>
+      <label>{t("Objet et déroulé")}<textarea name="description" rows={4} defaultValue={description} /></label>
+      <button className="btn ghost small" disabled={pending}>{pending ? t("Enregistrement…") : t("Mettre à jour l'objet")}</button>
     </ActionForm>
   );
 }
 
 /** Unités et honoraires d'un expert : modifiés, la proposition lui est renvoyée. */
 export function ExpertTermsForm({ orgId, projectId, linkId, name, unit, units, fee, desired }: Hidden & { linkId: string; name: string; unit: string; units: string; fee: string; desired?: string | null }) {
+  const t = useT();
   const [state, action, pending] = useActionState(updateExpertTerms, undefined);
   return (
     <ActionForm action={action} className="form terms-form">
@@ -169,11 +174,11 @@ export function ExpertTermsForm({ orgId, projectId, linkId, name, unit, units, f
       <input type="hidden" name="linkId" value={linkId} />
       <div className="fee-row">
         <strong>{name}</strong>
-        <label>Unités ({unit})<input name="units" inputMode="decimal" defaultValue={units} /></label>
-        <label>Honoraires totaux (€ HT)<input name="fee" inputMode="decimal" defaultValue={fee} required /></label>
-        <button className="btn ghost small" disabled={pending}>{pending ? "Envoi…" : "Proposer ces conditions"}</button>
+        <label>{t("Unités ({unit})", { unit: t(unit) })}<input name="units" inputMode="decimal" defaultValue={units} /></label>
+        <label>{t("Honoraires totaux (€ HT)")}<input name="fee" inputMode="decimal" defaultValue={fee} required /></label>
+        <button className="btn ghost small" disabled={pending}>{pending ? t("Envoi…") : t("Proposer ces conditions")}</button>
       </div>
-      {desired && <p className="hint">Honoraires souhaités par l&apos;expert : {desired} HT.</p>}
+      {desired && <p className="hint">{t("Honoraires souhaités par l'expert : {desired} HT.", { desired })}</p>}
       <Notice state={state} />
     </ActionForm>
   );
@@ -181,30 +186,31 @@ export function ExpertTermsForm({ orgId, projectId, linkId, name, unit, units, f
 
 /** Ajouter un expert référencé au dossier : il reçoit la sollicitation. */
 export function AddExpertForm({ orgId, projectId, unit, experts, blocked = null }: Hidden & { unit: string; experts: { id: string; name: string; detail: string; dayRateCents: number | null }[]; blocked?: Blocked }) {
+  const t = useT();
   const [state, action, pending] = useActionState(addProjectExpert, undefined);
   const [expertId, setExpertId] = useState("");
   const chosen = experts.find((e) => e.id === expertId);
-  if (experts.length === 0) return <p className="muted text-sm">Tous les experts référencés sont déjà sollicités.</p>;
+  if (experts.length === 0) return <p className="muted text-sm">{t("Tous les experts référencés sont déjà sollicités.")}</p>;
   return (
     <ActionForm action={action} className="form">
       <Notice state={state} />
       <H orgId={orgId} projectId={projectId} />
-      <label>Expert
+      <label>{t("Expert")}
         <select name="expertId" value={expertId} onChange={(e) => setExpertId(e.target.value)} required>
-          <option value="">— choisir un expert référencé —</option>
+          <option value="">{t("— choisir un expert référencé —")}</option>
           {experts.map((e) => <option key={e.id} value={e.id}>{e.name}{e.detail ? ` · ${e.detail}` : ""}</option>)}
         </select>
       </label>
       <div className="row">
-        <label>Unités ({unit})<input name="units" inputMode="decimal" defaultValue="1" /></label>
-        <label>Honoraires totaux (€ HT)<input key={expertId} name="fee" inputMode="decimal" defaultValue={chosen?.dayRateCents != null ? String(chosen.dayRateCents / 100) : ""} required /></label>
+        <label>{t("Unités ({unit})", { unit: t(unit) })}<input name="units" inputMode="decimal" defaultValue="1" /></label>
+        <label>{t("Honoraires totaux (€ HT)")}<input key={expertId} name="fee" inputMode="decimal" defaultValue={chosen?.dayRateCents != null ? String(chosen.dayRateCents / 100) : ""} required /></label>
       </div>
-      <label>Message d&apos;accompagnement<textarea name="message" rows={2} placeholder="Message envoyé avec la sollicitation" /></label>
-      <button className="btn ghost small" disabled={pending || !!blocked}>{pending ? "Envoi…" : "Ajouter et solliciter l'expert"}</button>
+      <label>{t("Message d'accompagnement")}<textarea name="message" rows={2} placeholder={t("Message envoyé avec la sollicitation")} /></label>
+      <button className="btn ghost small" disabled={pending || !!blocked}>{pending ? t("Envoi…") : t("Ajouter et solliciter l'expert")}</button>
       {blocked && (
         <p className="hint">
-          Sollicitation possible {BLOCKED_UNTIL[blocked]} :{" "}
-          {blocked === "validation" ? <a href={`/organisations/${orgId}/membres?onglet=organisation`}>suivre la validation</a> : blocked === "contrat" ? <a href={dpaHref(orgId, "sollicitation", projectId)}>accepter le contrat de sous-traitance</a> : <a href={subscribeHref(orgId, "sollicitation", projectId)}>activer l&apos;abonnement</a>}.
+          {t("Sollicitation possible {blocked} :", { blocked: t(BLOCKED_UNTIL[blocked]) })}
+          {blocked === "validation" ? <a href={`/organisations/${orgId}/membres?onglet=organisation`}>{t("suivre la validation")}</a> : blocked === "contrat" ? <a href={dpaHref(orgId, "sollicitation", projectId)}>{t("accepter le contrat de sous-traitance")}</a> : <a href={subscribeHref(orgId, "sollicitation", projectId)}>{t("activer l'abonnement")}</a>}.
         </p>
       )}
     </ActionForm>

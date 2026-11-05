@@ -10,7 +10,6 @@ import { QuoteForm, RfqMessageForm, SupplierProfileForm } from "@/components/Rfq
 import { Thread } from "@/components/ProjectBits";
 import { db } from "@/lib/db";
 import { requireMembership } from "@/lib/orgs";
-import { formatDate, formatEUR } from "@/lib/events";
 import { QUOTE_STATUS, SUPPLIER_CATEGORIES, supplierCategoryLabel } from "@/lib/suppliers";
 import { declineRfq } from "@/lib/rfq-actions";
 import { lineVat, quoteTtc, readLines } from "@/lib/quotes";
@@ -18,10 +17,16 @@ import { storageEnabled } from "@/lib/storage";
 import { BillingNotice } from "@/components/BillingNotice";
 import { ConfirmButton } from "@/components/ConfirmButton";
 import { billingBlocked } from "@/lib/billing";
+import { getT } from "@/lib/i18n/server";
+import { fmtDate, fmtEur, intlLocale } from "@/lib/i18n";
 
-export const metadata = { title: "Demandes de devis — KolBase" };
+export async function generateMetadata() {
+  const { t } = await getT();
+  return { title: `${t("Demandes de devis")} — KolBase` };
+}
 
 export default async function Page({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: Promise<{ onglet?: string }> }) {
+  const { t, locale } = await getT();
   const { id } = await params;
   const { onglet = "en-cours" } = await searchParams;
   const { org, isAdmin, user } = await requireMembership(id);
@@ -57,13 +62,13 @@ export default async function Page({ params, searchParams }: { params: Promise<{
     <>
       <SiteHeader />
       <main className="stack">
-        <h1>Demandes de devis</h1>
+        <h1>{t("Demandes de devis")}</h1>
         <BillingNotice orgId={id} motive="reponse" />
-        {!org.listed && <p className="notice warn">Votre organisation n&apos;apparaît pas dans l&apos;annuaire des prestataires. Complétez la fiche prestataire pour être consulté.</p>}
+        {!org.listed && <p className="notice warn">{t("Votre organisation n'apparaît pas dans l'annuaire des prestataires. Complétez la fiche prestataire pour être consulté.")}</p>}
         <div className="stats">
-          <div className="card stat"><span className="muted">À traiter</span><strong>{todo.length}</strong></div>
-          <div className="card stat"><span className="muted">Devis retenus</span><strong>{won.length}</strong></div>
-          <div className="card stat"><span className="muted">Montant retenu</span><strong>{formatEUR(won.reduce((s, i) => s + i.rfq.quotes[0].amountCents, 0))} HT</strong></div>
+          <div className="card stat"><span className="muted">{t("À traiter")}</span><strong>{todo.length}</strong></div>
+          <div className="card stat"><span className="muted">{t("Devis retenus")}</span><strong>{won.length}</strong></div>
+          <div className="card stat"><span className="muted">{t("Montant retenu")}</span><strong>{fmtEur(locale, won.reduce((s, i) => s + i.rfq.quotes[0].amountCents, 0))}{" "}{t("HT")}</strong></div>
         </div>
         <nav className="tabs">
           {tabs.map(([k, l]) => <Link key={k} href={`?onglet=${k}`} className={k === onglet ? "active" : ""}>{l}</Link>)}
@@ -74,26 +79,26 @@ export default async function Page({ params, searchParams }: { params: Promise<{
             <section className="card stack-sm">
               <div className="card-head">
                 <div>
-                  <h2>Vos indicateurs</h2>
-                  <p className="muted">Calculés à partir de votre activité sur KolBase ; les organisations voient la note, le délai et le taux de réponse.</p>
+                  <h2>{t("Vos indicateurs")}</h2>
+                  <p className="muted">{t("Calculés à partir de votre activité sur KolBase ; les organisations voient la note, le délai et le taux de réponse.")}</p>
                 </div>
-                <Link className="btn ghost" href={`/structures/${id}`}>Voir ma page publique</Link>
+                <Link className="btn ghost" href={`/structures/${id}`}>{t("Voir ma page publique")}</Link>
               </div>
               <dl className="hero-facts">
-                <div><dt>Note moyenne</dt><dd>{book.rating != null ? `${book.rating.toFixed(1).replace(".", ",")} / 5` : "—"}<small>{book.reviews.length} avis vérifié{book.reviews.length > 1 ? "s" : ""}</small></dd></div>
-                <div><dt>Taux de réponse</dt><dd>{book.responseRate != null ? `${book.responseRate} %` : "—"}<small>{book.answered} devis sur {book.invites} demandes</small></dd></div>
-                <div><dt>Délai de réponse</dt><dd>{delayLabel(book.delayHours) ?? "—"}<small>médian</small></dd></div>
-                <div><dt>Prestations</dt><dd>{book.retained}<small>retenues via KolBase</small></dd></div>
+                <div><dt>{t("Note moyenne")}</dt><dd>{book.rating != null ? `${book.rating.toFixed(1).replace(".", ",")} / 5` : "—"}<small>{t(book.reviews.length > 1 ? "{reviews} avis vérifiés" : "{reviews} avis vérifié", { reviews: book.reviews.length })}</small></dd></div>
+                <div><dt>{t("Taux de réponse")}</dt><dd>{book.responseRate != null ? `${book.responseRate} %` : "—"}<small>{t("{answered} devis sur {invites} demandes", { answered: book.answered, invites: book.invites })}</small></dd></div>
+                <div><dt>{t("Délai de réponse")}</dt><dd>{delayLabel(book.delayHours) ?? "—"}<small>{t("médian")}</small></dd></div>
+                <div><dt>{t("Prestations")}</dt><dd>{book.retained}<small>{t("retenues via KolBase")}</small></dd></div>
               </dl>
               {book.market.map((m) => (
                 <p key={m.category} className={`text-sm ${m.mine > m.median * 1.15 ? "warn-text" : ""}`}>
-                  {supplierCategoryLabel(m.category)} : votre prix médian est de {m.mine.toLocaleString("fr-FR", { maximumFractionDigits: 2 })} € TTC par participant, pour une médiane de {m.median.toLocaleString("fr-FR", { maximumFractionDigits: 2 })} € TTC sur {m.count} devis de la catégorie (données anonymisées).
+                  {t("{supplierCategoryLabel} : votre prix médian est de {toLocaleString} € TTC par participant, pour une médiane de {toLocaleString2} € TTC sur {count} devis de la catégorie (données anonymisées).", { supplierCategoryLabel: t(supplierCategoryLabel(m.category)), toLocaleString: m.mine.toLocaleString(intlLocale(locale), { maximumFractionDigits: 2 }), toLocaleString2: m.median.toLocaleString(intlLocale(locale), { maximumFractionDigits: 2 }), count: m.count })}
                 </p>
               ))}
             </section>
             <SupplierProfileForm
               orgId={id}
-              categories={SUPPLIER_CATEGORIES.map((c) => ({ id: c.id, label: c.label }))}
+              categories={SUPPLIER_CATEGORIES.map((c) => ({ id: c.id, label: t(c.label) }))}
               current={{ categories: org.supplierCategories, coverage: org.coverage ?? "", listed: org.listed }}
               canEdit={isAdmin}
             />
@@ -101,8 +106,8 @@ export default async function Page({ params, searchParams }: { params: Promise<{
               <>
                 <BookForm orgId={id} capacities={readCapacities(org.capacities)} equipment={org.equipment} options={EQUIPMENT} accessible={org.accessible} priceHint={org.priceHint ?? ""} />
                 <section className="card stack-sm">
-                  <h2>Photos ({photos.length}/{PHOTO_MAX})</h2>
-                  <p className="muted">Vos salles, vos réalisations : les photos apparaissent en tête de votre page publique.</p>
+                  <h2>{t("Photos ({photos}/{PHOTO_MAX})", { photos: photos.length, PHOTO_MAX })}</h2>
+                  <p className="muted">{t("Vos salles, vos réalisations : les photos apparaissent en tête de votre page publique.")}</p>
                   {photos.length > 0 && (
                     <div className="gallery">
                       {photos.map((ph) => (
@@ -110,8 +115,8 @@ export default async function Page({ params, searchParams }: { params: Promise<{
                           {/* eslint-disable-next-line @next/next/no-img-element */}
                           <img src={photoSrc(ph)} alt={ph.caption ?? ""} loading="lazy" />
                           <figcaption>
-                            <span>{ph.caption ?? "Sans légende"}</span>
-                            <form action={removeSupplierPhoto}><input type="hidden" name="orgId" value={id} /><input type="hidden" name="photoId" value={ph.id} /><button className="link danger">Retirer</button></form>
+                            <span>{ph.caption ?? t("Sans légende")}</span>
+                            <form action={removeSupplierPhoto}><input type="hidden" name="orgId" value={id} /><input type="hidden" name="photoId" value={ph.id} /><button className="link danger">{t("Retirer")}</button></form>
                           </figcaption>
                         </figure>
                       ))}
@@ -120,16 +125,16 @@ export default async function Page({ params, searchParams }: { params: Promise<{
                   {photos.length < PHOTO_MAX && <PhotoForm orgId={id} />}
                 </section>
                 <section className="card stack-sm">
-                  <h2>Catalogue de forfaits</h2>
-                  <p className="muted">Vos prestations courantes et leur prix : vous les ajoutez en un clic à vos devis, et les organisations voient vos prix « à partir de ».</p>
+                  <h2>{t("Catalogue de forfaits")}</h2>
+                  <p className="muted">{t("Vos prestations courantes et leur prix : vous les ajoutez en un clic à vos devis, et les organisations voient vos prix « à partir de ».")}</p>
                   {offers.length > 0 && (
                     <ul className="offer-list">
                       {offers.map((o) => (
                         <li key={o.id}>
                           <span>{o.label}</span>
                           <span className="actions">
-                            <strong>{formatEUR(o.unitCents)} HT</strong> <span className="muted text-sm">{OFFER_UNITS[o.unit as keyof typeof OFFER_UNITS] ?? o.unit}</span>
-                            <form action={removeSupplierOffer}><input type="hidden" name="orgId" value={id} /><input type="hidden" name="offerId" value={o.id} /><button className="link danger">Retirer</button></form>
+                            <strong>{t("{amount} HT", { amount: fmtEur(locale, o.unitCents) })}</strong> <span className="muted text-sm">{t(OFFER_UNITS[o.unit as keyof typeof OFFER_UNITS] ?? o.unit)}</span>
+                            <form action={removeSupplierOffer}><input type="hidden" name="orgId" value={id} /><input type="hidden" name="offerId" value={o.id} /><button className="link danger">{t("Retirer")}</button></form>
                           </span>
                         </li>
                       ))}
@@ -142,7 +147,7 @@ export default async function Page({ params, searchParams }: { params: Promise<{
           </>
         ) : (
           <>
-            {shown.length === 0 && <div className="card empty"><Receipt size={22} /><p className="muted">Aucune demande {onglet === "en-cours" ? "en cours" : "reçue"}.</p></div>}
+            {shown.length === 0 && <div className="card empty"><Receipt size={22} /><p className="muted">{t("Aucune demande")}{" "}{onglet === "en-cours" ? t("en cours") : t("reçue")}.</p></div>}
             {shown.map(({ rfq: r, declined }) => {
               const q = r.quotes[0];
               const closed = r.status !== "sent";
@@ -150,23 +155,23 @@ export default async function Page({ params, searchParams }: { params: Promise<{
                 <section key={r.id} className="card">
                   <div className="card-head">
                     <div>
-                      <div className="eyebrow-sm">{supplierCategoryLabel(r.category)} · {r.organization.name}</div>
-                      <h2>{r.event?.title ?? "Demande de devis"}</h2>
+                      <div className="eyebrow-sm">{t(supplierCategoryLabel(r.category))} · {r.organization.name}</div>
+                      <h2>{r.event?.title ?? t("Demande de devis")}</h2>
                       <div className="muted">
-                        {r.event ? `${formatDate(r.event.startsAt)}${r.event.venue ? ` · ${r.event.venue}` : ""}` : ""}
-                        {r.city ? ` · ${r.city}` : ""}{r.headcount ? ` · ${r.headcount} participants` : ""}
+                        {r.event ? `${fmtDate(locale, r.event.startsAt)}${r.event.venue ? ` · ${r.event.venue}` : ""}` : ""}
+                        {r.city ? ` · ${r.city}` : ""}{r.headcount ? ` ${t("· {headcount} participants", { headcount: r.headcount })}` : ""}
                       </div>
                     </div>
                     {/* Demande annulée par le client : « Annulée », même si un devis avait été envoyé. */}
                     <span className={`pill ${r.status === "cancelled" ? "bad" : q ? (q.status === "retained" ? "ok" : q.status === "rejected" ? "done" : "electric") : declined ? "done" : "wait"}`}>
-                      {r.status === "cancelled" ? "Annulée" : q ? QUOTE_STATUS[q.status] : r.status === "awarded" ? "Attribuée à un autre prestataire" : declined ? "Déclinée" : "Devis attendu"}
+                      {r.status === "cancelled" ? t("Annulée") : q ? t(QUOTE_STATUS[q.status]) : r.status === "awarded" ? t("Attribuée à un autre prestataire") : declined ? t("Déclinée") : t("Devis attendu")}
                     </span>
                   </div>
                   <p>{r.needs}</p>
                   <div className="kv">
-                    <div><span>Reçue le</span><span>{r.sentAt ? formatDate(r.sentAt) : "—"}</span></div>
-                    <div><span>Réponse attendue</span><span>{r.deadline ? formatDate(r.deadline) : "à définir"}</span></div>
-                    {q && <div><span>Votre devis{q.revision > 1 ? ` (version ${q.revision})` : ""}</span><span>{formatEUR(q.amountCents)} HT · {formatEUR(quoteTtc(q))} TTC</span></div>}
+                    <div><span>{t("Reçue le")}</span><span>{r.sentAt ? fmtDate(locale, r.sentAt) : "—"}</span></div>
+                    <div><span>{t("Réponse attendue")}</span><span>{r.deadline ? fmtDate(locale, r.deadline) : t("à définir")}</span></div>
+                    {q && <div><span>{t("Votre devis")}{q.revision > 1 ? ` ${t("(version {revision})", { revision: q.revision })}` : ""}</span><span>{fmtEur(locale, q.amountCents)}{" "}{t("HT")}{" · "}{fmtEur(locale, quoteTtc(q))}{" "}{t("TTC")}</span></div>}
                   </div>
                   {!closed && (
                     <>
@@ -190,27 +195,27 @@ export default async function Page({ params, searchParams }: { params: Promise<{
                           <input type="hidden" name="orgId" value={id} />
                           <input type="hidden" name="rfqId" value={r.id} />
                           <details>
-                            <summary className="link danger">Décliner la demande</summary>
-                            <label>Motif (facultatif, transmis à {r.organization.name})<input name="note" maxLength={500} placeholder="Indisponible à cette date, hors de notre zone…" /></label>
-                            <ConfirmButton className="btn ghost small" confirm="décliner la demande" summary={<>{r.organization.name} est prévenue par e-mail ; vous pourrez encore envoyer un devis tant que la demande est ouverte.</>}>
-                              Décliner
+                            <summary className="link danger">{t("Décliner la demande")}</summary>
+                            <label>{t("Motif (facultatif, transmis à {name})", { name: r.organization.name })}<input name="note" maxLength={500} placeholder={t("Indisponible à cette date, hors de notre zone…")} /></label>
+                            <ConfirmButton className="btn ghost small" confirm={t("décliner la demande")} summary={<>{t("{name} est prévenue par e-mail ; vous pourrez encore envoyer un devis tant que la demande est ouverte.", { name: r.organization.name })}</>}>
+                              {t("Décliner")}
                             </ConfirmButton>
                           </details>
                         </form>
                       )}
                     </>
                   )}
-                  {q?.status === "retained" && <p className="notice ok">{r.organization.name} a retenu votre devis. Échangez ci-dessous pour préparer la prestation.</p>}
+                  {q?.status === "retained" && <p className="notice ok">{t("{name} a retenu votre devis. Échangez ci-dessous pour préparer la prestation.", { name: r.organization.name })}</p>}
                   {(r.status === "sent" || (r.status === "awarded" && q?.status === "retained") || r.messages.length > 0) && (
                     <details className="rfq-thread" open={r.messages.length > 0}>
                       <summary>
-                        <strong>Questions et échanges avec {r.organization.name}</strong>
-                        <span className="muted text-xs">{r.messages.length ? `${r.messages.length} message${r.messages.length > 1 ? "s" : ""}` : "posez une question sur le besoin"}</span>
-                        {r.messages.at(-1) && !r.messages.at(-1)!.fromSupplier && <span className="pill electric">Nouveau message</span>}
+                        <strong>{t("Questions et échanges avec {name}", { name: r.organization.name })}</strong>
+                        <span className="muted text-xs">{r.messages.length ? t(r.messages.length > 1 ? "{messages} messages" : "{messages} message", { messages: r.messages.length }) : t("posez une question sur le besoin")}</span>
+                        {r.messages.at(-1) && !r.messages.at(-1)!.fromSupplier && <span className="pill electric">{t("Nouveau message")}</span>}
                       </summary>
                       <Thread messages={r.messages} meId={user.id} />
                       {(r.status === "sent" || q?.status === "retained") && !declined && (
-                        <RfqMessageForm orgId={id} rfqId={r.id} supplierId={id} placeholder={`Votre question à ${r.organization.name}…`} />
+                        <RfqMessageForm orgId={id} rfqId={r.id} supplierId={id} placeholder={t("Votre question à {name}…", { name: r.organization.name })} />
                       )}
                     </details>
                   )}

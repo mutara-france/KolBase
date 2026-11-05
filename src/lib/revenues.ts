@@ -1,5 +1,6 @@
 import "server-only";
 import { db } from "@/lib/db";
+import type { T } from "@/lib/i18n";
 import { collabType } from "@/lib/projects";
 import { pointedPastEvents } from "@/lib/checkin";
 import { isAbsent } from "@/lib/indicators";
@@ -54,7 +55,8 @@ export async function practitionerLedger(userId: string, practitionerId: string)
 export type InterestLine = { org: string; natures: string[]; source: "kolbase" | "declare" };
 
 /** Liens d'intérêts des cinq dernières années, regroupés par organisation. */
-export function interestLines(ledger: Awaited<ReturnType<typeof practitionerLedger>>, now = new Date()): InterestLine[] {
+/** Libellés traduits par `t` (langue de la page ou de la diapositive). */
+export function interestLines(ledger: Awaited<ReturnType<typeof practitionerLedger>>, t: T, now = new Date()): InterestLine[] {
   const since = now.getFullYear() - INTEREST_YEARS + 1;
   const map = new Map<string, InterestLine>();
   const add = (org: string, nature: string, source: InterestLine["source"]) => {
@@ -64,9 +66,9 @@ export function interestLines(ledger: Awaited<ReturnType<typeof practitionerLedg
     if (source === "kolbase") line.source = "kolbase";
     map.set(key, line);
   };
-  for (const f of ledger.fees) if (f.signed && f.year >= since) add(f.org.name, `${f.type} (${f.year})`, "kolbase");
-  for (const h of ledger.hospitality) if (h.year >= since && !h.absent) add(h.org.name, `Hospitalité lors de « ${h.title} » (${h.year})`, "kolbase");
+  for (const f of ledger.fees) if (f.signed && f.year >= since) add(f.org.name, `${t(f.type)} (${f.year})`, "kolbase");
+  for (const h of ledger.hospitality) if (h.year >= since && !h.absent) add(h.org.name, t("Hospitalité lors de « {title} » ({year})", { title: h.title, year: h.year }), "kolbase");
   for (const d of ledger.declared)
-    if ((d.endYear ?? now.getFullYear()) >= since) add(d.organization, `${d.nature} (${d.startYear}${d.endYear ? (d.endYear === d.startYear ? "" : `–${d.endYear}`) : " – en cours"})`, "declare");
+    if ((d.endYear ?? now.getFullYear()) >= since) add(d.organization, `${d.nature} (${d.startYear}${d.endYear ? (d.endYear === d.startYear ? "" : `–${d.endYear}`) : ` – ${t("en cours")}`})`, "declare");
   return [...map.values()].sort((a, b) => a.org.localeCompare(b.org, "fr"));
 }

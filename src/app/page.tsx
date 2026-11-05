@@ -169,7 +169,7 @@ export default async function Home({ searchParams }: { searchParams: Promise<{ c
                     <div>
                       <div className="eyebrow">{t("À la une")}</div>
                       <h3>{featured.name}</h3>
-                      <p className="text-sm">{[t(featured.kind), featured.sector, featured.hq].filter(Boolean).join(" · ")}</p>
+                      <p className="text-sm">{[t(featured.kind), featured.sector ? t(featured.sector) : null, featured.hq].filter(Boolean).join(" · ")}</p>
                     </div>
                   </div>
                   <dl className="org-stats">
@@ -230,7 +230,7 @@ export default async function Home({ searchParams }: { searchParams: Promise<{ c
                 <Link href="/actualites" className="home-more">{t("Toutes les actualités")} <ArrowRight size={16} /></Link>
               </div>
               <div className="news-grid">
-                {news.map((a) => <NewsCard key={a.id} a={a} dateLabel={fmtDate(locale, a.publishedAt!, { day: "numeric", month: "long", year: "numeric" })} minutesLabel={t("{n} min de lecture")} />)}
+                {news.map((a) => <NewsCard key={a.id} a={{ ...a, category: t(a.category) }} dateLabel={fmtDate(locale, a.publishedAt!, { day: "numeric", month: "long", year: "numeric" })} minutesLabel={t("{n} min de lecture")} />)}
               </div>
             </div>
           </section>

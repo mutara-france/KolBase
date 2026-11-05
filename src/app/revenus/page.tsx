@@ -41,7 +41,7 @@ export default async function Page({ searchParams }: { searchParams: Promise<{ o
   const hospTotal = hosp.filter((h) => !h.absent).reduce((s, h) => s + h.valueCents, 0);
   // Organisations : celles qui ont versé des honoraires ou accordé une hospitalité consommée (absents exclus, comme le total).
   const orgs = new Set([...fees.map((f) => f.org.id), ...hosp.filter((h) => !h.absent).map((h) => h.org.id)]).size;
-  const interests = interestLines(ledger);
+  const interests = interestLines(ledger, t);
   const tabs = [["revenus", t("Honoraires et avantages")], ["facturation", t("Notes d'honoraires")], ["liens", t("Liens d'intérêts")], ["transparence", t("Transparence Santé")]] as const;
   const billingOk = billingComplete(p);
   const notes = ledger.fees.filter((f) => f.note).sort((a, b) => b.note!.issuedAt.getTime() - a.note!.issuedAt.getTime());

@@ -3,6 +3,8 @@ import { db } from "@/lib/db";
 import { stripe, stripeEnabled, type StripeSubscription } from "@/lib/stripe";
 import { asInterval, asObjectId, canEngage, ENGAGING, fromStripeStatus, needsSubscription, planFor, planPrice, PLANS, stripePause, subscribeHref, TRIAL_DAYS, type Blocked, type GateLink, type Interval, type Motive } from "@/lib/billing-plans";
 import { dpaCurrent, dpaHref, dpaMessage } from "@/lib/dpa";
+import { makeT, type T } from "@/lib/i18n";
+import { getT } from "@/lib/i18n/server";
 
 export { stripeEnabled };
 
@@ -14,7 +16,8 @@ async function engagementAllowed(orgId: string) {
 }
 
 /** Message d'une action refusée faute d'abonnement (chemin de la page d'abonnement donné en clair). */
-export const gateMessage = (motive: Motive) => `Pour ${ENGAGING[motive]}, un administrateur de l'organisation active l'abonnement (premier mois offert) : menu du compte › Abonnement.`;
+export const gateMessage = (motive: Motive, t: T = makeT("fr")) =>
+  t("Pour {motive}, un administrateur de l'organisation active l'abonnement (premier mois offert) : menu du compte › Abonnement.", { motive: t(ENGAGING[motive]) });
 
 /**
  * L'action engageante est-elle bloquée faute d'abonnement ? (prestataire : réponse à une nouvelle demande ; société
@@ -40,8 +43,9 @@ export async function dpaAccepted(orgId: string) {
  * le blocage) ou null. `objet` : l'action à reprendre ensuite (événement, dossier, demande de devis).
  */
 export async function engagementGate(orgId: string, motive: Motive, objet?: string | null): Promise<{ error: string; fix: GateLink } | null> {
-  if (!(await dpaAccepted(orgId))) return { error: dpaMessage(motive), fix: { href: dpaHref(orgId, motive, objet), label: "Accepter le contrat de sous-traitance" } };
-  if (await billingBlocked(orgId, motive)) return { error: gateMessage(motive), fix: { href: subscribeHref(orgId, motive, objet), label: "Activer l'abonnement" } };
+  const { t } = await getT();
+  if (!(await dpaAccepted(orgId))) return { error: dpaMessage(motive, t), fix: { href: dpaHref(orgId, motive, objet), label: t("Accepter le contrat de sous-traitance") } };
+  if (await billingBlocked(orgId, motive)) return { error: gateMessage(motive, t), fix: { href: subscribeHref(orgId, motive, objet), label: t("Activer l'abonnement") } };
   return null;
 }
 
