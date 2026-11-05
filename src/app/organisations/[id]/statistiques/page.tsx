@@ -5,6 +5,7 @@ import { Meter, RankedBars, StackedColumns } from "@/components/Charts";
 import { requireMembership } from "@/lib/orgs";
 import { orgStats, STATS_ROLES } from "@/lib/org-stats";
 import { formatDate, formatEUR } from "@/lib/events";
+import { TableWrap } from "@/components/TableWrap";
 
 export const metadata = { title: "Statistiques — KolBase" };
 
@@ -99,27 +100,28 @@ export default async function Page({ params, searchParams }: { params: Promise<{
         <section className="card stack-sm">
           <h2>Événements {year}</h2>
           {s.events.length === 0 ? <p className="muted">Aucun événement sur l&apos;année.</p> : (
-            <table className="table stats-table" tabIndex={0}>
-              <caption className="sr-only">Événements {year} : inscrits, présents, hospitalités et prestataires, au total et par présent</caption>
-              <thead>
-                <tr><th>Événement</th><th>Date</th><th className="num">Inscrits</th><th className="num">Présents</th><th className="num">Hospitalités (TTC)</th><th className="num">Prestataires (HT)</th><th className="num">Hospitalités par présent (TTC)</th><th className="num">Prestataires par présent (HT)</th><th className="num">Avis</th></tr>
-              </thead>
-              <tbody>
-                {s.events.map((e) => (
-                  <tr key={e.id}>
-                    <td><Link href={`${base}/evenements/${e.id}`}>{e.title}</Link>{e.internal && <span className="muted text-xs"> · réunion interne</span>}</td>
-                    <td>{formatDate(e.date)}{!e.past && <span className="muted text-xs"> · à venir</span>}</td>
-                    <td className="num">{e.registrations}{e.capacity ? <span className="muted"> / {e.capacity}</span> : null}</td>
-                    <td className="num">{e.present || (e.past ? "—" : "")}</td>
-                    <td className="num">{formatEUR(e.hospitality)}</td>
-                    <td className="num">{formatEUR(e.suppliers)}</td>
-                    <td className="num">{e.hospitalityPer != null ? formatEUR(e.hospitalityPer) : "—"}{e.hospitalityPer != null && !e.presenceKnown && <span className="muted text-xs"> par inscrit</span>}</td>
-                    <td className="num">{e.suppliersPer != null ? formatEUR(e.suppliersPer) : "—"}{e.suppliersPer != null && !e.presenceKnown && <span className="muted text-xs"> par inscrit</span>}</td>
-                    <td className="num">{e.rating != null ? `${e.rating.toFixed(1).replace(".", ",")} ★` : "—"}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+            <TableWrap label={`Événements ${year}`}>
+              <table className="table stats-table">
+                <caption className="sr-only">Événements {year} : inscrits, présents, hospitalités et prestataires, au total et par présent</caption>
+                <thead>
+                  <tr><th>Événement</th><th>Date</th><th className="num">Inscrits</th><th className="num">Présents</th><th className="num">Hospitalités (TTC)</th><th className="num">Prestataires (HT)</th><th className="num">Avis</th></tr>
+                </thead>
+                <tbody>
+                  {s.events.map((e) => (
+                    <tr key={e.id}>
+                      <td data-label="Événement"><Link href={`${base}/evenements/${e.id}`}>{e.title}</Link>{e.internal && <span className="muted text-xs"> · réunion interne</span>}</td>
+                      <td data-label="Date">{formatDate(e.date)}{!e.past && <span className="muted text-xs"> · à venir</span>}</td>
+                      <td data-label="Inscrits" className="num">{e.registrations}{e.capacity ? <span className="muted"> / {e.capacity}</span> : null}</td>
+                      <td data-label="Présents" className="num">{e.present || (e.past ? "—" : "")}</td>
+                      {/* Coût par présent (ou par inscrit tant que la présence n'est pas connue) sous le total : deux colonnes de moins. */}
+                      <td data-label="Hospitalités (TTC)" className="num">{formatEUR(e.hospitality)}{e.hospitalityPer != null && <div className="muted text-xs">{formatEUR(e.hospitalityPer)} {e.presenceKnown ? "par présent" : "par inscrit"}</div>}</td>
+                      <td data-label="Prestataires (HT)" className="num">{formatEUR(e.suppliers)}{e.suppliersPer != null && <div className="muted text-xs">{formatEUR(e.suppliersPer)} {e.presenceKnown ? "par présent" : "par inscrit"}</div>}</td>
+                      <td data-label="Avis" className="num">{e.rating != null ? `${e.rating.toFixed(1).replace(".", ",")} ★` : "—"}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </TableWrap>
           )}
           {s.events.length > 0 && <p className="hint">Hospitalités en valeur déclarée (TTC), prestataires selon les devis retenus (HT), rapportés séparément à l&apos;effectif. Après un événement pointé, les absents sont exclus et l&apos;effectif est celui des présents ; avant, ou sans pointage, celui des inscrits.</p>}
         </section>

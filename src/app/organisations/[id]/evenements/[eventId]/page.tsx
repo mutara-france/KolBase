@@ -29,6 +29,7 @@ import { ConfirmButton } from "@/components/ConfirmButton";
 import { conversion, reportParts } from "@/lib/service-report";
 import { groupOrders, packItemStatus, packSaving, packStatus } from "@/lib/service-pack";
 import { SendNowButton } from "@/components/FollowupForms";
+import { TableWrap } from "@/components/TableWrap";
 
 export const metadata = { title: "Événement — KolBase" };
 
@@ -686,22 +687,24 @@ export default async function Page({ params, searchParams }: { params: Promise<{
                 {event.registrations.length === 0 ? (
                   <p className="muted">Aucune inscription pour l&apos;instant.</p>
                 ) : (
-                  <table className="table" tabIndex={0}>
-                    <thead><tr><th>Nom</th><th>Profession</th><th>Structure</th><th>Prestations acceptées</th><th>Valeur TTC</th><th>Inscrit le</th>{canPoint && <th>Présence</th>}</tr></thead>
-                    <tbody>
-                      {event.registrations.map((r) => (
-                        <tr key={r.id}>
-                          <td>{r.user.firstName} {r.user.lastName}</td>
-                          <td>{r.profession ?? "—"}</td>
-                          <td>{r.structure ?? "—"}</td>
-                          <td>{r.benefits.map((b) => b.benefit.label).join(", ") || "Aucune"}</td>
-                          <td>{formatEUR(r.benefits.reduce((s, b) => s + b.valueCents, 0))} TTC</td>
-                          <td>{formatDate(r.createdAt)}</td>
-                          {canPoint && <td>{r.checkedInAt ? <><span className="pill ok">{formatTime(r.checkedInAt)}</span>{ended && !readOnly && <> <a className="link" href={`/organisations/${id}/evenements/${eventId}/attestations?inscription=${r.id}`}>attestation</a></>}</> : ended && pointed ? <span className="pill wait">Absent</span> : "—"}</td>}
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
+                  <TableWrap label="Inscrits">
+                    <table className="table">
+                      <thead><tr><th>Nom</th><th>Profession</th><th>Structure</th><th>Prestations acceptées</th><th>Valeur TTC</th><th>Inscrit le</th>{canPoint && <th>Présence</th>}</tr></thead>
+                      <tbody>
+                        {event.registrations.map((r) => (
+                          <tr key={r.id}>
+                            <td data-label="Nom">{r.user.firstName} {r.user.lastName}</td>
+                            <td data-label="Profession">{r.profession ?? "—"}</td>
+                            <td data-label="Structure">{r.structure ?? "—"}</td>
+                            <td data-label="Prestations acceptées">{r.benefits.map((b) => b.benefit.label).join(", ") || "Aucune"}</td>
+                            <td data-label="Valeur TTC">{formatEUR(r.benefits.reduce((s, b) => s + b.valueCents, 0))} TTC</td>
+                            <td data-label="Inscrit le">{formatDate(r.createdAt)}</td>
+                            {canPoint && <td data-label="Présence">{r.checkedInAt ? <><span className="pill ok">{formatTime(r.checkedInAt)}</span>{ended && !readOnly && <> <a className="link" href={`/organisations/${id}/evenements/${eventId}/attestations?inscription=${r.id}`}>attestation</a></>}</> : ended && pointed ? <span className="pill wait">Absent</span> : "—"}</td>}
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </TableWrap>
                 )}
               </section>
         )}

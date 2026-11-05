@@ -31,6 +31,7 @@ npm run test:coverage         # tests unitaires + couverture minimale des module
 npm test                      # tests unitaires (règles de visibilité, conformité, rôles, montants…)
 # parcours de bout en bout : base chargée avec la démo, application lancée
 BASE=http://localhost:3000 DEMO_PASSWORD=… DATABASE_URL=… npm run test:e2e
+BASE=http://localhost:3000 DEMO_PASSWORD=… npm run test:affichage   # mise en page, 4 profils × téléphone/tablette/ordinateur
 ```
 
 Chaque pull request passe par GitHub Actions (`.github/workflows/ci.yml`) : types, code mort, tests unitaires,
