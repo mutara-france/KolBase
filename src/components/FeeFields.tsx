@@ -19,7 +19,7 @@ export function FeeFields({ unit, levels, hourlyMax, defaults = {}, suffix = "",
   const [level, setLevel] = useState(defaults.level ?? "");
   const [hours, setHours] = useState<Record<string, string>>({ prepHours: defaults.prepHours ?? "", interventionHours: defaults.interventionHours ?? "", travelHours: defaults.travelHours ?? "" });
   const [fee, setFee] = useState(defaults.fee ?? "");
-  // Honoraires saisis à la main : le calcul ne les remplace plus.
+  // Honoraires saisis à la main : le calcul ne les remplace plus (choisir un niveau de la grille le rétablit).
   const [manual, setManual] = useState(!!defaults.fee);
   const rate = levels.find((l) => l.id === level)?.hourlyCents ?? null;
   const total = hoursOf(Object.fromEntries(HOUR_FIELDS.map((k) => [k, parseHours(hours[k]) ?? null])));
@@ -35,7 +35,7 @@ export function FeeFields({ unit, levels, hourlyMax, defaults = {}, suffix = "",
         <label>{t("Unités ({unit})", { unit: t(unit) })}<input name={n("units")} inputMode="decimal" defaultValue={defaults.units ?? "1"} /></label>
         {levels.length > 0 && (
           <label>{t("Niveau de rémunération")}
-            <select name={n("level")} value={level} onChange={(e) => setLevel(e.target.value)}>
+            <select name={n("level")} value={level} onChange={(e) => { setLevel(e.target.value); setManual(false); }}>
               <option value="">{t("Hors grille")}</option>
               {levels.map((l) => <option key={l.id} value={l.id}>{l.label} · {eur(l.hourlyCents)}{t(" / h")}</option>)}
             </select>

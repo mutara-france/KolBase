@@ -47,6 +47,7 @@ export function NewProjectForm({ orgId, types, experts, preselected, ai = false,
           </select>
         </label>
         <label>{t("Domaine thérapeutique")}<input name="therapeuticArea" /></label>
+        <label className="short">{t("Intervention prévue")}<input name="plannedAt" type="date" /></label>
       </div>
       <p className="hint">{t("Repère indicatif KolBase (non réglementaire) : {toLocaleString} à {toLocaleString2} € HT par {unit}. La juste contrepartie reste à documenter par votre organisation.", { toLocaleString: type.fmv[0].toLocaleString(intlLocale(locale)), toLocaleString2: type.fmv[1].toLocaleString(intlLocale(locale)), unit: t(type.unit) })}</p>
       <label>{t("Objet et déroulé")}<textarea name="description" rows={ai ? 6 : 4} placeholder={t("Contexte, livrables attendus, dates…")} /></label>

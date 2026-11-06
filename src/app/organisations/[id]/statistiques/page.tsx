@@ -100,7 +100,7 @@ export default async function Page({ params, searchParams }: { params: Promise<{
             <p className="muted">{t("Médianes sur l'année, d'après l'historique des dossiers.")}</p>
             <ul className="delay-list">
               <li><Clock size={15} aria-hidden /><span>{t("Réponse des experts")}<small>{t(s.delays.expertResponse.n > 1 ? "sur {n} sollicitations" : "sur {n} sollicitation", { n: s.delays.expertResponse.n })}</small></span><strong>{days(t, s.delays.expertResponse.days)}</strong></li>
-              <li><ShieldCheck size={15} aria-hidden /><span>{t("Validation par la conformité")}<small>{t(s.delays.compliance.n > 1 ? "sur {n} examens" : "sur {n} examen", { n: s.delays.compliance.n })}</small></span><strong>{days(t, s.delays.compliance.days)}</strong></li>
+              <li><ShieldCheck size={15} aria-hidden /><span>{t("Validation par la conformité")}<small>{t(s.delays.compliance.n > 1 ? "sur {n} examens" : "sur {n} examen", { n: s.delays.compliance.n })}{s.delays.compliance.onTime != null ? ` · ${t("{pct} dans le délai interne ({days} jours ouvrés)", { pct: pct(s.delays.compliance.onTime), days: s.delays.compliance.reviewDays })}` : ""}</small></span><strong>{days(t, s.delays.compliance.days)}</strong></li>
               <li><Clock size={15} aria-hidden /><span>{t("De la création à la signature")}<small>{t(s.delays.toSignature.n > 1 ? "sur {n} dossiers" : "sur {n} dossier", { n: s.delays.toSignature.n })}</small></span><strong>{days(t, s.delays.toSignature.days)}</strong></li>
             </ul>
           </section>

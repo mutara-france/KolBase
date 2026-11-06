@@ -62,14 +62,15 @@ export async function BudgetPanel({ orgId, projectId, canEdit }: { orgId: string
         <h2 className="section-title" style={{ margin: 0 }}><Wallet size={15} />{" "}{t("Budget et dépenses")}</h2>
         {canEdit && <BudgetForm orgId={orgId} projectId={projectId} budgetCents={budget} />}
       </div>
-      <div className="stats-row" style={{ marginBottom: 12 }}>
-        <div className="stat-card"><div className="stat-value">{budget != null ? fmtEur(locale, budget) : "—"}</div><div className="stat-label">{t("Budget prévu (HT)")}</div></div>
-        <div className="stat-card"><div className="stat-value">{fmtEur(locale, fees)}</div><div className="stat-label">{t("Honoraires engagés (HT)")}</div></div>
-        {proposed > 0 && <div className="stat-card"><div className="stat-value muted">{fmtEur(locale, proposed)}</div><div className="stat-label">{t("Honoraires proposés, sans réponse (HT)")}</div></div>}
-        {sup > 0 && <div className="stat-card"><div className="stat-value">{fmtEur(locale, sup)}{" "}{t("HT")}</div><div className="stat-label">{t("Prestataires (devis retenus)")}</div></div>}
-        <div className="stat-card"><div className="stat-value">{fmtEur(locale, exp)}</div><div className="stat-label">{t("Autres dépenses (HT)")}</div></div>
-        <div className="stat-card"><div className={`stat-value${over ? " tone-danger" : " tone-electric"}`}>{fmtEur(locale, total)}</div><div className="stat-label">{t("Total engagé (HT)")}{realPct != null ? ` ${t("· {realPct} % du budget", { realPct })}` : ""}</div></div>
-      </div>
+      {/* Une ligne par poste, montants alignés à droite : lisible d'un coup d'œil, sans répéter l'en-tête. */}
+      <dl className="budget-lines">
+        <div><dt>{t("Budget prévu (HT)")}</dt><dd>{budget != null ? fmtEur(locale, budget) : "—"}</dd></div>
+        <div><dt>{t("Honoraires engagés (HT)")}</dt><dd>{fmtEur(locale, fees)}</dd></div>
+        {proposed > 0 && <div className="muted"><dt>{t("Honoraires proposés, sans réponse (HT)")}</dt><dd>{fmtEur(locale, proposed)}</dd></div>}
+        {sup > 0 && <div><dt>{t("Prestataires (devis retenus)")}</dt><dd>{fmtEur(locale, sup)}{" "}{t("HT")}</dd></div>}
+        <div><dt>{t("Autres dépenses (HT)")}</dt><dd>{fmtEur(locale, exp)}</dd></div>
+        <div className={`total${over ? " over" : ""}`}><dt>{t("Total engagé (HT)")}{realPct != null ? ` ${t("· {realPct} % du budget", { realPct })}` : ""}</dt><dd>{fmtEur(locale, total)}</dd></div>
+      </dl>
       {pct != null && <div className="gauge-track"><div className={`gauge-fill${over ? " over" : ""}`} style={{ width: `${pct}%` }} /></div>}
       {over && <p className="notice error mt-2">{t("Le total engagé dépasse le budget prévu de {montant}.", { montant: fmtEur(locale, total - budget!) })}</p>}
       {(project.expenses.length > 0 || quotes.length > 0) && (
@@ -157,7 +158,7 @@ export async function MaterialsPanel({ orgId, projectId, canSubmit, canReview }:
                     )}
                     {canReview && v.status === "submitted" && (() => {
                       const own = v.submittedById === me;
-                      if (own && ownRule === "blocked") return <p className="hint mt-2">{FOUR_EYES_BLOCKED}</p>;
+                      if (own && ownRule === "blocked") return <p className="hint mt-2">{t(FOUR_EYES_BLOCKED)}</p>;
                       return (
                         <form action={reviewMaterial} className="inline wrap mt-2">
                           <input type="hidden" name="orgId" value={orgId} /><input type="hidden" name="versionId" value={v.id} />

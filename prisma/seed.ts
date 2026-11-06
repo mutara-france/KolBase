@@ -144,6 +144,8 @@ async function main() {
       create: {
         id: o.id, name: o.name, kind: o.kind, sector: o.sector, headquarters: o.hq, areas: o.areas, about: o.about, policy: o.policy || null, listed: true, contactEmail: `contact@${MAIL}`,
         verification: "VERIFIED", verifiedAt: at(-180), verificationNote: "Organisation fictive de démonstration",
+        // Industriels : événements validés par la conformité avant publication.
+        eventReview: o.kind === "INDUSTRIEL",
       },
     });
     if (o.cats) await db.organization.updateMany({ where: { id: o.id, supplierCategories: { isEmpty: true } }, data: { supplierCategories: o.cats, coverage: o.coverage } });
@@ -243,6 +245,7 @@ async function main() {
         id: e.id, organizationId: e.org, title: e.title, typeId: e.type, therapeuticArea: e.area, description: e.desc,
         startsAt: at(e.days, e.hour), durationMinutes: e.dur, format: e.format, city: e.city, postalCode: e.city ? DEMO_CP[e.city] ?? null : null, venue: e.venue, capacity: e.cap,
         publishedAt: at(Math.min(e.days, 0) - 20), registrationOpen: e.days > 0,
+        reviewStatus: "approved", reviewedAt: at(Math.min(e.days, 0) - 21),
         benefits: { create: e.benefits.map(([catalogId, label, valueCents]) => ({ id: `${e.id}-b-${catalogId}`, catalogId, label, valueCents })) },
       },
     });
@@ -378,6 +381,8 @@ async function main() {
       create: {
         id: p.id, organizationId: p.org, title: p.title, typeId: p.type, therapeuticArea: p.area, status: p.status, description: p.desc,
         complianceNote: p.note, ordreRef: p.ordre, origin: p.status === "ATT_IND" ? "Proposition de l'expert" : "Sollicitation directe", createdById: p.steps[0]?.[0], createdAt: created, proposalId,
+        // En cours d'examen : date de la dernière soumission (délai interne de la conformité).
+        submittedAt: p.status === "EN_VALID" ? at(-([...p.steps].reverse().find((s) => s[2] === "project.submit")?.[3] ?? 0)) : null,
         ...(p.closed ? { updatedAt: at(-p.closed.days), declared: true, declarationRef: p.closed.ref, declaredAt: at(-p.closed.days + 5) } : {}),
       },
     });
@@ -722,6 +727,7 @@ async function main() {
       create: {
         id: o.id, name: o.name, kind: "INDUSTRIEL", sector: o.sector, headquarters: o.hq, areas: o.areas, about: o.about, listed: true,
         verification: "VERIFIED", verifiedAt: new Date(), verificationNote: "Organisation réelle, publiée avec son accord (nom et logo).",
+        eventReview: true,
       },
     });
     for (const userId of partnerAdmins)

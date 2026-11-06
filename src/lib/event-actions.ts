@@ -13,11 +13,13 @@ import { getT } from "@/lib/i18n/server";
 import type { T } from "@/lib/i18n";
 import { engagementGate } from "@/lib/billing";
 import type { GateLink } from "@/lib/billing-plans";
-import { notifyEventCancelled, notifyEventChanged, notifyEventConfided, notifyEventWithdrawn, notifyMandateEnded, notifyRegistration, notifyRegistrationCancelled } from "@/lib/notifications";
+import { notifyEventCancelled, notifyEventChanged, notifyEventConfided, notifyEventReview, notifyEventWithdrawn, notifyMandateEnded, notifyRegistration, notifyRegistrationCancelled } from "@/lib/notifications";
 import { activeMandate } from "@/lib/mandates";
 import { SOURCE_COOKIE } from "@/lib/services";
 import { deletableDraft, DRAFT_COUNTS } from "@/lib/event-drafts";
 import { EVENT_NOT_PUBLISHABLE, eventPublishable } from "@/lib/projects";
+import { EVENT_NOT_APPROVED, needsReview, reviewAllowsPublish, REVIEWED_CHANGES } from "@/lib/event-review";
+import { FOUR_EYES_BLOCKED, FOUR_EYES_JUSTIFY, fourEyes } from "@/lib/four-eyes";
 
 export type ActionState = { error?: string; ok?: string; fix?: GateLink } | undefined;
 
@@ -75,6 +77,10 @@ export async function createEvent(_: ActionState, form: FormData): Promise<Actio
   const publish = !internal && form.get("publish") === "1";
   if (publish && !isVerifiedOrg(org)) return { error: t("Publication impossible pour l'instant : {v} Enregistrez l'événement en brouillon.", { v: t(notVerified(org)) }) };
   if (publish && !eventPublishable(project?.status)) return { error: t(EVENT_NOT_PUBLISHABLE) };
+  // Validation par la conformité exigée : l'événement est d'abord enregistré, puis soumis depuis sa fiche.
+  if (publish && needsReview(org, { internal })) return { error: t(EVENT_NOT_APPROVED) };
+  // Soumis à la conformité dès sa création (hors événement d'un dossier pas encore validé : il l'est avec le dossier).
+  const submitReview = form.get("submitReview") === "1" && needsReview(org, { internal }) && (!project || eventPublishable(project.status));
   const gate = publish ? await engagementGate(orgId, "evenement") : null;
   if (gate) return { ...gate, error: t("{error} Vous pouvez l'enregistrer en brouillon.", { error: gate.error }) };
   const event = await db.event.create({
@@ -85,10 +91,12 @@ export async function createEvent(_: ActionState, form: FormData): Promise<Actio
       internal,
       registrationOpen: !internal,
       publishedAt: publish ? new Date() : null,
+      ...(submitReview ? { reviewStatus: "submitted", reviewSubmittedAt: new Date(), reviewSubmittedById: user.id } : {}),
       benefits: { create: benefits },
     },
   });
-  await audit(user.id, "event.create", "Event", event.id, { publish, benefits: benefits.length, ...(project ? { projectId: project.id } : {}) });
+  await audit(user.id, "event.create", "Event", event.id, { publish, benefits: benefits.length, ...(project ? { projectId: project.id } : {}), ...(submitReview ? { review: "submitted" } : {}) });
+  if (submitReview) notifyEventReview(event.id, "submitted", user.id);
   // Publié d'emblée : la fiche propose aussitôt de faire connaître l'événement (services KolBase). Créé depuis un
   // dossier : retour à l'onglet « Événement » du dossier, où il se gère.
   if (project) redirect(`/organisations/${orgId}/dossiers/${project.id}?onglet=evenement${publish ? "&publie=1" : ""}`);
@@ -104,7 +112,7 @@ export async function updateEvent(_: ActionState, form: FormData): Promise<Actio
   const { t } = await getT();
   const orgId = str(form, "orgId");
   const eventId = str(form, "eventId");
-  const { user, roles } = await requireMembership(orgId, EVENT_MANAGER_ROLES);
+  const { user, roles, org } = await requireMembership(orgId, EVENT_MANAGER_ROLES);
   const event = await db.event.findFirst({
     where: { id: eventId, organizationId: orgId, ...eventScope(user, roles) },
     include: { benefits: { include: { _count: { select: { accepted: true } } } }, _count: { select: { registrations: true } } },
@@ -121,8 +129,17 @@ export async function updateEvent(_: ActionState, form: FormData): Promise<Actio
 
   const frozen = event.benefits.some((b) => b._count.accepted > 0);
   const changes = eventChanges(event, fields);
+  // Hospitalités modifiées (ajout, retrait, montant) : comptent pour la validation par la conformité.
+  const benefitsChanged = !frozen && (benefits.length !== event.benefits.length || benefits.some((b) => event.benefits.find((x) => x.catalogId === b.catalogId)?.valueCents !== b.valueCents));
+  const reviewChanges = [...changes, ...(benefitsChanged ? ["hospitalités"] : [])].filter((c) => (REVIEWED_CHANGES as readonly string[]).includes(c));
+  const backToReview = event.reviewStatus === "approved" && reviewChanges.length > 0 && needsReview(org, event);
   await db.$transaction(async (tx) => {
-    await tx.event.update({ where: { id: event.id }, data: fields });
+    await tx.event.update({
+      where: { id: event.id },
+      // Validé puis modifié (date, lieu, format, hospitalités) : de nouveau soumis à la conformité ; un événement déjà en
+      // ligne y reste, la conformité réexamine les changements.
+      data: { ...fields, ...(backToReview ? { reviewStatus: "submitted", reviewSubmittedAt: new Date(), reviewSubmittedById: user.id, reviewNote: null, reviewChanges } : {}) },
+    });
     // Nouvelle date : le rappel de la veille repartira à la bonne date.
     if (changes.includes("date")) await tx.registration.updateMany({ where: { eventId: event.id }, data: { reminderSentAt: null } });
     if (!frozen) {
@@ -135,8 +152,9 @@ export async function updateEvent(_: ActionState, form: FormData): Promise<Actio
       }
     }
   });
-  await audit(user.id, "event.update", "Event", event.id, { changes, ...(frozen ? {} : { benefits: benefits.length }) });
+  await audit(user.id, "event.update", "Event", event.id, { changes, ...(frozen ? {} : { benefits: benefits.length }), ...(backToReview ? { review: "submitted" } : {}) });
   if (changes.length > 0 && event._count.registrations > 0) notifyEventChanged(event.id, changes);
+  if (backToReview) notifyEventReview(event.id, "submitted", user.id);
   revalidatePath(`/organisations/${orgId}/evenements/${eventId}`);
   // Événement rattaché à un dossier : il se gère aussi dans l'onglet « Événement » du dossier.
   revalidatePath(`/organisations/${orgId}/dossiers`, "layout");
@@ -170,8 +188,9 @@ export async function setEventFlag(form: FormData) {
   const flag = str(form, "flag");
   if (flag === "publish" && !isVerifiedOrg(org)) return;
   if (flag === "publish" || flag === "open") {
-    const ev = await db.event.findFirst({ where: { id: eventId, organizationId: orgId }, select: { project: { select: { status: true } } } });
+    const ev = await db.event.findFirst({ where: { id: eventId, organizationId: orgId }, select: { internal: true, reviewStatus: true, project: { select: { status: true } } } });
     if (!eventPublishable(ev?.project?.status)) return;
+    if (flag === "publish" && (!ev || !reviewAllowsPublish(org, ev))) return;
   }
   // Contrat de sous-traitance puis abonnement : la page qui lève le blocage ramène ensuite à la publication.
   const gate = flag === "publish" ? await engagementGate(orgId, "evenement", eventId) : null;
@@ -404,4 +423,58 @@ export async function saveEventProgram(_: ActionState, form: FormData): Promise<
   revalidatePath(`/organisations/${orgId}/dossiers`, "layout");
   revalidatePath(`/evenements/${eventId}`);
   return { ok: program ? t("Programme enregistré.") : t("Programme retiré.") };
+}
+
+// ─── Validation par la conformité ──────────────────────────────────────────
+
+/** Soumettre un événement à la conformité (organisateurs) : lieu, date, programme et hospitalités. */
+export async function submitEventReview(form: FormData) {
+  const orgId = str(form, "orgId");
+  const eventId = str(form, "eventId");
+  const { user, roles, org } = await requireMembership(orgId, EVENT_ORGANIZER_ROLES);
+  const ev = await db.event.findFirst({ where: { id: eventId, organizationId: orgId, cancelledAt: null, ...eventScope(user, roles) }, select: { internal: true, reviewStatus: true } });
+  if (!ev || !needsReview(org, ev) || ev.reviewStatus === "submitted" || ev.reviewStatus === "approved") return;
+  await db.event.update({ where: { id: eventId }, data: { reviewStatus: "submitted", reviewSubmittedAt: new Date(), reviewSubmittedById: user.id, reviewNote: null, reviewChanges: [] } });
+  await audit(user.id, "event.review_submit", "Event", eventId);
+  notifyEventReview(eventId, "submitted", user.id);
+  revalidatePath(`/organisations/${orgId}`, "layout");
+}
+
+/**
+ * Décision de la conformité : valider, ou demander des modifications (motif obligatoire, transmis aux organisateurs).
+ * Contrôle à quatre yeux : qui a soumis l'événement ne le valide pas seul (justification s'il est seul habilité).
+ */
+export async function reviewEvent(_: ActionState, form: FormData): Promise<ActionState> {
+  const { t } = await getT();
+  const orgId = str(form, "orgId");
+  const eventId = str(form, "eventId");
+  const decision = str(form, "decision");
+  const note = str(form, "note").slice(0, 1000);
+  const { user } = await requireMembership(orgId, COMPLIANCE_ROLES);
+  const ev = await db.event.findFirst({ where: { id: eventId, organizationId: orgId, reviewStatus: "submitted" }, select: { reviewSubmittedById: true } });
+  if (!ev || (decision !== "approve" && decision !== "changes")) return { error: t("Cet événement n'est plus en attente de validation.") };
+  if (decision === "changes" && !note) return { error: t("Indiquez les modifications attendues : elles sont transmises à l'équipe qui organise l'événement.") };
+  let selfValidated = false;
+  if (decision === "approve" && ev.reviewSubmittedById) {
+    const rule = await fourEyes(new Set([ev.reviewSubmittedById]), orgId, user.id, COMPLIANCE_ROLES);
+    if (rule === "blocked") return { error: t(FOUR_EYES_BLOCKED) };
+    if (rule === "justify" && !note) return { error: t(FOUR_EYES_JUSTIFY) };
+    selfValidated = rule === "justify";
+  }
+  const status = decision === "approve" ? "approved" : "changes";
+  await db.event.update({ where: { id: eventId }, data: { reviewStatus: status, reviewedAt: new Date(), reviewedById: user.id, reviewNote: note || null, reviewChanges: [] } });
+  await audit(user.id, decision === "approve" ? "event.review_approve" : "event.review_changes", "Event", eventId, { note: note || undefined, ...(selfValidated ? { selfValidated: true } : {}) });
+  notifyEventReview(eventId, status, user.id);
+  revalidatePath(`/organisations/${orgId}`, "layout");
+  return { ok: decision === "approve" ? t("Événement validé : il peut être publié.") : t("Demande de modifications envoyée.") };
+}
+
+/** Réglage de la conformité : exiger, ou non, la validation des événements avant leur publication. */
+export async function setEventReviewRequired(form: FormData) {
+  const orgId = str(form, "orgId");
+  const { user } = await requireMembership(orgId, COMPLIANCE_ROLES);
+  const required = form.get("eventReview") === "1";
+  await db.organization.update({ where: { id: orgId }, data: { eventReview: required } });
+  await audit(user.id, "compliance.event_review", "Organization", orgId, { required });
+  revalidatePath(`/organisations/${orgId}`, "layout");
 }

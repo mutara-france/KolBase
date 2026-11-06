@@ -47,6 +47,8 @@ export async function createOrganization(_: FormState, form: FormData): Promise<
       kind,
       ...sirenData,
       rna,
+      // Industriel (dispositif anti-cadeaux) : ses événements sont validés par la conformité avant publication.
+      eventReview: kind === "INDUSTRIEL",
       verificationRequestedAt: new Date(),
       sector: str(form, "sector") || null,
       headquarters: str(form, "headquarters") || null,

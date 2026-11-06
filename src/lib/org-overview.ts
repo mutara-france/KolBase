@@ -18,6 +18,8 @@ import { getT } from "@/lib/i18n/server";
 import { fmtDate } from "@/lib/i18n";
 import { complianceSettings, hospitalityRegime } from "@/lib/compliance";
 import { practicesInFrance } from "@/lib/countries";
+import { daysLate, plannedDate, reviewDue, submissionDue } from "@/lib/deadlines";
+import { needsReview } from "@/lib/event-review";
 
 
 const DAY = 864e5;
@@ -65,7 +67,7 @@ export const orgOverview = cache(async (orgId: string) => {
     can.view
       ? db.project.findMany({
           where: { organizationId: orgId, OR: [{ status: { notIn: ["TERMINE", "DECLINE"] } }, { status: "TERMINE", declared: false }] },
-          include: { experts: true },
+          include: { experts: true, events: { select: { startsAt: true, cancelledAt: true } } },
           orderBy: { updatedAt: "desc" },
         })
       : Promise.resolve([]),
@@ -129,7 +131,16 @@ export const orgOverview = cache(async (orgId: string) => {
   if (can.project) {
     for (const p of projects) {
       if (p.status === "ATT_IND") todos.push({ href: dossier(p), title: t("Proposition d'expert à examiner"), detail: p.title, icon: "Inbox" });
-      if (p.status === "ACCORD") todos.push({ href: dossier(p), title: t("Soumettre à la conformité : {title}", { title: p.title }), detail: t("Accord de principe obtenu"), icon: "ShieldCheck" });
+      if (p.status === "ACCORD") {
+        // Délai interne de soumission (Paramètres de la conformité) : échéance annoncée, retard signalé.
+        const due = submissionDue(plannedDate(p), limits);
+        const late = daysLate(due, now);
+        todos.push({
+          href: dossier(p), title: t("Soumettre à la conformité : {title}", { title: p.title }),
+          detail: due ? (late ? t("En retard de {n} j (échéance interne : {date})", { n: late, date: day(due) }) : t("Accord de principe obtenu · avant le {date}", { date: day(due) })) : t("Accord de principe obtenu"),
+          icon: "ShieldCheck", ...(late ? { tone: "danger" as const } : {}),
+        });
+      }
       if (p.status === "BLOQUE") todos.push({ href: dossier(p), title: t("Reprendre le dossier : {title}", { title: p.title }), detail: p.complianceNote ?? t("Bloqué par la conformité"), icon: "AlertTriangle", tone: "danger" });
       if (p.status === "VALIDE") todos.push({ href: dossier(p), title: t("Choisir le régime : {title}", { title: p.title }), detail: t("Déclaration simple ou autorisation de l'Ordre"), icon: "CircleDot" });
       if (p.status === "ORDRE") todos.push({ href: dossier(p), title: t("Réponse de l'Ordre attendue : {title}", { title: p.title }), detail: p.ordreRef ?? undefined, icon: "CalendarClock", tone: "warn" });
@@ -150,8 +161,6 @@ export const orgOverview = cache(async (orgId: string) => {
     for (const p of projects)
       if ((p.status === "SIGNE" || p.status === "TERMINE") && !p.declared)
         todos.push({ href: `${base}/conformite?onglet=transparence`, title: t("Publier sur Transparence Santé : {title}", { title: p.title }), detail: t("Convention signée"), icon: "FileSignature", tone: "warn" });
-    for (const p of projects)
-      if (p.status === "EN_VALID") todos.push({ href: dossier(p, "conformite"), title: t("Valider : {title}", { title: p.title }), detail: t("Soumis le {date}", { date: day(p.updatedAt) }), icon: "ShieldCheck", tone: "warn", tab: "a-valider" });
     const byEvent = new Map<string, { title: string; n: number; past: boolean }>();
     for (const r of hosp) {
       const e = byEvent.get(r.eventId) ?? { title: r.event.title, n: 0, past: eventEnded(r.event, now) };
@@ -168,13 +177,41 @@ export const orgOverview = cache(async (orgId: string) => {
         icon: "ShieldCheck", tone: by < now ? "danger" : "warn", tab: "autorisations",
       });
     }
+    // Événements soumis à la conformité (lieu, date, programme, hospitalités), avant publication ou après une modification.
+    for (const e of events)
+      if (e.reviewStatus === "submitted" && !e.cancelledAt && e.startsAt >= now) {
+        const late = daysLate(reviewDue(e.reviewSubmittedAt ?? e.updatedAt, limits), now);
+        todos.push({
+          href: `${base}/evenements/${e.id}#validation`, title: t("Valider l'événement : {title}", { title: e.title }),
+          detail: `${day(e.startsAt)}${late ? ` · ${t("examen en retard de {n} j", { n: late })}` : ""}${e.reviewChanges.length ? ` · ${t("modifié après validation")}` : ""}`,
+          icon: "ShieldCheck", tone: late ? "danger" : "warn", tab: "a-valider",
+        });
+      }
+    // Délais internes ensuite : les obligations légales (déclarations, autorisations) passent devant.
+    for (const p of projects)
+      if (p.status === "EN_VALID") {
+        // Délai interne d'examen : échéance annoncée, retard signalé.
+        const due = reviewDue(p.submittedAt ?? p.updatedAt, limits);
+        const late = daysLate(due, now);
+        todos.push({
+          href: dossier(p, "conformite"), title: t("Valider : {title}", { title: p.title }),
+          detail: late ? t("Soumis le {date} · en retard de {n} j", { date: day(p.submittedAt ?? p.updatedAt), n: late }) : due ? t("Soumis le {date} · à examiner avant le {due}", { date: day(p.submittedAt ?? p.updatedAt), due: day(due) }) : t("Soumis le {date}", { date: day(p.updatedAt) }),
+          icon: "ShieldCheck", tone: late ? "danger" : "warn", tab: "a-valider",
+        });
+      }
   }
   for (const v of reviewQueue)
     todos.push({ href: `${base}/relecture`, title: t("Support à relire : {title} (v{version})", { title: v.material.title, version: v.version }), detail: v.material.project.title, icon: "CircleDot" });
   if (can.events) {
     for (const e of events)
-      if (!e.publishedAt && !e.internal && !e.cancelledAt && e.startsAt >= now)
-        todos.push({ href: `${base}/evenements/${e.id}`, title: t("Brouillon à publier : {title}", { title: e.title }), detail: day(e.startsAt), icon: "CalendarClock", tone: "warn" });
+      if (!e.publishedAt && !e.internal && !e.cancelledAt && e.startsAt >= now) {
+        // Validation par la conformité exigée : la soumettre, ou reprendre ce qu'elle demande, avant de publier.
+        const review = needsReview(org, e) ? e.reviewStatus : "approved";
+        if (review === "approved") todos.push({ href: `${base}/evenements/${e.id}`, title: t("Brouillon à publier : {title}", { title: e.title }), detail: day(e.startsAt), icon: "CalendarClock", tone: "warn" });
+        else if (review === "changes") todos.push({ href: `${base}/evenements/${e.id}#validation`, title: t("Modifications demandées par la conformité : {title}", { title: e.title }), detail: e.reviewNote ?? day(e.startsAt), icon: "AlertTriangle", tone: "danger" });
+        // Événement d'un dossier : la conformité l'examine avec le dossier.
+        else if (review == null && !e.projectId) todos.push({ href: `${base}/evenements/${e.id}#validation`, title: t("Événement à soumettre à la conformité : {title}", { title: e.title }), detail: day(e.startsAt), icon: "CalendarClock", tone: "warn" });
+      }
     // Événement en ligne ou hybride à deux jours sans lien de connexion : les inscrits ne pourraient pas se connecter.
     for (const e of events)
       if (!e.cancelledAt && needsOnlineLink(e, now))

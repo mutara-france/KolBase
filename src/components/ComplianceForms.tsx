@@ -24,6 +24,7 @@ export function ComplianceSettingsForm({ orgId, settings, fields, canEdit }: { o
       {groups.map((g) => (
         <fieldset key={g} className="stack">
           <legend><strong>{t(g)}</strong></legend>
+          {g === "Délais internes" && <p className="hint">{t("Propres à votre organisation, sans valeur réglementaire : échéances affichées dans les dossiers et les actions à faire, relance quotidienne d'un examen en retard. 0 désactive le délai.")}</p>}
           {fields.filter((f) => f.group === g).map((f) => (
             <label key={f.key}>
               {t(f.label)} <span className="muted">({t(f.unit)})</span>

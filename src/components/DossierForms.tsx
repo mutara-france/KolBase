@@ -149,7 +149,7 @@ export function RefreshSignatureForm({ linkId }: { linkId: string }) {
 // ─── Modification du dossier (avant la signature) ──────────────────────────
 
 /** Objet du dossier : titre, domaine thérapeutique, objet et déroulé. */
-export function ProjectObjectForm({ orgId, projectId, title, area, description }: Hidden & { title: string; area: string; description: string }) {
+export function ProjectObjectForm({ orgId, projectId, title, area, description, planned = "" }: Hidden & { title: string; area: string; description: string; planned?: string }) {
   const t = useT();
   const [state, action, pending] = useActionState(updateProjectObject, undefined);
   return (
@@ -159,6 +159,7 @@ export function ProjectObjectForm({ orgId, projectId, title, area, description }
       <div className="row">
         <label>{t("Titre du dossier")}<input name="title" required defaultValue={title} /></label>
         <label>{t("Domaine thérapeutique")}<input name="therapeuticArea" defaultValue={area} /></label>
+        <label className="short">{t("Intervention prévue")}<input name="plannedAt" type="date" defaultValue={planned} /></label>
       </div>
       <label>{t("Objet et déroulé")}<textarea name="description" rows={4} defaultValue={description} /></label>
       <button className="btn ghost small" disabled={pending}>{pending ? t("Enregistrement…") : t("Mettre à jour l'objet")}</button>

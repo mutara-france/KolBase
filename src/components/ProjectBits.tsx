@@ -17,12 +17,36 @@ export async function ExpertLinkPill({ state, status }: { state: ExpertLinkState
   return <span className={`pill ${state === "attente" || state === "contre" ? "wait" : "done"}`}>{t(EXPERT_LINK_LABEL[state])}</span>;
 }
 
-export async function Pipeline({ status, viewer }: { status: ProjectStatus; viewer?: "expert" }) {
+export async function Pipeline({ status, viewer, compact = false }: { status: ProjectStatus; viewer?: "expert"; compact?: boolean }) {
   const { t } = await getT();
   const idx = PIPELINE.indexOf(status === "ORDRE" ? "VALIDE" : status === "BLOQUE" ? "EN_VALID" : status === "ATT_IND" ? "ATT_EXPERTS" : status);
   const blocked = status === "BLOQUE" || status === "REFUS_ORDRE";
   // Dossier terminé : toutes les étapes sont franchies.
   const doneAll = status === "TERMINE";
+  // Version compacte (en-tête du dossier) : l'étape en cours nommée, la suivante annoncée, une barre segmentée.
+  if (compact) {
+    const next = !doneAll && idx >= 0 && idx < PIPELINE.length - 1 ? PIPELINE[idx + 1] : null;
+    return (
+      <div className="pipeline-compact">
+        <p className="pc-head">
+          <span className="eyebrow-sm">{doneAll ? t("Toutes les étapes franchies") : t("Étape {n} sur {total}", { n: idx + 1, total: PIPELINE.length })}</span>{" "}
+          {!doneAll && <strong className={blocked ? "danger-text" : ""}>{t(statusLabel(status, viewer))}</strong>}
+          {next && <span className="muted">{" · "}{t("ensuite : {step}", { step: t(pipelineLabel(next, viewer)) })}</span>}
+        </p>
+        <ol className="pc-bar" aria-label={t("Étapes du dossier")}>
+          {PIPELINE.map((s, i) => {
+            const done = i < idx || (doneAll && i === idx);
+            const current = i === idx && !doneAll;
+            return (
+              <li key={s} className={done ? "done" : current ? `current${blocked ? " bad" : ""}` : ""} aria-current={current ? "step" : undefined} title={t(pipelineLabel(s, viewer))}>
+                <span className="sr-only">{t(pipelineLabel(s, viewer))}{done ? ` (${t("franchie")})` : ""}</span>
+              </li>
+            );
+          })}
+        </ol>
+      </div>
+    );
+  }
   return (
     <ol className="pipeline" aria-label={t("Étapes du dossier")}>
       {PIPELINE.map((s, i) => {

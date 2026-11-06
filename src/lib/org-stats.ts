@@ -4,6 +4,8 @@ import { REGISTER_STATUSES } from "@/lib/compliance-data";
 import { eventHospitality } from "@/lib/indicators";
 import { eventEnded } from "@/lib/events";
 import { cityKey, cityLabel, regionOf } from "@/lib/regions";
+import { addWorkingDays } from "@/lib/deadlines";
+import { complianceSettings } from "@/lib/compliance";
 
 export { STATS_ROLES } from "@/lib/org-roles";
 
@@ -171,6 +173,9 @@ export async function orgStats(orgId: string, year: number) {
   // ─── Délais (médianes, en jours) ───
   const expertResponse: number[] = [];
   const compliance: number[] = [];
+  // Examens tenus dans le délai interne de la conformité (jours ouvrés après la soumission).
+  const reviewDays = complianceSettings((await db.organization.findUnique({ where: { id: orgId }, select: { complianceSettings: true } }))?.complianceSettings).reviewDays;
+  let onTime = 0;
   const toSignature: number[] = [];
   for (const p of projects) {
     for (const e of p.experts) if (e.respondedAt && inYear(e.respondedAt, year)) expertResponse.push((e.respondedAt.getTime() - e.createdAt.getTime()) / DAY);
@@ -178,7 +183,10 @@ export async function orgStats(orgId: string, year: number) {
     steps.forEach((s, i) => {
       if (s.to !== "EN_VALID") return;
       const next = steps.slice(i + 1).find((n) => n.from === "EN_VALID");
-      if (next && inYear(next.at, year)) compliance.push((next.at.getTime() - s.at.getTime()) / DAY);
+      if (next && inYear(next.at, year)) {
+        compliance.push((next.at.getTime() - s.at.getTime()) / DAY);
+        if (reviewDays > 0 && next.at <= addWorkingDays(s.at, reviewDays)) onTime++;
+      }
     });
     const signed = steps.find((s) => s.to === "SIGNE");
     if (signed && inYear(signed.at, year)) toSignature.push((signed.at.getTime() - p.createdAt.getTime()) / DAY);
@@ -208,7 +216,7 @@ export async function orgStats(orgId: string, year: number) {
     })(),
     delays: {
       expertResponse: { days: median(expertResponse), n: expertResponse.length },
-      compliance: { days: median(compliance), n: compliance.length },
+      compliance: { days: median(compliance), n: compliance.length, onTime: compliance.length && reviewDays > 0 ? onTime / compliance.length : null, reviewDays },
       toSignature: { days: median(toSignature), n: toSignature.length },
     },
     compliance: { toDeclare, declared, blocked, fmvOver },

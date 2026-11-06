@@ -1611,7 +1611,7 @@ async function submitNewOrg(page, siren) {
   check("Suggestion d'experts : diversité signalée", /Vincent Moreau[\s\S]*?(Déjà \d+ % de vos honoraires|collaborations? avec vous)/.test(box));
   check("Suggestion d'experts : synthèse de l'assistant", box.includes("PROPOSITION IA"));
   await page.locator('.suggest-list li:has-text("Vincent Moreau") button:has-text("Ajouter")').click();
-  check("Suggestion d'experts : ajout au dossier", (await page.locator('.fee-row:has-text("Vincent Moreau")').count()) === 1);
+  check("Suggestion d'experts : ajout au dossier", (await page.locator('.fee-block:has-text("Vincent Moreau")').count()) === 1);
   await page.goto(`${BASE}/organisations/demo-org-dentalys/dossiers/demo-prj-symposium?onglet=conformite`);
   check("Relecture assistée : réservée à la conformité", (await page.locator('button:has-text("Analyser le dossier avec l\'IA")').count()) === 0);
   await ctx.close();
@@ -2704,8 +2704,9 @@ async function submitNewOrg(page, siren) {
     await c.page.goto(`${BASE}/organisations/demo-org-dentalys/dossiers/e2e-lot2-prj-budget`);
     const head = n(await c.page.locator("header.page-hero").innerText());
     const budget = n(await c.page.locator('section.card:has(h2:has-text("Budget et dépenses"))').innerText());
-    check("Dossier : en-tête, engagé = accepté, proposé à part", head.includes("1 engagé") && head.includes("2 000 € HT") && head.includes("1 500 € HT proposés, sans réponse") && head.includes("20 % engagé ; 1 500 € HT proposés en plus"), head);
-    check("Dossier : budget, même définition", /2 000 €\s*Honoraires engagés \(HT\)/.test(budget) && /1 500 €\s*Honoraires proposés, sans réponse \(HT\)/.test(budget) && /2 000 €\s*Total engagé \(HT\) · 20 % du budget/.test(budget), budget);
+    check("Dossier : en-tête, engagé = accepté, proposé à part", head.includes("2 000 € HT") && head.includes("1 500 € HT proposés, sans réponse") && head.includes("20 % engagé ; 1 500 € HT proposés en plus"), head);
+    check("Dossier : budget, même définition", /Honoraires engagés \(HT\)\s*2 000 €/.test(budget) && /Honoraires proposés, sans réponse \(HT\)\s*1 500 €/.test(budget) && /Total engagé \(HT\) · 20 % du budget\s*2 000 €/.test(budget), budget);
+    check("Dossier : en-tête resserré (étape en cours, objet dans la vue d'ensemble)", /étape 2 sur 7/i.test(head) && head.includes("ensuite :"), head);
     // HT / TTC toujours indiqué ; coût par participant d'un devis rapporté aux présents après l'événement.
     await c.page.goto(`${BASE}/organisations/demo-org-dentalys/prestataires`);
     const presta = n(await text(c.page));
@@ -4392,8 +4393,9 @@ async function submitNewOrg(page, siren) {
     await pgc.query(`insert into "EventBenefit" (id, "eventId", "catalogId", label, "valueCents") values ('e2e-5b-ben', 'e2e-5b-ev-auth', 'nuitee', 'Nuitée', 40000)`);
     await pgc.query(`insert into "Registration" (id, "eventId", "userId", profession) values ('e2e-5b-reg-auth', 'e2e-5b-ev-auth', 'demo-u-durand', 'Chirurgien-dentiste')`);
     await pgc.query(`insert into "RegistrationBenefit" ("registrationId", "benefitId", "valueCents") values ('e2e-5b-reg-auth', 'e2e-5b-ben', 40000)`);
+    // Tâche de la conformité (Sophie) : l'administratrice seule n'a plus la rubrique Conformité.
     const co = await session();
-    await login(co.page, CLAIRE);
+    await login(co.page, "sophie.bernard@demo.kolbase.local");
     await co.page.goto(`${BASE}/organisations/demo-org-dentalys`);
     check("Conformité : tâche « Autorisation d'hospitalité à demander »", (await text(co.page)).includes("Autorisation d'hospitalité à demander : Congrès 5b avec nuitée"));
     await co.ctx.close();
@@ -4527,7 +4529,8 @@ async function submitNewOrg(page, siren) {
   const roux = await session();
   await login(roux.page, "mathieu.roux@demo.kolbase.local");
   await roux.page.goto(`${BASE}/sollicitations/${link.id}`);
-  check("Sollicitation : volume horaire et taux affichés à l'expert", (await text(roux.page)).includes("Volume horaire") && (await text(roux.page)).includes("2,5 h de déplacement"));
+  const rx = (await text(roux.page)).replace(/\s+/g, " ");
+  check("Sollicitation : volume horaire et taux affichés à l'expert", /volume horaire/i.test(rx) && rx.includes("2,5 h de déplacement"), rx.match(/volume horaire.{0,80}/i)?.[0]);
   await roux.ctx.close();
   // Symposium de démonstration : 15 h au niveau « Expert international ».
   const cl = await session();
@@ -4536,6 +4539,44 @@ async function submitNewOrg(page, siren) {
   check("Dossier de démonstration : 15 h au taux de 200 €", (await text(cl.page)).replace(/\s+/g, " ").includes("15 h · 200 € / h réel"));
   await cl.ctx.close();
   await clean();
+  await pgc.end();
+}
+
+// ── Délais internes de la conformité et fiche dossier resserrée ──────────
+{
+  const pgc = new pg.Client({ connectionString: process.env.DATABASE_URL });
+  await pgc.connect();
+  // Symposium soumis il y a vingt jours : examen en retard (5 jours ouvrés par défaut).
+  await pgc.query(`update "Project" set "submittedAt" = now() - interval '20 days', "reviewReminderAt" = null where id = 'demo-prj-symposium'`);
+  const so = await session();
+  await login(so.page, "sophie.bernard@demo.kolbase.local");
+  await so.page.goto(`${BASE}/organisations/demo-org-dentalys/dossiers/demo-prj-symposium`);
+  check("Dossier en examen : retard du délai interne signalé", (await text(so.page)).includes("Examen par la conformité en retard de"));
+  check("Fiche dossier : une décision de la conformité reste visible (Bloquer)", (await so.page.locator('.next-step button:has-text("Bloquer")').count()) === 1);
+  await so.page.goto(`${BASE}/organisations/demo-org-dentalys/conformite`);
+  check("À valider : colonne Échéance, retard signalé", (await so.page.locator('tr:has-text("Symposium ADF") .pill.bad').innerText().catch(() => "")).includes("En retard de"));
+  const cron = () => fetch(`${BASE}/api/taches`, { method: "POST", headers: { Authorization: `Bearer ${process.env.CRON_SECRET ?? "secret-des-taches-de-test"}` } }).then((r) => r.json());
+  const r1 = await cron();
+  check("Tâches planifiées : examen en retard relancé", r1.reviewReminders >= 1 && !!(await waitMail("sophie.bernard@demo.kolbase.local", "Examen en retard : Symposium ADF")), JSON.stringify(r1));
+  const r2 = await cron();
+  check("Relance d'un examen : une fois par jour", r2.reviewReminders === 0, JSON.stringify(r2));
+  await pgc.query(`update "Project" set "submittedAt" = now() - interval '2 days', "reviewReminderAt" = null where id = 'demo-prj-symposium'`);
+  await so.ctx.close();
+  // Date d'intervention dans dix jours : la soumission (30 jours avant) est en retard ; abandon rangé sous « Autres actions ».
+  const jul = await session();
+  await login(jul.page, "julien.faure@demo.kolbase.local");
+  await jul.page.goto(`${BASE}/organisations/demo-org-dentalys/dossiers/demo-prj-board?onglet=experts&modifier=1`);
+  const inTen = new Date(Date.now() + 10 * 86400e3).toISOString().slice(0, 10);
+  await jul.page.fill('input[name="plannedAt"]', inTen);
+  await jul.page.click('button:has-text("Mettre à jour l\'objet")');
+  await jul.page.locator('.notice.ok:has-text("Objet du dossier enregistré")').waitFor({ timeout: 10000 }).catch(() => {});
+  await jul.page.goto(`${BASE}/organisations/demo-org-dentalys/dossiers/demo-prj-board`);
+  const t = await text(jul.page);
+  check("Intervention prévue : soumission en retard signalée", t.includes("Soumission à la conformité en retard de") && t.includes("Intervention prévue"));
+  check("Fiche dossier : abandon rangé sous « Autres actions »", (await jul.page.locator('.next-step details.more-actions:has-text("Abandonner")').count()) === 1 && !(await jul.page.locator('.next-step details.more-actions').evaluate((d) => d.open)));
+  check("Fiche dossier : objet dans la vue d'ensemble, frise compacte", (await jul.page.locator('section:has(h2:has-text("Objet du dossier"))').count()) === 1 && (await jul.page.locator("header.page-hero .pipeline-compact").count()) === 1);
+  await pgc.query(`update "Project" set "plannedAt" = null where id = 'demo-prj-board'`);
+  await jul.ctx.close();
   await pgc.end();
 }
 
@@ -4853,7 +4894,10 @@ async function submitNewOrg(page, siren) {
   const t = await text(page);
   check("Événement créé depuis le dossier : retour à l'onglet Événement, fiche complète", t.includes("Symposium navigation — session") && t.includes("Logistique et prestataires") && (await page.locator(".event-hero").count()) === 1);
   check("Dossier non validé : « Publier dans l'agenda » remplacé par la règle", (await page.locator('button:has-text("Publier dans l\'agenda")').count()) === 0 && t.includes("se publie une fois le dossier validé par la conformité"));
+  check("Événement d'un dossier (industriel) : validé par la conformité avec le dossier", /examiné avec le dossier/i.test(t) && (await page.locator('#validation button:has-text("Soumettre")').count()) === 0);
+  // Validation du dossier (directe en base) : la conformité valide aussi son événement, comme le fait l'action « Valider ».
   await db.query(`update "Project" set status = 'VALIDE' where id = 'e2e-nav-prj'`);
+  await db.query(`update "Event" set "reviewStatus" = 'approved', "reviewedAt" = now() where "projectId" = 'e2e-nav-prj'`);
   await page.reload();
   await Promise.all([page.waitForURL(/onglet=evenement.*publie=1/), page.click('button:has-text("Publier dans l\'agenda")')]);
   const evNav = (await db.query(`select "publishedAt" from "Event" where "projectId" = 'e2e-nav-prj'`)).rows[0];
@@ -4876,6 +4920,91 @@ async function submitNewOrg(page, siren) {
   await db.query(`delete from "Event" where "projectId" = 'e2e-nav-prj'`);
   await db.query(`delete from "Project" where id = 'e2e-nav-prj'`);
   await db.end();
+}
+
+// ── Validation des événements par la conformité (industriel) ──────────────
+{
+  const pgc = new pg.Client({ connectionString: process.env.DATABASE_URL });
+  await pgc.connect();
+  const q1 = async (sql, args = []) => (await pgc.query(sql, args)).rows[0];
+  const until = async (fn, ms = 8000) => {
+    for (const end = Date.now() + ms; Date.now() < end; await new Promise((r) => setTimeout(r, 150))) if (await fn()) return true;
+    return false;
+  };
+  const parisInput = (days, hm) => `${new Date(Date.now() + days * 864e5).toLocaleDateString("sv-SE", { timeZone: "Europe/Paris" })}T${hm}`;
+  const status = async (id) => (await q1(`select "reviewStatus" from "Event" where id = $1`, [id]))?.reviewStatus;
+  const title = "Atelier validation conformité e2e";
+  const SOPHIE = "sophie.bernard@demo.kolbase.local";
+  const JULIEN = "julien.faure@demo.kolbase.local";
+  const jul = await session();
+  await login(jul.page, JULIEN);
+  await jul.page.goto(`${BASE}/organisations/demo-org-dentalys/evenements/nouveau`);
+  check("Industriel : pas de publication immédiate, soumission à la conformité proposée", (await jul.page.locator('input[name="publish"]').count()) === 0 && (await jul.page.locator('input[name="submitReview"]').count()) === 1);
+  await jul.page.fill('input[name="title"]', title);
+  await jul.page.fill('input[name="startsAt"]', parisInput(40, "18:00"));
+  await jul.page.fill('input[name="city"]', "Lyon");
+  await jul.page.fill('input[name="venue"]', "Espace Confluence");
+  await Promise.all([jul.page.waitForURL(/\/evenements\/(?!nouveau)[^/?#]+$/), jul.page.click('button:has-text("Créer l\'événement")')]);
+  const evId = jul.page.url().match(/\/evenements\/([^/?#]+)/)[1];
+  let tx = (await text(jul.page)).replace(/\s+/g, " ");
+  check("Événement créé : à soumettre, publication après validation", /à soumettre/i.test(tx) && tx.includes("Publication possible une fois l'événement validé par la conformité") && (await jul.page.locator('button:has-text("Publier dans l\'agenda")').count()) === 0, tx.match(/validation par la conformité.{0,160}/i)?.[0]);
+  await jul.page.click('#validation button:has-text("Soumettre à la conformité")');
+  await until(async () => (await status(evId)) === "submitted");
+  check("Soumission : la conformité est prévenue par e-mail", !!(await waitMail(SOPHIE, `Événement à valider : ${title}`)));
+  await jul.page.reload();
+  check("Soumis : en attente, l'équipe Projets ne valide pas", /en attente de la conformité/i.test(await text(jul.page)) && (await jul.page.locator('button:has-text("Valider l\'événement")').count()) === 0);
+
+  const so = await session();
+  await login(so.page, SOPHIE);
+  await so.page.goto(`${BASE}/organisations/demo-org-dentalys/conformite?onglet=a-valider`);
+  check("Conformité : l'événement dans « Événements à valider »", (await so.page.locator(`#evenements a[href*="/evenements/${evId}"]`).count()) === 1);
+  await so.page.goto(`${BASE}/organisations/demo-org-dentalys/evenements/${evId}`);
+  tx = (await so.page.locator("#validation").innerText()).replace(/\s+/g, " ");
+  check("Conformité : points examinés (date, lieu, programme, hospitalités)", tx.includes("Espace Confluence, Lyon") && /à compléter/i.test(tx) && /hospitalités/i.test(tx), tx.slice(0, 240));
+  await so.page.click('#validation button:has-text("Demander des modifications")');
+  await so.page.locator("#validation .notice.error").waitFor({ timeout: 10000 }).catch(() => {});
+  check("Modifications demandées sans commentaire : refusé", (await so.page.locator("#validation").innerText()).includes("Indiquez les modifications attendues"));
+  await so.page.fill('#validation textarea[name="note"]', "Ajouter le programme scientifique détaillé.");
+  await so.page.click('#validation button:has-text("Demander des modifications")');
+  await until(async () => (await status(evId)) === "changes");
+  check("Modifications demandées : enregistrées avec le motif", (await q1(`select "reviewNote" from "Event" where id = $1`, [evId]))?.reviewNote === "Ajouter le programme scientifique détaillé.");
+  const chMail = await waitMail(JULIEN, `Modifications demandées par la conformité : ${title}`);
+  check("E-mail à l'équipe Projets : motif transmis", !!chMail && chMail.text.includes("Ajouter le programme scientifique détaillé."));
+
+  await jul.page.reload();
+  check("Équipe Projets : motif affiché, nouvelle soumission possible", (await jul.page.locator("#validation").innerText()).includes("Ajouter le programme scientifique détaillé.") && (await jul.page.locator('#validation button:has-text("Soumettre de nouveau")').count()) === 1);
+  await jul.page.click('#validation button:has-text("Soumettre de nouveau")');
+  await until(async () => (await status(evId)) === "submitted");
+
+  await so.page.reload();
+  await so.page.click('#validation button:has-text("Valider l\'événement")');
+  await until(async () => (await status(evId)) === "approved");
+  check("Validation : enregistrée, l'équipe Projets prévenue", (await status(evId)) === "approved" && !!(await waitMail(JULIEN, `Événement validé par la conformité : ${title}`)));
+
+  await jul.page.reload();
+  await Promise.all([jul.page.waitForURL(/\?publie=1/), jul.page.click('button:has-text("Publier dans l\'agenda")')]);
+  check("Validé : publication dans l'agenda", !!(await q1(`select "publishedAt" from "Event" where id = $1`, [evId]))?.publishedAt);
+  await jul.page.click("#modifier summary");
+  await jul.page.fill('#modifier input[name="startsAt"]', parisInput(41, "18:00"));
+  await jul.page.click('button:has-text("Mettre à jour l\'événement")');
+  await until(async () => (await status(evId)) === "submitted");
+  const ev = await q1(`select "reviewStatus", "reviewChanges", "publishedAt" from "Event" where id = $1`, [evId]);
+  check("Date modifiée après validation : renvoyé à la conformité, toujours en ligne", ev?.reviewStatus === "submitted" && ev.reviewChanges.includes("date") && !!ev.publishedAt, JSON.stringify(ev));
+  await so.page.reload();
+  check("Conformité : changement signalé", (await so.page.locator("#validation").innerText()).includes("Modifié après validation : date"));
+  await jul.ctx.close();
+
+  // Réglage de la conformité : validation exigée par défaut pour un industriel, désactivable.
+  await so.page.goto(`${BASE}/organisations/demo-org-dentalys/conformite?onglet=parametres`);
+  check("Paramètres : validation des événements activée (industriel)", await so.page.isChecked('#validation-evenements input[name="eventReview"]'));
+  await so.page.uncheck('#validation-evenements input[name="eventReview"]');
+  await so.page.click('#validation-evenements button:has-text("Enregistrer")');
+  await until(async () => (await q1(`select "eventReview" from "Organization" where id = 'demo-org-dentalys'`))?.eventReview === false);
+  check("Paramètres : validation des événements désactivée", (await q1(`select "eventReview" from "Organization" where id = 'demo-org-dentalys'`))?.eventReview === false);
+  await so.ctx.close();
+  await pgc.query(`update "Organization" set "eventReview" = true where id = 'demo-org-dentalys'`);
+  await pgc.query(`delete from "Event" where id = $1`, [evId]);
+  await pgc.end();
 }
 
 // ── 4. Limitation des tentatives ───────────────────────────────────────────

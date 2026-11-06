@@ -20,6 +20,8 @@ export type ComplianceSettings = {
   cumulAlert: number; // € HT sur 12 mois, alerte de cumul
   declarationDays: number; // délai de déclaration avant exécution (jours ouvrables)
   authorizationDays: number; // délai de demande d'autorisation avant exécution
+  submissionLeadDays: number; // délai interne : soumission à la conformité au plus tard N jours avant l'intervention
+  reviewDays: number; // délai interne : examen par la conformité en N jours ouvrés
 };
 
 export const DEFAULT_COMPLIANCE: ComplianceSettings = {
@@ -33,6 +35,8 @@ export const DEFAULT_COMPLIANCE: ComplianceSettings = {
   cumulAlert: 10000,
   declarationDays: 8,
   authorizationDays: 60,
+  submissionLeadDays: 30,
+  reviewDays: 5,
 };
 
 export const SETTING_FIELDS: { key: keyof ComplianceSettings; label: string; unit: string; group: string }[] = [
@@ -46,6 +50,8 @@ export const SETTING_FIELDS: { key: keyof ComplianceSettings; label: string; uni
   { key: "cumulAlert", label: "Alerte de cumul par expert sur 12 mois", unit: "€ HT", group: "Alertes" },
   { key: "declarationDays", label: "Délai de déclaration avant exécution", unit: "jours ouvrables", group: "Délais" },
   { key: "authorizationDays", label: "Délai de demande d'autorisation avant exécution", unit: "jours", group: "Délais" },
+  { key: "submissionLeadDays", label: "Soumission à la conformité, au plus tard avant l'intervention", unit: "jours", group: "Délais internes" },
+  { key: "reviewDays", label: "Examen d'un dossier par la conformité", unit: "jours ouvrés", group: "Délais internes" },
 ];
 
 /**

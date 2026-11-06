@@ -11,11 +11,13 @@ import { quoteTtc } from "@/lib/quotes";
 import { PLANS } from "@/lib/billing-plans";
 import { rnaAccepted } from "@/lib/org-roles";
 import { supplierCategoryLabel } from "@/lib/suppliers";
-import { fmtEur, intlLocale, isLocale, makeT, type Locale, type T } from "@/lib/i18n";
+import { fmtDate, fmtEur, intlLocale, isLocale, makeT, type Locale, type T } from "@/lib/i18n";
 import { collabType, PROJECT_ROLES, SOURCING_ROLES, STATUS_LABEL, type ExpertNotice } from "@/lib/projects";
 import { featuredUntil, orderStats } from "@/lib/services";
 import { conversion, reportParts } from "@/lib/service-report";
 import type { OrgRole } from "@/generated/prisma/client";
+import { daysLate, reviewDue } from "@/lib/deadlines";
+import { complianceSettings } from "@/lib/compliance";
 
 /**
  * Notifications par e-mail des étapes qui attendent une action de quelqu'un.
@@ -1008,4 +1010,64 @@ export async function sendServiceReport(orderId: string, now = new Date()) {
     () => db.serviceOrder.update({ where: { id: o.id }, data: { reportSentAt: null } }),
     () => send(to, (t, locale) => ({ subject: t("Bilan : {label} — {event}", { label: o.label, event: o.event.title }), text: `${t("Bonjour,")}\n\n${report(t, locale)}`, cta: { label: t("Voir l'événement"), href: `/organisations/${o.event.organizationId}/evenements/${o.event.id}#services` } })),
   );
+}
+
+/**
+ * Examens en retard (délai interne de la conformité dépassé) : relance des membres Conformité, une fois par jour et
+ * par dossier (date posée avant l'envoi, comme les rappels d'événements). Sans membre Conformité, les administrateurs.
+ */
+export async function sendOverdueReviews(now = new Date()) {
+  const projects = await db.project.findMany({
+    where: { status: "EN_VALID", submittedAt: { not: null }, OR: [{ reviewReminderAt: null }, { reviewReminderAt: { lt: new Date(now.getTime() - 86400e3) } }] },
+    select: { id: true, title: true, organizationId: true, submittedAt: true, reviewReminderAt: true, organization: { select: { complianceSettings: true } } },
+  });
+  let sent = 0;
+  for (const p of projects) {
+    const due = reviewDue(p.submittedAt, complianceSettings(p.organization.complianceSettings));
+    const late = daysLate(due, now);
+    if (!late) continue;
+    const { count } = await db.project.updateMany({ where: { id: p.id, reviewReminderAt: p.reviewReminderAt }, data: { reviewReminderAt: now } });
+    if (!count) continue;
+    const reviewers = await members(p.organizationId, COMPLIANCE_ROLES);
+    const to = reviewers.length ? reviewers : await members(p.organizationId, ["ADMIN"]);
+    const href = `/organisations/${p.organizationId}/dossiers/${p.id}?onglet=conformite`;
+    await send(to, (t, locale) => ({
+      subject: t("Examen en retard : {title}", { title: p.title }),
+      text: t("Bonjour,\n\nLe dossier « {title} » attend l'examen de la conformité depuis le {date} : le délai interne de votre organisation est dépassé de {n} j.", { title: p.title, date: fmtDate(locale, p.submittedAt!), n: late }),
+      cta: { label: t("Examiner le dossier"), href },
+    }));
+    sent++;
+  }
+  return sent;
+}
+
+/**
+ * Validation d'un événement par la conformité : soumis (→ membres Conformité, sinon administrateurs), validé ou à
+ * modifier (→ la personne qui l'a soumis, et l'équipe organisatrice à défaut).
+ */
+export function notifyEventReview(eventId: string, status: "submitted" | "approved" | "changes", actorId: string) {
+  later(async () => {
+    const ev = await db.event.findUnique({ where: { id: eventId }, select: { id: true, title: true, organizationId: true, reviewNote: true, reviewChanges: true, reviewSubmittedById: true } });
+    if (!ev) return;
+    const href = `/organisations/${ev.organizationId}/evenements/${ev.id}`;
+    if (status === "submitted") {
+      const reviewers = await members(ev.organizationId, COMPLIANCE_ROLES);
+      const to = reviewers.length ? reviewers : await members(ev.organizationId, ["ADMIN"]);
+      await send(to, (t) => ({
+        subject: t("Événement à valider : {title}", { title: ev.title }),
+        text: t("Bonjour,\n\nL'événement « {title} » est soumis à la conformité : lieu, date, programme et hospitalités sont à valider avant sa publication.{note}", { title: ev.title, note: ev.reviewChanges.length ? `\n\n${t("Modifié après validation : {changes}.", { changes: ev.reviewChanges.map((c) => t(c)).join(", ") })}` : "" }),
+        cta: { label: t("Examiner l'événement"), href },
+      }), actorId);
+      return;
+    }
+    const submitter = ev.reviewSubmittedById ? await db.user.findUnique({ where: { id: ev.reviewSubmittedById }, select: userSelect }) : null;
+    const to = submitter ? [submitter] : await members(ev.organizationId, EVENT_ORGANIZER_ROLES);
+    await send(to, (t) => ({
+      subject: status === "approved" ? t("Événement validé par la conformité : {title}", { title: ev.title }) : t("Modifications demandées par la conformité : {title}", { title: ev.title }),
+      text: status === "approved"
+        ? t("Bonjour,\n\nLa conformité a validé l'événement « {title} » : il peut être publié.", { title: ev.title })
+        : t("Bonjour,\n\nLa conformité demande des modifications sur l'événement « {title} » avant sa publication :\n\n« {note} »", { title: ev.title, note: ev.reviewNote ?? "" }),
+      cta: { label: t("Ouvrir l'événement"), href },
+    }), actorId);
+  });
 }

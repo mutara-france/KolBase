@@ -275,6 +275,8 @@ model Organization {
   name         String
   kind         OrgKind
   require2fa   Boolean  @default(false) // double authentification exigée de tous les membres
+  // Événements validés par la conformité avant publication (par défaut pour un industriel, réglable).
+  eventReview  Boolean  @default(false)
   sector       String?
   headquarters String?
   size         String?
@@ -451,6 +453,11 @@ model Project {
   signatureAttestedById String?
   // Motif de l'abandon du dossier : affiché à l'expert sur sa sollicitation.
   abandonNote     String?
+  // Délais internes : date d'intervention prévue (à défaut, celle de l'événement du dossier), dernière soumission à la
+  // conformité, et dernière relance de la conformité pour un examen en retard.
+  plannedAt        DateTime?
+  submittedAt      DateTime?
+  reviewReminderAt DateTime?
   // Copie d'un projet proposé par un expert (envoyé à plusieurs organisations, chacune a la sienne).
   proposalId      String?
   proposal        ExpertProposal? @relation(fields: [proposalId], references: [id], onDelete: SetNull)
@@ -661,6 +668,16 @@ model Event {
   publishedAt      DateTime?
   // Réunion interne (board, comité…) : ni publication dans l'agenda, ni inscriptions en ligne.
   internal         Boolean      @default(false)
+  // Validation par la conformité avant publication (organisations qui l'exigent) : lieu, date, programme, hospitalités.
+  // null : non soumis ; « submitted » : en attente ; « approved » : validé ; « changes » : modifications demandées.
+  reviewStatus     String?
+  reviewSubmittedAt DateTime?
+  reviewSubmittedById String?
+  reviewedAt       DateTime?
+  reviewedById     String?
+  reviewNote       String?
+  /// Changements (date, lieu, format, hospitalités) qui ont renvoyé l'événement validé à la conformité.
+  reviewChanges    String[] @default([])
   program          String?      // programme scientifique (déroulé horaire), affiché sur la page publique
   // Lien de connexion (visioconférence, https) des événements en ligne ou hybrides : communiqué aux seuls inscrits.
   onlineUrl        String?
