@@ -17,7 +17,6 @@ export const COMMON: Record<string, string> = {
   "Confidentialité": "Privacy",
   "Conditions d'utilisation": "Terms of use",
   "© {year} KolBase. Tous droits réservés.": "© {year} KolBase. All rights reserved.",
-  "Environnement de démonstration — données simulées": "Demo environment — simulated data",
   "Langue": "Language",
   "Les documents juridiques font foi en français.": "Legal documents are binding in their French version.",
   "Notifications": "Notifications",
