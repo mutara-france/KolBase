@@ -4394,6 +4394,78 @@ async function submitNewOrg(page, siren) {
   await pgc.end();
 }
 
+// ── Rôles : la conformité réservée au rôle Conformité ; inscriptions et statistiques géographiques ──
+{
+  const claire = await session();
+  await login(claire.page, "claire.morel@demo.kolbase.local");
+  await claire.page.goto(`${BASE}/organisations/demo-org-dentalys`);
+  check("Administratrice sans rôle Conformité : pas de rubrique Conformité", (await claire.page.locator('aside a[href="/organisations/demo-org-dentalys/conformite"]').count()) === 0);
+  await claire.page.goto(`${BASE}/organisations/demo-org-dentalys/conformite`);
+  check("Administratrice sans rôle Conformité : espace conformité refusé", claire.page.url().endsWith("/organisations/demo-org-dentalys?acces=refuse"), claire.page.url());
+  await claire.page.goto(`${BASE}/organisations/demo-org-dentalys/dossiers/demo-prj-symposium?onglet=conformite`);
+  check("Administratrice sans rôle Conformité : pas de bouton de validation", (await claire.page.locator('button:text-is("Valider")').count()) === 0);
+  // Menu du compte : « Mes inscriptions » pour un compte sans profil praticien.
+  await claire.page.click(".session-chip");
+  check("Menu du compte (organisation) : « Mes inscriptions »", (await claire.page.locator('.account-menu a[href="/inscriptions"]').count()) === 1);
+  // Statistiques : répartition par région (code postal, ou grande ville) et par ville.
+  await claire.page.goto(`${BASE}/organisations/demo-org-dentalys/statistiques`);
+  const geo = await claire.page.locator("#geographie").innerText();
+  check("Statistiques : répartition par région", geo.includes("Auvergne-Rhône-Alpes") && geo.includes("Experts rémunérés") && geo.includes("Participants aux événements"), geo.slice(0, 200));
+  await claire.page.goto(`${BASE}/organisations/demo-org-dentalys/statistiques?geo=villes`);
+  check("Statistiques : répartition par ville", (await claire.page.locator("#geographie").innerText()).includes("Lyon"));
+  await claire.ctx.close();
+  // Administratrice qui tient aussi la conformité (organisation d'une seule personne) : l'espace lui reste ouvert.
+  const anne = await session();
+  await login(anne.page, "anne.chevalier@demo.kolbase.local");
+  await anne.page.goto(`${BASE}/organisations/demo-org-academie/conformite`);
+  check("Administratrice avec le rôle Conformité : espace conformité ouvert", anne.page.url().endsWith("/organisations/demo-org-academie/conformite"), anne.page.url());
+  await anne.ctx.close();
+  // Organisation sans membre Conformité : alerte à l'administrateur (Membres, À faire).
+  const pgc = new pg.Client({ connectionString: process.env.DATABASE_URL });
+  await pgc.connect();
+  await pgc.query(`delete from "Membership" where "organizationId" = 'demo-org-cdra' and role = 'CONFORMITE'`);
+  const pierre = await session();
+  await login(pierre.page, "pierre.vidal@demo.kolbase.local");
+  await pierre.page.goto(`${BASE}/organisations/demo-org-cdra/membres`);
+  check("Sans membre Conformité : alerte dans Membres", (await pierre.page.locator("#sans-conformite").count()) === 1);
+  await pierre.page.goto(`${BASE}/organisations/demo-org-cdra`);
+  check("Sans membre Conformité : action « Attribuer le rôle Conformité »", (await text(pierre.page)).includes("Attribuer le rôle Conformité"));
+  await pgc.query(`insert into "Membership" (id, "userId", "organizationId", role) values ('e2e-cdra-conf', 'demo-u-pierre', 'demo-org-cdra', 'CONFORMITE') on conflict do nothing`);
+  await pierre.ctx.close();
+  await pgc.end();
+}
+
+// ── Opportunité publiée depuis l'événement d'un dossier : l'expert retenu rejoint ce dossier ──
+{
+  const pgc = new pg.Client({ connectionString: process.env.DATABASE_URL });
+  await pgc.connect();
+  const clean = async () => {
+    await pgc.query(`delete from "Message" where "projectExpertId" in (select id from "ProjectExpert" where "projectId" = 'demo-prj-board' and "practitionerId" = 'demo-p-roux')`);
+    await pgc.query(`delete from "ProjectExpert" where "projectId" = 'demo-prj-board' and "practitionerId" = 'demo-p-roux'`);
+    await pgc.query(`delete from "OpenCall" where id = 'e2e-call-board'`);
+  };
+  await clean();
+  await pgc.query(`insert into "OpenCall" (id, "organizationId", "eventId", title, "typeId", status, slots, "createdById") values ('e2e-call-board', 'demo-org-dentalys', 'demo-ev-board', 'Intervenant supplémentaire au board', 'advisory', 'open', 2, 'demo-u-julien')`);
+  await pgc.query(`insert into "Application" (id, "openCallId", "practitionerId", status, message) values ('e2e-app-board', 'e2e-call-board', 'demo-p-roux', 'pending', 'Disponible pour la réunion du board.')`);
+  const projects = async () => (await pgc.query(`select count(*)::int n from "Project" where "organizationId" = 'demo-org-dentalys'`)).rows[0].n;
+  const before = await projects();
+  const jul = await session();
+  await login(jul.page, "julien.faure@demo.kolbase.local");
+  await jul.page.goto(`${BASE}/organisations/demo-org-dentalys/opportunites/e2e-call-board`);
+  check("Opportunité d'un événement de dossier : le retenu rejoindra ce dossier (annoncé)", (await text(jul.page)).includes("ajoute l'expert au dossier « Board implantologie — gamme 2027 »"));
+  await jul.page.click('button:has-text("Retenir…")');
+  await jul.page.fill('input[name="units"]', "1");
+  await jul.page.fill('input[name="fee"]', "1500");
+  await Promise.all([jul.page.waitForURL(/\/dossiers\/demo-prj-board/), jul.page.click('button:has-text("Proposer ces honoraires")')]);
+  const link = (await pgc.query(`select status, "feeCents" from "ProjectExpert" where "projectId" = 'demo-prj-board' and "practitionerId" = 'demo-p-roux'`)).rows[0];
+  check("Candidat retenu : ajouté au dossier de l'événement, sans nouveau dossier", link?.status === "ATT_EXPERTS" && link?.feeCents === 150000 && (await projects()) === before, JSON.stringify(link));
+  check("Candidature rattachée au dossier de l'événement", (await pgc.query(`select "projectId" from "Application" where id = 'e2e-app-board'`)).rows[0]?.projectId === "demo-prj-board");
+  check("E-mail à l'expert : honoraires proposés", !!(await waitMail("mathieu.roux@demo.kolbase.local", "Candidature retenue : Dentalys Implants vous propose")));
+  await clean();
+  await jul.ctx.close();
+  await pgc.end();
+}
+
 // ── Responsables des dossiers : « Mes dossiers », co-responsables, e-mails ──
 {
   const pgc = new pg.Client({ connectionString: process.env.DATABASE_URL });

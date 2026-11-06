@@ -104,7 +104,12 @@ export function eventScope(
   const agencies = [...new Set(user.memberships.filter((m) => m.organization.kind === "PRESTATAIRE").map((m) => m.organizationId))];
   return { agencyId: { in: agencies } };
 }
-export const COMPLIANCE_ROLES: OrgRole[] = ["ADMIN", "CONFORMITE"];
+/**
+ * Conformité : réservée au rôle Conformité. L'administrateur gère l'organisation (équipe, réglages, abonnement,
+ * dossiers, événements) mais ne valide rien au titre de la conformité, sauf s'il a aussi ce rôle (les rôles se cumulent) :
+ * le contrôle reste indépendant de qui monte les dossiers.
+ */
+export const COMPLIANCE_ROLES: OrgRole[] = ["CONFORMITE"];
 
 /**
  * Périmètre du dispositif Transparence / anti-cadeaux : toute personne inscrite

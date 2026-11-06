@@ -123,6 +123,9 @@ export const orgOverview = cache(async (orgId: string) => {
   const from = (key: string, name: string) => (locale === "fr" ? `${key.replace(" de {name}", "")} ${de(name)}` : t(key, { name }));
   const todos: TodoItem[] = [];
   const dossier = (p: (typeof projects)[number], onglet?: string) => `${base}/dossiers/${p.id}${onglet ? `?onglet=${onglet}` : ""}`;
+  // Personne n'a le rôle Conformité : aucun dossier ne peut être validé. L'administrateur est invité à l'attribuer.
+  if (roles.includes("ADMIN") && org.kind !== "PRESTATAIRE" && (await db.membership.count({ where: { organizationId: orgId, role: "CONFORMITE" } })) === 0)
+    todos.push({ href: `${base}/membres#sans-conformite`, title: t("Attribuer le rôle Conformité"), detail: t("Personne ne peut valider les dossiers de l'organisation"), icon: "ShieldCheck", tone: "warn" });
   if (can.project) {
     for (const p of projects) {
       if (p.status === "ATT_IND") todos.push({ href: dossier(p), title: t("Proposition d'expert à examiner"), detail: p.title, icon: "Inbox" });

@@ -16,7 +16,7 @@ export async function generateMetadata() {
 const days = (t: T, d: number | null) => (d == null ? "—" : t("{n} j", { n: d < 1 ? "< 1" : Math.round(d) }));
 const pct = (x: number) => `${Math.round(x * 100)} %`;
 
-export default async function Page({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: Promise<{ annee?: string }> }) {
+export default async function Page({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: Promise<{ annee?: string; geo?: string }> }) {
   const { t, locale } = await getT();
   const { id } = await params;
   const sp = await searchParams;
@@ -29,6 +29,10 @@ export default async function Page({ params, searchParams }: { params: Promise<{
   const delta = prev && prev.totals.ht > 0 ? (s.totals.ht - prev.totals.ht) / prev.totals.ht : null;
   const declaredTotal = s.compliance.declared + s.compliance.toDeclare;
   const base = `/organisations/${id}`;
+  // Répartition géographique : par région (code postal, ou grande ville), ou par ville.
+  const geoBy = sp.geo === "villes" ? "cities" : "regions";
+  const geo = s.geo[geoBy];
+  const top = <T,>(rows: T[]) => rows.slice(0, 10);
 
   return (
     <>
@@ -101,6 +105,39 @@ export default async function Page({ params, searchParams }: { params: Promise<{
             </ul>
           </section>
         </div>
+
+        <section className="card stack" id="geographie" aria-labelledby="geographie-titre">
+          <div className="actions spread">
+            <div>
+              <h2 id="geographie-titre">{t("Répartition géographique {year}", { year })}</h2>
+              <p className="muted">{t("Experts rémunérés et participants selon leur lieu d'exercice, événements selon leur lieu. La région se déduit du code postal, ou à défaut des principales villes.")}</p>
+            </div>
+            <nav className="chips" aria-label={t("Regrouper par")}>
+              <Link href={`?annee=${year}#geographie`} className={`chip${geoBy === "regions" ? " active" : ""}`} aria-current={geoBy === "regions" ? "true" : undefined}>{t("Régions")}</Link>
+              <Link href={`?annee=${year}&geo=villes#geographie`} className={`chip${geoBy === "cities" ? " active" : ""}`} aria-current={geoBy === "cities" ? "true" : undefined}>{t("Villes")}</Link>
+            </nav>
+          </div>
+          <div className="grid-3">
+            <div className="stack-sm">
+              <h3>{t("Experts rémunérés")}</h3>
+              {geo.experts.length === 0 ? <p className="muted">{t("Aucun expert rémunéré sur l'année.")}</p> : (
+                <RankedBars caption={t("Experts rémunérés par lieu d'exercice")} format="int" rows={top(geo.experts).map((x) => ({ label: t(x.label), value: x.count, note: fmtEur(locale, x.cents) }))} />
+              )}
+            </div>
+            <div className="stack-sm">
+              <h3>{t("Participants aux événements")}</h3>
+              {geo.participants.length === 0 ? <p className="muted">{t("Aucun participant sur l'année.")}</p> : (
+                <RankedBars caption={t("Participants par lieu d'exercice")} format="int" rows={top(geo.participants).map((x) => ({ label: t(x.label), value: x.count, note: t(x.count > 1 ? "{count} participants" : "{count} participant", { count: x.count }) }))} />
+              )}
+            </div>
+            <div className="stack-sm">
+              <h3>{t("Événements")}</h3>
+              {geo.events.length === 0 ? <p className="muted">{t("Aucun événement sur l'année.")}</p> : (
+                <RankedBars caption={t("Événements par lieu")} format="int" rows={top(geo.events).map((x) => ({ label: t(x.label), value: x.count, note: t(x.count > 1 ? "{count} événements" : "{count} événement", { count: x.count }) }))} />
+              )}
+            </div>
+          </div>
+        </section>
 
         <section className="card stack-sm">
           <h2>{t("Événements {year}", { year })}</h2>

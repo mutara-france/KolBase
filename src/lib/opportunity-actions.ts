@@ -6,7 +6,7 @@ import { db } from "@/lib/db";
 import { audit, requireUser } from "@/lib/auth";
 import { isVerifiedOrg, notVerified, requireMembership } from "@/lib/orgs";
 import { parseParisDateTime } from "@/lib/events";
-import { collabType, SOURCING_ROLES } from "@/lib/projects";
+import { collabType, recruitmentOpen, SOURCING_ROLES } from "@/lib/projects";
 import { eurToCents, str, unitsOrNull, UNITS_INVALID } from "@/lib/form";
 import { notifyApplication, notifyApplicationSent, notifyNotRetained, notifySolicitations } from "@/lib/notifications";
 import { engagementGate } from "@/lib/billing";
@@ -148,6 +148,13 @@ export async function retainApplication(_: ActionState, form: FormData): Promise
   // Plusieurs personnes retenues (places, événement) : un dossier par personne, à son nom.
   const title = ev ? `${ev.title} : intervention du Dr ${app.practitioner.user.lastName}` : call.slots && call.slots > 1 ? `${call.title} : Dr ${app.practitioner.user.lastName}` : call.title;
 
+  // Opportunité publiée depuis l'événement d'un dossier qui recrute encore : l'expert retenu rejoint ce dossier
+  // (onglet Experts). Dossier déjà soumis à la conformité, ou événement hors dossier : un dossier à son nom.
+  const host = ev?.projectId ? await db.project.findFirst({ where: { id: ev.projectId, organizationId: orgId }, select: { id: true, status: true } }) : null;
+  const joinHost = !!host && recruitmentOpen(host.status);
+  if (joinHost && (await db.projectExpert.findUnique({ where: { projectId_practitionerId: { projectId: host.id, practitionerId: app.practitionerId } } })))
+    return { error: t("Cet expert est déjà sollicité dans le dossier de l'événement.") };
+
   // La candidature est « réservée » avant toute création (verrou sur l'appel) : un double envoi ne crée pas deux
   // dossiers, et deux décisions simultanées ne dépassent pas le nombre de places.
   const project = await db.$transaction(async (tx) => {
@@ -155,6 +162,12 @@ export async function retainApplication(_: ActionState, form: FormData): Promise
     if (call.slots && (await tx.application.count({ where: { openCallId: call.id, status: "retained" } })) >= call.slots) return "full" as const;
     const { count } = await tx.application.updateMany({ where: { id: app.id, status: "pending" }, data: { status: "retained" } });
     if (count === 0) return null;
+    if (joinHost) {
+      const link = await tx.projectExpert.create({ data: { projectId: host.id, practitionerId: app.practitionerId, status: "ATT_EXPERTS", feeCents: fee, days: units } });
+      if (app.message) await tx.message.create({ data: { projectId: host.id, projectExpertId: link.id, authorId: app.practitioner.userId, body: app.message, createdAt: app.createdAt } });
+      await tx.application.update({ where: { id: app.id }, data: { projectId: host.id } });
+      return { id: host.id, linkId: link.id, joined: true };
+    }
     const created = await tx.project.create({
       data: {
         organizationId: orgId,
@@ -177,12 +190,13 @@ export async function retainApplication(_: ActionState, form: FormData): Promise
       });
     }
     await tx.application.update({ where: { id: app.id }, data: { projectId: created.id } });
-    return created;
+    return { id: created.id, linkId: created.experts[0].id, joined: false };
   });
   if (project === "full") return { error: t("Toutes les places sont déjà pourvues.") };
   if (!project) return { error: t("Cette candidature a déjà été traitée.") };
   await audit(user.id, "application.retain", "Application", app.id, { projectId: project.id });
-  await audit(user.id, "project.create", "Project", project.id, { from: "opencall", callId: app.openCallId });
-  notifySolicitations(project.id, "honoraires");
-  redirect(`/organisations/${orgId}/dossiers/${project.id}`);
+  if (project.joined) await audit(user.id, "project.add_expert", "ProjectExpert", project.linkId, { projectId: project.id, feeCents: fee, days: units, from: "opencall", callId: app.openCallId });
+  else await audit(user.id, "project.create", "Project", project.id, { from: "opencall", callId: app.openCallId });
+  notifySolicitations(project.id, "honoraires", [project.linkId]);
+  redirect(`/organisations/${orgId}/dossiers/${project.id}${project.joined ? "?onglet=experts" : ""}`);
 }

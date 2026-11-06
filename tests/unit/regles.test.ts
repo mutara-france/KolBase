@@ -149,9 +149,14 @@ describe("navigation et rôles", () => {
   });
   it("les statistiques sont réservées au pilotage et absentes de la barre mobile au-delà de cinq entrées", () => {
     expect(orgNavItems("o", ["PRESTATAIRE"], "INDUSTRIEL").map((i) => i.key)).not.toContain("statistiques");
-    const admin = orgNavItems("o", ["ADMIN"], "INDUSTRIEL");
+    // Administrateur qui tient aussi la conformité : six rubriques, dont Statistiques hors de la barre mobile.
+    const admin = orgNavItems("o", ["ADMIN", "CONFORMITE"], "INDUSTRIEL");
     expect(admin.length).toBe(6);
     expect(admin.filter((i) => !i.secondary).length).toBe(5);
+  });
+  it("l'administrateur n'a la conformité que s'il en a aussi le rôle", () => {
+    expect(orgNavItems("o", ["ADMIN"], "INDUSTRIEL").map((i) => i.key)).toEqual(["accueil", "praticiens", "dossiers", "evenements", "statistiques"]);
+    expect(orgNavItems("o", ["ADMIN", "CONFORMITE"], "INDUSTRIEL").map((i) => i.key)).toContain("conformite");
   });
   it("la relecture des supports est rangée dans la conformité, sur un seul niveau d'onglets", () => {
     expect(orgSectionTabs("dossiers", "o", ["ADMIN"], "INDUSTRIEL").map((t) => t.key)).toEqual(["dossiers"]);

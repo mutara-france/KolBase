@@ -253,7 +253,8 @@ export function fmvCheck(typeId: string, feeCents: number | null, units: number 
 
 export const MATERIAL_KINDS = { diaporama: "Diaporama", article: "Article / texte", video: "Vidéo", programme: "Programme", autre: "Autre" } as const;
 export const MATERIAL_STATUS = { submitted: "En relecture", approved: "Approuvé", changes: "Modifications demandées" } as const;
-export const REVIEW_ROLES: OrgRole[] = ["ADMIN", "CONFORMITE"];
+/** Relecture des supports scientifiques : rôle Conformité (voir COMPLIANCE_ROLES). */
+export const REVIEW_ROLES: OrgRole[] = ["CONFORMITE"];
 
 /** E-mails à l'expert lors des étapes du dossier qui le concernent (voir notifyExpertNotice). */
 export type ExpertNotice = "abandon" | "retour_accord" | "signature" | "signe" | "recrutement_clos" | "proposition_acceptee" | "proposition_declinee";

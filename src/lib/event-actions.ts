@@ -48,6 +48,7 @@ function readEventFields(form: FormData, t: T) {
       description: str(form, "description") || null,
       durationMinutes: intOrNull(str(form, "durationMinutes")),
       city: format === "DISTANCIEL" ? null : str(form, "city") || null,
+      postalCode: format === "DISTANCIEL" ? null : str(form, "postalCode").replace(/\s/g, "").slice(0, 12) || null,
       venue: format === "DISTANCIEL" ? null : str(form, "venue") || null,
       capacity: intOrNull(str(form, "capacity")),
     },

@@ -3,6 +3,7 @@ import { collabType, fmvCheck, isEngaged } from "@/lib/projects";
 import { REGISTER_STATUSES } from "@/lib/compliance-data";
 import { eventHospitality } from "@/lib/indicators";
 import { eventEnded } from "@/lib/events";
+import { cityKey, cityLabel, regionOf } from "@/lib/regions";
 
 export { STATS_ROLES } from "@/lib/org-roles";
 
@@ -39,7 +40,7 @@ export async function orgStats(orgId: string, year: number) {
           where: { status: { notIn: ["DECLINE"] } },
           select: {
             id: true, feeCents: true, days: true, status: true, createdAt: true, respondedAt: true,
-            practitioner: { select: { id: true, specialty: true, user: { select: { firstName: true, lastName: true } } } },
+            practitioner: { select: { id: true, specialty: true, city: true, postalCode: true, country: true, user: { select: { firstName: true, lastName: true } } } },
           },
         },
       },
@@ -59,8 +60,13 @@ export async function orgStats(orgId: string, year: number) {
     db.event.findMany({
       where: { organizationId: orgId, startsAt: { gte: start, lt: end }, cancelledAt: null },
       select: {
-        id: true, title: true, startsAt: true, durationMinutes: true, capacity: true, internal: true,
-        registrations: { select: { kind: true, declared: true, profession: true, checkedInAt: true, benefits: { select: { valueCents: true } } } },
+        id: true, title: true, startsAt: true, durationMinutes: true, capacity: true, internal: true, city: true, postalCode: true,
+        registrations: {
+          select: {
+            kind: true, declared: true, profession: true, checkedInAt: true, benefits: { select: { valueCents: true } },
+            user: { select: { practitioner: { select: { city: true, postalCode: true, country: true } } } },
+          },
+        },
         rfqs: { select: { quotes: { where: { status: "retained" }, select: { amountCents: true } } } },
         surveys: { select: { overall: true } },
       },
@@ -83,7 +89,7 @@ export async function orgStats(orgId: string, year: number) {
   // ─── Budget par trimestre ───
   const quarters = [0, 1, 2, 3].map((q) => ({ label: `T${q + 1}`, fees: 0, logistics: 0, hospitality: 0 }));
   const byType = new Map<string, { label: string; cents: number; projects: number }>();
-  const byExpert = new Map<string, { name: string; cents: number; specialty: string | null }>();
+  const byExpert = new Map<string, { name: string; cents: number; specialty: string | null; place: Place }>();
   let engagedProjects = 0, fmvOver = 0, toDeclare = 0, declared = 0;
   for (const p of projects) {
     // Experts engagés (proposition acceptée), comptés à la date de leur accord.
@@ -100,7 +106,7 @@ export async function orgStats(orgId: string, year: number) {
       projectFees += fee;
       quarters[quarterOf(e.respondedAt ?? e.createdAt)].fees += fee;
       const key = e.practitioner.id;
-      const cur = byExpert.get(key) ?? { name: `${e.practitioner.user.firstName} ${e.practitioner.user.lastName}`, cents: 0, specialty: e.practitioner.specialty };
+      const cur = byExpert.get(key) ?? { name: `${e.practitioner.user.firstName} ${e.practitioner.user.lastName}`, cents: 0, specialty: e.practitioner.specialty, place: e.practitioner };
       cur.cents += fee;
       byExpert.set(key, cur);
       if (fmvCheck(p.typeId, e.feeCents, e.days)?.verdict === "above") fmvOver++;
@@ -147,6 +153,21 @@ export async function orgStats(orgId: string, year: number) {
   const specialties = new Map<string, number>();
   for (const e of byExpert.values()) specialties.set(e.specialty || "Non renseignée", (specialties.get(e.specialty || "Non renseignée") ?? 0) + 1);
 
+  // ─── Répartition géographique : experts rémunérés (lieu d'exercice), participants (lieu d'exercice), événements (lieu) ───
+  const geo = { regions: newGeo(), cities: newGeo() };
+  const add = (bucket: "experts" | "participants" | "events", place: Place | null | undefined, cents = 0) => {
+    const r = place && (!place.country || place.country === "FR") ? regionOf(place.postalCode, place.city) : null;
+    const abroad = !!place?.country && place.country !== "FR";
+    bump(geo.regions[bucket], r ?? (abroad ? "Hors de France" : "Non renseignée"), r ?? (abroad ? "Hors de France" : "Non renseignée"), cents);
+    const ck = cityKey(place?.city);
+    bump(geo.cities[bucket], ck ?? "", ck ? cityLabel(place?.city)! : "Non renseignée", cents);
+  };
+  for (const e of experts) add("experts", byExpertPlace(e), e.cents);
+  for (const ev of events) {
+    add("events", ev);
+    for (const r of ev.registrations) if (r.kind === "participant") add("participants", r.user.practitioner);
+  }
+
   // ─── Délais (médianes, en jours) ───
   const expertResponse: number[] = [];
   const compliance: number[] = [];
@@ -178,6 +199,7 @@ export async function orgStats(orgId: string, year: number) {
     top,
     top5Share,
     specialties: [...specialties.entries()].map(([label, count]) => ({ label, count })).sort((a, b) => b.count - a.count || a.label.localeCompare(b.label)),
+    geo: { regions: geoRows(geo.regions), cities: geoRows(geo.cities) },
     events: eventRows,
     participants: eventRows.reduce((s, e) => s + e.participants, 0),
     satisfaction: (() => {
@@ -194,3 +216,21 @@ export async function orgStats(orgId: string, year: number) {
 }
 
 
+
+/** Lieu d'exercice ou d'un événement : ville, code postal, pays (France par défaut). */
+type Place = { city: string | null; postalCode: string | null; country?: string | null };
+type GeoBucket = Map<string, { label: string; count: number; cents: number }>;
+const newGeo = () => ({ experts: new Map() as GeoBucket, participants: new Map() as GeoBucket, events: new Map() as GeoBucket });
+function bump(m: GeoBucket, key: string, label: string, cents: number) {
+  const cur = m.get(key) ?? { label, count: 0, cents: 0 };
+  cur.count++;
+  cur.cents += cents;
+  m.set(key, cur);
+}
+/** Lignes triées (effectif décroissant), « Non renseignée » et « Hors de France » en dernier. */
+const geoRows = (g: ReturnType<typeof newGeo>) => {
+  const rows = (m: GeoBucket) => [...m.values()].sort((a, b) => Number(isOther(a.label)) - Number(isOther(b.label)) || b.count - a.count || b.cents - a.cents || a.label.localeCompare(b.label));
+  return { experts: rows(g.experts), participants: rows(g.participants), events: rows(g.events) };
+};
+const isOther = (label: string) => label === "Non renseignée" || label === "Hors de France";
+const byExpertPlace = (e: { place: Place }) => e.place;

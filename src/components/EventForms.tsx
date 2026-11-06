@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useActionState, useState } from "react";
 import { createEvent, registerToEvent, saveEventProgram, updateEvent } from "@/lib/event-actions";
 import { AiDraft } from "@/components/AiDraft";
@@ -18,7 +19,7 @@ type CatalogItem = { id: string; label: string; typical: number };
 /** Valeurs d'un événement existant (formulaire de modification). */
 export type EventInitial = {
   title: string; typeId: string; therapeuticArea: string; description: string; startsAt: string; durationMinutes: string;
-  format: string; capacity: string; city: string; venue: string; onlineUrl: string; benefits: { catalogId: string; valueCents: number }[];
+  format: string; capacity: string; city: string; postalCode?: string; venue: string; onlineUrl: string; benefits: { catalogId: string; valueCents: number }[];
 };
 
 type Frozen = { catalogId: string; label: string; valueCents: number }[];
@@ -88,6 +89,7 @@ function EventFields({ types, formats, catalog, initial, frozen, project, limits
       </div>
       {format !== "DISTANCIEL" && (
         <div className="row">
+          <label className="short">{t("Code postal")}<input name="postalCode" inputMode="numeric" autoComplete="postal-code" maxLength={12} defaultValue={initial?.postalCode} /></label>
           <label>{t("Ville")}<input name="city" defaultValue={initial?.city} /></label>
           <label>{t("Lieu")}<input name="venue" placeholder={t("Hôtel, salle…")} defaultValue={initial?.venue} /></label>
         </div>
@@ -181,7 +183,7 @@ export function RegisterForm({ eventId, benefits, hcp, defaultStructure }: { eve
   const t = useT();
   const locale = useLocale();
   const total = benefits.filter((b) => accepted[b.id]).reduce((s, b) => s + b.valueCents, 0);
-  if (state?.ok) return <p className="notice ok">{state.ok} {t("Retrouvez-la dans « Mes inscriptions ».")}</p>;
+  if (state?.ok) return <p className="notice ok">{state.ok} <Link href="/inscriptions">{t("Retrouvez-la dans « Mes inscriptions ».")}</Link></p>;
   return (
     <form action={action} className="form">
       <Notice state={state} />

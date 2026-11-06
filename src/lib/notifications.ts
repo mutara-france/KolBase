@@ -425,7 +425,10 @@ export function notifyCompliance(projectId: string, step: "submit" | "validate" 
     if (!p) return;
     const href = `/organisations/${p.organizationId}/dossiers/${p.id}`;
     if (step === "submit") {
-      await send(await members(p.organizationId, COMPLIANCE_ROLES), (t) => ({ subject: t("Dossier à valider : {title}", { title: p.title }), text: t("Bonjour,\n\nLe dossier « {title} » est soumis à la conformité.", { title: p.title }), cta: { label: t("Examiner le dossier"), href } }), actorId);
+      const reviewers = await members(p.organizationId, COMPLIANCE_ROLES);
+      if (reviewers.length) await send(reviewers, (t) => ({ subject: t("Dossier à valider : {title}", { title: p.title }), text: t("Bonjour,\n\nLe dossier « {title} » est soumis à la conformité.", { title: p.title }), cta: { label: t("Examiner le dossier"), href } }), actorId);
+      // Personne n'a le rôle Conformité : les administrateurs sont prévenus qu'il faut l'attribuer.
+      else await send(await members(p.organizationId, ["ADMIN"]), (t) => ({ subject: t("Dossier à valider, sans personne pour l'examiner : {title}", { title: p.title }), text: t("Bonjour,\n\nLe dossier « {title} » est soumis à la conformité, mais personne n'a le rôle Conformité dans votre organisation. Attribuez-le à un membre (vous-même au besoin) depuis « Membres et réglages ».", { title: p.title }), cta: { label: t("Attribuer le rôle"), href: `/organisations/${p.organizationId}/membres` } }));
     } else {
       await send(await projectTeam(p), (t) => ({ subject: t("Dossier {v} par la conformité : {title}", { v: step === "validate" ? t("validé") : t("bloqué"), title: p.title }), text: t("Bonjour,\n\nLe dossier « {title} » est désormais : {v}.{v2}", { title: p.title, v: STATUS_LABEL[p.status], v2: p.complianceNote ? t("\n\nCommentaire : {complianceNote}", { complianceNote: p.complianceNote }) : "" }), cta: { label: t("Ouvrir le dossier"), href } }), actorId);
     }

@@ -42,7 +42,7 @@ export default async function Page({ params, searchParams }: { params: Promise<{
   const loc = intlLocale(locale);
   const { id } = await params;
   const { onglet = "a-valider", annee, periode } = await searchParams;
-  const { org, isAdmin, roles } = await requireMembership(id, COMPLIANCE_ROLES);
+  const { org } = await requireMembership(id, COMPLIANCE_ROLES);
   const s = complianceSettings(org.complianceSettings);
   const year = annee === "toutes" ? null : Number(annee) || new Date().getFullYear();
 
@@ -191,7 +191,7 @@ export default async function Page({ params, searchParams }: { params: Promise<{
             )}
           </section>
         )}
-        {onglet === "parametres" && <ComplianceSettingsForm orgId={id} settings={s} fields={SETTING_FIELDS.map((f) => ({ ...f, legal: legalBound(f.key) }))} canEdit={isAdmin || roles.includes("CONFORMITE")} />}
+        {onglet === "parametres" && <ComplianceSettingsForm orgId={id} settings={s} fields={SETTING_FIELDS.map((f) => ({ ...f, legal: legalBound(f.key) }))} canEdit />}
       </main>
     </>
   );

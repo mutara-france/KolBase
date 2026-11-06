@@ -115,6 +115,8 @@ model PractitionerProfile {
   country       String   @default("FR")  // pays d'exercice principal (code ISO, « XX » : autre pays)
   licenseNumber String?                  // hors France : identifiant professionnel (INAMI, NPI, n° d'Ordre…)
   city          String?
+  // Code postal d'exercice (facultatif) : région dans les statistiques.
+  postalCode    String?
   hospital      String?
   specialty     String?
   subspecialty  String?
@@ -627,6 +629,8 @@ model Event {
   durationMinutes  Int?
   format           EventFormat  @default(PRESENTIEL)
   city             String?
+  // Code postal du lieu (facultatif) : région dans les statistiques.
+  postalCode       String?
   venue            String?
   capacity         Int?
   registrationOpen Boolean      @default(true)

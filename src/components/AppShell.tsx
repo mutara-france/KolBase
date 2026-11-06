@@ -209,7 +209,11 @@ function AccountMenu({ user, space, spaces, admin }: { user: ShellUser; space?: 
           )}
           <hr />
           {!isPractitioner && (
-            <Link href="/compte" role="menuitem"><UserRound size={18} strokeWidth={1.8} aria-hidden />{t("Mon compte")}</Link>
+            <>
+              <Link href="/compte" role="menuitem"><UserRound size={18} strokeWidth={1.8} aria-hidden />{t("Mon compte")}</Link>
+              {/* Inscriptions aux événements : rubrique de l'espace praticien, ici pour les autres comptes. */}
+              <Link href="/inscriptions" role="menuitem"><CalendarDays size={18} strokeWidth={1.8} aria-hidden />{t("Mes inscriptions")}</Link>
+            </>
           )}
           <Link href="/organisations" role="menuitem"><Building2 size={18} strokeWidth={1.8} aria-hidden />{t("Mes organisations")}</Link>
           {admin && <Link href="/admin" role="menuitem"><ShieldCheck size={18} strokeWidth={1.8} aria-hidden />{t("Administration KolBase")}</Link>}

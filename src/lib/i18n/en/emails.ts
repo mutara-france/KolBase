@@ -44,4 +44,7 @@ export const EMAILS: Record<string, string> = {
   "Ajouter une photo": "Add a photo",
   "Vous êtes responsable du dossier « {title} »": "You are now the lead of “{title}”",
   "Bonjour,\n\n{who} vous a désigné responsable du dossier « {title} ». Il figure désormais dans « Mes dossiers », et les e-mails du dossier vous sont adressés.": "Hello,\n\n{who} has made you the lead of the collaboration “{title}”. It now appears under “My collaborations”, and its e-mails are sent to you.",
+  "Attribuer le rôle": "Assign the role",
+  "Dossier à valider, sans personne pour l'examiner : {title}": "Collaboration to approve, with no one to review it: {title}",
+  "Bonjour,\n\nLe dossier « {title} » est soumis à la conformité, mais personne n'a le rôle Conformité dans votre organisation. Attribuez-le à un membre (vous-même au besoin) depuis « Membres et réglages ».": "Hello,\n\nThe collaboration “{title}” has been submitted to compliance, but no one in your organisation has the Compliance role. Assign it to a member (yourself if need be) from “Members and settings”.",
 };

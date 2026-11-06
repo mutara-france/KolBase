@@ -60,6 +60,12 @@ const ORGS: { id: string; name: string; kind: OrgKind; sector: string; hq: strin
     about: "Navettes gare–lieu d'événement et transferts de groupes. Prestataire fictif.", policy: "" },
 ];
 
+// Codes postaux des villes de démonstration (régions dans les statistiques).
+const DEMO_CP: Record<string, string> = {
+  Lyon: "69003", Paris: "75008", Nice: "06000", Grenoble: "38000", Villeurbanne: "69100", Toulouse: "31000", Strasbourg: "67000",
+  Rennes: "35000", Nantes: "44000", Montpellier: "34000", Marseille: "13008", Lille: "59000", Bordeaux: "33000",
+};
+
 // ─── Membres d'organisations ───────────────────────────────────────────────
 const STAFF: { id: string; first: string; last: string; org: string; roles: OrgRole[] }[] = [
   { id: "demo-u-claire", first: "Claire", last: "Morel", org: "demo-org-dentalys", roles: ["ADMIN"] },
@@ -69,8 +75,9 @@ const STAFF: { id: string; first: string; last: string; org: string; roles: OrgR
   { id: "demo-u-nadia", first: "Nadia", last: "Haddad", org: "demo-org-dentalys", roles: ["CONFORMITE"] },
   { id: "demo-u-thomas", first: "Thomas", last: "Garnier", org: "demo-org-orthonova", roles: ["ADMIN"] },
   { id: "demo-u-lea", first: "Léa", last: "Rousseau", org: "demo-org-orthonova", roles: ["CONFORMITE"] },
-  { id: "demo-u-pierre", first: "Pierre", last: "Vidal", org: "demo-org-cdra", roles: ["ADMIN"] },
-  { id: "demo-u-anne", first: "Anne", last: "Chevalier", org: "demo-org-academie", roles: ["ADMIN"] },
+  // Seuls dans leur organisation : administrateurs et chargés de la conformité (les rôles se cumulent).
+  { id: "demo-u-pierre", first: "Pierre", last: "Vidal", org: "demo-org-cdra", roles: ["ADMIN", "CONFORMITE"] },
+  { id: "demo-u-anne", first: "Anne", last: "Chevalier", org: "demo-org-academie", roles: ["ADMIN", "CONFORMITE"] },
   { id: "demo-u-karim", first: "Karim", last: "Benali", org: "demo-org-mediane", roles: ["ADMIN"] },
   { id: "demo-u-ludovic", first: "Ludovic", last: "Perrin", org: "demo-sup-belleville", roles: ["ADMIN"] },
 ];
@@ -177,7 +184,7 @@ async function main() {
       where: { id: p.id },
       update: { rppsVerified: verified },
       create: {
-        id: p.id, userId: uid, profession: p.profession, city: p.city, country: p.country ?? "FR", licenseNumber: p.license ?? null, rppsCheckedAt: p.country && verified ? at(-60) : null, specialty: p.specialty, subspecialty: p.sub, hospital: p.hospital,
+        id: p.id, userId: uid, profession: p.profession, city: p.city, postalCode: p.country ? null : DEMO_CP[p.city] ?? null, country: p.country ?? "FR", licenseNumber: p.license ?? null, rppsCheckedAt: p.country && verified ? at(-60) : null, specialty: p.specialty, subspecialty: p.sub, hospital: p.hospital,
         languages: p.langs ?? ["fr"], interventionTypes: p.types ?? [], dayRateCents: p.rate ? p.rate * 100 : null, orcid: p.orcid,
         bio: p.bio, listed: p.listed, rppsVerified: verified, listedAt: p.listed ? at(-200 + Math.floor(Math.random() * 150)) : null, responseDays: p.listed ? 3 : null,
       },
@@ -234,7 +241,7 @@ async function main() {
       update: {},
       create: {
         id: e.id, organizationId: e.org, title: e.title, typeId: e.type, therapeuticArea: e.area, description: e.desc,
-        startsAt: at(e.days, e.hour), durationMinutes: e.dur, format: e.format, city: e.city, venue: e.venue, capacity: e.cap,
+        startsAt: at(e.days, e.hour), durationMinutes: e.dur, format: e.format, city: e.city, postalCode: e.city ? DEMO_CP[e.city] ?? null : null, venue: e.venue, capacity: e.cap,
         publishedAt: at(Math.min(e.days, 0) - 20), registrationOpen: e.days > 0,
         benefits: { create: e.benefits.map(([catalogId, label, valueCents]) => ({ id: `${e.id}-b-${catalogId}`, catalogId, label, valueCents })) },
       },

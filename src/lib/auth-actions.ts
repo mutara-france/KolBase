@@ -20,6 +20,7 @@ import { MAX_NAME, str } from "@/lib/form";
 import { normalize } from "@/lib/search";
 import { getLocale, getT, LOCALE_COOKIE } from "@/lib/i18n/server";
 import { ORG_KIND_LABEL } from "@/lib/org-roles";
+import { isFrenchPostalCode } from "@/lib/regions";
 import { makeT, type T } from "@/lib/i18n";
 
 export type FormState = { error?: string; ok?: string } | undefined;
@@ -194,12 +195,16 @@ export async function updateProfile(_: FormState, form: FormData): Promise<FormS
     const recheck = idChanged || (identityChanged && (p.rppsVerified || !!p.rppsCheckedAt));
     if (recheck && identifier) toCheck = inFrance ? `RPPS ${identifier}` : `${licenseRule(countryCode).label} ${identifier} (${country(countryCode).name})`;
     unlisted = p.listed && (!identifier || !canBeExpert(profession));
+    // Code postal : 5 chiffres en France, libre ailleurs (facultatif).
+    const postalCode = str(form, "postalCode").replace(/\s/g, "").slice(0, 12) || null;
+    if (postalCode && inFrance && !isFrenchPostalCode(postalCode)) return { error: t("Code postal invalide : 5 chiffres.") };
     practitionerData = {
       profession,
       country: countryCode,
       rpps,
       licenseNumber: license,
       city: str(form, "city") || null,
+      postalCode,
       specialty: str(form, "specialty") || null,
       ...(recheck ? { rppsVerified: false, rppsCheckedAt: null, rppsCheckNote: null } : {}),
       ...(unlisted ? { listed: false, listedAt: null } : {}),
