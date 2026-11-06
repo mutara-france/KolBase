@@ -374,6 +374,10 @@ async function main() {
         ...(p.closed ? { updatedAt: at(-p.closed.days), declared: true, declarationRef: p.closed.ref, declaredAt: at(-p.closed.days + 5) } : {}),
       },
     });
+    // Responsable : le créateur s'il est Administrateur ou Projets de l'organisation (pas l'expert d'une proposition).
+    const lead = p.steps[0]?.[0];
+    if (lead && (await db.membership.findFirst({ where: { userId: lead, organizationId: p.org, role: { in: ["ADMIN", "PROJETS"] } }, select: { id: true } })))
+      await db.projectLead.upsert({ where: { projectId_userId: { projectId: p.id, userId: lead } }, update: {}, create: { projectId: p.id, userId: lead, createdAt: created } });
     for (const [i, e] of p.experts.entries()) {
       const linkId = `${p.id}-x${i}`;
       await db.projectExpert.upsert({
@@ -405,6 +409,8 @@ async function main() {
       prev = to;
     }
   }
+  // Co-responsable : le board implantologie est suivi à deux (Julien Faure et Marc Lefèvre).
+  await db.projectLead.upsert({ where: { projectId_userId: { projectId: "demo-prj-board", userId: "demo-u-marc" } }, update: {}, create: { projectId: "demo-prj-board", userId: "demo-u-marc" } });
 
   // ─── Budget, dépenses et supports en relecture ───────────────────────────
   await db.project.updateMany({ where: { id: "demo-prj-symposium", budgetCents: null }, data: { budgetCents: 600000 } });

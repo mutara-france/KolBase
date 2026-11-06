@@ -11,14 +11,14 @@ import { DossierTabs, type DossierTab } from "@/components/DossierTabs";
 import { EventWorkspace } from "@/components/EventWorkspace";
 import { AddExpertForm, ExpertTermsForm, ProjectObjectForm } from "@/components/DossierForms";
 import { canSee, kolViewer, kolVisibility } from "@/lib/visibility";
-import { expertPhotoSrc, photoPath } from "@/lib/expert-photo";
+import { accountPhoto, expertPhotoSrc, photoPath } from "@/lib/expert-photo";
 import { BillingNotice } from "@/components/BillingNotice";
 import { db } from "@/lib/db";
 import { requireMembership } from "@/lib/orgs";
 import { COMPLIANCE_ROLES, parisToday } from "@/lib/events";
 import { ACCOUNT_DELETED, PROPOSAL_ORIGIN, PROPOSAL_WITHDRAWN, collabType, eventTabOpen, needsMeeting, PROJECT_ROLES, PROJECT_VIEW_ROLES, projectEditable, recruitmentOpen, REVIEW_ROLES, STATUS_LABEL, TRANSITIONS, unitCount, type TransitionKey } from "@/lib/projects";
 import { storageEnabled } from "@/lib/storage";
-import { acceptCounterOffer, advanceProject } from "@/lib/project-actions";
+import { acceptCounterOffer, addProjectLead, advanceProject, removeProjectLead } from "@/lib/project-actions";
 import { ConfirmButton } from "@/components/ConfirmButton";
 import { markExpertPaid } from "@/lib/revenue-actions";
 import { expertSplit } from "@/lib/indicators";
@@ -43,6 +43,8 @@ export async function generateMetadata() {
 
 const ACTION_LABEL: Record<string, string> = {
   "project.create": "Dossier créé",
+  "project.lead_add": "Responsable ajouté",
+  "project.lead_remove": "Responsable retiré",
   "solicitation.accept": "Accord de principe d'un expert",
   "solicitation.decline": "Un expert a décliné",
   "solicitation.counter": "Un expert propose d'autres honoraires",
@@ -139,14 +141,16 @@ export default async function Page({ params, searchParams }: { params: Promise<{
   });
   if (!project) notFound();
   const linkIds = project.experts.map((e) => e.id);
-  const [history, owner, fromCall] = await Promise.all([
+  const [history, leads, leadPool, fromCall] = await Promise.all([
     db.auditLog.findMany({
       where: { OR: [{ entityType: "Project", entityId: projectId }, { entityType: "ProjectExpert", entityId: { in: linkIds } }] },
       include: { actor: { select: { firstName: true, lastName: true } } },
       orderBy: { createdAt: "desc" },
       take: 50,
     }),
-    project.createdById ? db.user.findUnique({ where: { id: project.createdById }, select: { firstName: true, lastName: true } }) : null,
+    // Responsables du dossier, et membres pouvant l'être (Administrateur ou Projets).
+    db.projectLead.findMany({ where: { projectId }, include: { user: { select: { id: true, firstName: true, lastName: true, photoUpdatedAt: true } } }, orderBy: { createdAt: "asc" } }),
+    db.membership.findMany({ where: { organizationId: id, role: { in: PROJECT_ROLES } }, select: { user: { select: { id: true, firstName: true, lastName: true } } }, distinct: ["userId"], orderBy: { createdAt: "asc" } }),
     // Dossier né d'une candidature à un appel rattaché à un événement : l'intervention a lieu à cet événement.
     db.application.findFirst({
       where: { projectId, openCall: { organizationId: id } },
@@ -480,8 +484,8 @@ export default async function Page({ params, searchParams }: { params: Promise<{
               <dd>{regime ? t(REGIME_LABEL[regime.regime]) : t("À déterminer")}<small>{regime ? regimeReason(regime, t, intlLocale(locale)) : t("selon les experts engagés")}</small></dd>
             </div>
             <div>
-              <dt><User size={13} />{" "}{t("Responsable")}</dt>
-              <dd>{owner ? `${owner.firstName} ${owner.lastName}` : "—"}<small>{t("ouvert le {date}", { date: fmtDate(locale, project.createdAt) })}</small></dd>
+              <dt><User size={13} />{" "}{leads.length > 1 ? t("Responsables") : t("Responsable")}</dt>
+              <dd>{leads.length ? leads.slice(0, 2).map((l) => `${l.user.firstName} ${l.user.lastName}`).join(", ") + (leads.length > 2 ? ` +${leads.length - 2}` : "") : t("À désigner")}<small>{t("ouvert le {date}", { date: fmtDate(locale, project.createdAt) })}</small></dd>
             </div>
           </dl>
           <Pipeline status={project.status} />
@@ -530,6 +534,51 @@ export default async function Page({ params, searchParams }: { params: Promise<{
             </section>
             </div>
             <aside className="page-aside">
+              <section className="card stack-sm" id="responsables">
+                <h2 className="section-title"><User size={15} />{" "}{t("Responsables")}</h2>
+                {leads.length === 0 ? (
+                  <p className="text-sm muted">{t("Aucun responsable : les e-mails du dossier vont à toute l'équipe Projets.")}</p>
+                ) : (
+                  <ul className="lead-list">
+                    {leads.map((l) => (
+                      <li key={l.userId}>
+                        <Avatar name={`${l.user.firstName} ${l.user.lastName}`} size={28} photo={accountPhoto({ id: l.user.id, photoUpdatedAt: l.user.photoUpdatedAt })} />
+                        <span className="grow">{l.user.firstName} {l.user.lastName}{l.userId === user.id && <span className="muted">{" "}{t("(vous)")}</span>}</span>
+                        {isProject && (
+                          <form action={removeProjectLead}>
+                            <input type="hidden" name="orgId" value={id} />
+                            <input type="hidden" name="projectId" value={projectId} />
+                            <input type="hidden" name="userId" value={l.userId} />
+                            <button className="link danger text-xs" aria-label={t("Retirer {name} des responsables", { name: `${l.user.firstName} ${l.user.lastName}` })}>{t("Retirer")}</button>
+                          </form>
+                        )}
+                      </li>
+                    ))}
+                  </ul>
+                )}
+                {isProject && !leads.some((l) => l.userId === user.id) && (
+                  <form action={addProjectLead}>
+                    <input type="hidden" name="orgId" value={id} />
+                    <input type="hidden" name="projectId" value={projectId} />
+                    <button className="btn secondary small">{t("Me désigner responsable")}</button>
+                  </form>
+                )}
+                {isProject && leadPool.some((m) => m.user.id !== user.id && !leads.some((l) => l.userId === m.user.id)) && (
+                  <form action={addProjectLead} className="inline-form">
+                    <input type="hidden" name="orgId" value={id} />
+                    <input type="hidden" name="projectId" value={projectId} />
+                    <label className="sr-only" htmlFor="lead-add">{t("Ajouter un responsable")}</label>
+                    <select id="lead-add" name="userId" required defaultValue="">
+                      <option value="" disabled>{t("Ajouter un collègue…")}</option>
+                      {leadPool.filter((m) => m.user.id !== user.id && !leads.some((l) => l.userId === m.user.id)).map((m) => (
+                        <option key={m.user.id} value={m.user.id}>{m.user.firstName} {m.user.lastName}</option>
+                      ))}
+                    </select>
+                    <button className="btn ghost small">{t("Ajouter")}</button>
+                  </form>
+                )}
+                <p className="hint">{t("Les responsables retrouvent le dossier dans « Mes dossiers » et en reçoivent les e-mails. Toute l'équipe Projets garde l'accès.")}</p>
+              </section>
               <section className="card stack-sm">
                 <h2 className="section-title"><Scale size={15} />{" "}{t("Régime")}</h2>
                 <p className="text-sm">{regime ? <><span className={`pill ${regime.regime === "autorisation" ? "wait" : regime.regime === "hors_france" ? "" : "ok"}`}>{t(REGIME_LABEL[regime.regime])}</span> {regimeReason(regime, t, intlLocale(locale))}</> : t("Le régime (déclaration ou autorisation) sera déterminé dès qu'un expert aura accepté.")}</p>

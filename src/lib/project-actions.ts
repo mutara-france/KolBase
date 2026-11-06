@@ -13,7 +13,7 @@ import type { ProjectStatus } from "@/generated/prisma/client";
 import { complianceSettings, projectRegime } from "@/lib/compliance";
 import { missingSignedConventions } from "@/lib/project-documents";
 import { eurToCents, str, unitsOrNull, UNITS_INVALID } from "@/lib/form";
-import { notifyCompliance, notifyCounterAccepted, notifyExpertAnswer, notifyExpertCounter, notifyExpertNotice, notifyMessage, notifyNewProposal, notifySolicitations } from "@/lib/notifications";
+import { notifyCompliance, notifyCounterAccepted, notifyExpertAnswer, notifyExpertCounter, notifyExpertNotice, notifyMessage, notifyNewProposal, notifyProjectLead, notifySolicitations } from "@/lib/notifications";
 import { signatureEnabled } from "@/lib/yousign";
 import { engagementBlock, engagementGate } from "@/lib/billing";
 import type { GateLink } from "@/lib/billing-plans";
@@ -59,6 +59,7 @@ export async function createProject(_: ActionState, form: FormData): Promise<Act
       description: str(form, "description") || null,
       origin: "Sollicitation directe",
       createdById: user.id,
+      leads: { create: { userId: user.id } },
       experts: { create: experts },
     },
     include: { experts: true },
@@ -236,6 +237,8 @@ export async function advanceProject(form: FormData) {
       ...(attest ? { signatureAttestedAt: new Date(), signatureAttestedById: user.id } : {}),
     },
   });
+  // Dossier sans responsable (projet proposé par un expert) : qui, dans l'équipe Projets, le fait avancer en devient responsable.
+  if (t.roles !== "compliance" && key !== "decline_proposal" && key !== "abandon") await claimIfUnassigned(projectId, user.id);
   // Les experts ayant donné leur accord suivent le statut du dossier.
   await db.projectExpert.updateMany({ where: { projectId, status: { notIn: ["DECLINE", "ATT_EXPERTS"] } }, data: { status: t.to } });
   if (key === "abandon") await db.projectExpert.updateMany({ where: { projectId, status: "ATT_EXPERTS" }, data: { status: "DECLINE" } });
@@ -256,6 +259,49 @@ export async function advanceProject(form: FormData) {
     await syncProjectFromExperts(projectId);
     redirect(`/organisations/${orgId}/dossiers/${projectId}?onglet=experts&modifier=1#modifier`);
   }
+}
+
+/** Désigne la personne responsable d'un dossier qui n'en a aucun. */
+async function claimIfUnassigned(projectId: string, userId: string) {
+  if ((await db.projectLead.count({ where: { projectId } })) > 0) return;
+  const created = await db.projectLead.create({ data: { projectId, userId }, include: { user: { select: { firstName: true, lastName: true } } } }).catch(() => null);
+  if (created) await audit(userId, "project.lead_add", "Project", projectId, { userId, name: `${created.user.firstName} ${created.user.lastName}`, auto: true });
+}
+
+// ─── Responsables du dossier ───────────────────────────────────────────────
+
+/**
+ * Ajoute un responsable (un ou plusieurs par dossier) : membre Administrateur ou Projets de l'organisation. Il voit
+ * le dossier dans « Mes dossiers » et reçoit ses e-mails. Toute l'équipe Projets garde l'accès au dossier.
+ */
+export async function addProjectLead(form: FormData) {
+  const orgId = str(form, "orgId");
+  const projectId = str(form, "projectId");
+  const { user } = await requireMembership(orgId, PROJECT_ROLES);
+  const userId = str(form, "userId") || user.id;
+  const [project, eligible] = await Promise.all([
+    db.project.findFirst({ where: { id: projectId, organizationId: orgId }, select: { id: true } }),
+    db.membership.findFirst({ where: { organizationId: orgId, userId, role: { in: PROJECT_ROLES } }, select: { user: { select: { firstName: true, lastName: true } } } }),
+  ]);
+  if (!project || !eligible) return;
+  const added = await db.projectLead.create({ data: { projectId, userId } }).then(() => true, () => false);
+  if (!added) return;
+  await audit(user.id, "project.lead_add", "Project", projectId, { userId, name: `${eligible.user.firstName} ${eligible.user.lastName}` });
+  notifyProjectLead(projectId, userId, user.id);
+  revalidatePath(`/organisations/${orgId}/dossiers`, "layout");
+}
+
+/** Retire un responsable. Sans responsable, les e-mails du dossier vont à toute l'équipe Projets. */
+export async function removeProjectLead(form: FormData) {
+  const orgId = str(form, "orgId");
+  const projectId = str(form, "projectId");
+  const { user } = await requireMembership(orgId, PROJECT_ROLES);
+  const userId = str(form, "userId");
+  const lead = await db.projectLead.findFirst({ where: { projectId, userId, project: { organizationId: orgId } }, include: { user: { select: { firstName: true, lastName: true } } } });
+  if (!lead) return;
+  await db.projectLead.deleteMany({ where: { projectId, userId } });
+  await audit(user.id, "project.lead_remove", "Project", projectId, { userId, name: `${lead.user.firstName} ${lead.user.lastName}` });
+  revalidatePath(`/organisations/${orgId}/dossiers`, "layout");
 }
 
 /** Une convention du dossier est-elle en cours de signature, signée électroniquement ou déposée signée ? */

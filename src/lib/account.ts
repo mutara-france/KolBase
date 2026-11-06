@@ -102,6 +102,7 @@ export async function anonymizeAccount(userId: string) {
     db.authToken.deleteMany({ where: { userId } }),
     db.follow.deleteMany({ where: { userId } }),
     db.membership.deleteMany({ where: { userId } }),
+    db.projectLead.deleteMany({ where: { userId } }),
     db.userPhoto.deleteMany({ where: { userId } }),
     // Inscriptions à venir sans avantage déclaré : annulées.
     db.registration.deleteMany({ where: { userId, declared: false, event: { startsAt: { gt: now } } } }),
