@@ -205,6 +205,17 @@ export const recruitmentOpen = (status: ProjectStatus | string) => (RECRUITING_S
  * accord de principe » le remet d'abord en accord de principe (il repassera par la conformité).
  */
 export const projectEditable = recruitmentOpen;
+
+/**
+ * Événement d'un dossier : l'onglet s'ouvre à l'accord de principe (date, lieu, devis se préparent) ; la publication
+ * dans l'agenda et les inscriptions attendent la validation du dossier par la conformité.
+ */
+export const EVENT_TAB_STATUSES: ProjectStatus[] = ["ACCORD", "EN_VALID", "BLOQUE", "VALIDE", "ORDRE", "REFUS_ORDRE", "SIGNATURE", "SIGNE", "TERMINE"];
+export const eventTabOpen = (status: ProjectStatus | string) => (EVENT_TAB_STATUSES as string[]).includes(status);
+export const CONFORMITY_VALIDATED: ProjectStatus[] = ["VALIDE", "ORDRE", "SIGNATURE", "SIGNE", "TERMINE"];
+/** Un événement sans dossier se publie librement ; celui d'un dossier, une fois le dossier validé par la conformité. */
+export const eventPublishable = (projectStatus: ProjectStatus | string | null | undefined) => projectStatus == null || (CONFORMITY_VALIDATED as string[]).includes(projectStatus);
+export const EVENT_NOT_PUBLISHABLE = "L'événement d'un dossier se publie une fois le dossier validé par la conformité : en attendant, il reste en brouillon (date, lieu, devis et agence se préparent).";
 /** Conditions d'un expert modifiées (unités, honoraires) : la proposition lui est renvoyée. */
 export const termsChanged = (before: { feeCents: number | null; days: number | null }, after: { feeCents: number | null; days: number | null }) =>
   before.feeCents !== after.feeCents || (before.days ?? null) !== (after.days ?? null);

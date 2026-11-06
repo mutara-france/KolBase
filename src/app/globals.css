@@ -1184,3 +1184,53 @@ button.footer-link { padding: 0; border: 0; background: none; font: inherit; fon
   .cookie-actions { width: 100%; }
   .cookie-actions .btn { flex: 1 1 auto; }
 }
+
+/* ─── Fiche en onglets (dossier, collaboration) ─────────────────────────────── */
+.dossier-tabs { position: sticky; top: 73px; z-index: 6; display: flex; gap: 4px; overflow-x: auto; padding: 6px; background: rgba(255, 255, 255, 0.96); backdrop-filter: blur(8px); border: 1px solid var(--line); border-radius: 18px; box-shadow: 0 4px 18px rgba(14, 11, 36, 0.05); scrollbar-width: none; }
+.dossier-tabs::-webkit-scrollbar { display: none; }
+.dossier-tab { position: relative; flex: none; display: inline-flex; align-items: center; gap: 8px; min-height: 46px; padding: 0 16px; border-radius: 13px; font-size: 14px; font-weight: 600; color: var(--ink-soft); white-space: nowrap; text-decoration: none !important; transition: background 0.15s, color 0.15s; }
+a.dossier-tab:hover { background: var(--bg-subtle); color: var(--ink); }
+.dossier-tab.active { background: var(--outremer-deep); color: #fff; box-shadow: 0 6px 16px rgba(14, 0, 102, 0.2); }
+.dossier-tab.active svg { color: #fff; }
+.dossier-tab svg { color: var(--outremer); }
+.dossier-tab.disabled { color: var(--ink-subtle); cursor: not-allowed; }
+.dossier-tab.disabled svg { color: var(--ink-subtle); }
+.tab-count { min-width: 22px; height: 22px; padding: 0 7px; border-radius: 11px; display: inline-flex; align-items: center; justify-content: center; background: var(--tint); color: var(--outremer); font-size: 12px; font-weight: 700; }
+.tab-count.alert { background: var(--corail); color: var(--ink); }
+.dossier-tab.active .tab-count:not(.alert) { background: rgba(255, 255, 255, 0.18); color: #fff; }
+.tab-dot { width: 9px; height: 9px; border-radius: 50%; background: var(--corail); }
+@media (max-width: 860px) { .dossier-tabs { top: 61px; margin: 0 -4px; border-radius: 16px; } .dossier-tab { min-height: 42px; padding: 0 12px; } }
+
+.exchanges-link { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; padding-top: 12px; border-top: 1px solid var(--line); font-size: 14px; }
+.exchanges-link > svg { color: var(--outremer); }
+.expert-rows { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; }
+.expert-rows li { display: flex; align-items: center; gap: 12px; padding: 10px 0; border-top: 1px solid var(--line); }
+.expert-rows li:first-child { border-top: 0; }
+.expert-rows .who { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+
+/* Messagerie : conversations à gauche, fil ouvert à droite. */
+.messenger { display: grid; grid-template-columns: minmax(220px, 300px) 1fr; padding: 0; overflow: hidden; min-height: 460px; }
+.messenger-list { border-right: 1px solid var(--line); background: var(--bg-subtle); padding: 14px 10px; display: flex; flex-direction: column; gap: 14px; overflow-y: auto; max-height: 72vh; }
+.messenger-group { display: flex; flex-direction: column; gap: 2px; }
+.messenger-group .label { padding: 0 8px 4px; }
+.messenger-item { display: flex; align-items: center; gap: 10px; padding: 10px 10px; border-radius: 12px; color: var(--ink); text-decoration: none !important; }
+.messenger-item:hover { background: #fff; }
+.messenger-item.active { background: #fff; box-shadow: inset 3px 0 0 var(--outremer), 0 2px 8px rgba(14, 11, 36, 0.06); }
+.messenger-who { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+.messenger-who strong { font-size: 14px; }
+.messenger-who .muted { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.messenger-dot { flex: none; width: 10px; height: 10px; border-radius: 50%; background: var(--corail); }
+.messenger-pane { display: flex; flex-direction: column; gap: 8px; padding: 18px 22px; min-width: 0; }
+.messenger-head { display: flex; justify-content: space-between; align-items: center; gap: 12px; padding-bottom: 12px; border-bottom: 1px solid var(--line); }
+.messenger-head h2 { margin: 0; font-size: 18px; }
+.messenger-pane .thread { flex: 1; overflow-y: auto; max-height: 52vh; }
+@media (max-width: 760px) { .messenger { grid-template-columns: 1fr; } .messenger-list { border-right: 0; border-bottom: 1px solid var(--line); max-height: 240px; } }
+
+.photo-grid { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 12px; }
+.photo-grid li { display: flex; flex-direction: column; align-items: center; gap: 6px; padding: 14px 10px; border: 1px solid var(--line); border-radius: 16px; text-align: center; }
+
+/* Événement dans l'onglet d'un dossier : en-tête plus discret que celui de la page. */
+.page-hero.event-hero { padding: 20px 24px; }
+.event-hero-title { margin: 0; font-size: clamp(20px, 2vw, 26px); }
+.event-empty { align-items: flex-start; }
+.event-empty > svg { color: var(--outremer); }

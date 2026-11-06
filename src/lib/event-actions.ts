@@ -17,6 +17,7 @@ import { notifyEventCancelled, notifyEventChanged, notifyEventConfided, notifyEv
 import { activeMandate } from "@/lib/mandates";
 import { SOURCE_COOKIE } from "@/lib/services";
 import { deletableDraft, DRAFT_COUNTS } from "@/lib/event-drafts";
+import { EVENT_NOT_PUBLISHABLE, eventPublishable } from "@/lib/projects";
 
 export type ActionState = { error?: string; ok?: string; fix?: GateLink } | undefined;
 
@@ -66,12 +67,13 @@ export async function createEvent(_: ActionState, form: FormData): Promise<Actio
 
   // Rattachement à un dossier de l'organisation (événement créé depuis la fiche du dossier).
   const projectId = str(form, "projectId");
-  const project = projectId ? await db.project.findFirst({ where: { id: projectId, organizationId: orgId }, select: { id: true } }) : null;
+  const project = projectId ? await db.project.findFirst({ where: { id: projectId, organizationId: orgId }, select: { id: true, status: true } }) : null;
 
   // Réunion interne (board, comité) : jamais publiée, sans inscriptions en ligne.
   const internal = form.get("internal") === "1";
   const publish = !internal && form.get("publish") === "1";
   if (publish && !isVerifiedOrg(org)) return { error: t("Publication impossible pour l'instant : {v} Enregistrez l'événement en brouillon.", { v: t(notVerified(org)) }) };
+  if (publish && !eventPublishable(project?.status)) return { error: t(EVENT_NOT_PUBLISHABLE) };
   const gate = publish ? await engagementGate(orgId, "evenement") : null;
   if (gate) return { ...gate, error: t("{error} Vous pouvez l'enregistrer en brouillon.", { error: gate.error }) };
   const event = await db.event.create({
@@ -86,7 +88,9 @@ export async function createEvent(_: ActionState, form: FormData): Promise<Actio
     },
   });
   await audit(user.id, "event.create", "Event", event.id, { publish, benefits: benefits.length, ...(project ? { projectId: project.id } : {}) });
-  // Publié d'emblée : la fiche propose aussitôt de faire connaître l'événement (services KolBase).
+  // Publié d'emblée : la fiche propose aussitôt de faire connaître l'événement (services KolBase). Créé depuis un
+  // dossier : retour à l'onglet « Événement » du dossier, où il se gère.
+  if (project) redirect(`/organisations/${orgId}/dossiers/${project.id}?onglet=evenement${publish ? "&publie=1" : ""}`);
   redirect(`/organisations/${orgId}/evenements/${event.id}${publish ? "?publie=1" : ""}`);
 }
 
@@ -133,6 +137,8 @@ export async function updateEvent(_: ActionState, form: FormData): Promise<Actio
   await audit(user.id, "event.update", "Event", event.id, { changes, ...(frozen ? {} : { benefits: benefits.length }) });
   if (changes.length > 0 && event._count.registrations > 0) notifyEventChanged(event.id, changes);
   revalidatePath(`/organisations/${orgId}/evenements/${eventId}`);
+  // Événement rattaché à un dossier : il se gère aussi dans l'onglet « Événement » du dossier.
+  revalidatePath(`/organisations/${orgId}/dossiers`, "layout");
   revalidatePath(`/evenements/${eventId}`);
   revalidatePath("/evenements");
   const n = event._count.registrations;
@@ -162,6 +168,10 @@ export async function setEventFlag(form: FormData) {
   const { user, roles, org } = await requireMembership(orgId, EVENT_MANAGER_ROLES);
   const flag = str(form, "flag");
   if (flag === "publish" && !isVerifiedOrg(org)) return;
+  if (flag === "publish" || flag === "open") {
+    const ev = await db.event.findFirst({ where: { id: eventId, organizationId: orgId }, select: { project: { select: { status: true } } } });
+    if (!eventPublishable(ev?.project?.status)) return;
+  }
   // Contrat de sous-traitance puis abonnement : la page qui lève le blocage ramène ensuite à la publication.
   const gate = flag === "publish" ? await engagementGate(orgId, "evenement", eventId) : null;
   if (gate) redirect(gate.fix.href);
@@ -184,8 +194,13 @@ export async function setEventFlag(form: FormData) {
   if (!count) return;
   await audit(user.id, `event.${flag}`, "Event", eventId);
   revalidatePath(`/organisations/${orgId}/evenements/${eventId}`);
+  // Événement rattaché à un dossier : il se gère aussi dans l'onglet « Événement » du dossier.
+  revalidatePath(`/organisations/${orgId}/dossiers`, "layout");
   revalidatePath("/evenements");
-  if (flag === "publish" && roles.some((r) => EVENT_ORGANIZER_ROLES.includes(r))) redirect(`/organisations/${orgId}/evenements/${eventId}?publie=1`);
+  // Depuis l'onglet « Événement » d'un dossier, on y reste.
+  const back = str(form, "retour");
+  const fromDossier = back.startsWith(`/organisations/${orgId}/dossiers/`) && !back.includes("//") ? back : null;
+  if (flag === "publish" && roles.some((r) => EVENT_ORGANIZER_ROLES.includes(r))) redirect(fromDossier ? `${fromDossier}${fromDossier.includes("?") ? "&" : "?"}publie=1` : `/organisations/${orgId}/evenements/${eventId}?publie=1`);
 }
 
 /**
@@ -213,6 +228,8 @@ export async function cancelEvent(form: FormData) {
   await audit(user.id, "event.cancel", "Event", eventId, { note: reason, registrations: event._count.registrations, benefitsRemoved: removed });
   notifyEventCancelled(eventId);
   revalidatePath(`/organisations/${orgId}/evenements/${eventId}`);
+  // Événement rattaché à un dossier : il se gère aussi dans l'onglet « Événement » du dossier.
+  revalidatePath(`/organisations/${orgId}/dossiers`, "layout");
   revalidatePath(`/evenements/${eventId}`);
   revalidatePath("/evenements");
 }
@@ -245,6 +262,8 @@ export async function setEventAgency(form: FormData) {
   // L'agence précédente perd l'accès à l'événement : elle en est prévenue.
   if (event.agencyId && agencyId !== event.agencyId) notifyEventWithdrawn(eventId, event.agencyId);
   revalidatePath(`/organisations/${orgId}/evenements/${eventId}`);
+  // Événement rattaché à un dossier : il se gère aussi dans l'onglet « Événement » du dossier.
+  revalidatePath(`/organisations/${orgId}/dossiers`, "layout");
   revalidatePath(`/organisations/${orgId}/prestataires`);
 }
 
@@ -380,6 +399,8 @@ export async function saveEventProgram(_: ActionState, form: FormData): Promise<
   if (!count) return { error: t("Événement introuvable.") };
   await audit(user.id, "event.program", "Event", eventId);
   revalidatePath(`/organisations/${orgId}/evenements/${eventId}`);
+  // Événement rattaché à un dossier : il se gère aussi dans l'onglet « Événement » du dossier.
+  revalidatePath(`/organisations/${orgId}/dossiers`, "layout");
   revalidatePath(`/evenements/${eventId}`);
   return { ok: program ? t("Programme enregistré.") : t("Programme retiré.") };
 }

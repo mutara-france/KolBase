@@ -8,6 +8,7 @@ import { engagementBlock } from "@/lib/billing";
 import { BENEFIT_CATALOG, EVENT_ORGANIZER_ROLES, EVENT_TYPES, FORMAT_LABEL } from "@/lib/events";
 import { complianceSettings } from "@/lib/compliance";
 import { getT } from "@/lib/i18n/server";
+import { eventPublishable } from "@/lib/projects";
 
 export async function generateMetadata() {
   const { t } = await getT();
@@ -19,7 +20,7 @@ export default async function Page({ params, searchParams }: { params: Promise<{
   const { id } = await params;
   const { dossier } = await searchParams;
   const { org } = await requireMembership(id, EVENT_ORGANIZER_ROLES);
-  const project = dossier ? await db.project.findFirst({ where: { id: dossier, organizationId: id }, select: { id: true, title: true, therapeuticArea: true } }) : null;
+  const project = dossier ? await db.project.findFirst({ where: { id: dossier, organizationId: id }, select: { id: true, title: true, therapeuticArea: true, status: true } }) : null;
   return (
     <>
       <SiteHeader />
@@ -33,7 +34,7 @@ export default async function Page({ params, searchParams }: { params: Promise<{
           formats={Object.entries(FORMAT_LABEL).map(([value, label]) => ({ value, label: t(label) }))}
           catalog={BENEFIT_CATALOG}
           limits={complianceSettings(org.complianceSettings)}
-          project={project ? { id: project.id, title: project.title, area: project.therapeuticArea } : undefined}
+          project={project ? { id: project.id, title: project.title, area: project.therapeuticArea, publishable: eventPublishable(project.status) } : undefined}
         />
       </main>
     </>

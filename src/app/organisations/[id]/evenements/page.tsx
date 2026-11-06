@@ -8,6 +8,7 @@ import { EVENT_MANAGER_ROLES, EVENT_ORGANIZER_ROLES, eventMoment, eventScope, ev
 import { isSuspendedOrg } from "@/lib/org-roles";
 import { getT } from "@/lib/i18n/server";
 import { fmtDate } from "@/lib/i18n";
+import { PROJECT_VIEW_ROLES } from "@/lib/projects";
 
 export async function generateMetadata() {
   const { t } = await getT();
@@ -36,6 +37,11 @@ export default async function Page({ params }: { params: Promise<{ id: string }>
   const ongoing = events.filter((e) => eventMoment(e, now) === "en_cours");
   const past = events.filter((e) => eventMoment(e, now) === "passe").reverse();
   const sectionTabs = await orgTabs("evenements", id);
+  // Événement d'un dossier : il se gère dans l'onglet « Événement » du dossier (sauf pour une agence mandatée).
+  const seesProjects = roles.some((r) => PROJECT_VIEW_ROLES.includes(r));
+  const perProject = new Map<string, number>();
+  for (const e of events) if (e.projectId) perProject.set(e.projectId, (perProject.get(e.projectId) ?? 0) + 1);
+  const multi = new Set([...perProject].filter(([, n]) => n > 1).map(([k]) => k));
 
   const Row = async ({ e }: { e: (typeof events)[number] }) => {
     const { t, locale } = await getT();
@@ -49,7 +55,7 @@ export default async function Page({ params }: { params: Promise<{ id: string }>
         : t(e.rfqs.length > 1 ? (awarded > 1 ? "{n}/{m} prestations attribuées" : "{n}/{m} prestations attribuée") : "{n}/{m} prestation attribuée", { n: awarded, m: e.rfqs.length });
     const participants = e.internal ? e.project?._count.experts ?? 0 : e._count.registrations;
     return (
-      <Link href={`/organisations/${id}/evenements/${e.id}`} className="row-item">
+      <Link href={e.projectId && seesProjects ? `/organisations/${id}/dossiers/${e.projectId}?onglet=evenement${e.project && multi.has(e.projectId) ? `&evenement=${e.id}` : ""}` : `/organisations/${id}/evenements/${e.id}`} className="row-item">
         <span className="date-block" aria-hidden><strong>{fmtDate(locale, e.startsAt, { day: "numeric" })}</strong><small>{fmtDate(locale, e.startsAt, { month: "short" })}</small></span>
         <span className="row-main">
           <strong>{e.title}</strong>
