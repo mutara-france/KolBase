@@ -17,7 +17,7 @@ export default async function Page() {
     <LegalPage
       path="/conditions-de-vente"
       title="Conditions générales de vente"
-      updated="3 novembre 2026"
+      updated="6 novembre 2026"
       intro={<P>{[`Les présentes conditions régissent les abonnements et les services payants de KolBase, vendus par ${legal("editor")} (« l'éditeur ») à des professionnels. Elles complètent les conditions générales d'utilisation.`]}</P>}
       sections={[
         ["Champ d'application", <P key="1">{[
@@ -35,7 +35,7 @@ export default async function Page() {
         ["Ce qui déclenche l'abonnement", <>
           <P>{["La création du compte, la validation de l'organisation, l'invitation de l'équipe, le paramétrage, la consultation de l'annuaire et les brouillons sont gratuits. L'abonnement est demandé :"]}</P>
           <L items={[
-            "pour une organisation, à sa première action qui engage un tiers : envoi d'une sollicitation à des experts, publication d'un appel à candidatures ou d'un événement dans l'agenda, envoi d'une demande de devis ; la publication d'un événement reste gratuite pour une société savante, une association professionnelle ou un organisme de formation ;",
+            "pour une organisation, à sa première action qui engage un tiers : envoi d'une sollicitation à des experts, publication d'une opportunité ou d'un événement dans l'agenda, envoi d'une demande de devis ; la publication d'un événement reste gratuite pour une société savante, une association professionnelle ou un organisme de formation ;",
             "pour un prestataire, après son premier devis retenu par une organisation : le référencement, le book et les réponses restent gratuits jusque-là ; l'abonnement permet ensuite de répondre à de nouvelles demandes.",
           ]} />
           <P>{["Sans abonnement actif, le client conserve l'accès à ses dossiers, conventions, registres, déclarations et échanges en cours ; seules les nouvelles actions engageantes sont suspendues. Payer ne modifie jamais la place d'un prestataire ou d'un expert dans l'annuaire."]}</P>

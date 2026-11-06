@@ -13,7 +13,6 @@ const LINKS = [
   { href: "/appels", label: "Opportunités" },
   { href: "/structures", label: "Organisations" },
   { href: "/actualites", label: "Actualités" },
-  { href: "/aide", label: "Aide" },
 ];
 
 export function PublicNav({ loggedIn }: { loggedIn: boolean }) {

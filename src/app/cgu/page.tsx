@@ -11,7 +11,7 @@ export default function Page() {
     <LegalPage
       path="/cgu"
       title="Conditions générales d'utilisation"
-      updated="3 novembre 2026"
+      updated="6 novembre 2026"
       intro={<P>{[`Les présentes conditions régissent l'utilisation de KolBase, service édité par ${legal("editor")} (« l'éditeur »). Elles s'appliquent à toute personne qui crée un compte, quel que soit son profil. Les offres payantes sont régies en outre par les conditions générales de vente.`]}</P>}
       sections={[
         ["Objet et acceptation", <P key="1">{[
@@ -38,7 +38,7 @@ export default function Page() {
           "L'expert s'engage à n'accepter aucun avantage en dehors du cadre prévu par les articles L.1453-5 et suivants du Code de la santé publique, à déclarer ses liens d'intérêts lorsque la loi l'exige et à signaler toute situation de conflit d'intérêts à l'organisation qui le sollicite.",
         ]}</P>],
         ["Organisations", <P key="5">{[
-          "La personne qui crée une organisation déclare être habilitée à la représenter. Une organisation ne peut solliciter des praticiens, publier un appel ou un événement, ni apparaître sur les pages publiques qu'après validation par l'éditeur, qui contrôle notamment son numéro SIREN au répertoire des entreprises. Un changement de nom ou de SIREN relance la validation.",
+          "La personne qui crée une organisation déclare être habilitée à la représenter. Une organisation ne peut solliciter des praticiens, publier une opportunité ou un événement, ni apparaître sur les pages publiques qu'après validation par l'éditeur, qui contrôle notamment son numéro SIREN au répertoire des entreprises. Un changement de nom ou de SIREN relance la validation.",
           "Les administrateurs de l'organisation invitent les membres, attribuent les rôles, acceptent le contrat de sous-traitance et gèrent l'abonnement. L'organisation répond des actions accomplies par ses membres et par les agences qu'elle mandate, dans la limite des événements qu'elle leur confie.",
           "L'organisation qui publie un nom ou un logo garantit en être titulaire ou être autorisée à l'utiliser ; l'éditeur peut retirer un signe litigieux.",
           <>Pour les données personnelles qu&apos;elle traite dans KolBase (experts, inscrits, conventions), l&apos;organisation est responsable de traitement et l&apos;éditeur agit comme sous-traitant selon le <Link href="/sous-traitance">contrat de sous-traitance</Link>.</>,
