@@ -102,6 +102,10 @@ services:
       # Europe), identifiant du pixel Meta. Sans identifiant, aucun service tiers n'est chargé.
       - key: GA_MEASUREMENT_ID
         sync: false
+      # Validation du site dans Google Search Console (méthode « Balise HTML ») : la valeur content="…" de la balise
+      # proposée. Inutile si le domaine est validé par un enregistrement DNS.
+      - key: GOOGLE_SITE_VERIFICATION
+        sync: false
       - key: HUBSPOT_PORTAL_ID
         sync: false
       - key: HUBSPOT_REGION

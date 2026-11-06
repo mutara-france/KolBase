@@ -15,7 +15,7 @@ export default async function Page() {
     <LegalPage
       path="/mentions-legales"
       title="Mentions légales"
-      updated="3 novembre 2026"
+      updated="6 novembre 2026"
       sections={[
         ["Éditeur", <P key="e">{[
           `Le site kolbase.io et le service KolBase sont édités par ${legal("editor")}, ${legal("legalForm")} au capital de ${legal("capital")}, dont le siège est situé ${legal("address")}, immatriculée ${legal("registration")}${LEGAL.vatNumber ? `, numéro de TVA intracommunautaire ${LEGAL.vatNumber}` : ""}.`,
@@ -38,7 +38,7 @@ export default async function Page() {
           "KolBase n'est pas partie aux conventions conclues entre ses utilisateurs, n'exerce aucune activité de soin, ne fournit pas de conseil juridique et ne fait pas la promotion de produits de santé.",
         ]}</P>],
         ["Propriété intellectuelle", <P key="p">{[
-          "La marque KolBase, son logotype, l'interface, les textes et le code du site sont la propriété de l'éditeur. Toute reproduction ou représentation, totale ou partielle, sans autorisation écrite est interdite.",
+          "La marque KolBase, marque européenne déposée, son logotype, l'interface, les textes et le code du site sont la propriété de l'éditeur. Toute reproduction ou représentation, totale ou partielle, sans autorisation écrite est interdite.",
           "Les noms et logos des organisations présentes sur KolBase appartiennent à leurs titulaires et sont reproduits avec leur autorisation. Les contenus publiés par les utilisateurs (profils, publications, programmes, photos) restent leur propriété ; ils en concèdent à l'éditeur le droit d'affichage nécessaire au service, comme le prévoient les conditions générales d'utilisation.",
           "Polices de caractères : Figtree, Montserrat et IBM Plex Mono, sous licence SIL Open Font License, servies par KolBase.",
         ]}</P>],

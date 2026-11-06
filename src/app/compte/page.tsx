@@ -7,7 +7,7 @@ import { requireUser } from "@/lib/auth";
 import { INTERVENTION_TYPES } from "@/lib/orgs";
 import { db } from "@/lib/db";
 import { KolVisibilityForm, OrcidImportForm, PhotoForm, PublicationForm, StructureForm } from "@/components/ProfileForms";
-import { photoPath } from "@/lib/expert-photo";
+import { photoPath, userPhotoPath } from "@/lib/expert-photo";
 import { drPrefix } from "@/lib/professions";
 import { kolVisibility } from "@/lib/visibility";
 import { canBeExpert } from "@/lib/professions";
@@ -91,7 +91,7 @@ export default async function Page({ searchParams }: { searchParams: Promise<{ a
         <nav className="account-toc" aria-label={t("Sommaire")}>
           {[
             p && ["#referencement", t("Référencement")],
-            p?.listed && ["#photo", t("Photo")],
+            ["#photo", t("Photo")],
             p?.listed && ["#profil-expert", t("Profil expert")],
             p && expertCapable && ["#publications", t("Publications")],
             p && expertCapable && ["#structures", t("Structures juridiques")],
@@ -118,13 +118,17 @@ export default async function Page({ searchParams }: { searchParams: Promise<{ a
             <Link className="btn secondary" href={`/experts/${p.id}`}>{t("Voir ma fiche publique")}</Link>
           </div>
         )}
-        {p?.listed && (
+        {/* Photo de profil : pour tous les comptes (praticien sur son profil, membre d'organisation sur son compte). */}
+        {p ? (
           <PhotoForm
             name={`${drPrefix(p.profession)}${user.firstName} ${user.lastName}`}
             src={p.photoUpdatedAt ? photoPath(p.id, p.photoUpdatedAt) : null}
             consent={!!p.photoConsentAt}
             level={kolVisibility(p.visibility).photo}
+            mode={p.listed ? "expert" : "praticien"}
           />
+        ) : (
+          <PhotoForm name={`${user.firstName} ${user.lastName}`} src={user.photoUpdatedAt ? userPhotoPath(user.id, user.photoUpdatedAt) : null} mode="compte" />
         )}
         {p?.listed && (
           <div id="profil-expert"><ExpertProfileForm

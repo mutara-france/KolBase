@@ -2068,6 +2068,20 @@ async function submitNewOrg(page, siren) {
   check("Accueil : image d'aperçu par défaut et organisation", /<meta property="og:image" content="[^"]*\/opengraph-image/.test(home) && home.includes('"@type":"Organization"'));
   const robots = await (await fetch(`${BASE}/robots.txt`)).text();
   check("Robots : liens suivis et désinscription exclus", robots.includes("Disallow: /r/") && robots.includes("Disallow: /desinscription"));
+  check("Robots : pages noindex lisibles (attestation, pointage), contrat de sous-traitance ouvert", !robots.includes("Disallow: /attestation") && !robots.includes("Disallow: /pointage") && !robots.includes("Disallow: /sous-traitance") && robots.includes("Disallow: /comptes"));
+  // Listes publiques : titre, description et aperçu à leur nom ; une recherche filtrée se rattache à la liste.
+  const list = await (await fetch(`${BASE}/experts?q=implant&page=2`)).text();
+  const listMeta = (p) => list.match(new RegExp(`<meta (?:property|name)="${p}" content="([^"]*)"`))?.[1];
+  check("Liste des experts : adresse canonique, description et aperçu propres", /<link rel="canonical" href="[^"]*\/experts"/.test(list) && listMeta("og:title") === "Experts" && (listMeta("description") ?? "").startsWith("Chirurgiens-dentistes experts"));
+  const agenda = await (await fetch(`${BASE}/evenements?discipline=Implantologie&periode=mois`)).text();
+  check("Agenda d'une discipline : sa propre adresse canonique", /<link rel="canonical" href="[^"]*\/evenements\?discipline=Implantologie"/.test(agenda));
+  check("Accueil : adresse canonique", /<link rel="canonical" href="[^"]*"/.test(home));
+  // Robots : la version française, même si l'en-tête de langue demande l'anglais.
+  const bot = await (await fetch(`${BASE}/`, { headers: { "user-agent": "Mozilla/5.0 (compatible; bingbot/2.0; +http://www.bing.com/bingbot.htm)", "accept-language": "en-US,en;q=0.9" } })).text();
+  check("Robot d'indexation : page en français", bot.includes('<html lang="fr"'));
+  // Une seule adresse : www renvoie vers l'adresse principale (308, chemin et paramètres conservés).
+  const www = await fetch(`${BASE}/experts?q=implant`, { redirect: "manual", headers: { "x-forwarded-host": `www.${new URL(BASE).host}` } });
+  check("www : redirection permanente vers l'adresse principale", www.status === 308 && (www.headers.get("location") ?? "").endsWith("/experts?q=implant") && !(www.headers.get("location") ?? "").includes("www."), `${www.status} ${www.headers.get("location")}`);
 }
 
 // ── Double authentification : activation, exigence par l'organisation, connexion ──
@@ -4411,6 +4425,29 @@ async function submitNewOrg(page, siren) {
   check("Photo : accord pour la communication enregistré", !!(await q1(`select "photoConsentAt" from "PractitionerProfile" where id = 'demo-p-roux'`))?.photoConsentAt);
   const dump = await (await exp.page.request.get(`${BASE}/compte/export`)).json().catch(() => null);
   check("Export des données : la photo est jointe", !!dump?.compte?.practitioner?.photo?.image?.startsWith("data:image/jpeg;base64,"));
+
+  // Photo d'un compte d'organisation (sans profil praticien) : visible de lui, de ses collègues et de l'équipe KolBase.
+  await pgc.query(`delete from "UserPhoto" where "userId" = 'demo-u-julien'`);
+  await pgc.query(`update "User" set "photoUpdatedAt" = null where id = 'demo-u-julien'`);
+  await jul.page.goto(`${BASE}/compte`);
+  check("Compte d'organisation : encart « Photo » dans Mon compte", (await jul.page.locator("#photo").innerText()).includes("Visible de vous, des membres de vos organisations"));
+  await jul.page.setInputFiles('#photo input[name="photo"]', { name: "portrait.jpg", mimeType: "image/jpeg", buffer: jpeg });
+  await jul.page.click('#photo button:has-text("Ajouter ma photo")');
+  await jul.page.locator("#photo .notice.ok").waitFor({ timeout: 15000 }).catch(() => {});
+  check("Compte d'organisation : photo enregistrée", (await jul.page.locator("#photo").innerText()).includes("Photo enregistrée."));
+  await jul.page.goto(`${BASE}/compte`);
+  check("Compte d'organisation : sa photo dans la barre", (await jul.page.locator(".session-chip .avatar.photo img").count()) === 1);
+  const col = await session();
+  await login(col.page, "claire.morel@demo.kolbase.local");
+  await col.page.goto(`${BASE}/organisations/demo-org-dentalys/membres`);
+  check("Membres : la photo du collègue", (await col.page.locator('.member-row:has-text("Julien Faure") .avatar.photo img').count()) === 1);
+  const own = await jul.page.request.get(`${BASE}/comptes/demo-u-julien/photo`);
+  const julDump = await (await jul.page.request.get(`${BASE}/compte/export`)).json().catch(() => null);
+  check("Export des données d'un compte d'organisation : la photo est jointe", !!julDump?.compte?.photo?.image?.startsWith("data:image/jpeg;base64,"));
+  check("Photo d'un compte : servie à son titulaire (WebP)", own.status() === 200 && own.headers()["content-type"] === "image/webp");
+  check("Photo d'un compte : refusée sans connexion", (await fetch(`${BASE}/comptes/demo-u-julien/photo`)).status === 404);
+  check("Photo d'un compte : refusée hors de ses organisations", (await exp.page.request.get(`${BASE}/comptes/demo-u-julien/photo`)).status() === 404);
+  await col.ctx.close();
 
   // Projet proposé à trois organisations : une copie chacune, sans les autres destinataires.
   await pgc.query(`delete from "ExpertProposal" where "practitionerId" = 'demo-p-roux'`);

@@ -30,9 +30,13 @@ model User {
   totpLastStep  Int?
   recoveryCodes String[]  @default([])
   followsSeenAt DateTime?
+  // Photo d'un compte sans profil praticien (membre d'organisation) : date de mise à jour, null sans photo.
+  // Un praticien a la sienne sur son profil (PractitionerPhoto), avec son réglage de visibilité.
+  photoUpdatedAt DateTime?
   createdAt    DateTime  @default(now())
   updatedAt    DateTime  @updatedAt
 
+  photo         UserPhoto?
   practitioner  PractitionerProfile?
   memberships   Membership[]
   registrations Registration[]
@@ -158,6 +162,18 @@ model PractitionerProfile {
 }
 
 /** Photo d'un praticien, conservée en base comme les logos : grand format (JPEG 800 px) et vignette (WebP 192 px). */
+/**
+ * Photo d'un compte sans profil praticien : grand format (JPEG 800 px) et vignette (WebP 192 px), visibles de la
+ * personne, des membres de ses organisations et de l'équipe KolBase.
+ */
+model UserPhoto {
+  userId    String   @id
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  data      Bytes
+  thumb     Bytes
+  updatedAt DateTime @updatedAt
+}
+
 model PractitionerPhoto {
   practitionerId String              @id
   practitioner   PractitionerProfile @relation(fields: [practitionerId], references: [id], onDelete: Cascade)

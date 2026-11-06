@@ -5,12 +5,13 @@ import { CallCard } from "@/components/PublicCards";
 import { publicCalls } from "@/lib/public-data";
 import { collabType } from "@/lib/projects";
 import { matches } from "@/lib/search";
+import { publicPage } from "@/lib/seo";
 import { getT } from "@/lib/i18n/server";
 import { getCurrentUser } from "@/lib/auth";
 
 export async function generateMetadata() {
   const { t } = await getT();
-  return { title: `${t("Opportunités")} — KolBase` };
+  return publicPage({ title: `${t("Opportunités")} — KolBase`, description: t("Opportunités ouvertes aux praticiens par les organisations du secteur dentaire : conférences, formations, études, conseil."), path: "/appels" });
 }
 export const dynamic = "force-dynamic";
 

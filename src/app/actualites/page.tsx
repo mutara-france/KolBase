@@ -4,13 +4,14 @@ import { NewsletterCta } from "@/components/NewsletterCta";
 import { EtudePromo } from "@/components/EtudePromo";
 import { publishedArticles } from "@/lib/news";
 import { fmtDate } from "@/lib/i18n";
+import { publicPage } from "@/lib/seo";
 import { getT } from "@/lib/i18n/server";
 
 export const dynamic = "force-dynamic";
 
 export async function generateMetadata() {
   const { t } = await getT();
-  return { title: `${t("Actualités")} — KolBase`, description: t("Nouveautés de KolBase, réglementation des liens d'intérêts, événements et conseils pratiques.") };
+  return publicPage({ title: `${t("Actualités")} — KolBase`, description: t("Nouveautés de KolBase, réglementation des liens d'intérêts, événements et conseils pratiques."), path: "/actualites" });
 }
 
 export default async function Page() {

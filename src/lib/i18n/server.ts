@@ -5,6 +5,7 @@ import { getCurrentUser } from "@/lib/auth";
 import { isLocale, makeT, type Locale } from "@/lib/i18n";
 
 export const LOCALE_COOKIE = "kb_lang";
+const CRAWLER = /bot|crawl|spider|slurp|facebookexternalhit|embedly|preview/i;
 
 /**
  * Langue de la requête : choix explicite (cookie posé par le sélecteur), sinon préférence du compte,
@@ -15,7 +16,10 @@ export const getLocale = cache(async (): Promise<Locale> => {
   if (isLocale(chosen)) return chosen;
   const user = await getCurrentUser();
   if (user) return isLocale(user.locale) ? user.locale : "fr";
-  const first = ((await headers()).get("accept-language") ?? "").split(",")[0]?.trim().toLowerCase() ?? "";
+  const h = await headers();
+  // Robots d'indexation et d'aperçu : toujours la version française, la seule à indexer (même adresse pour les deux langues).
+  if (CRAWLER.test(h.get("user-agent") ?? "")) return "fr";
+  const first = (h.get("accept-language") ?? "").split(",")[0]?.trim().toLowerCase() ?? "";
   return first.startsWith("en") ? "en" : "fr";
 });
 

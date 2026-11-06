@@ -2,7 +2,7 @@ import { LegalPage } from "@/components/LegalPage";
 import { LEGAL, legal } from "@/lib/legal";
 import { DPA_UPDATED, DPA_VERSION } from "@/lib/dpa";
 
-export const metadata = { title: "Contrat de sous-traitance (RGPD) — KolBase" };
+export const metadata = { title: "Contrat de sous-traitance (RGPD) — KolBase", alternates: { canonical: "/sous-traitance" } };
 
 /**
  * Accord de traitement des données (article 28 du RGPD) entre chaque organisation cliente (responsable de traitement

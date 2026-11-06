@@ -28,6 +28,8 @@ export async function generateMetadata(): Promise<Metadata> {
     description,
     openGraph: { type: "website", siteName: "KolBase", locale: locale === "en" ? "en_GB" : "fr_FR", title, description },
     twitter: { card: "summary_large_image" },
+    // Validation du site dans Google Search Console (balise HTML), si elle est configurée.
+    ...(process.env.GOOGLE_SITE_VERIFICATION ? { verification: { google: process.env.GOOGLE_SITE_VERIFICATION } } : {}),
   };
 }
 

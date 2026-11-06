@@ -28,6 +28,7 @@ export async function exportAccount(userId: string) {
           photo: { select: { data: true, updatedAt: true } },
         },
       },
+      photo: { select: { data: true, updatedAt: true } },
       memberships: { select: { role: true, createdAt: true, organization: { select: { name: true, kind: true } } } },
       registrations: { include: { event: { select: { title: true, startsAt: true, organization: { select: { name: true } } } }, benefits: { include: { benefit: { select: { label: true } } } } } },
       follows: { select: { createdAt: true, practitioner: { select: { id: true } }, organization: { select: { name: true } } } },
@@ -35,11 +36,12 @@ export async function exportAccount(userId: string) {
       auditLogs: { select: { action: true, entityType: true, entityId: true, createdAt: true }, orderBy: { createdAt: "desc" }, take: 500 },
     },
   });
-  // Photo : jointe telle que KolBase la conserve (grand format JPEG), lisible dans un navigateur.
-  const photo = user?.practitioner?.photo;
-  const compte = user?.practitioner
-    ? { ...user, practitioner: { ...user.practitioner, photo: photo ? { miseAJour: photo.updatedAt, image: `data:image/jpeg;base64,${Buffer.from(photo.data).toString("base64")}` } : null } }
-    : user;
+  // Photos (profil praticien, ou compte sans profil) : jointes telles que KolBase les conserve (grand format JPEG),
+  // lisibles dans un navigateur.
+  const image = (p: { data: Uint8Array; updatedAt: Date } | null | undefined) =>
+    p ? { miseAJour: p.updatedAt, image: `data:image/jpeg;base64,${Buffer.from(p.data).toString("base64")}` } : null;
+  const withPhoto = user ? { ...user, photo: image(user.photo) } : user;
+  const compte = withPhoto?.practitioner ? { ...withPhoto, practitioner: { ...withPhoto.practitioner, photo: image(withPhoto.practitioner.photo) } } : withPhoto;
   return { exporte: new Date().toISOString(), source: "KolBase", compte };
 }
 
@@ -100,6 +102,7 @@ export async function anonymizeAccount(userId: string) {
     db.authToken.deleteMany({ where: { userId } }),
     db.follow.deleteMany({ where: { userId } }),
     db.membership.deleteMany({ where: { userId } }),
+    db.userPhoto.deleteMany({ where: { userId } }),
     // Inscriptions à venir sans avantage déclaré : annulées.
     db.registration.deleteMany({ where: { userId, declared: false, event: { startsAt: { gt: now } } } }),
     ...(p
@@ -130,7 +133,7 @@ export async function anonymizeAccount(userId: string) {
       where: { id: userId },
       data: {
         email: `supprime-${userId}@kolbase.invalid`,
-        passwordHash: null, totpSecret: null, totpEnabledAt: null, totpLastStep: null, recoveryCodes: [], unsubscribeToken: null, phone: null, notifyPrefs: {}, emailVerifiedAt: null, followsSeenAt: null,
+        passwordHash: null, totpSecret: null, totpEnabledAt: null, totpLastStep: null, recoveryCodes: [], unsubscribeToken: null, phone: null, notifyPrefs: {}, emailVerifiedAt: null, followsSeenAt: null, photoUpdatedAt: null,
         ...(keep ? {} : { firstName: "Compte", lastName: "supprimé" }),
       },
     }),

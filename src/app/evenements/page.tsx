@@ -6,6 +6,7 @@ import { publicEvents } from "@/lib/public-data";
 import { EVENT_TYPES, eventTypeLabel, FORMAT_LABEL } from "@/lib/events";
 import { agendaHref, disciplinesOf, filterAgenda, hasFilters, PERIODS, readAgendaFilters } from "@/lib/agenda";
 import { normalize } from "@/lib/search";
+import { publicPage } from "@/lib/seo";
 import { getT } from "@/lib/i18n/server";
 
 type SP = Promise<Record<string, string | string[] | undefined>>;
@@ -13,7 +14,9 @@ type SP = Promise<Record<string, string | string[] | undefined>>;
 export async function generateMetadata({ searchParams }: { searchParams: SP }) {
   const [{ t }, f] = await Promise.all([getT(), searchParams.then(readAgendaFilters)]);
   // Une discipline choisie a sa propre adresse : son titre la nomme (partage, moteurs de recherche).
-  return { title: f.discipline ? t("Agenda {discipline} — KolBase", { discipline: t(f.discipline) }) : t("Agenda des événements — KolBase") };
+  if (!f.discipline) return publicPage({ title: t("Agenda des événements — KolBase"), description: t("Formations, congrès, webinaires et ateliers du secteur dentaire, publiés par des organisations vérifiées par KolBase."), path: "/evenements" });
+  const discipline = t(f.discipline);
+  return publicPage({ title: t("Agenda {discipline} — KolBase", { discipline }), description: t("Formations, congrès et webinaires en {discipline}, publiés par des organisations vérifiées par KolBase.", { discipline }), path: agendaHref({ discipline: f.discipline }) });
 }
 export const dynamic = "force-dynamic";
 

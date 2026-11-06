@@ -7,7 +7,13 @@ export default function robots(): MetadataRoute.Robots {
     rules: {
       userAgent: "*",
       allow: "/",
-      disallow: ["/admin", "/annuaire", "/compte", "/confirmer-email", "/documents", "/inscriptions", "/interventions", "/invitation", "/mot-de-passe", "/opportunites", "/organisations", "/sollicitations", "/suivis", "/tableau-de-bord", "/api", "/r/", "/desinscription"],
+      // Espaces connectés, documents, liens personnels et adresses techniques. Les pages publiques restent ouvertes, comme
+      // celles marquées noindex (attestation, pointage…), que les moteurs doivent pouvoir lire pour les écarter.
+      disallow: [
+        "/admin", "/annuaire", "/compte", "/comptes", "/confirmer-email", "/desinscription", "/devis",
+        "/documents", "/inscriptions", "/interventions", "/invitation", "/mot-de-passe", "/notes-honoraires", "/opportunites", "/organisations",
+        "/propositions", "/r/", "/revenus", "/signatures", "/sollicitations", "/suivis", "/tableau-de-bord", "/api",
+      ],
     },
     sitemap: `${appUrl()}/sitemap.xml`,
   };

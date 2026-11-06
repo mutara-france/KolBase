@@ -27,6 +27,15 @@ function cspFor(nonce: string) {
   ].join("; ");
 }
 
+/** Adresse publique du site (APP_URL), ou null si elle manque ou n'est pas une URL. */
+const APP = (() => {
+  try {
+    return process.env.APP_URL ? new URL(process.env.APP_URL) : null;
+  } catch {
+    return null;
+  }
+})();
+
 /**
  * Proxy (Next 16, ex-« middleware ») : transmet aux pages le chemin demandé (en-tête de requête `x-kb-path`,
  * chemin et paramètres). Une page réservée aux membres connectés renvoie ainsi vers
@@ -34,6 +43,9 @@ function cspFor(nonce: string) {
  * L'en-tête envoyé par le navigateur est toujours remplacé.
  */
 export function proxy(request: NextRequest) {
+  // Une seule adresse publique : www.kolbase.io renvoie vers kolbase.io (pas de pages en double pour les moteurs).
+  const host = (request.headers.get("x-forwarded-host") ?? request.headers.get("host") ?? "").toLowerCase();
+  if (APP && host === `www.${APP.host}`) return NextResponse.redirect(new URL(`${request.nextUrl.pathname}${request.nextUrl.search}`, APP.origin), 308);
   const url = request.nextUrl.clone();
   // Requêtes de navigation côté client (composants serveur) : paramètre technique, sans intérêt pour le retour.
   url.searchParams.delete("_rsc");
