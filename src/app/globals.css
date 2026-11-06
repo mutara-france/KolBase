@@ -1167,3 +1167,28 @@ main [id] { scroll-margin-top: 80px; }
   .table tbody th[scope="row"] { display: block; padding: 0 0 4px; border: 0; white-space: normal; font-family: inherit; font-size: 14px; letter-spacing: 0; text-transform: none; color: var(--ink); font-weight: 600; }
   .stats-table td:first-child { min-width: 0; }
 }
+
+/* Bandeau cookies : collé au bas de la fenêtre pendant la lecture, puis à sa place sous le pied de page (sticky),
+   sans jamais masquer durablement le contenu. « Refuser » et « Accepter » ont le même poids visuel (CNIL). */
+.cookie-banner { position: sticky; bottom: 12px; z-index: 60; display: flex; flex-wrap: wrap; align-items: center; gap: 12px 24px; width: calc(100% - 24px); max-width: 1040px; margin: 12px auto; padding: 16px 20px; background: #fff; color: var(--ink); border: 1px solid var(--line); border-radius: 16px; box-shadow: var(--shadow); }
+.cookie-banner.panel { flex-direction: column; align-items: stretch; max-width: 680px; max-height: calc(100vh - 24px); overflow-y: auto; }
+.cookie-banner.panel .cookie-body { flex: none; }
+.cookie-banner.panel .cookie-actions { justify-content: flex-end; }
+.cookie-text a { white-space: nowrap; text-decoration: underline; text-underline-offset: 2px; }
+.cookie-body { flex: 1 1 420px; min-width: 0; }
+.cookie-title { margin: 0 0 4px; font-size: 15px; font-weight: 700; }
+.cookie-title:focus { outline: none; }
+.cookie-title:focus-visible { outline: 2px solid var(--outremer); outline-offset: 2px; }
+.cookie-text { margin: 0; font-size: 14px; line-height: 1.5; color: var(--ink-soft); }
+.cookie-actions { display: flex; flex-wrap: wrap; gap: 8px; }
+.cookie-cats { display: grid; gap: 10px; margin: 12px 0 0; padding: 0; border: 0; min-width: 0; }
+.cookie-cat { display: flex; align-items: flex-start; gap: 10px; font-size: 14px; cursor: pointer; }
+.cookie-cat input { flex: none; width: 18px; height: 18px; margin-top: 2px; accent-color: var(--outremer); }
+.cookie-cat input:disabled { cursor: not-allowed; }
+.cookie-cat small { display: block; margin-top: 2px; font-size: 13px; color: var(--muted); }
+button.footer-link { padding: 0; border: 0; background: none; font: inherit; font-size: 14px; cursor: pointer; }
+@media (max-width: 640px) {
+  .cookie-banner { bottom: 8px; width: calc(100% - 16px); margin: 8px auto; padding: 14px; gap: 12px; }
+  .cookie-actions { width: 100%; }
+  .cookie-actions .btn { flex: 1 1 auto; }
+}

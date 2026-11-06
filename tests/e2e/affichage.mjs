@@ -8,6 +8,7 @@
  */
 import { mkdirSync } from "node:fs";
 import { chromium } from "playwright";
+import { withConsent } from "./consentement.mjs";
 
 const BASE = process.env.BASE ?? "http://localhost:3000";
 const PW = process.env.DEMO_PASSWORD;
@@ -165,7 +166,7 @@ function inspect() {
   return out;
 }
 
-const browser = await chromium.launch();
+const browser = withConsent(await chromium.launch(), BASE);
 const all = [];
 for (const [who, paths] of Object.entries(PROFILES)) {
   for (const vp of VIEWPORTS) {
@@ -194,6 +195,27 @@ for (const [who, paths] of Object.entries(PROFILES)) {
       }
       await ctx.close();
     }
+  }
+}
+// Bandeau cookies (première visite) et son panneau « Personnaliser », sur chaque taille d'écran et langue.
+for (const vp of VIEWPORTS) {
+  for (const locale of vp.locales) {
+    if (ONLY && !new RegExp(ONLY).test("cookies")) continue;
+    const ctx = await browser.newContext({ viewport: { width: vp.width, height: vp.height }, locale: locale === "en" ? "en-GB" : "fr-FR", consent: false });
+    await ctx.addCookies([{ name: "kb_lang", value: locale, url: BASE }]);
+    const page = await ctx.newPage();
+    await page.goto(`${BASE}/`, { waitUntil: "networkidle" });
+    for (const view of ["bandeau", "panneau"]) {
+      if (view === "panneau") {
+        await page.locator(".cookie-banner").getByRole("button", { name: locale === "en" ? "Customise" : "Personnaliser" }).click();
+        await page.locator(".cookie-banner.panel").waitFor();
+      }
+      await page.evaluate(() => document.fonts.ready);
+      const tag = `${vp.name}/${locale} visiteur /(cookies:${view})`;
+      for (const f of await page.evaluate(inspect)) if (f.kind === "page-plus-large-que-l-ecran" || f.where?.includes("cookie")) all.push({ tag, ...f });
+      if (SHOTS) await page.screenshot({ path: `${SHOTS}/${vp.name}-${locale}-cookies-${view}.png` });
+    }
+    await ctx.close();
   }
 }
 await browser.close();

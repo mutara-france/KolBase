@@ -1,17 +1,20 @@
 import Link from "next/link";
 import { LegalPage, L, P, T } from "@/components/LegalPage";
+import { optionalServices, SERVICE_DETAILS } from "@/lib/consent";
 import { LEGAL, legal } from "@/lib/legal";
 
 export const metadata = { title: "Politique de confidentialité — KolBase", alternates: { canonical: "/confidentialite" } };
 
 /** Politique de confidentialité (articles 12 à 14 du RGPD) : traitements dont l'éditeur est responsable. */
 export default function Page() {
+  // Services de mesure d'audience et de marketing réellement activés (identifiants dans l'environnement).
+  const services = optionalServices();
   const contact = <a href={`mailto:${LEGAL.privacyContact}`}>{legal("privacyContact")}</a>;
   return (
     <LegalPage
       path="/confidentialite"
       title="Politique de confidentialité"
-      updated="3 novembre 2026"
+      updated="6 novembre 2026"
       intro={<P>{["Cette politique explique quelles données personnelles KolBase traite, pourquoi, combien de temps, avec qui elles sont partagées et comment exercer vos droits. Elle s'applique aux praticiens, aux membres des organisations et des prestataires, aux visiteurs du site et aux destinataires de la lettre d'information."]}</P>}
       sections={[
         ["Responsable de traitement", <P key="1">{[
@@ -59,16 +62,31 @@ export default function Page() {
           <P>{["L'hébergeur et le fournisseur de l'assistant de rédaction sont des sociétés établies aux États-Unis ; le prestataire de paiement peut aussi y transférer des données. Ces transferts sont encadrés par les clauses contractuelles types de la Commission européenne ou par la décision d'adéquation du cadre de protection des données UE–États-Unis, selon le prestataire."]}</P>
         </>],
         ["Cookies", <>
-          <P>{["KolBase n'utilise ni cookie publicitaire ni outil de mesure d'audience tiers. Les cookies suivants sont strictement nécessaires au service ou exemptés de consentement :"]}</P>
+          <P>{["Cookies strictement nécessaires au service ou exemptés de consentement, toujours actifs :"]}</P>
           <T head={["Cookie", "Rôle", "Durée"]} rows={[
             ["kb_session", "Maintenir votre connexion", "30 jours"],
             ["kb_2fa", "Étape de vérification en deux étapes, entre le mot de passe et le code", "10 minutes"],
             ["kb_lang", "Langue choisie (français ou anglais)", "1 an"],
             ["kb_espace", "Dernier espace utilisé (praticien ou organisation)", "1 an"],
+            ["kb_consent", "Mémoriser votre choix sur les cookies ci-dessous (accord ou refus, par finalité, et sa date)", "6 mois"],
             ["kb_src", "Compter l'inscription qui suit un lien de communication diffusée par KolBase (mesure des services, totaux seulement)", "30 jours"],
           ]} />
+          <P>{["Cookies soumis à votre accord : mesure d'audience (statistiques de fréquentation) et personnalisation et marketing (contenus et offres adaptés à vos centres d'intérêt, mesure des campagnes). Ils ne sont déposés qu'après votre accord, donné dans le bandeau affiché à votre première visite, finalité par finalité si vous le souhaitez. Refuser est aussi simple qu'accepter et ne prive d'aucune fonctionnalité. Votre choix est conservé six mois, puis redemandé ; vous pouvez le modifier à tout moment par « Gérer les cookies », en bas de chaque page. Retirer votre accord supprime ces cookies."]}</P>
+          {services.length ? (
+            <>
+              <T head={["Service", "Finalité", "Cookies", "Durée"]} rows={services.map((x) => [
+                `${x.name} (${SERVICE_DETAILS[x.id].who})`,
+                x.category === "mesure" ? "Mesure d'audience" : "Personnalisation et marketing",
+                SERVICE_DETAILS[x.id].cookies,
+                SERVICE_DETAILS[x.id].duration,
+              ])} />
+              <P>{["Ces services peuvent transférer des données (identifiant du navigateur, pages vues) vers les États-Unis, dans le cadre de la décision d'adéquation du cadre de protection des données UE–États-Unis ou des clauses contractuelles types de la Commission européenne."]}</P>
+            </>
+          ) : (
+            <P>{["Aucun service de mesure d'audience ou de marketing n'est activé à ce jour : KolBase n'utilise ni cookie publicitaire ni outil de mesure d'audience tiers. Si un tel service est activé, il sera listé ici et ne sera chargé qu'avec votre accord."]}</P>
+          )}
           <P>{["Les polices de caractères sont servies par KolBase : aucune donnée de navigation n'est transmise à un tiers pour l'affichage des pages. Les visites des liens suivis sont comptées à l'aide d'une empreinte non réversible, sans conserver l'adresse IP."]}</P>
-        </>],
+        </>, "cookies"],
         ["Sécurité", <P key="7">{[
           "Les données sont chiffrées en transit. Les mots de passe sont hachés (scrypt) ; les jetons de session, d'invitation, de désinscription et les liens envoyés par e-mail ne sont stockés que sous forme hachée ou aléatoire. Chaque compte peut activer la double authentification, obligatoire pour l'équipe KolBase et exigible par une organisation. Les accès sont limités selon les rôles et les actions sensibles sont journalisées.",
           "En cas de violation de données présentant un risque pour vos droits, l'éditeur la notifie à la CNIL et, si nécessaire, aux personnes concernées.",

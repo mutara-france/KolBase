@@ -2,6 +2,7 @@
 // Prérequis : base migrée et chargée (npm run db:seed avec DEMO_PASSWORD), application lancée.
 // Usage : BASE=http://localhost:3000 DEMO_PASSWORD=… DATABASE_URL=… npm run test:e2e
 import { chromium } from "playwright";
+import { withConsent } from "./consentement.mjs";
 import pg from "pg";
 import { createHmac } from "node:crypto";
 import { PDFDocument } from "pdf-lib";
@@ -20,7 +21,7 @@ const stopFakes = startFakes();
 const results = [];
 const check = (name, ok, detail = "") => { results.push({ name, ok, detail }); console.log(`${ok ? "OK  " : "FAIL"} ${name}${detail ? " — " + detail : ""}`); };
 
-const browser = await chromium.launch();
+const browser = withConsent(await chromium.launch(), BASE);
 
 async function session() {
   const ctx = await browser.newContext({ locale: "fr-FR" });
@@ -4499,6 +4500,51 @@ async function submitNewOrg(page, siren) {
   check("E-mail à l'expert : photo retirée, avec le motif", !!rm && rm.text.includes("Ce n'est pas un portrait"));
   for (const s of [exp, anon, jul, pie, adm]) await s.ctx.close();
   await pgc.end();
+}
+
+// ── Bandeau cookies (CNIL : rien avant l'accord, refuser aussi simple qu'accepter, choix par finalité) ─────
+{
+  const ctx = await browser.newContext({ locale: "fr-FR", consent: false });
+  const page = await ctx.newPage();
+  const choice = async (c = ctx) => (await c.cookies(BASE)).find((x) => x.name === "kb_consent");
+  await page.goto(`${BASE}/`);
+  const banner = page.locator(".cookie-banner");
+  check("Cookies : bandeau à la première visite", (await banner.isVisible()) && (await banner.innerText()).includes("KolBase utilise des cookies"));
+  const refuse = banner.getByRole("button", { name: "Refuser", exact: true });
+  const accept = banner.getByRole("button", { name: "Accepter", exact: true });
+  check("Cookies : « Refuser » et « Accepter » au même niveau", (await refuse.getAttribute("class")) === (await accept.getAttribute("class")));
+  check("Cookies : ni choix ni script tiers avant de répondre", !(await choice()) && (await page.locator('script[src^="http"]').count()) === 0);
+  check("Cookies : lien vers la politique", (await banner.getByRole("link", { name: "En savoir plus" }).getAttribute("href")) === "/confidentialite#cookies");
+  await refuse.click();
+  const refused = await choice();
+  const now = Date.now() / 1000;
+  check("Cookies : refus enregistré, bandeau fermé", /^1\.\d+\.00$/.test(refused?.value ?? "") && !(await banner.isVisible()), refused?.value);
+  check("Cookies : choix conservé six mois", (refused?.expires ?? 0) > now + 180 * 86400 && (refused?.expires ?? 0) < now + 184 * 86400);
+  await page.goto(`${BASE}/agenda`);
+  check("Cookies : plus de bandeau après le choix", (await page.locator(".cookie-banner").count()) === 0);
+  await page.getByRole("button", { name: "Gérer les cookies" }).click();
+  const panel = page.locator(".cookie-banner.panel");
+  check(
+    "Cookies : « Gérer les cookies » rouvre le choix, finalités refusées décochées",
+    (await panel.isVisible()) && !(await panel.locator('input[name="mesure"]').isChecked()) && !(await panel.locator('input[name="marketing"]').isChecked()),
+  );
+  await panel.locator('input[name="mesure"]').check();
+  await panel.getByRole("button", { name: "Enregistrer mes choix" }).click();
+  check("Cookies : choix par finalité (mesure d'audience seule)", /^1\.\d+\.10$/.test((await choice())?.value ?? ""));
+  await page.reload();
+  check("Cookies : sans service configuré, aucun script tiers même accepté", (await page.locator('script[src^="http"]').count()) === 0);
+  await ctx.close();
+  const en = await browser.newContext({ locale: "en-GB", consent: false });
+  await en.addCookies([{ name: "kb_lang", value: "en", url: BASE }]);
+  const p2 = await en.newPage();
+  await p2.goto(`${BASE}/`);
+  const b2 = p2.locator(".cookie-banner");
+  check("Cookies : bandeau en anglais", (await b2.innerText()).includes("KolBase uses cookies"));
+  await b2.getByRole("button", { name: "Accept", exact: true }).click();
+  check("Cookies : accord complet enregistré", /^1\.\d+\.11$/.test((await choice(en))?.value ?? ""));
+  await en.close();
+  const pol = await (await fetch(`${BASE}/confidentialite`)).text();
+  check("Politique : cookie de choix et cookies soumis à accord décrits", pol.includes("kb_consent") && pol.includes('id="cookies"') && pol.includes("Aucun service de mesure d"));
 }
 
 // ── 4. Limitation des tentatives ───────────────────────────────────────────

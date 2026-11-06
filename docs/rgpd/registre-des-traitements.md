@@ -21,6 +21,8 @@ KolBase intervient à deux titres :
 | Sécurité et traçabilité | Prévention des abus, preuve des actions sensibles | Intérêt légitime, obligation légale des organisations | Utilisateurs | Journal des actions, sessions (jeton haché, navigateur), tentatives de connexion | Éditeur, organisation concernée | Sessions expirées : 30 jours ; journal : durée de la relation |
 | Surveillance technique | Disponibilité, correction des erreurs | Intérêt légitime | Utilisateurs | Adresse de la page, message d'erreur (pas de contenu de formulaire) | Administrateurs KolBase | Journaux de l'hébergeur |
 | Notifications | Informer des actions attendues | Contrat | Utilisateurs | E-mail, nom, objet de la notification | Prestataire d'e-mails | Le temps de l'envoi |
+| Choix sur les cookies | Recueillir et prouver l'accord ou le refus, par finalité | Obligation légale (article 82 de la loi Informatique et Libertés) | Visiteurs | Finalités acceptées et date du choix, dans le cookie `kb_consent` du navigateur | Aucun | 6 mois |
+| Mesure d'audience et marketing (si un service est activé) | Statistiques de fréquentation ; contenus et campagnes adaptés | Consentement (bandeau cookies, retirable) | Visiteurs ayant accepté | Identifiant du navigateur, pages vues | Google, HubSpot, Meta selon les services activés (`GA_MEASUREMENT_ID`, `HUBSPOT_PORTAL_ID`, `META_PIXEL_ID`) | 13 mois au plus |
 
 ## 2. KolBase sous-traitant des organisations
 

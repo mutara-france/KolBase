@@ -97,6 +97,17 @@ services:
         sync: false
       - key: STRIPE_TAX_RATE
         sync: false
+      # Mesure d'audience et marketing, chargés seulement après « Accepter » dans le bandeau cookies (facultatifs) :
+      # identifiant Google Analytics 4 (G-…), numéro du compte HubSpot (et HUBSPOT_REGION=eu1 s'il est hébergé en
+      # Europe), identifiant du pixel Meta. Sans identifiant, aucun service tiers n'est chargé.
+      - key: GA_MEASUREMENT_ID
+        sync: false
+      - key: HUBSPOT_PORTAL_ID
+        sync: false
+      - key: HUBSPOT_REGION
+        sync: false
+      - key: META_PIXEL_ID
+        sync: false
 
   # Tâches planifiées : toutes les heures, rappels de la veille puis attestations et questionnaires après
   # les événements (POST /api/taches, idempotent).

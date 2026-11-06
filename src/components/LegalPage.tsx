@@ -25,7 +25,9 @@ const OTHERS: [string, string][] = [
   ["/sous-traitance", "Contrat de sous-traitance (RGPD)"],
 ];
 
-export function LegalPage({ title, updated, intro, sections, path }: { title: string; updated: string; intro?: React.ReactNode; sections: [string, React.ReactNode][]; path?: string }) {
+export function LegalPage({ title, updated, intro, sections, path }: { title: string; updated: string; intro?: React.ReactNode; sections: [string, React.ReactNode, string?][]; path?: string }) {
+  // Ancre d'un article : son nom s'il en a un (lien depuis le reste du site), sinon son numéro.
+  const anchor = (i: number) => sections[i][2] ?? `art-${i + 1}`;
   return (
     <>
       <SiteHeader variant="public" />
@@ -37,11 +39,11 @@ export function LegalPage({ title, updated, intro, sections, path }: { title: st
         </div>
         {sections.length > 4 && (
           <nav className="card legal-toc" aria-label="Sommaire">
-            <ol>{sections.map(([h], i) => <li key={h}><a href={`#art-${i + 1}`}>{h}</a></li>)}</ol>
+            <ol>{sections.map(([h], i) => <li key={h}><a href={`#${anchor(i)}`}>{h}</a></li>)}</ol>
           </nav>
         )}
         {sections.map(([h, body], i) => (
-          <section key={h} className="card" id={`art-${i + 1}`}>
+          <section key={h} className="card" id={anchor(i)}>
             <h2>{sections.length > 4 ? `${i + 1}. ` : ""}{h}</h2>
             {body}
           </section>

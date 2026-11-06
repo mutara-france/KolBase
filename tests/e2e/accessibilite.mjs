@@ -4,6 +4,7 @@
  * Usage : BASE=http://localhost:3000 DEMO_PASSWORD=… node tests/e2e/accessibilite.mjs (base chargée avec la démo).
  */
 import { chromium } from "playwright";
+import { withConsent } from "./consentement.mjs";
 import { AxeBuilder } from "@axe-core/playwright";
 
 const BASE = process.env.BASE ?? "http://localhost:3000";
@@ -32,7 +33,7 @@ const PAGES = {
 const BLOCKING = new Set(["critical", "serious"]);
 const TOLERATED = new Set([]);
 
-const browser = await chromium.launch();
+const browser = withConsent(await chromium.launch(), BASE);
 const findings = [];
 
 for (const [who, paths] of Object.entries(PAGES)) {
@@ -63,6 +64,18 @@ for (const [who, paths] of Object.entries(PAGES)) {
   }
   await ctx.close();
 }
+// Bandeau cookies (première visite) puis son panneau « Personnaliser ».
+{
+  const ctx = await browser.newContext({ locale: "fr-FR", consent: false });
+  const page = await ctx.newPage();
+  await page.goto(`${BASE}/`, { waitUntil: "networkidle" });
+  for (const [label, open] of [["bandeau", async () => {}], ["panneau", async () => { await page.locator(".cookie-banner").getByRole("button", { name: "Personnaliser" }).click(); await page.locator(".cookie-banner.panel").waitFor(); }]]) {
+    await open();
+    const { violations } = await new AxeBuilder({ page }).include(".cookie-banner").withTags(["wcag2a", "wcag2aa", "wcag21a", "wcag21aa"]).analyze();
+    for (const v of violations) findings.push({ path: `/ (cookies, ${label})`, who: "public", id: v.id, impact: v.impact, help: v.help, nodes: v.nodes.map((n) => n.target.join(" ")) });
+  }
+  await ctx.close();
+}
 await browser.close();
 
 let blocking = 0;
@@ -72,6 +85,6 @@ for (const f of findings) {
   console.log(`${fatal ? "FAIL" : "info"} [${f.impact}] ${f.path} (${f.who}) ${f.id} : ${f.help}`);
   for (const n of f.nodes.slice(0, 3)) console.log(`       ${n}`);
 }
-const pages = Object.values(PAGES).flat().length;
+const pages = Object.values(PAGES).flat().length + 1;
 console.log(`\n${pages} pages analysées, ${findings.length} constats, ${blocking} bloquants.`);
 process.exit(blocking ? 1 : 0);
