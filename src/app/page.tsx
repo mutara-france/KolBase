@@ -54,7 +54,7 @@ export default async function Home({ searchParams }: { searchParams: Promise<{ c
             <div className="home-hero-text">
               <p className="home-pill">{t("Le réseau scientifique de la chirurgie dentaire")}</p>
               <h1 id="home-titre" className="home-title">{t("Trouvez le bon praticien. Montez la collaboration.")} <em>{t("Le reste suit.")}</em></h1>
-              <p className="home-lede">{t("Experts référencés, événements ouverts, appels en cours : tout le réseau au même endroit.")}</p>
+              <p className="home-lede">{t("Experts référencés, événements ouverts, opportunités en cours : tout le réseau au même endroit.")}</p>
             </div>
             <div className="home-hero-art" aria-hidden>
               {/* eslint-disable-next-line @next/next/no-img-element */}
@@ -159,7 +159,7 @@ export default async function Home({ searchParams }: { searchParams: Promise<{ c
                   </div>
                   <dl className="org-stats">
                     <div><dt>{t(featured.collaborations > 1 ? "collaborations" : "collaboration")}</dt><dd>{featured.collaborations}</dd></div>
-                    <div><dt>{t(featured.openCalls > 1 ? "appels ouverts" : "appel ouvert")}</dt><dd>{featured.openCalls}</dd></div>
+                    <div><dt>{t(featured.openCalls > 1 ? "opportunités ouvertes" : "opportunité ouverte")}</dt><dd>{featured.openCalls}</dd></div>
                     <div><dt>{t((agenda?.upcoming ?? 0) > 1 ? "événements à venir" : "événement à venir")}</dt><dd>{agenda?.upcoming ?? 0}</dd></div>
                   </dl>
                   <div className="flex-between">
@@ -189,7 +189,7 @@ export default async function Home({ searchParams }: { searchParams: Promise<{ c
               <div className="home-head">
                 <div>
                   <span className="kicker">{t("Opportunités")}</span>
-                  <h2 id="home-appels">{t("Appels ouverts aux praticiens")}</h2>
+                  <h2 id="home-appels">{t("Ouvertes aux praticiens")}</h2>
                 </div>
                 <Link href="/appels" className="home-more">{t("Toutes les opportunités")} <ArrowRight size={16} /></Link>
               </div>
@@ -231,7 +231,7 @@ export default async function Home({ searchParams }: { searchParams: Promise<{ c
             <div className="join-card aurore">
               <span className="eyebrow">{t("Organisations")}</span>
               <h2>{t("Trouvez vos intervenants.")}</h2>
-              <p>{t("Publiez des appels, sollicitez des praticiens, ouvrez vos événements. L'espace de l'organisation est gratuit jusqu'à votre première action qui engage un tiers, puis sur abonnement (premier mois offert).")}</p>
+              <p>{t("Publiez des opportunités, sollicitez des praticiens, ouvrez vos événements. L'espace de l'organisation est gratuit jusqu'à votre première action qui engage un tiers, puis sur abonnement (premier mois offert).")}</p>
               <Link href={orgJoinHref(user, "organisation")} className="btn lg white">{t("Référencer mon organisation")}</Link>
             </div>
           </div>

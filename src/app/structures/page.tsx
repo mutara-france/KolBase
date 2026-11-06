@@ -40,7 +40,7 @@ export default async function Page({ searchParams }: { searchParams: Promise<{ q
             <span className="kicker">{t("Côté organisations")}</span>
             {/* Titre fidèle au filtre : une famille, ou toutes (prestataires et organismes de formation compris). */}
             <h1>{family ? t(family.label) : t("Organisations référencées")}</h1>
-            <p>{family ? t(family.desc) : t("Industriels, sociétés savantes, associations, organismes de formation et prestataires référencés sur KolBase, leurs événements et leurs appels ouverts.")}</p>
+            <p>{family ? t(family.desc) : t("Industriels, sociétés savantes, associations, organismes de formation et prestataires référencés sur KolBase, leurs événements et leurs opportunités ouvertes.")}</p>
           </div>
         </section>
         <section className="public-section">

@@ -81,6 +81,8 @@ p { color: var(--ink-soft); font-size: 14px; line-height: 1.6; margin: 0 0 8px; 
 .top-actions { display: flex; align-items: center; gap: 10px; }
 .icon-btn { position: relative; display: inline-flex; align-items: center; justify-content: center; width: 44px; height: 44px; border-radius: 999px; border: 1px solid var(--line); background: #fff; color: var(--ink); text-decoration: none !important; transition: 0.15s; }
 .icon-btn:hover, .icon-btn.active { border-color: var(--outremer); color: var(--outremer); }
+.help-btn { width: auto; gap: 6px; padding: 0 14px 0 12px; font-size: 14px; font-weight: 600; }
+@media (max-width: 860px) { .help-btn { width: 44px; padding: 0; } .help-label { display: none; } }
 .icon-badge { position: absolute; top: -3px; right: -5px; min-width: 20px; height: 20px; padding: 0 6px; box-sizing: border-box; border-radius: 999px; border: 2px solid #fff; background: var(--corail); color: var(--ink); font-size: 11px; font-weight: 700; display: inline-flex; align-items: center; justify-content: center; }
 .account { position: relative; }
 .session-chip { display: flex; align-items: center; gap: 10px; min-height: 48px; padding: 4px 12px 4px 5px; border: 1px solid var(--line); border-radius: 999px; background: #fff; font: inherit; color: var(--ink); text-align: left; cursor: pointer; text-decoration: none !important; transition: 0.15s; }
@@ -363,6 +365,8 @@ body:has(.sidebar) .site-footer { padding: 24px 32px; }
 .footer-link { display: inline-flex; align-items: center; min-height: 40px; font-size: 14px; color: #fff; }
 .footer-link:hover { color: #fff; text-decoration: underline; }
 .footer-bottom { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; padding-top: 18px; margin-top: 22px; border-top: 1px solid rgba(255, 255, 255, 0.18); font-size: 12.5px; color: rgba(255, 255, 255, 0.72); }
+.footer-legal { display: flex; flex-wrap: wrap; gap: 0 18px; margin-right: auto; }
+.footer-legal .footer-link, .footer-bottom button.footer-link { min-height: 32px; font-size: 12.5px; color: rgba(255, 255, 255, 0.86); }
 .legal p, .legal li { font-size: 14px; }
 
 /* ─── Mobile ────────────────────────────────────────────────── */

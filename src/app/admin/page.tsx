@@ -163,7 +163,7 @@ export default async function Page({ searchParams }: { searchParams: Promise<{ o
                         <form action={reviewOrganization} className="inline wrap">
                           <input type="hidden" name="orgId" value={o.id} />
                           <button className="btn small" name="decision" value="reactivate">Réactiver</button>
-                          <span className="hint">Page publique, événements et appels réapparaissent tels quels ; la facturation de l&apos;abonnement reprend (sauf gratuité en cours) ; les administrateurs sont prévenus.</span>
+                          <span className="hint">Page publique, événements et opportunités réapparaissent tels quels ; la facturation de l&apos;abonnement reprend (sauf gratuité en cours) ; les administrateurs sont prévenus.</span>
                         </form>
                       )}
                       {o.verification !== "VERIFIED" && (
@@ -190,7 +190,7 @@ export default async function Page({ searchParams }: { searchParams: Promise<{ o
                         <form action={reviewOrganization} className="inline wrap">
                           <input type="hidden" name="orgId" value={o.id} />
                           <input name="note" placeholder="Motif de la suspension (obligatoire)" aria-label="Motif de la suspension" required />
-                          <ConfirmButton className="btn ghost small" name="decision" value="suspend" confirm={`suspendre ${o.name}`} summary={<>Page publique, événements et appels à candidatures masqués, aucune nouvelle action ; rien n&apos;est supprimé et « Réactiver » rétablit tout. La facturation de l&apos;abonnement est mise en pause pendant la suspension. Les administrateurs sont prévenus par e-mail, avec le motif.</>}>
+                          <ConfirmButton className="btn ghost small" name="decision" value="suspend" confirm={`suspendre ${o.name}`} summary={<>Page publique, événements et opportunités masqués, aucune nouvelle action ; rien n&apos;est supprimé et « Réactiver » rétablit tout. La facturation de l&apos;abonnement est mise en pause pendant la suspension. Les administrateurs sont prévenus par e-mail, avec le motif.</>}>
                             Suspendre
                           </ConfirmButton>
                         </form>

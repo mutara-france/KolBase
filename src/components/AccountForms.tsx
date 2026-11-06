@@ -143,11 +143,11 @@ export function ListingForm({ listed, eligible, idMissing, rpps }: {
         <label>{t("N° RPPS (prérequis, vérifié par KolBase)")}<input name="rpps" inputMode="numeric" pattern="[0-9 ]{11,14}" title={t("11 chiffres")} /></label>
       )}
       {rpps && !rpps.value && listed && <p className="text-sm">{t("N° RPPS : non renseigné, à indiquer dans Informations personnelles pour le badge « Identité vérifiée ».")}</p>}
-      {rpps?.value && (
+      {/* RPPS vérifié : l'état figure déjà sous le champ, dans Informations personnelles ; ici seulement ce qui reste à faire. */}
+      {rpps?.value && rpps.status !== "verified" && (
         <p className="text-sm">
           {t("N° RPPS : {rpps}", { rpps: rpps.value })} ·{" "}
-          {rpps.status === "verified" ? t("Vérifié par KolBase : badge « Identité vérifiée » affiché.")
-            : rpps.status === "pending" ? t("En cours de vérification par KolBase.")
+          {rpps.status === "pending" ? t("En cours de vérification par KolBase.")
             : rpps.note ? t("Non validé : {note}. Corrigez le numéro pour une nouvelle vérification.", { note: inSentence(rpps.note) }) : t("Non validé. Corrigez le numéro pour une nouvelle vérification.")}
           {" "}<span className="hint">{t("(modifiable dans Informations personnelles)")}</span>
         </p>

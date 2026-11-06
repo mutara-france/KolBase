@@ -16,7 +16,7 @@ import { getT } from "@/lib/i18n/server";
 
 export async function generateMetadata() {
   const { t } = await getT();
-  return { title: `${t("Appel à candidatures")} — KolBase` };
+  return { title: `${t("Opportunité")} — KolBase` };
 }
 
 const APP_STATUS: Record<ApplicationStatus, string> = {
@@ -53,9 +53,9 @@ export default async function Page({ params }: { params: Promise<{ id: string }>
     <>
       <SiteHeader />
       <main className="stack">
-        <p className="muted"><Link href="/opportunites">{t("Appels à candidatures")}</Link></p>
+        <p className="muted"><Link href="/opportunites">{t("Opportunités")}</Link></p>
         <PageHero
-          eyebrow={`${t("Appel à candidatures")} · ${call.organization.name}`}
+          eyebrow={`${t("Opportunité")} · ${call.organization.name}`}
           status={<span className={`pill ${full ? "bad" : closed ? "done" : "ok"}`}>{full ? t("Complet") : closed ? t("Clôturé") : t("Ouvert")}</span>}
           title={call.title}
           lead={call.description}
@@ -97,7 +97,7 @@ export default async function Page({ params }: { params: Promise<{ id: string }>
                   )}
                 </>
               ) : closed ? (
-                <p className="muted">{full ? t("Toutes les places sont pourvues.") : t("Cet appel est clôturé.")}</p>
+                <p className="muted">{full ? t("Toutes les places sont pourvues.") : t("Cette opportunité est clôturée.")}</p>
               ) : (
                 <ApplyForm callId={id} />
               )}

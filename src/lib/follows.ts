@@ -59,7 +59,7 @@ export async function followFeed(userId: string): Promise<FeedItem[]> {
     });
     for (const o of orgs) {
       if (companyVisibility(o.visibility).projets !== "masque")
-        for (const c of o.openCalls) items.push({ key: `call-${c.id}`, date: c.createdAt, subject: o.name, href: `/opportunites/${c.id}`, kind: "organization", ...label("Nouvel appel : {title}", { title: c.title }) });
+        for (const c of o.openCalls) items.push({ key: `call-${c.id}`, date: c.createdAt, subject: o.name, href: `/opportunites/${c.id}`, kind: "organization", ...label("Nouvelle opportunité : {title}", { title: c.title }) });
       for (const e of o.events) {
         items.push({ key: `ev-${e.id}`, date: e.publishedAt!, subject: o.name, href: `/evenements/${e.id}`, kind: "organization", ...label("Nouvel événement : {title}", { title: e.title }) });
       }

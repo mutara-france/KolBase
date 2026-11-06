@@ -128,9 +128,9 @@ export async function OrgCard({ o }: { o: OrgCardData }) {
         {supplier ? (
           <span className="text-xs">{o.coverage ? t("Zone : {zone}", { zone: o.coverage }) : ""}</span>
         ) : (
-          // Seulement les chiffres non nuls : « 0 appel ouvert · 0 collaboration » n'apprend rien.
+          // Seulement les chiffres non nuls : « 0 opportunité ouverte · 0 collaboration » n'apprend rien.
           <span className="text-xs">
-            {o.openCalls > 0 && <><span className="mono ink">{o.openCalls}</span> {t(o.openCalls > 1 ? "appels ouverts" : "appel ouvert")}</>}
+            {o.openCalls > 0 && <><span className="mono ink">{o.openCalls}</span> {t(o.openCalls > 1 ? "opportunités ouvertes" : "opportunité ouverte")}</>}
             {o.openCalls > 0 && o.collaborations > 0 && " · "}
             {o.collaborations > 0 && <><span className="mono ink">{o.collaborations}</span> {t(o.collaborations > 1 ? "collaborations" : "collaboration")}</>}
           </span>

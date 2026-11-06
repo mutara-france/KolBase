@@ -98,15 +98,15 @@ export async function publicCalls(take?: number): Promise<CallCardData[]> {
     },
     orderBy: [{ deadline: "asc" }, { createdAt: "desc" }],
   });
-  // Pages publiques : seulement les organisations qui affichent leurs appels publiquement (réglage « Appels ouverts ») ;
-  // les praticiens connectés voient tous les appels ouverts dans « Opportunités ».
+  // Pages publiques : seulement les organisations qui affichent leurs appels publiquement (réglage « Opportunités ouvertes ») ;
+  // les praticiens connectés voient toutes les opportunités ouvertes dans « Opportunités ».
   const visible = cs.filter((c) => canSee(companyVisibility(c.organization.visibility).projets, "public"));
   return visible.slice(0, take).map((c) => ({ id: c.id, title: c.title, specialty: c.specialty, typeId: c.typeId, poster: c.organization.name, posterLogo: logoSrc(c.organization), deadline: c.deadline, description: c.description, budgetMinCents: c.budgetMinCents, budgetMaxCents: c.budgetMaxCents, open: true, full: callFull(c), event: c.event ? { title: c.event.title, startsAt: c.event.startsAt } : null }));
 }
 
 /**
  * Compteurs de l'accueil et de l'aide : les mêmes règles que les pages qui listent (experts, organisations, agenda,
- * appels publics), pour qu'un « 12 appels ouverts » mène à 12 appels.
+ * appels publics), pour qu'un « 12 opportunités ouvertes » mène à 12 appels.
  */
 export async function publicCounts() {
   const [experts, verified, industriels, organizations, events, calls] = await Promise.all([

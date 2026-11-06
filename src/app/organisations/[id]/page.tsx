@@ -55,7 +55,7 @@ export default async function Page({ params, searchParams }: { params: Promise<{
     can.view && { href: `${base}/dossiers`, value: active.length, label: t("Dossiers en cours"), hint: plural(t, engaged.length, "expert engagé", "experts engagés") },
     can.view && { href: `${base}/dossiers`, value: fmtEur(locale, engaged.reduce((s, e) => s + (e.feeCents ?? 0), 0)), label: t("Engagés (HT)"), hint: t("Sur les dossiers en cours") },
     can.events && { href: `${base}/evenements`, value: upcoming.length, label: t("Événements à venir"), hint: plural(t, upcoming.reduce((s, e) => s + e._count.registrations, 0), "inscrit", "inscrits") },
-    can.sourcing && { href: `${base}/opportunites`, value: pendingApps, label: t("Candidatures à traiter"), hint: plural(t, calls.length, "appel ouvert", "appels ouverts") },
+    can.sourcing && { href: `${base}/opportunites`, value: pendingApps, label: t("Candidatures à traiter"), hint: plural(t, calls.length, "opportunité ouverte", "opportunités ouvertes") },
     can.compliance && { href: `${base}/conformite`, value: projects.filter((p) => p.status === "EN_VALID").length, label: t("Dossiers à valider") },
     can.compliance && { href: `${base}/hospitalites`, value: hosp.length, label: t("Hospitalités à déclarer"), hint: fmtEur(locale, hospValue) },
   ]
@@ -82,7 +82,7 @@ export default async function Page({ params, searchParams }: { params: Promise<{
       .filter((c) => c.deadline && c.deadline >= now)
       .map((c) => ({
         date: c.deadline!,
-        title: t("Clôture de l'appel : {title}", { title: c.title }),
+        title: t("Clôture de l'opportunité : {title}", { title: c.title }),
         detail: c.applications.length ? plural(t, c.applications.length, "candidature à examiner", "candidatures à examiner") : t("Aucune candidature à examiner"),
         href: `${base}/opportunites/${c.id}`,
       })),
@@ -93,7 +93,7 @@ export default async function Page({ params, searchParams }: { params: Promise<{
   const create = [
     can.sourcing && { href: `${base}/dossiers/nouveau`, label: t("Un dossier de collaboration") },
     can.organizer && { href: `${base}/evenements/nouveau`, label: t("Un événement") },
-    can.sourcing && { href: `${base}/opportunites#nouvel-appel`, label: t("Un appel à candidatures") },
+    can.sourcing && { href: `${base}/opportunites#nouvel-appel`, label: t("Une opportunité") },
   ].filter((c): c is Exclude<typeof c, false> => !!c);
 
   const urgent = todos.filter((tk) => tk.tone === "danger").length;
@@ -118,7 +118,7 @@ export default async function Page({ params, searchParams }: { params: Promise<{
         {org.verification === "SUSPENDED" && (
           <p className="notice error" role="status">
             {t("Organisation suspendue")}{org.verificationNote ? ` : ${inSentence(org.verificationNote)}` : ""}.{" "}
-            {t("Votre page publique, vos événements et vos appels sont masqués, et aucune nouvelle action n'est possible jusqu'à la réactivation par KolBase ; rien n'est supprimé.")}
+            {t("Votre page publique, vos événements et vos opportunités sont masqués, et aucune nouvelle action n'est possible jusqu'à la réactivation par KolBase ; rien n'est supprimé.")}
           </p>
         )}
         {org.verification !== "VERIFIED" && org.verification !== "SUSPENDED" && (

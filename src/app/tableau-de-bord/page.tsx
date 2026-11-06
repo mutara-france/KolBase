@@ -196,7 +196,7 @@ export default async function Page({ searchParams }: { searchParams: Promise<{ a
               <section className="card dash-card" aria-labelledby="pour-vous">
                 <h2 id="pour-vous" className="dash-title">{t("Pour vous")}</h2>
                 {suggested.length === 0 ? (
-                  <p className="muted">{t("Aucun appel ouvert pour le moment.")}</p>
+                  <p className="muted">{t("Aucune opportunité ouverte pour le moment.")}</p>
                 ) : (
                   suggested.map((c) => (
                     <Link key={c.id} href={`/opportunites/${c.id}`} className="suggest-card">
@@ -206,7 +206,7 @@ export default async function Page({ searchParams }: { searchParams: Promise<{ a
                     </Link>
                   ))
                 )}
-                <MoreLink href="/opportunites">{t("Tous les appels à candidatures")}</MoreLink>
+                <MoreLink href="/opportunites">{t("Toutes les opportunités")}</MoreLink>
               </section>
             )}
             {p.listed && (

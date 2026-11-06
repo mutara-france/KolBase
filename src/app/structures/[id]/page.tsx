@@ -166,7 +166,7 @@ export default async function Page({ params }: { params: Promise<{ id: string }>
             </section>
           )}
           {!isSupplier && <div className="stats-row">
-            <div className="stat-card"><div className="stat-value">{o.openCalls.filter((c) => !callFull(c)).length}</div><div className="stat-label">{t("Appels ouverts")}</div></div>
+            <div className="stat-card"><div className="stat-value">{o.openCalls.filter((c) => !callFull(c)).length}</div><div className="stat-label">{t("Opportunités ouvertes")}</div></div>
             <div className="stat-card"><div className="stat-value tone-electric">{o.events.length}</div><div className="stat-label">{t("Événements à venir")}</div></div>
             <div className="stat-card"><div className="stat-value">{o._count.projects}</div><div className="stat-label">{t("Collaborations")}</div></div>
           </div>}
@@ -191,13 +191,13 @@ export default async function Page({ params }: { params: Promise<{ id: string }>
           </div>}
           {!isSupplier && v.projets !== "masque" && (
             <section>
-              <div className="section-head"><div><div className="eyebrow mb-1">{t("Opportunités")}</div><h2 className="section-h2">{t("Appels ouverts")}</h2></div></div>
+              <div className="section-head"><div><div className="eyebrow mb-1">{t("Opportunités")}</div><h2 className="section-h2">{t("Ouvertes aux praticiens")}</h2></div></div>
               {canSee(v.projets, viewer) ? (
-                o.openCalls.length === 0 ? <p className="muted">{t("Aucun appel ouvert.")}</p> : (
+                o.openCalls.length === 0 ? <p className="muted">{t("Aucune opportunité ouverte.")}</p> : (
                   // Appel complet : « Complet », sans bouton ; « Candidater » aux praticiens, « Se connecter » aux visiteurs.
                   <div className="grid-2">{o.openCalls.map((c) => <CallCard key={c.id} c={{ ...c, poster: o.name, posterLogo: logoSrc(o), open: true, full: callFull(c) }} action={callFull(c) ? undefined : user?.practitioner ? <Link className="btn secondary" href={`/opportunites/${c.id}`}>{t("Candidater")}</Link> : !user ? <Link className="btn secondary" href={`/connexion?next=${encodeURIComponent(`/opportunites/${c.id}`)}`}>{t("Se connecter pour candidater")}</Link> : undefined} />)}</div>
                 )
-              ) : lock(t("Appels ouverts"))}
+              ) : lock(t("Opportunités ouvertes"))}
             </section>
           )}
           {!isSupplier && <section>

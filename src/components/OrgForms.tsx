@@ -151,7 +151,7 @@ export function VerificationCard({ orgId, v, canEdit }: { orgId: string; v: Veri
         <h2>{t("Validation de l'organisation")}{" "}<span className={`pill ${tone}`}>{t(label)}</span></h2>
         <p className="notice error">{t("Organisation suspendue")}{v.note ? ` : ${inSentence(v.note)}` : ""}.</p>
         <p className="muted">
-          {t("Votre page publique, vos événements et vos appels à candidatures sont masqués, et aucune nouvelle action n'est possible (sollicitation, publication, demande de devis). Rien n'est supprimé : tout réapparaît à la réactivation par KolBase. Pour en discuter, répondez à l'e-mail de suspension.")}
+          {t("Votre page publique, vos événements et vos opportunités sont masqués, et aucune nouvelle action n'est possible (sollicitation, publication, demande de devis). Rien n'est supprimé : tout réapparaît à la réactivation par KolBase. Pour en discuter, répondez à l'e-mail de suspension.")}
         </p>
       </section>
     );
@@ -173,7 +173,7 @@ export function VerificationCard({ orgId, v, canEdit }: { orgId: string; v: Veri
           <p className="muted">
             {v.supplier
               ? t("Tant que KolBase n'a pas validé l'organisation, elle ne peut ni répondre aux demandes de devis, ni figurer dans l'annuaire des prestataires.")
-              : t("Tant que KolBase n'a pas validé l'organisation, elle ne peut ni solliciter de praticiens, ni publier d'événements ou d'appels, ni apparaître sur le site public.")}
+              : t("Tant que KolBase n'a pas validé l'organisation, elle ne peut ni solliciter de praticiens, ni publier d'événements ou d'opportunités, ni apparaître sur le site public.")}
             {v.status === "REJECTED" && v.note ? ` ${t("Motif du refus : {inSentence}.", { inSentence: inSentence(v.note) })}` : ""}
           </p>
         </>
@@ -209,7 +209,7 @@ export function LogoForm({ orgId, name, src, verified, supplier = false }: { org
       <div className="actions" style={{ alignItems: "center" }}>
         <Avatar name={name} size={64} square src={src} />
         <p className="muted text-sm" style={{ margin: 0 }}>
-          {t("PNG, JPEG ou WebP, 500 Ko au plus, de préférence carré sur fond clair. Il remplace le monogramme")}{" "}{supplier ? t("sur votre page prestataire, dans l'annuaire des prestataires et sur vos devis.") : t("sur votre fiche, l'annuaire des organisations et les appels publiés.")}
+          {t("PNG, JPEG ou WebP, 500 Ko au plus, de préférence carré sur fond clair. Il remplace le monogramme")}{" "}{supplier ? t("sur votre page prestataire, dans l'annuaire des prestataires et sur vos devis.") : t("sur votre fiche, l'annuaire des organisations et les opportunités publiées.")}
           {!verified && t(" Il ne sera visible publiquement qu'après la validation de l'organisation.")}{" "}{t("Ne publiez que le logo de votre propre organisation.")}
         </p>
       </div>

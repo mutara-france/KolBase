@@ -21,7 +21,7 @@ export async function generateMetadata() {
 
 /**
  * Mes interventions (événements où l'expert a été retenu) et Mes candidatures (tous les appels à candidatures).
- * Les appels eux-mêmes sont dans « Appels à candidatures » (/opportunites).
+ * Les appels eux-mêmes sont dans « Opportunités » (/opportunites).
  */
 export default async function Page({ searchParams }: { searchParams: Promise<{ onglet?: string }> }) {
   const user = await requireUser();
@@ -84,7 +84,7 @@ export default async function Page({ searchParams }: { searchParams: Promise<{ o
 
         {onglet === "candidatures" && (
           <section className="card">
-            {mine.length === 0 && <p className="muted">{t("Aucune candidature.")} <Link href="/opportunites">{t("Voir les appels à candidatures")}</Link></p>}
+            {mine.length === 0 && <p className="muted">{t("Aucune candidature.")} <Link href="/opportunites">{t("Voir les opportunités")}</Link></p>}
             <ul className="applications">
               {mine.map((a) => (
                 <li key={a.id}>

@@ -554,7 +554,7 @@ export default async function Page({ params, searchParams }: { params: Promise<{
               <h2 className="section-title"><CalendarDays size={15} />{" "}{t("Événement et logistique")}</h2>
               {project.events.length === 0 && callEvent ? (
                 <div className="stack-sm">
-                  <p className="muted text-sm">{t("Dossier né de l'appel à candidatures «")}{" "}{isProject ? <Link href={`/organisations/${id}/opportunites/${fromCall!.openCall.id}`}>{fromCall!.openCall.title}</Link> : fromCall!.openCall.title}{" "}{t("» : l'intervention a lieu à cet événement, où se gèrent la logistique et les devis.")}</p>
+                  <p className="muted text-sm">{t("Dossier né de l'opportunité «")}{" "}{isProject ? <Link href={`/organisations/${id}/opportunites/${fromCall!.openCall.id}`}>{fromCall!.openCall.title}</Link> : fromCall!.openCall.title}{" "}{t("» : l'intervention a lieu à cet événement, où se gèrent la logistique et les devis.")}</p>
                   <ul className="linked-events">
                     <li>
                       <Link href={`/organisations/${id}/evenements/${callEvent.id}`}><strong>{callEvent.title}</strong></Link>

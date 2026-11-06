@@ -74,7 +74,7 @@ export default async function Page({ params, searchParams }: { params: Promise<{
   const cancelled = !!event.cancelledAt;
   const status = { label: t(EVENT_STATE_LABEL[st.state].label), tone: EVENT_STATE_LABEL[st.state].tone };
   const benefitsTotal = event.benefits.reduce((s, b) => s + b.valueCents, 0);
-  // Appels à candidatures rattachés à l'événement, encore ouverts (date limite, places).
+  // Opportunités rattachées à l'événement, encore ouvertes (date limite, places).
   const openCalls = past || cancelled ? [] : event.calls.filter((c) => (!c.deadline || c.deadline >= new Date()) && (!c.slots || c._count.applications < c.slots));
 
   // Données structurées schema.org (résultats enrichis des moteurs de recherche).
@@ -136,7 +136,7 @@ export default async function Page({ params, searchParams }: { params: Promise<{
             </section>
             {openCalls.map((c) => (
               <section key={c.id} className="card stack-sm">
-                <h2>{t("Appel à candidatures")}</h2>
+                <h2>{t("Opportunité d'intervention")}</h2>
                 <p><strong>{c.title}</strong></p>
                 <p className="muted">
                   {[

@@ -14,7 +14,7 @@ import { fmtDate, fmtEur, intlLocale } from "@/lib/i18n";
 
 export async function generateMetadata() {
   const { t } = await getT();
-  return { title: `${t("Appel à candidatures")} — KolBase` };
+  return { title: `${t("Opportunité")} — KolBase` };
 }
 
 const APP_STATUS: Record<ApplicationStatus, string> = { pending: "À traiter", retained: "Retenue", rejected: "Non retenue", declined: "Honoraires déclinés" };
@@ -39,16 +39,16 @@ export default async function Page({ params }: { params: Promise<{ id: string; c
 
   const pendingCount = call.applications.filter((a) => a.status === "pending").length;
   const retained = call.applications.filter((a) => a.status === "retained").length;
-  // Places toutes pourvues : l'appel ne reçoit plus de candidature, même s'il n'est pas clôturé.
+  // Places toutes pourvues : l'opportunité ne reçoit plus de candidature, même si elle n'est pas clôturée.
   const full = call.slots != null && retained >= call.slots;
 
   return (
     <>
       <SiteHeader />
       <main className="stack">
-        <p className="muted"><Link href={`/organisations/${id}`}>{org.name}</Link> / <Link href={`/organisations/${id}/opportunites`}>{t("Appels à candidatures")}</Link></p>
+        <p className="muted"><Link href={`/organisations/${id}`}>{org.name}</Link> / <Link href={`/organisations/${id}/opportunites`}>{t("Opportunités")}</Link></p>
         <PageHero
-          eyebrow={`${t("Appel à candidatures")} · ${t(type?.label ?? call.typeId)}${call.specialty ? ` · ${t(call.specialty)}` : ""}`}
+          eyebrow={`${t("Opportunité")} · ${t(type?.label ?? call.typeId)}${call.specialty ? ` · ${t(call.specialty)}` : ""}`}
           status={<span className={`pill ${call.status !== "open" ? "done" : full ? "bad" : "ok"}`}>{call.status !== "open" ? t("Clôturé") : full ? t("Complet") : t("Ouvert")}</span>}
           title={call.title}
           lead={call.description}
@@ -98,12 +98,12 @@ export default async function Page({ params }: { params: Promise<{ id: string; c
           <aside className="page-aside">
             <section className="card next-step">
               <span className="eyebrow-sm">{t("Pilotage")}</span>
-              <p className="next-hint">{call.status !== "open" ? t("Appel clôturé : il n'est plus visible des experts.") : full ? t("Complet : toutes les places sont pourvues, l'appel ne reçoit plus de candidature.") : t(call.event ? "Les experts référencés voient l'appel dans « Appels à candidatures » et sur la page de l'événement. Retenir une candidature ouvre un dossier et propose des honoraires à l'expert ; le dossier avance après son accord." : "Les experts référencés voient l'appel dans « Appels à candidatures ». Retenir une candidature ouvre un dossier et propose des honoraires à l'expert ; le dossier avance après son accord.")}</p>
+              <p className="next-hint">{call.status !== "open" ? t("Opportunité clôturée : elle n'est plus visible des experts.") : full ? t("Complet : toutes les places sont pourvues, l'opportunité ne reçoit plus de candidature.") : t(call.event ? "Les experts référencés voient l'opportunité dans « Opportunités » et sur la page de l'événement. Retenir une candidature ouvre un dossier et propose des honoraires à l'expert ; le dossier avance après son accord." : "Les experts référencés voient l'opportunité dans « Opportunités ». Retenir une candidature ouvre un dossier et propose des honoraires à l'expert ; le dossier avance après son accord.")}</p>
               <form action={setOpenCallStatus} className="transitions-stack">
                 <input type="hidden" name="orgId" value={id} />
                 <input type="hidden" name="callId" value={callId} />
                 <input type="hidden" name="status" value={call.status === "open" ? "closed" : "open"} />
-                <button className="btn ghost">{call.status === "open" ? t("Clôturer l'appel") : t("Rouvrir l'appel")}</button>
+                <button className="btn ghost">{call.status === "open" ? t("Clôturer l'opportunité") : t("Rouvrir l'opportunité")}</button>
               </form>
             </section>
             {call.event && (

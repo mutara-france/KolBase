@@ -59,7 +59,7 @@ export const fromStripeStatus = (st: string): SubscriptionStatus =>
 /** Actions qui déclenchent l'abonnement d'une organisation (libellés des messages). */
 export const ENGAGING = {
   sollicitation: "envoyer des sollicitations aux experts",
-  appel: "publier un appel à candidatures",
+  appel: "publier une opportunité",
   evenement: "publier un événement dans l'agenda",
   devis: "envoyer une demande de devis",
   reponse: "répondre à de nouvelles demandes de devis",
@@ -101,7 +101,7 @@ export function resumeAction(orgId: string, motive: Motive | null, objet?: strin
   switch (motive) {
     case "evenement": return id ? { href: `${base}/evenements/${id}`, label: "Publier maintenant", publish: id } : { href: `${base}/evenements`, label: "Revenir aux événements" };
     case "sollicitation": return id ? { href: `${base}/dossiers/${id}#modifier`, label: "Revenir au dossier" } : { href: `${base}/dossiers/nouveau`, label: "Envoyer les sollicitations" };
-    case "appel": return { href: `${base}/opportunites#nouvel-appel`, label: "Publier l'appel" };
+    case "appel": return { href: `${base}/opportunites#nouvel-appel`, label: "Publier l'opportunité" };
     case "devis": return { href: id ? `${base}/prestataires#rfq-${id}` : `${base}/prestataires?onglet=nouvelle`, label: "Envoyer la demande de devis" };
     case "reponse": return { href: `${base}/devis`, label: "Répondre aux demandes de devis" };
     case "proposition": return { href: id ? `${base}/dossiers/${id}` : `${base}/dossiers`, label: "Revenir à la proposition" };
@@ -125,6 +125,6 @@ export function billingInfo(kind: string, s: SubLike, now = new Date(), t: Tr = 
   return kind === "PRESTATAIRE"
     ? t("Abonnement : référencement gratuit ; {price} seulement après un premier devis retenu, pour répondre à de nouvelles demandes (premier mois offert).", { price })
     : FREE_EVENT_KINDS.includes(kind)
-      ? t("Abonnement : création, équipe, annuaire, brouillons et publication d'événements gratuits ; {price} (ou {yearPrice}) dès la première sollicitation, le premier appel à candidatures ou la première demande de devis, premier mois offert.", { price, yearPrice })
+      ? t("Abonnement : création, équipe, annuaire, brouillons et publication d'événements gratuits ; {price} (ou {yearPrice}) dès la première sollicitation, la première opportunité publiée ou la première demande de devis, premier mois offert.", { price, yearPrice })
       : t("Abonnement : création, équipe, annuaire et brouillons gratuits ; {price} (ou {yearPrice}) dès la première action qui engage un tiers, premier mois offert.", { price, yearPrice });
 }

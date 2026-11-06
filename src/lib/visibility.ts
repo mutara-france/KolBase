@@ -39,7 +39,7 @@ export const COMPANY_VIS_FIELDS = [
   { key: "areas", label: "Aires d'intervention", desc: "Spécialités dans lesquelles vous collaborez." },
   { key: "policy", label: "Politique de conformité", desc: "Vos règles de contractualisation." },
   { key: "contact", label: "Contact partenariats", desc: "Adresse de prise de contact." },
-  { key: "projets", label: "Appels ouverts", desc: "Sur votre fiche et les pages publiques. Les praticiens connectés voient toujours vos appels dans « Opportunités » pour y répondre." },
+  { key: "projets", label: "Opportunités ouvertes", desc: "Sur votre fiche et les pages publiques. Les praticiens connectés les voient toujours dans « Opportunités » pour y répondre." },
 ] as const;
 
 export type KolVisibility = Record<(typeof KOL_VIS_FIELDS)[number]["key"], VisLevel> & { projets: ProjVisLevel };

@@ -531,7 +531,7 @@ async function submitNewOrg(page, siren) {
   await admin.page.locator('section.card:has-text("Hugo Robert") button:has-text("Valider")').click();
   await admin.page.waitForTimeout(1200);
   await hugo.page.goto(`${BASE}/compte`);
-  check("RPPS validé par l'administrateur", (await text(hugo.page)).includes("Vérifié par KolBase"));
+  check("RPPS validé par l'administrateur, mentionné une seule fois", (await text(hugo.page)).split("Vérifié par KolBase").length - 1 === 1);
   await hugo.page.goto(`${BASE}/experts`);
   check("Badge « Identité vérifiée » sur la fiche publique", (await hugo.page.locator('a.kol-card:has-text("Hugo Robert")').innerText()).includes("Identité vérifiée"));
 
@@ -1112,7 +1112,7 @@ async function submitNewOrg(page, siren) {
   await page.goto(`${BASE}/organisations/demo-org-dentalys`);
   check("Accueil : plus de date du jour", (await page.locator(".dash-kicker").count()) === 0);
   await page.goto(`${BASE}/organisations/demo-org-dentalys/opportunites`);
-  check("Appels : une seule sorte, rattachable à un événement", (await text(page)).includes("Appels à candidatures") && (await page.locator('select[name="eventId"] option').count()) > 1);
+  check("Appels : une seule sorte, rattachable à un événement", (await text(page)).includes("Opportunités") && (await page.locator('select[name="eventId"] option').count()) > 1);
   await ctx.close();
   const anon = await session();
   await anon.page.goto(`${BASE}/evenements/demo-ev-soiree-implanto`);
@@ -1161,7 +1161,7 @@ async function submitNewOrg(page, siren) {
   check("IA : catégorie demandée transmise", JSON.stringify(aiRequests.at(-1) ?? {}).includes("Salle et lieu de réception"));
   // Appel à experts et nouveau dossier : boutons présents.
   await page.goto(`${BASE}/organisations/demo-org-dentalys/opportunites`);
-  check("IA : rédaction d'un appel à experts proposée", (await page.locator('button:has-text("Rédiger l\'appel avec l\'IA")').count()) === 1);
+  check("IA : rédaction d'un appel à experts proposée", (await page.locator('button:has-text("Rédiger la description avec l\'IA")').count()) === 1);
   await ctx.close();
 }
 
@@ -1175,18 +1175,18 @@ async function submitNewOrg(page, siren) {
   check("Événement : appel rattaché repris, candidatures visibles", (await card.innerText()).includes("Intervenants : Live surgery") && (await card.innerText()).includes("2 candidatures à examiner"));
   // Lancer un appel depuis la fiche de l'événement : l'événement et le titre sont préremplis.
   await page.goto(`${BASE}/organisations/demo-org-dentalys/evenements/demo-ev-soiree-implanto`);
-  await page.click('a:has-text("Lancer un appel")');
+  await page.click('a:has-text("Publier une opportunité")');
   await page.waitForURL(/opportunites\?evenement=demo-ev-soiree-implanto/);
   check("Nouvel appel : événement prérempli", (await page.locator('select[name="eventId"]').inputValue()) === "demo-ev-soiree-implanto" && (await page.locator('input[name="title"]').inputValue()).startsWith("Intervenants : Soirée implantologie"));
   await page.fill('input[name="slots"]', "1");
   await page.fill('textarea[name="description"]', "Présentation de deux cas cliniques complexes en implantologie, 20 minutes, suivie d'échanges avec la salle.");
-  await Promise.all([page.waitForURL(/\/opportunites\/[^/?]+$/), page.click('button:has-text("Publier l\'appel")')]);
+  await Promise.all([page.waitForURL(/\/opportunites\/[^/?]+$/), page.click('button:has-text("Publier l\'opportunité")')]);
   const callUrl = page.url();
   const callId = callUrl.split("/").pop();
   check("Appel publié : événement et places affichés", (await text(page)).includes("Soirée implantologie") && (await text(page)).includes("0 / 1"));
   const anon = await session();
   await anon.page.goto(`${BASE}/evenements/demo-ev-soiree-implanto`);
-  check("Page de l'événement : appel à candidatures annoncé", (await text(anon.page)).includes("Appel à candidatures") && (await text(anon.page)).includes("Intervenants : Soirée implantologie"));
+  check("Page de l'événement : appel à candidatures annoncé", (await text(anon.page)).includes("Opportunité d'intervention") && (await text(anon.page)).includes("Intervenants : Soirée implantologie"));
   await anon.ctx.close();
   // Un expert le trouve parmi les appels liés à un événement et candidate.
   const exp = await session();
@@ -3834,7 +3834,8 @@ async function submitNewOrg(page, siren) {
     const ct = await card.innerText();
     check("Dossier : contre-proposition visible avec les deux montants", ct.includes("Contre-proposition") && /1\s500\s€ → 1\s800\s€ HT/.test(ct), ct.slice(0, 300));
     await confirmClick(card, "Accepter ces honoraires");
-    await until(async () => (await q1(`select status from "ProjectExpert" where id = 'e2e-5a-l4'`))?.status === "ACCORD");
+    // L'expert puis le dossier sont mis à jour l'un après l'autre : attendre les deux, sinon la lecture tombe entre les deux.
+    await until(async () => (await q1(`select pe.status, p.status as project from "ProjectExpert" pe join "Project" p on p.id = pe."projectId" where pe.id = 'e2e-5a-l4'`))?.project === "ACCORD");
     const acc = await q1(`select pe.status, pe."feeCents", pe."previousFeeCents", pe."desiredFeeCents", p.status as project from "ProjectExpert" pe join "Project" p on p.id = pe."projectId" where pe.id = 'e2e-5a-l4'`);
     check("Accepter ces honoraires : montant de l'expert, expert engagé", acc.status === "ACCORD" && acc.feeCents === 180000 && acc.previousFeeCents === 150000 && acc.desiredFeeCents === null && acc.project === "ACCORD", JSON.stringify(acc));
     const am = await waitMail(MOREAU, "Honoraires acceptés : Board 5a négociation");

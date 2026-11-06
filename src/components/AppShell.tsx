@@ -4,7 +4,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 import {
-  BarChart3, Bell, CalendarDays, Check, ChevronDown, ExternalLink, FileText, Folder, House, LogOut, Megaphone, Plug, Receipt, Send, ShieldCheck, UserRound, Users, Building2, Wallet,
+  BarChart3, Bell, CalendarDays, Check, ChevronDown, CircleHelp, ExternalLink, FileText, Folder, House, LogOut, Megaphone, Plug, Receipt, Send, ShieldCheck, UserRound, Users, Building2, Wallet,
 } from "lucide-react";
 import { Logo } from "@/components/Logo";
 import { signOut } from "@/lib/auth-actions";
@@ -60,6 +60,11 @@ export function AppShell({
       <header className="top-bar">
         <Logo />
         <div className="top-actions">
+          {/* L'aide au premier niveau, dans tous les espaces : libellé sur ordinateur, icône seule sur mobile. */}
+          <Link href="/aide" className="icon-btn help-btn" aria-label={t("Aide")}>
+            <CircleHelp size={19} strokeWidth={1.8} aria-hidden />
+            <span className="help-label" aria-hidden>{t("Aide")}</span>
+          </Link>
           {bell && (
             <Link href="/suivis" className={`icon-btn${path === "/suivis" ? " active" : ""}`} aria-label={bell.count ? (bell.count > 1 ? t("Suivis, {n} nouveautés", { n: bell.count }) : t("Suivis, {n} nouveauté", { n: bell.count })) : t("Suivis")}>
               <Bell size={19} strokeWidth={1.8} aria-hidden />
