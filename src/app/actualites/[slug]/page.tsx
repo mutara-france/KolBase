@@ -4,6 +4,7 @@ import type { Metadata } from "next";
 import { SiteHeader } from "@/components/SiteHeader";
 import { ArticleBody, NewsCard } from "@/components/News";
 import { NewsletterCta } from "@/components/NewsletterCta";
+import { EtudePromo } from "@/components/EtudePromo";
 import { appUrl } from "@/lib/ics";
 import { jsonLd } from "@/lib/jsonld";
 import { db } from "@/lib/db";
@@ -68,6 +69,7 @@ export default async function Page({ params }: { params: Promise<{ slug: string 
           {/* eslint-disable-next-line @next/next/no-img-element */}
           {src && <img className="article-cover" src={src} alt="" />}
           <ArticleBody body={a.body} />
+          {a.category === "Études" && <EtudePromo download />}
           {a.publishedAt && <NewsletterCta next={`/actualites/${a.slug}`} />}
           {admin && a.publishedAt && <p className="hint"><Link href={`/admin/actualites/${a.id}`}>{t("Modifier")}</Link></p>}
         </article>

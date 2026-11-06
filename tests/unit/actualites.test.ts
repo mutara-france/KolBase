@@ -14,6 +14,13 @@ describe("actualités", () => {
   it("accepte les liens externes en https", () => {
     expect(inline("[CNIL](https://www.cnil.fr)")).toEqual([{ text: "CNIL", href: "https://www.cnil.fr" }]);
   });
+  it("accepte les images du site seules sur leur ligne, jamais une image extérieure", () => {
+    const b = parseArticle("Avant\n![Huit chiffres](/etudes/b/huit.webp)\nAprès\n\n![Pisteur](https://tiers.example/p.png)\n\n![](//tiers.example/p.png)");
+    expect(b[0]).toEqual({ kind: "p", parts: [{ text: "Avant" }] });
+    expect(b[1]).toEqual({ kind: "img", src: "/etudes/b/huit.webp", alt: "Huit chiffres" });
+    expect(b[2]).toEqual({ kind: "p", parts: [{ text: "Après" }] });
+    expect(b.slice(3).every((x) => x.kind === "p")).toBe(true);
+  });
   it("crée des adresses lisibles", () => {
     expect(slugify("Nouveau : attestations vérifiables !")).toBe("nouveau-attestations-verifiables");
     expect(slugify("???")).toBe("article");

@@ -6,7 +6,9 @@ const Parts = ({ parts }: { parts: Inline[] }) => (
   <>
     {parts.map((p, i) =>
       p.href ? (
-        p.href.startsWith("/") ? <Link key={i} href={p.href}>{p.text}</Link> : <a key={i} href={p.href} target="_blank" rel="noopener noreferrer">{p.text}</a>
+        // Un fichier du site (PDF…) n'est pas une page : lien simple, sans préchargement par le routeur.
+        p.href.startsWith("/") ? (/\.[a-z0-9]+$/i.test(p.href) ? <a key={i} href={p.href}>{p.text}</a> : <Link key={i} href={p.href}>{p.text}</Link>)
+          : <a key={i} href={p.href} target="_blank" rel="noopener noreferrer">{p.text}</a>
       ) : p.bold ? <strong key={i}>{p.text}</strong> : <span key={i}>{p.text}</span>,
     )}
   </>
@@ -19,6 +21,13 @@ export function ArticleBody({ body }: { body: string }) {
       {parseArticle(body).map((b, i) =>
         b.kind === "h2" ? <h2 key={i}>{b.text}</h2>
           : b.kind === "ul" ? <ul key={i}>{b.items.map((it, j) => <li key={j}><Parts parts={it} /></li>)}</ul>
+          : b.kind === "img" ? (
+            <figure key={i}>
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img src={b.src} alt={b.alt} loading="lazy" />
+              {b.alt && <figcaption>{b.alt}</figcaption>}
+            </figure>
+          )
           : <p key={i}><Parts parts={b.parts} /></p>,
       )}
     </div>

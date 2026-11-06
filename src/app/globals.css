@@ -1015,6 +1015,36 @@ body:has(.sidebar) .site-footer { padding: 24px 32px; }
 .article-body ul { margin: 0 0 14px; padding-left: 22px; }
 .article-body li { margin-bottom: 6px; }
 .article-form-cover { max-width: 320px; border-radius: 12px; border: 1px solid var(--line); }
+.article-body figure { margin: 22px 0 24px; }
+.article-body figure img { display: block; width: 100%; height: auto; border-radius: 14px; border: 1px solid var(--line); }
+.article-body figcaption { margin-top: 8px; font-size: 13px; color: var(--ink-subtle); }
+
+/* ─── Étude : page de téléchargement (/barometre) ───────────── */
+.etude-hero-inner { display: flex; flex-wrap: wrap; align-items: center; gap: 24px 48px; padding-top: 56px; padding-bottom: 64px; }
+.etude-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 14px 24px; margin-top: 6px; }
+.etude-btn { min-height: 52px; padding: 12px 26px; font-size: 16px; background: var(--corail); color: var(--ink); }
+.etude-btn:hover { background: #f59a79; }
+.etude-link { color: #fff; font-weight: 600; }
+.etude-cover { flex: 0 1 380px; width: min(380px, 100%); height: auto; margin: 0 auto; }
+.etude-h2 { font-size: clamp(24px, 3vw, 32px); margin: 10px 0 10px; }
+.etude-intro { max-width: 640px; font-size: 16px; margin-bottom: 24px; }
+.etude-figures { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(auto-fill, minmax(min(260px, 100%), 1fr)); gap: 16px; }
+.etude-figures li { display: flex; flex-direction: column; gap: 6px; padding: 20px 20px 22px; border-radius: 18px; border: 1px solid var(--line); background: #fff; }
+.etude-figures strong { font-family: var(--font-display); font-size: 34px; letter-spacing: -0.03em; color: var(--outremer); line-height: 1.1; }
+.etude-figures b { font-size: 15px; color: var(--ink); }
+.etude-figures span { font-size: 13.5px; line-height: 1.5; color: var(--ink-soft); }
+.etude-split { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(380px, 100%), 1fr)); gap: 32px 56px; align-items: start; }
+.etude-chapters { display: flex; flex-direction: column; gap: 22px; }
+.etude-chapters h3 { font-size: 13px; font-family: var(--font-mono); font-weight: 500; letter-spacing: 0.1em; text-transform: uppercase; color: var(--violet); margin: 0 0 8px; }
+.etude-chapters ol { margin: 0; padding-left: 22px; display: flex; flex-direction: column; gap: 6px; font-size: 15px; color: var(--ink); }
+.etude-method { max-width: 820px; }
+.etude-method p { font-size: 14.5px; }
+.etude-promo { display: flex; flex-wrap: wrap; align-items: center; gap: 16px 24px; padding: 20px 24px; margin-bottom: 24px; border: 0; background: var(--outremer-deep) url("/visuels/fond-bandeau.webp") center / cover; color: #fff; text-decoration: none !important; }
+.etude-promo div { flex: 1 1 360px; display: flex; flex-direction: column; gap: 4px; }
+.etude-promo .eyebrow-sm { color: #ffd2c0; }
+.etude-promo strong { font-family: var(--font-display); font-size: 20px; letter-spacing: -0.02em; }
+.etude-promo p { margin: 0; color: rgba(255, 255, 255, 0.86); }
+.etude-promo .btn { background: var(--corail); color: var(--ink); }
 .check-list { display: flex; flex-direction: column; gap: 8px; padding: 0; list-style: none; }
 .check-list li { display: flex; gap: 8px; align-items: flex-start; font-size: 13.5px; color: var(--ink); }
 .check-list li > svg { flex: none; color: var(--ok); margin-top: 3px; }

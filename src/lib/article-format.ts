@@ -1,15 +1,23 @@
 /**
  * Mise en forme des actualités (module pur, testé) : un texte simple devient des blocs sûrs,
  * rendus en React sans HTML brut. Paragraphes séparés par une ligne vide, « ## » intertitre,
- * lignes « - » en liste, **gras** et [lien](https://… ou /…) dans le texte.
+ * lignes « - » en liste, **gras** et [lien](https://… ou /…) dans le texte, « ![légende](/…) » seule
+ * sur sa ligne pour une image du site.
  */
-export const ARTICLE_CATEGORIES = ["Plateforme", "Réglementation", "Événements", "Partenaires", "Conseils"] as const;
+export const ARTICLE_CATEGORIES = ["Plateforme", "Réglementation", "Événements", "Partenaires", "Conseils", "Études"] as const;
 
 export type Inline = { text: string; bold?: boolean; href?: string };
-export type Block = { kind: "h2"; text: string } | { kind: "p"; parts: Inline[] } | { kind: "ul"; items: Inline[][] };
+export type Block = { kind: "h2"; text: string } | { kind: "p"; parts: Inline[] } | { kind: "ul"; items: Inline[][] } | { kind: "img"; src: string; alt: string };
 
 // Lien absolu http(s), ou chemin interne : « //hôte » (adresse relative au protocole) mènerait hors du site.
-const safeHref = (h: string) => (/^https?:\/\/[^\s<>"]+$/i.test(h) || /^\/(?![/\\])[^\s<>"]*$/.test(h) ? h : null);
+const internal = (h: string) => /^\/(?![/\\])[^\s<>"]*$/.test(h);
+const safeHref = (h: string) => (/^https?:\/\/[^\s<>"]+$/i.test(h) || internal(h) ? h : null);
+
+// Image servie par le site lui-même (dossier public) : aucune image extérieure, qui renseignerait un tiers sur les lecteurs.
+function image(line: string): Block | null {
+  const m = /^!\[([^\]]*)\]\(([^)\s]+)\)$/.exec(line);
+  return m && internal(m[2]) ? { kind: "img", src: m[2], alt: m[1].trim() } : null;
+}
 
 export function inline(text: string): Inline[] {
   const out: Inline[] = [];
@@ -38,7 +46,9 @@ export function parseArticle(body: string): Block[] {
     let para: string[] = [];
     const flush = () => { if (para.length) blocks.push({ kind: "p", parts: inline(para.join(" ")) }); para = []; };
     for (const l of lines) {
+      const img = image(l);
       if (l.startsWith("## ")) { flush(); blocks.push({ kind: "h2", text: l.slice(3).trim() }); }
+      else if (img) { flush(); blocks.push(img); }
       else para.push(l);
     }
     flush();

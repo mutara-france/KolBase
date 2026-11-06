@@ -1,6 +1,7 @@
 import { SiteHeader } from "@/components/SiteHeader";
 import { NewsCard } from "@/components/News";
 import { NewsletterCta } from "@/components/NewsletterCta";
+import { EtudePromo } from "@/components/EtudePromo";
 import { publishedArticles } from "@/lib/news";
 import { fmtDate } from "@/lib/i18n";
 import { getT } from "@/lib/i18n/server";
@@ -27,6 +28,7 @@ export default async function Page() {
         </section>
         <section className="home-section">
           <div className="home-wrap">
+            <EtudePromo />
             {articles.length === 0 ? <p className="muted">{t("Aucune actualité pour l'instant.")}</p> : (
               <div className="news-grid">
                 {articles.map((a) => <NewsCard key={a.id} a={{ ...a, category: t(a.category) }} dateLabel={fmtDate(locale, a.publishedAt!, { day: "numeric", month: "long", year: "numeric" })} minutesLabel={t("{n} min de lecture")} />)}
