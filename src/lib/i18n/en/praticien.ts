@@ -834,4 +834,12 @@ export const PRATICIEN: Record<string, string> = {
   "Déclinée": "Declined",
   "Acceptée": "Accepted",
   "Acceptée, puis abandonnée": "Accepted, then abandoned",
+  "Après votre accord de principe": "After your agreement in principle",
+  "Aucun événement rattaché": "No linked event",
+  "Documents et convention": "Documents and agreement",
+  "Lieu à préciser": "Venue to be confirmed",
+  "Mission": "Assignment",
+  "Rubriques de la collaboration": "Collaboration sections",
+  "Voir la page publique de l'événement": "See the event's public page",
+  "{org} vous a écrit : répondre dans la messagerie": "{org} has written to you: reply in Messages",
 };

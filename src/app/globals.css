@@ -1234,3 +1234,5 @@ a.dossier-tab:hover { background: var(--bg-subtle); color: var(--ink); }
 .event-hero-title { margin: 0; font-size: clamp(20px, 2vw, 26px); }
 .event-empty { align-items: flex-start; }
 .event-empty > svg { color: var(--outremer); }
+.messenger-solo { display: flex; flex-direction: column; gap: 8px; }
+.messenger-solo .thread { max-height: 60vh; overflow-y: auto; }

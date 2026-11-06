@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { Building2, CalendarDays, Euro, Scale } from "lucide-react";
+import { Briefcase, Building2, CalendarDays, Euro, FileText, MapPin, MessagesSquare, Scale } from "lucide-react";
 import { SiteHeader } from "@/components/SiteHeader";
 import { PageHero } from "@/components/PageHero";
 import { ExpertLinkPill, Pipeline, Thread } from "@/components/ProjectBits";
@@ -12,7 +12,9 @@ import { withdrawProposal } from "@/lib/proposal-actions";
 import { ConfirmButton } from "@/components/ConfirmButton";
 import { orgIsPublic } from "@/lib/org-roles";
 import { DocumentsPanel, ExpertSignatureBlock, MaterialsPanel } from "@/components/DossierSections";
-import { fmtEur, intlLocale } from "@/lib/i18n";
+import { fmtDateTime, fmtEur, intlLocale } from "@/lib/i18n";
+import { DossierTabs, type DossierTab } from "@/components/DossierTabs";
+import { FORMAT_LABEL, formatDuration } from "@/lib/events";
 import { getT } from "@/lib/i18n/server";
 
 export async function generateMetadata() {
@@ -20,13 +22,20 @@ export async function generateMetadata() {
   return { title: `${t("Sollicitation")} — KolBase` };
 }
 
-export default async function Page({ params }: { params: Promise<{ linkId: string }> }) {
+export default async function Page({ params, searchParams }: { params: Promise<{ linkId: string }>; searchParams: Promise<{ onglet?: string }> }) {
   const { linkId } = await params;
+  const { onglet } = await searchParams;
   const user = await requireUser();
   const link = await db.projectExpert.findFirst({
     where: { id: linkId, practitioner: { userId: user.id } },
     include: {
-      project: { include: { organization: true } },
+      project: {
+        include: {
+          organization: true,
+          // Événement de la collaboration : rattaché au dossier, ou celui de l'opportunité à laquelle l'expert a candidaté.
+          events: { where: { cancelledAt: null }, orderBy: { startsAt: "asc" } },
+        },
+      },
       signature: true,
       // Convention signée déposée à la main (la plus récente).
       documents: { where: { kind: "CONVENTION_SIGNEE" }, select: { id: true }, orderBy: { createdAt: "desc" }, take: 1 },
@@ -71,6 +80,21 @@ export default async function Page({ params }: { params: Promise<{ linkId: strin
     : p.status === "TERMINE" ? t("Prestation réalisée. Merci !")
     : t("Échangez avec l'organisation si besoin.");
 
+  // ─── Onglets : mission, messagerie, documents et convention, événement ───────
+  const fromCall = await db.application.findFirst({ where: { projectId: p.id }, select: { openCall: { select: { event: true } } } });
+  const callEvent = fromCall?.openCall.event;
+  const events = callEvent && !callEvent.cancelledAt && !p.events.some((x) => x.id === callEvent.id) ? [...p.events, callEvent] : p.events;
+  const toAnswer = !!lastMsg && lastMsg.authorId !== user.id && !abandoned && !closed;
+  const toSign = engaged && p.status === "SIGNATURE" && !signedHref;
+  const tabs: DossierTab[] = [
+    { key: "mission", label: t("Mission"), icon: Briefcase, alert: link.status === "ATT_EXPERTS" && !abandoned && !closed },
+    { key: "messagerie", label: t("Messagerie"), icon: MessagesSquare, count: link.messages.length || undefined, alert: toAnswer },
+    { key: "documents", label: t("Documents et convention"), icon: FileText, alert: toSign, disabled: engaged ? undefined : t("Après votre accord de principe") },
+    { key: "evenement", label: t("Événement"), icon: CalendarDays, count: events.length > 1 ? events.length : undefined, disabled: events.length ? undefined : t("Aucun événement rattaché") },
+  ];
+  const active = tabs.find((tb) => tb.key === onglet && !tb.disabled)?.key ?? "mission";
+  const href = (k: string) => (k === "mission" ? `/sollicitations/${link.id}` : `/sollicitations/${link.id}?onglet=${k}`);
+
   return (
     <>
       <SiteHeader />
@@ -92,24 +116,14 @@ export default async function Page({ params }: { params: Promise<{ linkId: strin
           {engaged && <Pipeline viewer="expert" status={link.status} />}
         </PageHero>
 
-        <div className="page-grid">
-          <div className="page-main">
-            {link.status === "ATT_EXPERTS" && !abandoned && !closed && (
-              <section className="card highlight"><h2>{t("Votre réponse")}</h2><RespondForm linkId={link.id} /></section>
-            )}
-            {engaged && <ExpertSignatureBlock linkId={link.id} signature={link.signature} email={user.email} projectStatus={p.status} signedDocId={signedDocId} />}
-            {engaged && p.status !== "ATT_IND" && <MaterialsPanel orgId={p.organizationId} projectId={p.id} canSubmit canReview={false} />}
-            {engaged && <DocumentsPanel projectId={p.id} linkId={link.id} canUpload openUpload={p.status === "SIGNATURE"} />}
-            <section className="card">
-              <div className="exchanges-head">
-                <h2 style={{ margin: 0 }}>{t("Échanges avec {org}", { org: p.organization.name })}</h2>
-                {lastMsg && lastMsg.authorId !== user.id && !abandoned && !closed && <span className="pill electric">{t("À vous de répondre")}</span>}
-              </div>
-              <Thread messages={link.messages} meId={user.id} />
-              {!abandoned && link.status !== "DECLINE" && <MessageForm linkId={link.id} />}
-            </section>
-          </div>
-          <aside className="page-aside">
+        <DossierTabs tabs={tabs} active={active} href={href} label={t("Rubriques de la collaboration")} />
+
+        {active === "mission" && (
+          <div className="page-grid">
+            <div className="page-main">
+              {link.status === "ATT_EXPERTS" && !abandoned && !closed && (
+                <section className="card highlight"><h2>{t("Votre réponse")}</h2><RespondForm linkId={link.id} /></section>
+              )}
             <section className={`card next-step`}>
               <span className="eyebrow-sm">{t("Prochaine étape")}</span>
               <p className="next-hint">{next}</p>
@@ -129,14 +143,62 @@ export default async function Page({ params }: { params: Promise<{ linkId: strin
                 </div>
               )}
             </section>
+              {toAnswer && <p className="notice"><Link href={href("messagerie")}>{t("{org} vous a écrit : répondre dans la messagerie", { org: p.organization.name })}</Link></p>}
+            </div>
+            <aside className="page-aside">
             <section className="card stack-sm">
               <h2 className="section-title">{p.organization.name}</h2>
               {p.organization.about && <p className="text-sm clamp-4">{p.organization.about}</p>}
               {p.organization.policy && <p className="text-xs muted">{t("Politique de collaboration")} : {p.organization.policy}</p>}
               {orgIsPublic(p.organization) && <Link className="link" href={`/structures/${p.organizationId}`}>{t("Voir la page de l'organisation")}</Link>}
             </section>
-          </aside>
-        </div>
+            </aside>
+          </div>
+        )}
+
+        {active === "messagerie" && (
+          <section className="card messenger-solo">
+            <div className="messenger-head">
+              <div><h2>{t("Échanges avec {org}", { org: p.organization.name })}</h2></div>
+              {toAnswer && <span className="pill electric">{t("À vous de répondre")}</span>}
+            </div>
+            <Thread messages={link.messages} meId={user.id} />
+            {!abandoned && link.status !== "DECLINE" && <MessageForm linkId={link.id} />}
+          </section>
+        )}
+
+        {active === "documents" && (
+          <div className="stack">
+            <ExpertSignatureBlock linkId={link.id} signature={link.signature} email={user.email} projectStatus={p.status} signedDocId={signedDocId} />
+            <section className="card stack-sm">
+              <h2 className="section-title"><FileText size={15} />{" "}{t("Convention")}</h2>
+              <div className="actions">
+                {signedHref && <a className="btn secondary" href={signedHref}>{t("Convention signée (PDF)")}</a>}
+                <a className="btn ghost" href={`/sollicitations/${link.id}/convention`} target="_blank" rel="noreferrer">{t("Projet de convention (PDF)")}</a>
+              </div>
+            </section>
+            <DocumentsPanel projectId={p.id} linkId={link.id} canUpload openUpload={p.status === "SIGNATURE"} />
+            {p.status !== "ATT_IND" && <MaterialsPanel orgId={p.organizationId} projectId={p.id} canSubmit canReview={false} />}
+          </div>
+        )}
+
+        {active === "evenement" && (
+          <div className="stack">
+            {events.map((ev) => (
+              <section key={ev.id} className="card stack-sm">
+                <span className="eyebrow-sm">{t(FORMAT_LABEL[ev.format])}{ev.internal ? ` · ${t("réunion interne")}` : ""}</span>
+                <h2 style={{ margin: 0 }}>{ev.title}</h2>
+                <ul className="plain stack-sm text-sm">
+                  <li><CalendarDays size={14} />{" "}{fmtDateTime(locale, ev.startsAt)}{ev.durationMinutes ? ` · ${formatDuration(ev.durationMinutes, locale)}` : ""}</li>
+                  <li><MapPin size={14} />{" "}{ev.format === "DISTANCIEL" ? t("En ligne") : [ev.venue, ev.city].filter(Boolean).join(", ") || t("Lieu à préciser")}</li>
+                  {engaged && ev.onlineUrl && ev.format !== "PRESENTIEL" && <li>{t("Lien de connexion :")}{" "}<a href={ev.onlineUrl} target="_blank" rel="noreferrer">{ev.onlineUrl}</a></li>}
+                </ul>
+                {ev.program && <><h3>{t("Programme")}</h3><p className="pre-line text-sm">{ev.program}</p></>}
+                {ev.publishedAt && !ev.internal && <Link className="link" href={`/evenements/${ev.id}`}>{t("Voir la page publique de l'événement")}</Link>}
+              </section>
+            ))}
+          </div>
+        )}
       </main>
     </>
   );
