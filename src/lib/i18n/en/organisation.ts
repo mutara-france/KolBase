@@ -1878,4 +1878,5 @@ export const ORGANISATION: Record<string, string> = {
   "{n} messages échangés": "{n} messages exchanged",
   "{n} message échangé": "{n} message exchanged",
   "L'événement d'un dossier se publie une fois le dossier validé par la conformité : en attendant, il reste en brouillon (date, lieu, devis et agence se préparent).": "A file's event is published once compliance has approved the file: until then it stays a draft (date, venue, quotes and agency can be prepared).",
+  "Pas d'événement pour ce type de collaboration": "No event for this type of collaboration",
 };

@@ -16,7 +16,7 @@ import { BillingNotice } from "@/components/BillingNotice";
 import { db } from "@/lib/db";
 import { requireMembership } from "@/lib/orgs";
 import { COMPLIANCE_ROLES, parisToday } from "@/lib/events";
-import { ACCOUNT_DELETED, PROPOSAL_ORIGIN, PROPOSAL_WITHDRAWN, collabType, eventTabOpen, PROJECT_ROLES, PROJECT_VIEW_ROLES, projectEditable, recruitmentOpen, REVIEW_ROLES, STATUS_LABEL, TRANSITIONS, unitCount, type TransitionKey } from "@/lib/projects";
+import { ACCOUNT_DELETED, PROPOSAL_ORIGIN, PROPOSAL_WITHDRAWN, collabType, eventTabOpen, needsMeeting, PROJECT_ROLES, PROJECT_VIEW_ROLES, projectEditable, recruitmentOpen, REVIEW_ROLES, STATUS_LABEL, TRANSITIONS, unitCount, type TransitionKey } from "@/lib/projects";
 import { storageEnabled } from "@/lib/storage";
 import { acceptCounterOffer, advanceProject } from "@/lib/project-actions";
 import { ConfirmButton } from "@/components/ConfirmButton";
@@ -276,7 +276,8 @@ export default async function Page({ params, searchParams }: { params: Promise<{
     { key: "conformite", label: t("Conformité"), icon: Scale, alert: (project.status === "EN_VALID" && isCompliance) || project.status === "BLOQUE" || project.status === "REFUS_ORDRE" },
     { key: "documents", label: t("Documents"), icon: FileText, count: project._count.documents || undefined },
     { key: "marketing", label: t("Marketing"), icon: Megaphone },
-    { key: "evenement", label: t("Événement"), icon: CalendarDays, count: project.events.length || undefined, disabled: eventOpen || callEvent ? undefined : t("S'ouvre à l'accord de principe") },
+    // Collaboration sans réunion (rédaction, étude…) : pas d'onglet Événement, sauf événement déjà rattaché.
+    { key: "evenement", label: t("Événement"), icon: CalendarDays, count: project.events.length || undefined, disabled: project.events.length || callEvent ? undefined : !needsMeeting(project.typeId) ? t("Pas d'événement pour ce type de collaboration") : eventOpen ? undefined : t("S'ouvre à l'accord de principe") },
   ];
   const active = tabs.find((tb) => tb.key === onglet && !tb.disabled)?.key ?? "apercu";
   const selectedEvent = project.events.find((ev) => ev.id === evenement) ?? project.events[0] ?? null;
