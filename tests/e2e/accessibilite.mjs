@@ -13,7 +13,7 @@ if (!PW) throw new Error("DEMO_PASSWORD est nécessaire.");
 
 const PAGES = {
   public: ["/", "/annuaire", "/evenements", "/evenements/demo-ev-soiree-implanto", "/experts/demo-p-durand", "/actualites", "/connexion", "/inscription", "/mot-de-passe-oublie", "/mentions-legales"],
-  "helene.durand@demo.kolbase.local": ["/tableau-de-bord", "/sollicitations", "/propositions", "/inscriptions", "/compte", "/revenus"],
+  "helene.durand@demo.kolbase.local": ["/tableau-de-bord", "/sollicitations", "/sollicitations/demo-prj-board-x1", "/sollicitations/demo-prj-board-x1?onglet=messagerie", "/sollicitations/demo-prj-board-x1?onglet=evenement", "/propositions", "/inscriptions", "/compte", "/revenus"],
   "julien.faure@demo.kolbase.local": [
     "/organisations/demo-org-dentalys",
     "/organisations/demo-org-dentalys/evenements",
@@ -21,6 +21,11 @@ const PAGES = {
     "/organisations/demo-org-dentalys/evenements/demo-ev-soiree-implanto",
     "/organisations/demo-org-dentalys/dossiers",
     "/organisations/demo-org-dentalys/dossiers/nouveau",
+    // Fiche dossier en onglets : vue d'ensemble, messagerie, événement (fiche de l'événement), marketing.
+    "/organisations/demo-org-dentalys/dossiers/demo-prj-board",
+    "/organisations/demo-org-dentalys/dossiers/demo-prj-board?onglet=messagerie",
+    "/organisations/demo-org-dentalys/dossiers/demo-prj-board?onglet=evenement",
+    "/organisations/demo-org-dentalys/dossiers/demo-prj-board?onglet=marketing",
     "/organisations/demo-org-dentalys/devis",
     "/organisations/demo-org-dentalys/intervenants",
     "/organisations/demo-org-dentalys/statistiques",

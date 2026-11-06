@@ -235,6 +235,10 @@ export default async function Page({ params, searchParams }: { params: Promise<{
   // ─── Onglets ────────────────────────────────────────────────────────────────
   const base = `/organisations/${id}/dossiers/${projectId}`;
   const tabHref = (k: string, extra: Record<string, string> = {}) => (k === "apercu" && !Object.keys(extra).length ? base : `${base}?${new URLSearchParams({ onglet: k, ...extra })}`);
+  const expertState = (e: (typeof project.experts)[number]) =>
+    e.status === "ATT_EXPERTS" ? (closed ? t("Sans réponse, recrutement clos") : e.desiredFeeCents != null ? t("Contre-proposition") : t("Réponse attendue"))
+    : e.status === "DECLINE" ? (e.responseNote === ACCOUNT_DELETED ? t("Retiré : compte supprimé") : e.responseNote === PROPOSAL_WITHDRAWN ? t("Proposition retirée par l'expert") : project.origin === PROPOSAL_ORIGIN ? t("Dossier clos") : t("A décliné"))
+    : t(STATUS_LABEL[e.status]);
   const nameOf = (e: (typeof project.experts)[number]) => `${drPrefix(e.practitioner.profession)}${e.practitioner.user.firstName} ${e.practitioner.user.lastName}`;
 
   // Messagerie : un fil par expert, et un fil par prestataire consulté pour l'événement du dossier.
@@ -279,7 +283,8 @@ export default async function Page({ params, searchParams }: { params: Promise<{
     // Collaboration sans réunion (rédaction, étude…) : pas d'onglet Événement, sauf événement déjà rattaché.
     { key: "evenement", label: t("Événement"), icon: CalendarDays, count: project.events.length || undefined, disabled: project.events.length || callEvent ? undefined : !needsMeeting(project.typeId) ? t("Pas d'événement pour ce type de collaboration") : eventOpen ? undefined : t("S'ouvre à l'accord de principe") },
   ];
-  const active = tabs.find((tb) => tb.key === onglet && !tb.disabled)?.key ?? "apercu";
+  // « ?modifier=1 » (proposer d'autres conditions, reprendre le dossier) : l'onglet Experts, où se trouve « Modifier le dossier ».
+  const active = tabs.find((tb) => tb.key === onglet && !tb.disabled)?.key ?? (modifier === "1" ? "experts" : "apercu");
   const selectedEvent = project.events.find((ev) => ev.id === evenement) ?? project.events[0] ?? null;
 
   const nextStep = (
@@ -358,7 +363,7 @@ export default async function Page({ params, searchParams }: { params: Promise<{
                         </div>
                       </div>
                       <span className={`pill ${e.status === "DECLINE" ? "done" : e.status === "ATT_EXPERTS" ? "wait" : "ok"}`}>
-                        {e.status === "ATT_EXPERTS" ? (closed ? t("Sans réponse, recrutement clos") : counter ? t("Contre-proposition") : t("Réponse attendue")) : e.status === "DECLINE" ? (e.responseNote === ACCOUNT_DELETED ? t("Retiré : compte supprimé") : e.responseNote === PROPOSAL_WITHDRAWN ? t("Proposition retirée par l'expert") : project.origin === PROPOSAL_ORIGIN ? t("Dossier clos") : t("A décliné")) : t(STATUS_LABEL[e.status])}
+                        {expertState(e)}
                       </span>
                     </div>
                     <div className="terms">
@@ -502,7 +507,7 @@ export default async function Page({ params, searchParams }: { params: Promise<{
                       <li key={e.id}>
                         <Avatar name={nameOf(e)} size={32} photo={expertPhotoSrc(e.practitioner, kolViewer(user, e.practitionerId))} />
                         <span className="who"><strong>{nameOf(e)}</strong><span className="muted text-xs">{e.feeCents != null ? `${fmtEur(locale, e.feeCents)} ${t("HT")}` : "—"}</span></span>
-                        <span className={`pill ${e.status === "DECLINE" ? "done" : e.status === "ATT_EXPERTS" ? "wait" : "ok"}`}>{e.status === "ATT_EXPERTS" ? (e.desiredFeeCents != null && !closed ? t("Contre-proposition") : closed ? t("Sans réponse, recrutement clos") : t("Réponse attendue")) : e.status === "DECLINE" ? t("A décliné") : t(STATUS_LABEL[e.status])}</span>
+                        <span className={`pill ${e.status === "DECLINE" ? "done" : e.status === "ATT_EXPERTS" ? "wait" : "ok"}`}>{expertState(e)}</span>
                       </li>
                     ))}
                   </ul>
@@ -530,10 +535,10 @@ export default async function Page({ params, searchParams }: { params: Promise<{
                 <p className="text-sm">{regime ? <><span className={`pill ${regime.regime === "autorisation" ? "wait" : regime.regime === "hors_france" ? "" : "ok"}`}>{t(REGIME_LABEL[regime.regime])}</span> {regimeReason(regime, t, intlLocale(locale))}</> : t("Le régime (déclaration ou autorisation) sera déterminé dès qu'un expert aura accepté.")}</p>
                 <Link className="link text-sm" href={tabHref("conformite")}>{t("Contrôles et supports")}</Link>
               </section>
-              {selectedEvent && (
+              {(selectedEvent ?? callEvent) && (
                 <section className="card stack-sm">
                   <h2 className="section-title"><CalendarDays size={15} />{" "}{t("Événement")}</h2>
-                  <p className="text-sm"><strong>{selectedEvent.title}</strong><br /><span className="muted">{fmtDateTime(locale, selectedEvent.startsAt)}{selectedEvent.city ? ` · ${selectedEvent.city}` : ""}</span></p>
+                  <p className="text-sm"><strong>{(selectedEvent ?? callEvent)!.title}</strong><br /><span className="muted">{fmtDateTime(locale, (selectedEvent ?? callEvent)!.startsAt)}{(selectedEvent ?? callEvent)!.city ? ` · ${(selectedEvent ?? callEvent)!.city}` : ""}</span></p>
                   <Link className="link text-sm" href={tabHref("evenement")}>{t("Gérer l'événement")}</Link>
                 </section>
               )}

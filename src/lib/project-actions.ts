@@ -254,7 +254,7 @@ export async function advanceProject(form: FormData) {
   // Reprise après blocage ou retour en arrière : on arrive sur la modification du dossier.
   if (key === "revise" || key === "back_to_accord") {
     await syncProjectFromExperts(projectId);
-    redirect(`/organisations/${orgId}/dossiers/${projectId}?modifier=1#modifier`);
+    redirect(`/organisations/${orgId}/dossiers/${projectId}?onglet=experts&modifier=1#modifier`);
   }
 }
 

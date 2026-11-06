@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { Lock, type LucideIcon } from "lucide-react";
+import { TabsScroll } from "@/components/TabsScroll";
 
 export type DossierTab = {
   key: string;
@@ -37,6 +38,7 @@ export function DossierTabs({ tabs, active, href, label }: { tabs: DossierTab[];
           </Link>
         );
       })}
+      <TabsScroll />
     </nav>
   );
 }
