@@ -122,7 +122,7 @@ export const orgOverview = cache(async (orgId: string) => {
   // Élision française (« Question d'Agence… ») ; en anglais, la tournure de la clé.
   const from = (key: string, name: string) => (locale === "fr" ? `${key.replace(" de {name}", "")} ${de(name)}` : t(key, { name }));
   const todos: TodoItem[] = [];
-  const dossier = (p: (typeof projects)[number]) => `${base}/dossiers/${p.id}`;
+  const dossier = (p: (typeof projects)[number], onglet?: string) => `${base}/dossiers/${p.id}${onglet ? `?onglet=${onglet}` : ""}`;
   if (can.project) {
     for (const p of projects) {
       if (p.status === "ATT_IND") todos.push({ href: dossier(p), title: t("Proposition d'expert à examiner"), detail: p.title, icon: "Inbox" });
@@ -130,12 +130,12 @@ export const orgOverview = cache(async (orgId: string) => {
       if (p.status === "BLOQUE") todos.push({ href: dossier(p), title: t("Reprendre le dossier : {title}", { title: p.title }), detail: p.complianceNote ?? t("Bloqué par la conformité"), icon: "AlertTriangle", tone: "danger" });
       if (p.status === "VALIDE") todos.push({ href: dossier(p), title: t("Choisir le régime : {title}", { title: p.title }), detail: t("Déclaration simple ou autorisation de l'Ordre"), icon: "CircleDot" });
       if (p.status === "ORDRE") todos.push({ href: dossier(p), title: t("Réponse de l'Ordre attendue : {title}", { title: p.title }), detail: p.ordreRef ?? undefined, icon: "CalendarClock", tone: "warn" });
-      if (p.status === "SIGNATURE") todos.push({ href: dossier(p), title: t("Convention à faire signer : {title}", { title: p.title }), icon: "FileSignature", tone: "warn" });
+      if (p.status === "SIGNATURE") todos.push({ href: dossier(p, "experts"), title: t("Convention à faire signer : {title}", { title: p.title }), icon: "FileSignature", tone: "warn" });
       // Contre-proposition d'un expert : accepter ses honoraires ou lui renvoyer une proposition.
       if (recruitmentOpen(p.status) && p.experts.some((e) => e.status === "ATT_EXPERTS" && e.desiredFeeCents != null))
-        todos.push({ href: dossier(p), title: t("Honoraires proposés par un expert : {title}", { title: p.title }), detail: t("Accepter ou proposer d'autres conditions"), icon: "Inbox", tone: "warn" });
+        todos.push({ href: dossier(p, "experts"), title: t("Honoraires proposés par un expert : {title}", { title: p.title }), detail: t("Accepter ou proposer d'autres conditions"), icon: "Inbox", tone: "warn" });
       if (p.status === "ATT_EXPERTS" && now.getTime() - p.updatedAt.getTime() > 5 * DAY)
-        todos.push({ href: dossier(p), title: t("Relancer les experts : {title}", { title: p.title }), detail: t("Sans réponse depuis le {date}", { date: day(p.updatedAt) }), icon: "Inbox", tone: "warn" });
+        todos.push({ href: dossier(p, "messagerie"), title: t("Relancer les experts : {title}", { title: p.title }), detail: t("Sans réponse depuis le {date}", { date: day(p.updatedAt) }), icon: "Inbox", tone: "warn" });
     }
   }
   if (can.sourcing) {
@@ -148,7 +148,7 @@ export const orgOverview = cache(async (orgId: string) => {
       if ((p.status === "SIGNE" || p.status === "TERMINE") && !p.declared)
         todos.push({ href: `${base}/conformite?onglet=transparence`, title: t("Publier sur Transparence Santé : {title}", { title: p.title }), detail: t("Convention signée"), icon: "FileSignature", tone: "warn" });
     for (const p of projects)
-      if (p.status === "EN_VALID") todos.push({ href: dossier(p), title: t("Valider : {title}", { title: p.title }), detail: t("Soumis le {date}", { date: day(p.updatedAt) }), icon: "ShieldCheck", tone: "warn", tab: "a-valider" });
+      if (p.status === "EN_VALID") todos.push({ href: dossier(p, "conformite"), title: t("Valider : {title}", { title: p.title }), detail: t("Soumis le {date}", { date: day(p.updatedAt) }), icon: "ShieldCheck", tone: "warn", tab: "a-valider" });
     const byEvent = new Map<string, { title: string; n: number; past: boolean }>();
     for (const r of hosp) {
       const e = byEvent.get(r.eventId) ?? { title: r.event.title, n: 0, past: eventEnded(r.event, now) };

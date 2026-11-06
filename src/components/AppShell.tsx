@@ -4,11 +4,11 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 import {
-  BarChart3, Bell, CalendarDays, Check, ChevronDown, ExternalLink, FileText, Folder, House, LogOut, Megaphone, Plug, Receipt, Send, ShieldCheck, UserRound, Users, Building2, Wallet,
+  BarChart3, Bell, CalendarDays, Check, ChevronDown, ExternalLink, FileText, Folder, House, LogOut, Megaphone, PanelLeftClose, PanelLeftOpen, Plug, Receipt, Send, ShieldCheck, UserRound, Users, Building2, Wallet,
 } from "lucide-react";
 import { Logo } from "@/components/Logo";
 import { signOut } from "@/lib/auth-actions";
-import { bottomBar, itemMatches, type ShellIcon, type ShellItem, type ShellSpace } from "@/lib/nav";
+import { bottomBar, itemMatches, NAV_COOKIE, type ShellIcon, type ShellItem, type ShellSpace } from "@/lib/nav";
 import { useT } from "@/components/I18nProvider";
 
 const ICONS: Record<ShellIcon, typeof House> = { House, Users, Folder, FileText, CalendarDays, ShieldCheck, Send, Megaphone, UserRound, Receipt, Plug, ExternalLink, Wallet, BarChart3 };
@@ -32,6 +32,7 @@ export function AppShell({
   activeKey,
   bell,
   admin = false,
+  navOpen = false,
 }: {
   user: ShellUser;
   spaces: ShellSpace[];
@@ -40,10 +41,18 @@ export function AppShell({
   bell: { count: number } | null;
   /** Administrateur de la plateforme KolBase : lien vers l'administration. */
   admin?: boolean;
+  /** Barre latérale ouverte au chargement (cookie kb_nav), repliée sinon. */
+  navOpen?: boolean;
 }) {
   const path = usePathname();
   const t = useT();
   const space = resolveSpace(spaces, path, initialSpace);
+  const [open, setOpen] = useState(navOpen);
+  const toggle = () => {
+    const next = !open;
+    setOpen(next);
+    document.cookie = next ? `${NAV_COOKIE}=1; path=/; max-age=31536000; samesite=lax` : `${NAV_COOKIE}=; path=/; max-age=0; samesite=lax`;
+  };
   const matched = space ? spaceMatches(space, path) : false;
 
   // Mémorise l'espace pour les pages communes (compte, annuaire, suivis…).
@@ -71,20 +80,25 @@ export function AppShell({
       </header>
 
       {space && (
-        <aside className="sidebar" aria-label={t("Navigation")}>
-          <SpaceSwitch space={space} spaces={spaces} />
+        <aside id="barre-laterale" className={`sidebar${open ? " open" : ""}`} aria-label={t("Navigation")}>
+          {/* L'espace courant figure déjà en haut à droite (nom, organisation) ; on en change depuis ce menu. */}
           <nav className="side-nav" aria-label={space.title}>
             {space.items.map((i) => {
               const Icon = ICONS[i.icon];
               return (
                 <Link key={i.key} href={i.href} className={`side-link${isActive(i) ? " active" : ""}`} aria-current={isActive(i) ? "page" : undefined}>
-                  <Icon size={19} strokeWidth={1.8} aria-hidden />
-                  {i.label}
+                  <Icon size={20} strokeWidth={1.8} aria-hidden />
+                  {/* Repliée : le libellé reste lu par les lecteurs d'écran et s'affiche en bulle au survol ou au focus. */}
+                  <span className="side-label">{i.label}</span>
                   {i.badge ? <span className="side-badge" aria-label={t("{n} à traiter", { n: i.badge })}>{i.badge}</span> : null}
                 </Link>
               );
             })}
           </nav>
+          <button type="button" className="side-toggle" onClick={toggle} aria-expanded={open} aria-controls="barre-laterale">
+            {open ? <PanelLeftClose size={20} strokeWidth={1.8} aria-hidden /> : <PanelLeftOpen size={20} strokeWidth={1.8} aria-hidden />}
+            <span className="side-label">{open ? t("Réduire le menu") : t("Ouvrir le menu")}</span>
+          </button>
         </aside>
       )}
 
@@ -111,39 +125,6 @@ function SpaceMark({ space, size = 40 }: { space: ShellSpace; size?: number }) {
     <span className={`space-mark${space.photo ? " photo" : ""}`} style={{ width: size, height: size, background: space.color, borderRadius: space.square ? 12 : 999 }} aria-hidden>
       {space.photo ? <img src={space.photo} alt="" width={size} height={size} /> : space.initials}
     </span>
-  );
-}
-
-/** En-tête de la barre latérale : l'espace courant, et le passage à un autre espace s'il y en a plusieurs. */
-function SpaceSwitch({ space, spaces }: { space: ShellSpace; spaces: ShellSpace[] }) {
-  const path = usePathname();
-  const t = useT();
-  const head = (
-    <>
-      <SpaceMark space={space} />
-      <span className="space-text">
-        <strong>{space.title}</strong>
-        <small>{space.subtitle}</small>
-      </span>
-    </>
-  );
-  if (spaces.length < 2) return <div className="space-head">{head}</div>;
-  return (
-    <details className="space-switch" key={path}>
-      <summary className="space-head" aria-label={t("{title}, changer d'espace", { title: space.title })}>
-        {head}
-        <ChevronDown size={18} className="space-chevron" aria-hidden />
-      </summary>
-      <div className="space-list">
-        {spaces.map((s) => (
-          <Link key={s.key} href={s.home} className={s.key === space.key ? "current" : undefined} aria-current={s.key === space.key ? "true" : undefined}>
-            <SpaceMark space={s} size={30} />
-            <span>{s.title}</span>
-            {s.key === space.key && <Check size={16} aria-hidden />}
-          </Link>
-        ))}
-      </div>
-    </details>
   );
 }
 

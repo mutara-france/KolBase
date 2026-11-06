@@ -11,6 +11,7 @@ import { intlLocale, type Locale } from "@/lib/i18n/core";
 import { benefitLimit, hospitalityRegime, regimeReason, type HospitalityLimits } from "@/lib/compliance";
 import { eurToCents } from "@/lib/form";
 import { parseParisDateTime } from "@/lib/events";
+import { EVENT_NOT_PUBLISHABLE } from "@/lib/projects";
 
 type Opt = { value: string; label: string };
 type CatalogItem = { id: string; label: string; typical: number };
@@ -130,7 +131,7 @@ function EventFields({ types, formats, catalog, initial, frozen, project, limits
   );
 }
 
-export function NewEventForm({ orgId, types, formats, catalog, project, blocked = null, limits }: { orgId: string; types: Opt[]; formats: Opt[]; catalog: readonly CatalogItem[]; project?: { id: string; title: string; area: string | null }; blocked?: Blocked; limits?: HospitalityLimits }) {
+export function NewEventForm({ orgId, types, formats, catalog, project, blocked = null, limits }: { orgId: string; types: Opt[]; formats: Opt[]; catalog: readonly CatalogItem[]; project?: { id: string; title: string; area: string | null; publishable?: boolean }; blocked?: Blocked; limits?: HospitalityLimits }) {
   const t = useT();
   const [state, action, pending] = useActionState(createEvent, undefined);
   // Créé depuis un dossier (board, comité) : réunion interne par défaut.
@@ -141,12 +142,13 @@ export function NewEventForm({ orgId, types, formats, catalog, project, blocked 
       <Notice state={state} />
       <input type="hidden" name="orgId" value={orgId} />
       {project && <input type="hidden" name="projectId" value={project.id} />}
-      {project && <p className="notice ok">{t("Événement rattaché au dossier « {title} » : sa logistique (salle, traiteur, hébergement…) se pilote depuis la fiche de l'événement.", { title: project.title })}</p>}
+      {project && <p className="notice ok">{t("Événement rattaché au dossier « {title} » : il se gère depuis l'onglet « Événement » du dossier (logistique, devis, agence, inscriptions).", { title: project.title })}</p>}
       <EventFields types={types} formats={formats} catalog={catalog} project={project} limits={limits} />
       <label className="check">
         <input type="checkbox" name="internal" value="1" checked={internal} onChange={(e) => setInternal(e.target.checked)} />{" "}{t("Réunion interne (board, comité, réunion d'experts) : ni publication dans l'agenda, ni inscriptions en ligne")}
       </label>
-      {!internal && (
+      {!internal && project && project.publishable === false && <p className="hint">{t(EVENT_NOT_PUBLISHABLE)}</p>}
+      {!internal && (!project || project.publishable !== false) && (
         <label className="check"><input type="checkbox" name="publish" value="1" disabled={!!blocked} />{" "}{t("Publier immédiatement dans l'agenda")}{blocked ? ` ${t("({blocked} ; enregistrez-le en brouillon d'ici là)", { blocked: t(BLOCKED_UNTIL[blocked]) })}` : ""}</label>
       )}
       <button className="btn" disabled={pending}>{pending ? t("Création…") : t("Créer l'événement")}</button>

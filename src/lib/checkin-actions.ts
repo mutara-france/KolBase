@@ -25,6 +25,8 @@ export async function setPresence(_: FormState, form: FormData): Promise<FormSta
   await db.registration.update({ where: { id: reg.id }, data: undo ? { checkedInAt: null, checkedInById: null } : { checkedInAt: new Date(), checkedInById: user.id } });
   await audit(user.id, undo ? "registration.checkin_undo" : "registration.checkin", "Registration", reg.id, { eventId: reg.event.id });
   revalidatePath(`/organisations/${reg.event.organizationId}/evenements/${reg.event.id}`);
+  // Événement rattaché à un dossier : il se gère aussi dans l'onglet « Événement » du dossier.
+  revalidatePath(`/organisations/${reg.event.organizationId}/dossiers`, "layout");
   revalidatePath(`/organisations/${reg.event.organizationId}/evenements/${reg.event.id}/pointage`);
   if (reg.checkinCode) revalidatePath(`/pointage/${reg.checkinCode}`);
   return { ok: undo ? `Pointage annulé pour ${reg.user.firstName} ${reg.user.lastName}.` : `${reg.user.firstName} ${reg.user.lastName} : présence enregistrée.` };

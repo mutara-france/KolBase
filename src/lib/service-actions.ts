@@ -23,6 +23,8 @@ export type FormState = { error?: string; ok?: string; test?: boolean; sent?: bo
 const app = () => process.env.APP_URL ?? "http://localhost:3000";
 const refresh = (orgId: string, eventId: string) => {
   revalidatePath(`/organisations/${orgId}/evenements/${eventId}`);
+  // Événement rattaché à un dossier : il se gère aussi dans l'onglet « Événement » du dossier.
+  revalidatePath(`/organisations/${orgId}/dossiers`, "layout");
   revalidatePath("/admin");
   revalidatePath("/");
 };

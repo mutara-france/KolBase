@@ -151,13 +151,13 @@ export function notifyMessage(linkId: string, authorId: string) {
     const l = await db.projectExpert.findUnique({ where: { id: linkId }, include: linkInclude });
     if (!l) return;
     if (l.practitioner.userId === authorId) {
-      await send(await projectTeam(l.project), (t) => ({ subject: t("Nouveau message de {expert}", { expert: expertName(l.practitioner) }), text: t("Bonjour,\n\n{expert} vous a écrit à propos du dossier « {project} ».", { expert: expertName(l.practitioner), project: l.project.title }), cta: { label: t("Lire le message"), href: `/organisations/${l.project.organizationId}/dossiers/${l.projectId}` } }), authorId);
+      await send(await projectTeam(l.project), (t) => ({ subject: t("Nouveau message de {expert}", { expert: expertName(l.practitioner) }), text: t("Bonjour,\n\n{expert} vous a écrit à propos du dossier « {project} ».", { expert: expertName(l.practitioner), project: l.project.title }), cta: { label: t("Lire le message"), href: `/organisations/${l.project.organizationId}/dossiers/${l.projectId}?onglet=messagerie&fil=${l.id}` } }), authorId);
     } else {
       const org = l.project.organization.name;
       await send([l.practitioner.user], (t) => ({
         subject: t("Nouveau message {de_org}", { org, de_org: de(org) }),
         text: `${t("Bonjour,")}\n\n${t("{org} vous a écrit à propos de « {titre} ».", { org, titre: l.project.title })}`,
-        cta: { label: t("Lire le message"), href: `/sollicitations/${l.id}` },
+        cta: { label: t("Lire le message"), href: `/sollicitations/${l.id}?onglet=messagerie` },
       }), authorId);
     }
   });

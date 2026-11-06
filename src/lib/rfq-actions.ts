@@ -178,6 +178,8 @@ export async function applyQuoteToBenefit(form: FormData) {
   ]);
   await audit(user.id, "event.benefit_value", "Event", quote.rfq.eventId, { benefit: benefit.label, from: benefit.valueCents, to: valueCents, quoteId: quote.id, ttcCents: quoteTtc(quote) });
   revalidatePath(`/organisations/${orgId}/evenements/${quote.rfq.eventId}`);
+  // Événement rattaché à un dossier : il se gère aussi dans l'onglet « Événement » du dossier.
+  revalidatePath(`/organisations/${orgId}/dossiers`, "layout");
 }
 
 // ─── Questions et échanges sur une demande ─────────────────────────────────
@@ -204,6 +206,8 @@ export async function postRfqMessage(_: ActionState, form: FormData): Promise<Ac
   await audit(user.id, "rfq.message", "Rfq", rfqId, { supplierId, fromSupplier });
   notifyRfqMessage(rfqId, supplierId, fromSupplier, user.id);
   revalidatePath(fromSupplier ? `/organisations/${orgId}/devis` : `/organisations/${orgId}/prestataires`);
+  // Messagerie du dossier (fils des prestataires de son événement).
+  if (!fromSupplier) revalidatePath(`/organisations/${orgId}/dossiers`, "layout");
   return { ok: t("Message envoyé.") };
 }
 

@@ -28,6 +28,8 @@ export async function sendRemindersNow(_: FormState, form: FormData): Promise<Fo
   const n = await sendEventReminders(event.id);
   await audit(user.id, "event.reminders", "Event", event.id, { sent: n });
   revalidatePath(`/organisations/${orgId}/evenements/${event.id}`);
+  // Événement rattaché à un dossier : il se gère aussi dans l'onglet « Événement » du dossier.
+  revalidatePath(`/organisations/${orgId}/dossiers`, "layout");
   return n ? { ok: t("Rappel envoyé à {n} inscrit{v}.", { n, v: n > 1 ? "s" : "" }) } : { ok: t("Tous les inscrits ont déjà reçu le rappel.") };
 }
 
@@ -40,6 +42,8 @@ export async function sendFollowUpsNow(_: FormState, form: FormData): Promise<Fo
   const n = await sendEventFollowUps(event.id);
   await audit(user.id, "event.followups", "Event", event.id, { sent: n });
   revalidatePath(`/organisations/${orgId}/evenements/${event.id}`);
+  // Événement rattaché à un dossier : il se gère aussi dans l'onglet « Événement » du dossier.
+  revalidatePath(`/organisations/${orgId}/dossiers`, "layout");
   return n ? { ok: t("Envoyé à {n} participant{v}.", { n, v: n > 1 ? "s" : "" }) } : { ok: t("Tous les participants l'ont déjà reçu.") };
 }
 
@@ -68,5 +72,7 @@ export async function submitSurvey(_: FormState, form: FormData): Promise<FormSt
   });
   revalidatePath(`/evenements/${reg.eventId}/avis`);
   revalidatePath(`/organisations/${reg.event.organizationId}/evenements/${reg.eventId}`);
+  // Événement rattaché à un dossier : il se gère aussi dans l'onglet « Événement » du dossier.
+  revalidatePath(`/organisations/${reg.event.organizationId}/dossiers`, "layout");
   return { ok: t("Merci : votre avis est transmis à l'organisateur, sans votre nom.") };
 }

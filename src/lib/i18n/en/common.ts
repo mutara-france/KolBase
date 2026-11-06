@@ -321,4 +321,6 @@ export const COMMON: Record<string, string> = {
   "partenaire cette année": "partner this year",
   "Les experts importent leurs publications depuis leur profil ORCID public, ce qui alimente les fiches de l'annuaire.": "Experts import their publications from their public ORCID profile, which feeds the directory profiles.",
   "Pied de page": "Footer",
+  "Réduire le menu": "Collapse menu",
+  "Ouvrir le menu": "Expand menu",
 };

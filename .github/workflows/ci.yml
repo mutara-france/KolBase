@@ -13,7 +13,8 @@ concurrency:
 jobs:
   verifier:
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    # Environ 15 minutes d'habitude ; marge pour une installation lente du navigateur de test (14 minutes le 6 novembre).
+    timeout-minutes: 30
     services:
       postgres:
         image: postgres:17

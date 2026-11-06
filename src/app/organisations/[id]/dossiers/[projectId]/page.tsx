@@ -1,11 +1,14 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { CalendarDays, Clock, Euro, Scale, Sparkles, User, Users, Wallet } from "lucide-react";
+import { CalendarDays, Clock, Euro, FileText, LayoutDashboard, Megaphone, MessagesSquare, Scale, Sparkles, User, Users, Wallet } from "lucide-react";
 import { aiEnabled } from "@/lib/ai";
 import { Avatar } from "@/components/Avatar";
 import { SiteHeader } from "@/components/SiteHeader";
 import { FmvBadge, Pipeline, StatusPill, Thread } from "@/components/ProjectBits";
 import { MessageForm } from "@/components/ProjectForms";
+import { RfqMessageForm } from "@/components/RfqForms";
+import { DossierTabs, type DossierTab } from "@/components/DossierTabs";
+import { EventWorkspace } from "@/components/EventWorkspace";
 import { AddExpertForm, ExpertTermsForm, ProjectObjectForm } from "@/components/DossierForms";
 import { canSee, kolViewer, kolVisibility } from "@/lib/visibility";
 import { expertPhotoSrc, photoPath } from "@/lib/expert-photo";
@@ -13,7 +16,7 @@ import { BillingNotice } from "@/components/BillingNotice";
 import { db } from "@/lib/db";
 import { requireMembership } from "@/lib/orgs";
 import { COMPLIANCE_ROLES, parisToday } from "@/lib/events";
-import { ACCOUNT_DELETED, PROPOSAL_ORIGIN, PROPOSAL_WITHDRAWN, collabType, needsMeeting, PROJECT_ROLES, PROJECT_VIEW_ROLES, projectEditable, recruitmentOpen, REVIEW_ROLES, STATUS_LABEL, TRANSITIONS, unitCount, type TransitionKey } from "@/lib/projects";
+import { ACCOUNT_DELETED, PROPOSAL_ORIGIN, PROPOSAL_WITHDRAWN, collabType, eventTabOpen, needsMeeting, PROJECT_ROLES, PROJECT_VIEW_ROLES, projectEditable, recruitmentOpen, REVIEW_ROLES, STATUS_LABEL, TRANSITIONS, unitCount, type TransitionKey } from "@/lib/projects";
 import { storageEnabled } from "@/lib/storage";
 import { acceptCounterOffer, advanceProject } from "@/lib/project-actions";
 import { ConfirmButton } from "@/components/ConfirmButton";
@@ -22,7 +25,7 @@ import { expertSplit } from "@/lib/indicators";
 import { BudgetPanel, ConflictsPanel, ConventionSignatureBlock, DocumentsPanel, MaterialsPanel } from "@/components/DossierSections";
 import { missingSignedConventions } from "@/lib/project-documents";
 import { FOUR_EYES_BLOCKED, FOUR_EYES_JUSTIFY, fourEyes, projectAuthors } from "@/lib/four-eyes";
-import { RFQ_STATUS, rfqDisplayStatus, supplierCategoryLabel } from "@/lib/suppliers";
+import { supplierCategoryLabel } from "@/lib/suppliers";
 import type { ProjectStatus } from "@/generated/prisma/client";
 import { complianceSettings, projectRegime, REGIME_LABEL, regimeReason } from "@/lib/compliance";
 import { country, foreignObligations, practicesInFrance } from "@/lib/countries";
@@ -108,10 +111,10 @@ const NEXT_HINT: Partial<Record<ProjectStatus, string>> = {
 const DANGER: TransitionKey[] = ["abandon", "block", "ordre_ko", "decline_proposal", "back_to_accord"];
 
 
-export default async function Page({ params, searchParams }: { params: Promise<{ id: string; projectId: string }>; searchParams: Promise<{ modifier?: string }> }) {
+export default async function Page({ params, searchParams }: { params: Promise<{ id: string; projectId: string }>; searchParams: Promise<{ modifier?: string; onglet?: string; fil?: string; evenement?: string; publie?: string }> }) {
   const { t, locale } = await getT();
   const { id, projectId } = await params;
-  const { modifier } = await searchParams;
+  const { modifier, onglet, fil, evenement, publie } = await searchParams;
   const { org, roles, user } = await requireMembership(id, PROJECT_VIEW_ROLES);
   const project = await db.project.findFirst({
     where: { id: projectId, organizationId: id },
@@ -131,6 +134,7 @@ export default async function Page({ params, searchParams }: { params: Promise<{
         orderBy: { startsAt: "asc" },
         include: { rfqs: { include: { quotes: { select: { status: true, amountCents: true } } } } },
       },
+      _count: { select: { documents: true } },
     },
   });
   if (!project) notFound();
@@ -207,7 +211,6 @@ export default async function Page({ params, searchParams }: { params: Promise<{
   const spent = total + project.expenses.reduce((s, e) => s + e.amountCents, 0) + supplierCents;
   // Dossier terminé ou abandonné : plus d'événement à créer ; un dossier né d'un appel renvoie à l'événement de l'appel.
   const finished = project.status === "TERMINE" || project.status === "DECLINE";
-  const showLogistics = project.events.length > 0 || (!finished && (needsMeeting(project.typeId) || !!callEvent));
   const budgetPct = project.budgetCents ? Math.round((spent / project.budgetCents) * 100) : null;
   const recent = history.slice(0, 8);
   const older = history.slice(8);
@@ -229,49 +232,112 @@ export default async function Page({ params, searchParams }: { params: Promise<{
     );
   };
 
-  return (
-    <>
-      <SiteHeader />
-      <main className="stack">
-        <p className="muted"><Link href={`/organisations/${id}`}>{org.name}</Link> / <Link href={`/organisations/${id}/dossiers`}>{t("Dossiers")}</Link></p>
+  // ─── Onglets ────────────────────────────────────────────────────────────────
+  const base = `/organisations/${id}/dossiers/${projectId}`;
+  const tabHref = (k: string, extra: Record<string, string> = {}) => (k === "apercu" && !Object.keys(extra).length ? base : `${base}?${new URLSearchParams({ onglet: k, ...extra })}`);
+  const expertState = (e: (typeof project.experts)[number]) =>
+    e.status === "ATT_EXPERTS" ? (closed ? t("Sans réponse, recrutement clos") : e.desiredFeeCents != null ? t("Contre-proposition") : t("Réponse attendue"))
+    : e.status === "DECLINE" ? (e.responseNote === ACCOUNT_DELETED ? t("Retiré : compte supprimé") : e.responseNote === PROPOSAL_WITHDRAWN ? t("Proposition retirée par l'expert") : project.origin === PROPOSAL_ORIGIN ? t("Dossier clos") : t("A décliné"))
+    : t(STATUS_LABEL[e.status]);
+  const nameOf = (e: (typeof project.experts)[number]) => `${drPrefix(e.practitioner.profession)}${e.practitioner.user.firstName} ${e.practitioner.user.lastName}`;
 
-        <header className="page-hero">
-          <div className="hero-top">
-            <span className="eyebrow-sm">{t(type?.label ?? project.typeId)}{project.therapeuticArea ? ` · ${t(project.therapeuticArea)}` : ""}</span>
-            <StatusPill status={project.status} />
-          </div>
-          <h1>{project.title}</h1>
-          {project.description && <p className="lead">{project.description}</p>}
-          <dl className="hero-facts">
-            <div>
-              <dt><Users size={13} />{" "}{t("Experts")}</dt>
-              <dd>{t(engaged.length > 1 ? "{engaged} engagés" : "{engaged} engagé", { engaged: engaged.length })}<small>{waiting.length ? t(waiting.length > 1 ? "{waiting} réponses attendues" : "{waiting} réponse attendue", { waiting: waiting.length }) : t(live.length > 1 ? "{live} sollicités" : "{live} sollicité", { live: live.length })}</small></dd>
-            </div>
-            <div>
-              <dt><Euro size={13} />{" "}{t("Honoraires engagés")}</dt>
-              <dd>{fmtEur(locale, total)}{" "}{t("HT")}<small>{proposed > 0 ? t("{montant} HT proposés, sans réponse", { montant: fmtEur(locale, proposed) }) : t("honoraires acceptés")}</small></dd>
-            </div>
-            <div>
-              <dt><Wallet size={13} />{" "}{t("Budget")}</dt>
-              <dd>{project.budgetCents != null ? `${fmtEur(locale, project.budgetCents)} ${t("HT")}` : t("Non défini")}<small>{budgetPct != null ? `${t(supplierCents ? "{budgetPct} % engagé, prestataires compris" : "{budgetPct} % engagé", { budgetPct })}${proposed > 0 ? ` ; ${t("{montant} HT proposés en plus", { montant: fmtEur(locale, proposed) })}` : ""}` : t("à renseigner plus bas")}</small></dd>
-            </div>
-            <div>
-              <dt><Scale size={13} />{" "}{t("Régime")}</dt>
-              <dd>{regime ? t(REGIME_LABEL[regime.regime]) : t("À déterminer")}<small>{regime ? regimeReason(regime, t, intlLocale(locale)) : t("selon les experts engagés")}</small></dd>
-            </div>
-            <div>
-              <dt><User size={13} />{" "}{t("Responsable")}</dt>
-              <dd>{owner ? `${owner.firstName} ${owner.lastName}` : "—"}<small>{t("ouvert le {date}", { date: fmtDate(locale, project.createdAt) })}</small></dd>
-            </div>
-          </dl>
-          <Pipeline status={project.status} />
-        </header>
+  // Messagerie : un fil par expert, et un fil par prestataire consulté pour l'événement du dossier.
+  const eventIds = project.events.length ? project.events.map((ev) => ev.id) : callEvent ? [callEvent.id] : [];
+  const rfqs = isProject && eventIds.length
+    ? await db.rfq.findMany({
+        where: { organizationId: id, eventId: { in: eventIds }, status: { in: ["sent", "awarded"] } },
+        include: {
+          suppliers: { include: { supplier: { select: { id: true, name: true } } } },
+          messages: { include: { author: { select: { firstName: true, lastName: true } } }, orderBy: { createdAt: "asc" } },
+          quotes: { select: { supplierId: true, status: true } },
+        },
+        orderBy: { createdAt: "asc" },
+      })
+    : [];
+  type Fil = { key: string; title: string; subtitle: string; messages: { id: string; body: string; createdAt: Date; authorId: string; author: { firstName: string; lastName: string } }[]; toAnswer: boolean; write: { linkId: string } | { rfqId: string; supplierId: string; name: string } | null };
+  const fils: Fil[] = [
+    ...project.experts.map((e) => {
+      const last = e.messages.at(-1);
+      return { key: e.id, title: nameOf(e), subtitle: e.status === "DECLINE" ? t("A décliné") : e.status === "ATT_EXPERTS" ? t("Réponse attendue") : t(STATUS_LABEL[e.status]), messages: e.messages, toAnswer: !!last && last.authorId === e.practitioner.userId && e.status !== "DECLINE", write: e.status !== "DECLINE" ? { linkId: e.id } : null };
+    }),
+    ...rfqs.flatMap((r) =>
+      r.suppliers.filter((sp) => !sp.declined || r.messages.some((m) => m.supplierId === sp.supplierId)).map((sp) => {
+        const msgs = r.messages.filter((m) => m.supplierId === sp.supplierId);
+        const canWrite = r.status === "sent" || r.quotes.some((q) => q.supplierId === sp.supplierId && q.status === "retained");
+        return { key: `devis-${r.id}-${sp.supplierId}`, title: sp.supplier.name, subtitle: t(supplierCategoryLabel(r.category)), messages: msgs, toAnswer: !!msgs.at(-1)?.fromSupplier, write: canWrite ? { rfqId: r.id, supplierId: sp.supplierId, name: sp.supplier.name } : null };
+      }),
+    ),
+  ];
+  const toAnswerCount = fils.filter((f) => f.toAnswer).length;
+  const fil0 = fils.find((f) => f.key === fil) ?? fils.find((f) => f.toAnswer) ?? fils.find((f) => f.messages.length) ?? fils[0];
 
-        {project.status === "ATT_IND" && <p className="notice warn">{t("Projet proposé par l'expert : acceptez-le pour ouvrir le circuit (conformité, convention, signature), ou déclinez-le. Le motif éventuel lui est transmis dans vos échanges.")}</p>}
-        {proposalBlocked && <BillingNotice orgId={id} motive="proposition" objet={projectId} />}
+  const counters = project.experts.filter((e) => e.status === "ATT_EXPERTS" && e.desiredFeeCents != null && !closed).length;
+  const eventOpen = eventTabOpen(project.status) || project.events.length > 0;
+  const tabs: DossierTab[] = [
+    { key: "apercu", label: t("Vue d'ensemble"), icon: LayoutDashboard },
+    { key: "experts", label: t("Experts"), icon: Users, count: live.length || undefined, alert: counters > 0 },
+    { key: "messagerie", label: t("Messagerie"), icon: MessagesSquare, count: toAnswerCount || undefined, alert: toAnswerCount > 0 },
+    { key: "conformite", label: t("Conformité"), icon: Scale, alert: (project.status === "EN_VALID" && isCompliance) || project.status === "BLOQUE" || project.status === "REFUS_ORDRE" },
+    { key: "documents", label: t("Documents"), icon: FileText, count: project._count.documents || undefined },
+    { key: "marketing", label: t("Marketing"), icon: Megaphone },
+    // Collaboration sans réunion (rédaction, étude…) : pas d'onglet Événement, sauf événement déjà rattaché.
+    { key: "evenement", label: t("Événement"), icon: CalendarDays, count: project.events.length || undefined, disabled: project.events.length || callEvent ? undefined : !needsMeeting(project.typeId) ? t("Pas d'événement pour ce type de collaboration") : eventOpen ? undefined : t("S'ouvre à l'accord de principe") },
+  ];
+  // « ?modifier=1 » (proposer d'autres conditions, reprendre le dossier) : l'onglet Experts, où se trouve « Modifier le dossier ».
+  const active = tabs.find((tb) => tb.key === onglet && !tb.disabled)?.key ?? (modifier === "1" ? "experts" : "apercu");
+  const selectedEvent = project.events.find((ev) => ev.id === evenement) ?? project.events[0] ?? null;
 
-        <div className="page-grid">
-          <div className="page-main">
+  const nextStep = (
+            <section className="card next-step">
+              <span className="eyebrow-sm">{t("Prochaine étape")}</span>
+              <p className="next-hint">{t(NEXT_HINT[project.status] ?? "")}</p>
+              {project.status === "EN_VALID" && !isCompliance && <p className="hint">{t("En attente de l'équipe Conformité.")}</p>}
+              {fourEyesRule === "blocked" && <p className="notice warn">{FOUR_EYES_BLOCKED}</p>}
+              {fourEyesRule === "justify" && <p className="hint">{FOUR_EYES_JUSTIFY}</p>}
+              {available.length > 0 && (
+                <div className="transitions-stack">
+                  {available.map((k) => (
+                    <form key={k} action={advanceProject} className={`transition${DANGER.includes(k) ? " secondary" : ""}`}>
+                      <input type="hidden" name="orgId" value={id} />
+                      <input type="hidden" name="projectId" value={projectId} />
+                      <input type="hidden" name="transition" value={k} />
+                      {needsNote(k) && <input name="note" aria-label={t(notePlaceholder(k))} placeholder={t(notePlaceholder(k))} required={k === "block" || k === "abandon" || (k === "validate" && fourEyesRule === "justify")} />}
+                      {k === "signed" && attestable && (
+                        <label className="check text-sm">
+                          <input type="checkbox" name="attest" value="1" required />{" "}{t("J'atteste que la convention de {join} est signée par les deux parties et conservée par l'organisation.", { join: unsigned.join(", ") })}
+                        </label>
+                      )}
+                      {k === "submit" && waiting.length > 0 ? (
+                        <ConfirmButton
+                          className="btn"
+                          confirm={t("soumettre à la conformité")}
+                          summary={<>{waiting.length > 1 ? t("{waiting} réponses attendues seront closes", { waiting: waiting.length }) : t("1 réponse attendue sera close")} ({waiting.map((w) => `${drPrefix(w.practitioner.profession)}${w.practitioner.user.firstName} ${w.practitioner.user.lastName}${w.desiredFeeCents != null ? `, ${t("qui propose d'autres honoraires")}` : ""}`).join(" ; ")}) : {waiting.length > 1 ? t("ces experts sont prévenus") : t("l'expert est prévenu")}{" "}{t("par e-mail que le recrutement est clos.")}</>}
+                        >
+                          {t(TRANSITIONS[k].label)}
+                        </ConfirmButton>
+                      ) : (
+                        <button className={DANGER.includes(k) ? "btn ghost" : "btn"}>{t(TRANSITIONS[k].label)}</button>
+                      )}
+                    </form>
+                  ))}
+                </div>
+              )}
+              {signStarted && isProject && (
+                <p className="hint">{t("Une convention est en cours de signature ou déjà signée : le retour en accord de principe n'est plus possible. Si les conditions doivent changer, abandonnez le dossier (motif obligatoire) et ouvrez-en un nouveau.")}</p>
+              )}
+              {unsigned.length > 0 && !attestable && (
+                <p className="hint">
+                  {t("Déposez la convention signée de {join} (onglet Documents)", { join: unsigned.join(", ") })}{signatureEnabled() ? t(" ou faites-la signer électroniquement (onglet Experts)") : ""}{" "}{t("pour passer le dossier en « Signé ».")}
+                </p>
+              )}
+              {attestable && (
+                <p className="hint">
+                  {t("Le dépôt de documents n'est pas encore activé sur KolBase")}{signatureEnabled() ? t(" (la signature électronique reste possible depuis l'onglet Experts)") : ""}{" "}{t(": passer en « Signé » exige votre attestation, enregistrée à votre nom avec la date.")}
+                </p>
+              )}
+            </section>
+  );
+  const expertCards = (
             <section className="stack-sm">
               <div className="block-head">
                 <h2>{t("Experts")}</h2>
@@ -286,7 +352,6 @@ export default async function Page({ params, searchParams }: { params: Promise<{
                 const counter = e.status === "ATT_EXPERTS" && e.desiredFeeCents != null && !closed;
                 const last = e.messages.at(-1);
                 const toAnswer = last && last.authorId === e.practitioner.userId;
-                const earlier = e.messages.slice(0, -2);
                 return (
                   <section key={e.id} className={`card expert-card${e.status === "DECLINE" ? " muted-card" : ""}`}>
                     <div className="expert-head">
@@ -296,13 +361,9 @@ export default async function Page({ params, searchParams }: { params: Promise<{
                         <div className="muted text-sm">
                           {[t(e.practitioner.specialty ?? e.practitioner.profession), e.practitioner.city, !practicesInFrance(e.practitioner.country) ? country(e.practitioner.country).name : null].filter(Boolean).join(" · ")}
                         </div>
-                        {/* Expert engagé qui a donné son accord : sa photo en grand format pour le programme, les affiches, les posts. */}
-                        {active && photo && e.practitioner.photoConsentAt && e.practitioner.photoUpdatedAt && (
-                          <a className="text-xs" href={photoPath(e.practitionerId, e.practitioner.photoUpdatedAt, "grande")} download>{t("Photo pour vos supports (accord de l'expert)")}</a>
-                        )}
                       </div>
                       <span className={`pill ${e.status === "DECLINE" ? "done" : e.status === "ATT_EXPERTS" ? "wait" : "ok"}`}>
-                        {e.status === "ATT_EXPERTS" ? (closed ? t("Sans réponse, recrutement clos") : counter ? t("Contre-proposition") : t("Réponse attendue")) : e.status === "DECLINE" ? (e.responseNote === ACCOUNT_DELETED ? t("Retiré : compte supprimé") : e.responseNote === PROPOSAL_WITHDRAWN ? t("Proposition retirée par l'expert") : project.origin === PROPOSAL_ORIGIN ? t("Dossier clos") : t("A décliné")) : t(STATUS_LABEL[e.status])}
+                        {expertState(e)}
                       </span>
                     </div>
                     <div className="terms">
@@ -326,7 +387,7 @@ export default async function Page({ params, searchParams }: { params: Promise<{
                                 {t("Accepter ces honoraires")}
                               </ConfirmButton>
                             </form>
-                            <a className="btn ghost small" href="?modifier=1#modifier">{t("Proposer d'autres conditions")}</a>
+                            <a className="btn ghost small" href={`${tabHref("experts", { modifier: "1" })}#modifier`}>{t("Proposer d'autres conditions")}</a>
                           </span>
                         )}
                       </div>
@@ -374,26 +435,120 @@ export default async function Page({ params, searchParams }: { params: Promise<{
                         )}
                       </div>
                     )}
-                    <div className="exchanges">
-                      <div className="exchanges-head">
-                        <span className="label">{t("Échanges")}{e.messages.length ? ` (${e.messages.length})` : ""}</span>
-                        {toAnswer && e.status !== "DECLINE" && <span className="pill electric">{t("À vous de répondre")}</span>}
-                        {last && <span className="muted text-xs">{t("dernier message le {date}", { date: fmtDateTime(locale, last.createdAt) })}</span>}
-                      </div>
-                      {earlier.length > 0 && (
-                        <details className="older">
-                          <summary>{t("Afficher")}{" "}{earlier.length > 1 ? t("les {earlier} messages précédents", { earlier: earlier.length }) : t("le message précédent")}</summary>
-                          <Thread messages={earlier} meId={user.id} />
-                        </details>
-                      )}
-                      <Thread messages={e.messages.slice(-2)} meId={user.id} />
-                      {e.status !== "DECLINE" && <MessageForm linkId={e.id} />}
+                    <div className="exchanges-link">
+                      <MessagesSquare size={15} aria-hidden />
+                      <Link href={tabHref("messagerie", { fil: e.id })}>
+                        {e.messages.length ? t(e.messages.length > 1 ? "{n} messages échangés" : "{n} message échangé", { n: e.messages.length }) : t("Écrire à l'expert")}
+                      </Link>
+                      {toAnswer && e.status !== "DECLINE" && <span className="pill electric">{t("À vous de répondre")}</span>}
+                      {last && <span className="muted text-xs">{t("dernier message le {date}", { date: fmtDateTime(locale, last.createdAt) })}</span>}
                     </div>
                   </section>
                 );
               })}
             </section>
+  );
 
+  return (
+    <>
+      <SiteHeader />
+      <main className="stack">
+        <p className="muted"><Link href={`/organisations/${id}`}>{org.name}</Link> / <Link href={`/organisations/${id}/dossiers`}>{t("Dossiers")}</Link></p>
+
+        <header className="page-hero">
+          <div className="hero-top">
+            <span className="eyebrow-sm">{t(type?.label ?? project.typeId)}{project.therapeuticArea ? ` · ${t(project.therapeuticArea)}` : ""}</span>
+            <StatusPill status={project.status} />
+          </div>
+          <h1>{project.title}</h1>
+          {project.description && <p className="lead">{project.description}</p>}
+          <dl className="hero-facts">
+            <div>
+              <dt><Users size={13} />{" "}{t("Experts")}</dt>
+              <dd>{t(engaged.length > 1 ? "{engaged} engagés" : "{engaged} engagé", { engaged: engaged.length })}<small>{waiting.length ? t(waiting.length > 1 ? "{waiting} réponses attendues" : "{waiting} réponse attendue", { waiting: waiting.length }) : t(live.length > 1 ? "{live} sollicités" : "{live} sollicité", { live: live.length })}</small></dd>
+            </div>
+            <div>
+              <dt><Euro size={13} />{" "}{t("Honoraires engagés")}</dt>
+              <dd>{fmtEur(locale, total)}{" "}{t("HT")}<small>{proposed > 0 ? t("{montant} HT proposés, sans réponse", { montant: fmtEur(locale, proposed) }) : t("honoraires acceptés")}</small></dd>
+            </div>
+            <div>
+              <dt><Wallet size={13} />{" "}{t("Budget")}</dt>
+              <dd>{project.budgetCents != null ? `${fmtEur(locale, project.budgetCents)} ${t("HT")}` : t("Non défini")}<small>{budgetPct != null ? `${t(supplierCents ? "{budgetPct} % engagé, prestataires compris" : "{budgetPct} % engagé", { budgetPct })}${proposed > 0 ? ` ; ${t("{montant} HT proposés en plus", { montant: fmtEur(locale, proposed) })}` : ""}` : t("à renseigner plus bas")}</small></dd>
+            </div>
+            <div>
+              <dt><Scale size={13} />{" "}{t("Régime")}</dt>
+              <dd>{regime ? t(REGIME_LABEL[regime.regime]) : t("À déterminer")}<small>{regime ? regimeReason(regime, t, intlLocale(locale)) : t("selon les experts engagés")}</small></dd>
+            </div>
+            <div>
+              <dt><User size={13} />{" "}{t("Responsable")}</dt>
+              <dd>{owner ? `${owner.firstName} ${owner.lastName}` : "—"}<small>{t("ouvert le {date}", { date: fmtDate(locale, project.createdAt) })}</small></dd>
+            </div>
+          </dl>
+          <Pipeline status={project.status} />
+        </header>
+
+        {project.status === "ATT_IND" && <p className="notice warn">{t("Projet proposé par l'expert : acceptez-le pour ouvrir le circuit (conformité, convention, signature), ou déclinez-le. Le motif éventuel lui est transmis dans vos échanges.")}</p>}
+        {proposalBlocked && <BillingNotice orgId={id} motive="proposition" objet={projectId} />}
+
+        <DossierTabs tabs={tabs} active={active} href={(k: string) => tabHref(k)} label={t("Rubriques du dossier")} />
+
+        {active === "apercu" && (
+          <div className="page-grid">
+            <div className="page-main">
+              {nextStep}
+              <section className="card stack-sm">
+                <div className="block-head">
+                  <h2 className="section-title"><Users size={15} />{" "}{t("Experts")}</h2>
+                  <Link className="link" href={tabHref("experts")}>{t("Voir les experts")}</Link>
+                </div>
+                {project.experts.length === 0 ? <p className="muted">{t("Aucun expert sollicité pour l'instant.")}</p> : (
+                  <ul className="expert-rows">
+                    {project.experts.map((e) => (
+                      <li key={e.id}>
+                        <Avatar name={nameOf(e)} size={32} photo={expertPhotoSrc(e.practitioner, kolViewer(user, e.practitionerId))} />
+                        <span className="who"><strong>{nameOf(e)}</strong><span className="muted text-xs">{e.feeCents != null ? `${fmtEur(locale, e.feeCents)} ${t("HT")}` : "—"}</span></span>
+                        <span className={`pill ${e.status === "DECLINE" ? "done" : e.status === "ATT_EXPERTS" ? "wait" : "ok"}`}>{expertState(e)}</span>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </section>
+              <BudgetPanel orgId={id} projectId={projectId} canEdit={isProject} />
+            <section className="card">
+              <h2 className="section-title"><Clock size={15} />{" "}{t("Historique")}</h2>
+              {history.length === 0 ? <p className="muted">{t("Aucune action enregistrée.")}</p> : (
+                <>
+                  <ol className="audit-trail">{recent.map(historyItem)}</ol>
+                  {older.length > 0 && (
+                    <details className="older">
+                      <summary>{t("Voir les {older} actions précédentes", { older: older.length })}</summary>
+                      <ol className="audit-trail">{older.map(historyItem)}</ol>
+                    </details>
+                  )}
+                </>
+              )}
+            </section>
+            </div>
+            <aside className="page-aside">
+              <section className="card stack-sm">
+                <h2 className="section-title"><Scale size={15} />{" "}{t("Régime")}</h2>
+                <p className="text-sm">{regime ? <><span className={`pill ${regime.regime === "autorisation" ? "wait" : regime.regime === "hors_france" ? "" : "ok"}`}>{t(REGIME_LABEL[regime.regime])}</span> {regimeReason(regime, t, intlLocale(locale))}</> : t("Le régime (déclaration ou autorisation) sera déterminé dès qu'un expert aura accepté.")}</p>
+                <Link className="link text-sm" href={tabHref("conformite")}>{t("Contrôles et supports")}</Link>
+              </section>
+              {(selectedEvent ?? callEvent) && (
+                <section className="card stack-sm">
+                  <h2 className="section-title"><CalendarDays size={15} />{" "}{t("Événement")}</h2>
+                  <p className="text-sm"><strong>{(selectedEvent ?? callEvent)!.title}</strong><br /><span className="muted">{fmtDateTime(locale, (selectedEvent ?? callEvent)!.startsAt)}{(selectedEvent ?? callEvent)!.city ? ` · ${(selectedEvent ?? callEvent)!.city}` : ""}</span></p>
+                  <Link className="link text-sm" href={tabHref("evenement")}>{t("Gérer l'événement")}</Link>
+                </section>
+              )}
+            </aside>
+          </div>
+        )}
+
+        {active === "experts" && (
+          <div className="stack">
+            {expertCards}
             {editable && (
               <details className="card edit-block" id="modifier" open={modifier === "1"}>
                 <summary><h2>{t("Modifier le dossier")}</h2></summary>
@@ -435,84 +590,47 @@ export default async function Page({ params, searchParams }: { params: Promise<{
                 </div>
               </details>
             )}
-
-            <MaterialsPanel orgId={id} projectId={projectId} canSubmit={isProject} canReview={roles.some((r) => REVIEW_ROLES.includes(r))} />
-            <DocumentsPanel projectId={projectId} canUpload={isProject || isCompliance} openUpload={project.status === "SIGNATURE"} />
-            <BudgetPanel orgId={id} projectId={projectId} canEdit={isProject} />
-
-            <section className="card">
-              <h2 className="section-title"><Clock size={15} />{" "}{t("Historique")}</h2>
-              {history.length === 0 ? <p className="muted">{t("Aucune action enregistrée.")}</p> : (
-                <>
-                  <ol className="audit-trail">{recent.map(historyItem)}</ol>
-                  {older.length > 0 && (
-                    <details className="older">
-                      <summary>{t("Voir les {older} actions précédentes", { older: older.length })}</summary>
-                      <ol className="audit-trail">{older.map(historyItem)}</ol>
-                    </details>
-                  )}
-                </>
-              )}
-            </section>
           </div>
+        )}
 
-          <aside className="page-aside">
-            <section className="card next-step">
-              <span className="eyebrow-sm">{t("Prochaine étape")}</span>
-              <p className="next-hint">{t(NEXT_HINT[project.status] ?? "")}</p>
-              {project.status === "EN_VALID" && !isCompliance && <p className="hint">{t("En attente de l'équipe Conformité.")}</p>}
-              {fourEyesRule === "blocked" && <p className="notice warn">{FOUR_EYES_BLOCKED}</p>}
-              {fourEyesRule === "justify" && <p className="hint">{FOUR_EYES_JUSTIFY}</p>}
-              {available.length > 0 && (
-                <div className="transitions-stack">
-                  {available.map((k) => (
-                    <form key={k} action={advanceProject} className={`transition${DANGER.includes(k) ? " secondary" : ""}`}>
-                      <input type="hidden" name="orgId" value={id} />
-                      <input type="hidden" name="projectId" value={projectId} />
-                      <input type="hidden" name="transition" value={k} />
-                      {needsNote(k) && <input name="note" aria-label={t(notePlaceholder(k))} placeholder={t(notePlaceholder(k))} required={k === "block" || k === "abandon" || (k === "validate" && fourEyesRule === "justify")} />}
-                      {k === "signed" && attestable && (
-                        <label className="check text-sm">
-                          <input type="checkbox" name="attest" value="1" required />{" "}{t("J'atteste que la convention de {join} est signée par les deux parties et conservée par l'organisation.", { join: unsigned.join(", ") })}
-                        </label>
-                      )}
-                      {k === "submit" && waiting.length > 0 ? (
-                        <ConfirmButton
-                          className="btn"
-                          confirm={t("soumettre à la conformité")}
-                          summary={<>{waiting.length > 1 ? t("{waiting} réponses attendues seront closes", { waiting: waiting.length }) : t("1 réponse attendue sera close")} ({waiting.map((w) => `${drPrefix(w.practitioner.profession)}${w.practitioner.user.firstName} ${w.practitioner.user.lastName}${w.desiredFeeCents != null ? `, ${t("qui propose d'autres honoraires")}` : ""}`).join(" ; ")}) : {waiting.length > 1 ? t("ces experts sont prévenus") : t("l'expert est prévenu")}{" "}{t("par e-mail que le recrutement est clos.")}</>}
-                        >
-                          {t(TRANSITIONS[k].label)}
-                        </ConfirmButton>
-                      ) : (
-                        <button className={DANGER.includes(k) ? "btn ghost" : "btn"}>{t(TRANSITIONS[k].label)}</button>
-                      )}
-                    </form>
-                  ))}
+        {active === "messagerie" && (
+          fils.length === 0 ? (
+            <section className="card empty"><p className="muted">{t("Aucune conversation : sollicitez un expert pour lui écrire.")}</p></section>
+          ) : (
+            <section className="card messenger">
+              <nav className="messenger-list" aria-label={t("Conversations")}>
+                {[{ label: t("Experts"), items: fils.filter((f) => !f.key.startsWith("devis-")) }, { label: t("Prestataires"), items: fils.filter((f) => f.key.startsWith("devis-")) }].filter((g) => g.items.length).map((g) => (
+                  <div key={g.label} className="messenger-group">
+                    <p className="label">{g.label}</p>
+                    {g.items.map((f) => {
+                      const last = f.messages.at(-1);
+                      return (
+                        <Link key={f.key} href={tabHref("messagerie", { fil: f.key })} className={`messenger-item${f.key === fil0?.key ? " active" : ""}`} aria-current={f.key === fil0?.key ? "true" : undefined}>
+                          <span className="messenger-who"><strong>{f.title}</strong><span className="muted text-xs">{last ? last.body.slice(0, 60) : f.subtitle}</span></span>
+                          {f.toAnswer ? <span className="messenger-dot" aria-label={t("À vous de répondre")} /> : last ? <span className="muted text-xs">{fmtDate(locale, last.createdAt)}</span> : null}
+                        </Link>
+                      );
+                    })}
+                  </div>
+                ))}
+              </nav>
+              {fil0 && (
+                <div className="messenger-pane">
+                  <div className="messenger-head">
+                    <div><h2>{fil0.title}</h2><span className="muted text-sm">{fil0.subtitle}</span></div>
+                    {fil0.toAnswer && <span className="pill electric">{t("À vous de répondre")}</span>}
+                  </div>
+                  <Thread messages={fil0.messages} meId={user.id} />
+                  {fil0.write && ("linkId" in fil0.write ? <MessageForm linkId={fil0.write.linkId} /> : <RfqMessageForm orgId={id} rfqId={fil0.write.rfqId} supplierId={fil0.write.supplierId} placeholder={t("Écrire à {name}…", { name: fil0.write.name })} />)}
                 </div>
               )}
-              {signStarted && isProject && (
-                <p className="hint">{t("Une convention est en cours de signature ou déjà signée : le retour en accord de principe n'est plus possible. Si les conditions doivent changer, abandonnez le dossier (motif obligatoire) et ouvrez-en un nouveau.")}</p>
-              )}
-              {unsigned.length > 0 && !attestable && (
-                <p className="hint">
-                  {t("Déposez la convention signée de {join} (rubrique Documents)", { join: unsigned.join(", ") })}{signatureEnabled() ? t(" ou faites-la signer électroniquement (fiche de l'expert)") : ""}{" "}{t("pour passer le dossier en « Signé ».")}
-                </p>
-              )}
-              {attestable && (
-                <p className="hint">
-                  {t("Le dépôt de documents n'est pas encore activé sur KolBase")}{signatureEnabled() ? t(" (la signature électronique reste possible depuis la fiche de l'expert)") : ""}{" "}{t(": passer en « Signé » exige votre attestation, enregistrée à votre nom avec la date.")}
-                </p>
-              )}
             </section>
+          )
+        )}
 
-            {isCompliance && aiEnabled() && (
-              <section className="card stack-sm">
-                <h2 className="section-title"><Sparkles size={15} />{" "}{t("Relecture assistée")}</h2>
-                <AiReview orgId={id} projectId={projectId} />
-              </section>
-            )}
-
+        {active === "conformite" && (
+          <div className="page-grid">
+            <div className="page-main">
             <section className="card stack-sm">
               <h2 className="section-title"><Scale size={15} />{" "}{t("Conformité")}</h2>
               {regime ? (
@@ -534,9 +652,8 @@ export default async function Page({ params, searchParams }: { params: Promise<{
                 </p>
               )}
             </section>
-
-            <ConflictsPanel projectId={projectId} />
-
+              <MaterialsPanel orgId={id} projectId={projectId} canSubmit={isProject} canReview={roles.some((r) => REVIEW_ROLES.includes(r))} />
+              <ConflictsPanel projectId={projectId} />
             {foreignExperts.length > 0 && (
               <section className="card stack-sm">
                 <h2 className="section-title">{t("Experts exerçant hors de France")}</h2>
@@ -549,49 +666,104 @@ export default async function Page({ params, searchParams }: { params: Promise<{
                 <p className="text-xs muted">{t("Repères donnés à titre indicatif, à faire valider par votre service juridique.")}</p>
               </section>
             )}
+            </div>
+            <aside className="page-aside">
+              {nextStep}
+            {isCompliance && aiEnabled() && (
+              <section className="card stack-sm">
+                <h2 className="section-title"><Sparkles size={15} />{" "}{t("Relecture assistée")}</h2>
+                <AiReview orgId={id} projectId={projectId} />
+              </section>
+            )}
+            </aside>
+          </div>
+        )}
 
-            {showLogistics && <section className="card stack-sm">
-              <h2 className="section-title"><CalendarDays size={15} />{" "}{t("Événement et logistique")}</h2>
-              {project.events.length === 0 && callEvent ? (
-                <div className="stack-sm">
-                  <p className="muted text-sm">{t("Dossier né de l'opportunité «")}{" "}{isProject ? <Link href={`/organisations/${id}/opportunites/${fromCall!.openCall.id}`}>{fromCall!.openCall.title}</Link> : fromCall!.openCall.title}{" "}{t("» : l'intervention a lieu à cet événement, où se gèrent la logistique et les devis.")}</p>
-                  <ul className="linked-events">
-                    <li>
-                      <Link href={`/organisations/${id}/evenements/${callEvent.id}`}><strong>{callEvent.title}</strong></Link>
-                      <span className="muted text-xs">{fmtDateTime(locale, callEvent.startsAt)}{callEvent.city ? ` · ${callEvent.city}` : ""}</span>
+        {active === "documents" && (
+          <div className="stack">
+            <DocumentsPanel projectId={projectId} canUpload={isProject || isCompliance} openUpload={project.status === "SIGNATURE"} />
+            {project.experts.some((e) => e.status !== "ATT_EXPERTS" && e.status !== "DECLINE") && (
+              <section className="card stack-sm">
+                <h2 className="section-title"><FileText size={15} />{" "}{t("Conventions")}</h2>
+                <ul className="plain stack-sm">
+                  {project.experts.filter((e) => e.status !== "ATT_EXPERTS" && e.status !== "DECLINE").map((e) => (
+                    <li key={e.id} className="flex-between">
+                      <span>{nameOf(e)}</span>
+                      <span className="actions" style={{ marginTop: 0 }}>
+                        {e.documents.length > 0 ? <span className="pill ok">{t("Convention signée déposée")}</span> : e.signature?.status === "done" ? <span className="pill ok">{t("Signée électroniquement")}</span> : null}
+                        <a className="btn ghost small" href={`/organisations/${id}/dossiers/${projectId}/convention/${e.id}`} target="_blank" rel="noreferrer">{t("Convention (PDF)")}</a>
+                      </span>
                     </li>
-                  </ul>
-                </div>
-              ) : project.events.length === 0 ? (
-                <p className="muted text-sm">{t("Réunion, formation ou symposium : créez l'événement rattaché au dossier pour consulter les prestataires (salle, traiteur, hébergement, transport) et comparer leurs devis.")}</p>
-              ) : (
-                <ul className="linked-events">
-                  {project.events.map((ev) => {
-                    const answered = ev.rfqs.filter((r) => r.quotes.length > 0).length;
+                  ))}
+                </ul>
+              </section>
+            )}
+          </div>
+        )}
+
+        {active === "marketing" && (
+          <div className="stack">
+            <section className="card stack-sm">
+              <h2 className="section-title"><User size={15} />{" "}{t("Photos des experts")}</h2>
+              <p className="muted text-sm">{t("Pour le programme, les affiches, les posts et les e-mailings : seulement les experts engagés qui ont donné leur accord pour l'usage de leur photo.")}</p>
+              {engaged.length === 0 ? <p className="muted">{t("Aucun expert engagé pour l'instant.")}</p> : (
+                <ul className="photo-grid">
+                  {engaged.map((e) => {
+                    const photo = expertPhotoSrc(e.practitioner, kolViewer(user, e.practitionerId));
+                    const usable = photo && e.practitioner.photoConsentAt && e.practitioner.photoUpdatedAt;
                     return (
-                      <li key={ev.id}>
-                        <Link href={`/organisations/${id}/evenements/${ev.id}`}><strong>{ev.title}</strong></Link>
-                        <span className="muted text-xs">{fmtDateTime(locale, ev.startsAt)}{ev.city ? ` · ${ev.city}` : ""}</span>
-                        {ev.rfqs.length === 0 ? <span className="text-xs muted">{t("Aucune demande de devis")}</span> : (
-                          <span className="chips">
-                            {ev.rfqs.map((r) => { const st = RFQ_STATUS[rfqDisplayStatus(r)]; return <span key={r.id} className={`pill ${st.tone}`}>{t(supplierCategoryLabel(r.category))} · {t(st.label)}</span>; })}
-                          </span>
-                        )}
-                        {ev.rfqs.length > 0 && <span className="text-xs muted">{t(answered > 1 ? "{answered} demandes avec devis sur {rfqs}" : "{answered} demande avec devis sur {rfqs}", { answered, rfqs: ev.rfqs.length })}</span>}
+                      <li key={e.id}>
+                        <Avatar name={nameOf(e)} size={56} photo={photo} />
+                        <strong className="text-sm">{nameOf(e)}</strong>
+                        {usable ? <a className="text-xs" href={photoPath(e.practitionerId, e.practitioner.photoUpdatedAt!, "grande")} download>{t("Télécharger la photo")}</a> : <span className="muted text-xs">{photo ? t("Accord non donné pour vos supports") : t("Pas de photo")}</span>}
                       </li>
                     );
                   })}
                 </ul>
               )}
-              {isProject && !finished && (project.events[0] || !callEvent) && (
-                <Link className="btn ghost small" href={project.events[0] ? `/organisations/${id}/prestataires?onglet=nouvelle&evenement=${project.events[0].id}` : `/organisations/${id}/evenements/nouveau?dossier=${projectId}`}>
-                  {project.events[0] ? t("Demander des devis") : t("Créer l'événement du dossier")}
-                </Link>
+            </section>
+            {project.events.length === 0 && !callEvent ? (
+              <section className="card stack-sm">
+                <h2 className="section-title"><Megaphone size={15} />{" "}{t("Faire connaître l'événement")}</h2>
+                <p className="muted">{t("E-mailing aux praticiens, publication sur les réseaux sociaux de KolBase et mise à la une de l'accueil : ces services portent sur l'événement du dossier. Ils apparaissent ici une fois l'événement créé et publié (onglet Événement).")}</p>
+              </section>
+            ) : (
+              (project.events.length ? project.events : callEvent ? [callEvent] : []).map((ev) => (
+                <div key={ev.id} className="stack-sm">
+                  {(project.events.length > 1) && <p className="label">{ev.title}</p>}
+                  {"internal" in ev && ev.internal
+                    ? <section className="card"><p className="muted">{t("Réunion interne : pas de communication publique.")}</p></section>
+                    : isProject ? <EventWorkspace orgId={id} eventId={ev.id} mode="marketing" /> : <section className="card"><p className="muted">{t("Les services de communication sont commandés par l'équipe Projets.")}</p></section>}
+                </div>
+              ))
+            )}
+          </div>
+        )}
+
+        {active === "evenement" && (
+          selectedEvent ? (
+            <div className="stack">
+              {project.events.length > 1 && (
+                <nav className="chips" aria-label={t("Événements du dossier")}>
+                  {project.events.map((ev) => <Link key={ev.id} className={`chip${ev.id === selectedEvent.id ? " active" : ""}`} href={tabHref("evenement", { evenement: ev.id })}>{ev.title}</Link>)}
+                </nav>
               )}
-              {callEvent && project.events.length === 0 && <Link className="btn ghost small" href={`/organisations/${id}/evenements/${callEvent.id}`}>{t("Voir l'événement")}</Link>}
-            </section>}
-          </aside>
-        </div>
+              <EventWorkspace orgId={id} eventId={selectedEvent.id} mode="dossier" publie={publie} retour={tabHref("evenement", project.events.length > 1 ? { evenement: selectedEvent.id } : {})} />
+            </div>
+          ) : callEvent ? (
+            <div className="stack">
+              <p className="notice">{t("Dossier né de l'opportunité «")}{" "}{fromCall!.openCall.title}{" "}{t("» : l'intervention a lieu à cet événement, partagé avec les autres intervenants retenus.")}</p>
+              <EventWorkspace orgId={id} eventId={callEvent.id} mode="dossier" publie={publie} retour={tabHref("evenement")} />
+            </div>
+          ) : (
+            <section className="card stack-sm event-empty">
+              <CalendarDays size={28} strokeWidth={1.6} aria-hidden />
+              <h2>{t("L'événement du dossier")}</h2>
+              <p className="muted">{t("Réunion, formation ou symposium : créez l'événement rattaché au dossier. Vous préparez dès maintenant la date, le lieu, les devis des prestataires et l'agence ; la publication dans l'agenda et les inscriptions s'ouvrent une fois le dossier validé par la conformité.")}</p>
+              {isProject && !finished && <Link className="btn" href={`/organisations/${id}/evenements/nouveau?dossier=${projectId}`}>{t("Créer l'événement du dossier")}</Link>}
+            </section>
+          )
+        )}
       </main>
     </>
   );

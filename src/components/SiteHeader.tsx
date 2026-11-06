@@ -6,7 +6,7 @@ import { photoPath } from "@/lib/expert-photo";
 import { AppShell } from "@/components/AppShell";
 import { PublicNav } from "@/components/PublicNav";
 import { ORG_KIND_LABEL, roleLabel } from "@/lib/orgs";
-import { countFor, orgMenuLinks, orgNavItems, type ShellItem, type ShellSpace } from "@/lib/nav";
+import { countFor, NAV_COOKIE, orgMenuLinks, orgNavItems, type ShellItem, type ShellSpace } from "@/lib/nav";
 import { orgOverview } from "@/lib/org-overview";
 import { RECRUITING_STATUSES, SOURCING_ROLES } from "@/lib/projects";
 import { unseenFollowCount } from "@/lib/follows";
@@ -99,7 +99,8 @@ export async function SiteHeader({ variant = "app", section }: { variant?: "app"
   // Cloche des suivis : dès qu'on suit un profil (« Suivre »), quel que soit le compte.
   const showBell = sourcing || !!p?.listed || follows > 0;
   const followCount = follows ? await unseenFollowCount(user.id, user.followsSeenAt) : 0;
-  const initialSpace = (await cookies()).get("kb_espace")?.value;
+  const jar = await cookies();
+  const initialSpace = jar.get("kb_espace")?.value;
 
   return (
     <AppShell
@@ -109,6 +110,7 @@ export async function SiteHeader({ variant = "app", section }: { variant?: "app"
       activeKey={section}
       bell={showBell ? { count: followCount } : null}
       admin={isPlatformAdmin(user)}
+      navOpen={jar.get(NAV_COOKIE)?.value === "1"}
     />
   );
 }
