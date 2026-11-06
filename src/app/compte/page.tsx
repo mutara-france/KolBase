@@ -75,12 +75,12 @@ export default async function Page({ searchParams }: { searchParams: Promise<{ a
         {annuaire && (
           <p className="notice error">{t("L'annuaire est réservé aux membres d'une organisation et aux experts référencés.")}</p>
         )}
-        {/* Appels à candidatures ouverts sans être référencé : la marche à suivre, pas le message de l'annuaire. */}
+        {/* Opportunités ouvertes sans être référencé : la marche à suivre, pas le message de l'annuaire. */}
         {candidater && (
           <p className="notice warn" role="status">
             {p && canBeExpert(p.profession)
-              ? t("Référencez-vous pour candidater : les appels à candidatures sont réservés aux experts référencés. C'est l'encart « Référencement » ci-dessous.")
-              : t("Les appels à candidatures sont réservés aux praticiens référencés comme experts (chirurgiens-dentistes, orthodontistes, chirurgiens oraux et stomatologues).")}
+              ? t("Référencez-vous pour candidater : les opportunités sont réservées aux experts référencés. C'est l'encart « Référencement » ci-dessous.")
+              : t("Les opportunités sont réservées aux praticiens référencés comme experts (chirurgiens-dentistes, orthodontistes, chirurgiens oraux et stomatologues).")}
           </p>
         )}
         {orcidNotice && <p className={`notice ${orcidNotice[0]}`}>{t(orcidNotice[1])}</p>}

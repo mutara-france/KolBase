@@ -8,7 +8,7 @@ import { eventMoment } from "@/lib/events";
 import { supplierCategoryLabel } from "@/lib/suppliers";
 import { orgBillingLine, orgOnboarding } from "@/lib/onboarding";
 import { CheckCircle2, Circle } from "lucide-react";
-import { rnaAccepted, roleLabel, STATS_ROLES } from "@/lib/org-roles";
+import { rnaAccepted, roleLabel } from "@/lib/org-roles";
 import type { OrgKind } from "@/generated/prisma/client";
 import { de, inSentence } from "@/lib/elision";
 import { getT } from "@/lib/i18n/server";
@@ -55,7 +55,7 @@ export default async function Page({ params, searchParams }: { params: Promise<{
     can.view && { href: `${base}/dossiers`, value: active.length, label: t("Dossiers en cours"), hint: plural(t, engaged.length, "expert engagé", "experts engagés") },
     can.view && { href: `${base}/dossiers`, value: fmtEur(locale, engaged.reduce((s, e) => s + (e.feeCents ?? 0), 0)), label: t("Engagés (HT)"), hint: t("Sur les dossiers en cours") },
     can.events && { href: `${base}/evenements`, value: upcoming.length, label: t("Événements à venir"), hint: plural(t, upcoming.reduce((s, e) => s + e._count.registrations, 0), "inscrit", "inscrits") },
-    can.sourcing && { href: `${base}/opportunites`, value: pendingApps, label: t("Candidatures à traiter"), hint: plural(t, calls.length, "appel ouvert", "appels ouverts") },
+    can.sourcing && { href: `${base}/opportunites`, value: pendingApps, label: t("Candidatures à traiter"), hint: plural(t, calls.length, "opportunité ouverte", "opportunités ouvertes") },
     can.compliance && { href: `${base}/conformite`, value: projects.filter((p) => p.status === "EN_VALID").length, label: t("Dossiers à valider") },
     can.compliance && { href: `${base}/hospitalites`, value: hosp.length, label: t("Hospitalités à déclarer"), hint: fmtEur(locale, hospValue) },
   ]
@@ -82,7 +82,7 @@ export default async function Page({ params, searchParams }: { params: Promise<{
       .filter((c) => c.deadline && c.deadline >= now)
       .map((c) => ({
         date: c.deadline!,
-        title: t("Clôture de l'appel : {title}", { title: c.title }),
+        title: t("Clôture de l'opportunité : {title}", { title: c.title }),
         detail: c.applications.length ? plural(t, c.applications.length, "candidature à examiner", "candidatures à examiner") : t("Aucune candidature à examiner"),
         href: `${base}/opportunites/${c.id}`,
       })),
@@ -93,7 +93,7 @@ export default async function Page({ params, searchParams }: { params: Promise<{
   const create = [
     can.sourcing && { href: `${base}/dossiers/nouveau`, label: t("Un dossier de collaboration") },
     can.organizer && { href: `${base}/evenements/nouveau`, label: t("Un événement") },
-    can.sourcing && { href: `${base}/opportunites#nouvel-appel`, label: t("Un appel à candidatures") },
+    can.sourcing && { href: `${base}/opportunites#nouvel-appel`, label: t("Une opportunité") },
   ].filter((c): c is Exclude<typeof c, false> => !!c);
 
   const urgent = todos.filter((tk) => tk.tone === "danger").length;
@@ -118,7 +118,7 @@ export default async function Page({ params, searchParams }: { params: Promise<{
         {org.verification === "SUSPENDED" && (
           <p className="notice error" role="status">
             {t("Organisation suspendue")}{org.verificationNote ? ` : ${inSentence(org.verificationNote)}` : ""}.{" "}
-            {t("Votre page publique, vos événements et vos appels sont masqués, et aucune nouvelle action n'est possible jusqu'à la réactivation par KolBase ; rien n'est supprimé.")}
+            {t("Votre page publique, vos événements et vos opportunités sont masqués, et aucune nouvelle action n'est possible jusqu'à la réactivation par KolBase ; rien n'est supprimé.")}
           </p>
         )}
         {org.verification !== "VERIFIED" && org.verification !== "SUSPENDED" && (
@@ -138,21 +138,32 @@ export default async function Page({ params, searchParams }: { params: Promise<{
               <span className="muted text-sm">{t(onboarding.filter((s) => s.done).length > 1 ? "{n} étapes sur {onboarding}" : "{n} étape sur {onboarding}", { n: onboarding.filter((s) => s.done).length, onboarding: onboarding.length })}</span>
             </div>
             <div className="gauge-track"><div className="gauge-fill" style={{ width: `${Math.round((onboarding.filter((s) => s.done).length / onboarding.length) * 100)}%` }} /></div>
+            {/* Étapes restantes en clair ; les étapes faites, repliées, n'encombrent plus la prise en main. */}
             <ol className="onboarding-steps">
-              {onboarding.map((s) => (
-                <li key={s.key} className={s.done ? "done" : ""}>
-                  {s.done ? <CheckCircle2 size={18} aria-label={t("Fait")} /> : <Circle size={18} aria-label={t("À faire")} />}
-                  <span>{s.done ? <strong>{t(s.label)}</strong> : <Link href={s.href}><strong>{t(s.label)}</strong></Link>}<small>{t(s.hint)}</small></span>
+              {onboarding.filter((s) => !s.done).map((s) => (
+                <li key={s.key}>
+                  <Circle size={18} aria-label={t("À faire")} />
+                  <span><Link href={s.href}><strong>{t(s.label)}</strong></Link><small>{t(s.hint)}</small></span>
                 </li>
               ))}
             </ol>
+            {onboarding.some((s) => s.done) && (
+              <details className="onboarding-done">
+                <summary>{t(onboarding.filter((s) => s.done).length > 1 ? "{n} étapes terminées" : "{n} étape terminée", { n: onboarding.filter((s) => s.done).length })}</summary>
+                <ol className="onboarding-steps">
+                  {onboarding.filter((s) => s.done).map((s) => (
+                    <li key={s.key} className="done">
+                      <CheckCircle2 size={18} aria-label={t("Fait")} />
+                      <span><strong>{t(s.label)}</strong></span>
+                    </li>
+                  ))}
+                </ol>
+              </details>
+            )}
             {billingLine && <p className="hint onboarding-billing">{billingLine} <Link href={`${base}/abonnement`}>{t("Voir l'abonnement")}</Link></p>}
           </section>
         )}
         <DashStats stats={stats} />
-        {org.kind !== "PRESTATAIRE" && roles.some((r) => STATS_ROLES.includes(r)) && (
-          <p className="text-sm"><Link href={`${base}/statistiques`}>{t("Voir les statistiques de l'organisation")}</Link>{" "}{t(": budget engagé, experts, événements, délais.")}</p>
-        )}
         <div className={`dash-layout${timeline.length ? "" : " single"}`}>
           <section className="card dash-card" aria-labelledby="a-faire">
             <h2 id="a-faire" className="dash-title">

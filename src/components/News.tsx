@@ -1,5 +1,4 @@
 import Link from "next/link";
-import { Newspaper } from "lucide-react";
 import { parseArticle, readingMinutes, type Inline } from "@/lib/article-format";
 import { coverSrc, type NewsCardData } from "@/lib/news";
 
@@ -31,10 +30,13 @@ export function NewsCard({ a, dateLabel, minutesLabel }: { a: NewsCardData; date
   const src = coverSrc(a);
   return (
     <Link href={`/actualites/${a.slug}`} className="card news-card">
-      <div className="news-cover">
-        {/* eslint-disable-next-line @next/next/no-img-element */}
-        {src ? <img src={src} alt="" loading="lazy" /> : <Newspaper size={34} aria-hidden />}
-      </div>
+      {/* Sans image de couverture, pas d'encart vide orné d'une icône : le texte suffit. */}
+      {src && (
+        <div className="news-cover">
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img src={src} alt="" loading="lazy" />
+        </div>
+      )}
       <div className="news-text">
         <span className="eyebrow-sm">{a.category} · {dateLabel} · {minutesLabel.replace("{n}", String(readingMinutes(a.body)))}</span>
         <strong>{a.title}</strong>

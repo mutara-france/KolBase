@@ -31,7 +31,10 @@ export default async function Page({ params }: { params: Promise<{ id: string }>
     },
     {
       name: "ORCID", icon: Users, status: "actif",
-      detail: t(orcidExperts > 1 ? "Les experts importent leurs publications depuis leur profil ORCID public, ce qui alimente les fiches de l'annuaire. {n} experts ont déjà synchronisé leur profil." : "Les experts importent leurs publications depuis leur profil ORCID public, ce qui alimente les fiches de l'annuaire. {n} expert a déjà synchronisé son profil.", { n: orcidExperts }),
+      // Le décompte n'apparaît qu'à partir d'un expert synchronisé (« 0 expert » n'apprend rien).
+      detail: orcidExperts === 0
+        ? t("Les experts importent leurs publications depuis leur profil ORCID public, ce qui alimente les fiches de l'annuaire.")
+        : t(orcidExperts > 1 ? "Les experts importent leurs publications depuis leur profil ORCID public, ce qui alimente les fiches de l'annuaire. {n} experts ont déjà synchronisé leur profil." : "Les experts importent leurs publications depuis leur profil ORCID public, ce qui alimente les fiches de l'annuaire. {n} expert a déjà synchronisé son profil.", { n: orcidExperts }),
       scope: "Publications des experts (lecture seule, API publique)",
     },
     {

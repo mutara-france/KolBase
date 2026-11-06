@@ -8,7 +8,7 @@ import { drPrefix } from "@/lib/professions";
 import { canSee, kolVisibility, type Viewer, type VisLevel } from "@/lib/visibility";
 import { country } from "@/lib/countries";
 import { expertPhotoSrc } from "@/lib/expert-photo";
-import { intlLocale, type T } from "@/lib/i18n";
+import { intlLocale, languageName, type T } from "@/lib/i18n";
 import { getT } from "@/lib/i18n/server";
 
 function Hidden({ level, viewer, label, t, back }: { level: VisLevel; viewer: Viewer; label: string; t: T; back: string }) {
@@ -52,7 +52,7 @@ export async function ExpertProfile({ id, viewer, solicitHref, userId = null }: 
       <section className="card profile-hero">
         <Avatar name={name} size={76} ring photo={expertPhotoSrc(p, viewer)} />
         <div className="grow">
-          <div className="eyebrow">KB-{p.id.slice(-4).toUpperCase()} · {t(country(p.country).name)}</div>
+          <div className="eyebrow">{t(country(p.country).name)}</div>
           <h1 className="profile-name">{name} {p.rppsVerified && <span className="verif ok"><BadgeCheck size={13} /> {t("Identité vérifiée")}</span>}</h1>
           <p className="text-sm">{[t(p.profession), p.specialty && t(p.specialty), p.subspecialty].filter(Boolean).join(" · ")}</p>
           <div className="tags mt-2">{p.interventionTypes.map((x) => <span key={x} className="tag">{t(x)}</span>)}</div>
@@ -69,8 +69,8 @@ export async function ExpertProfile({ id, viewer, solicitHref, userId = null }: 
       <div className="stats-row">
         {canSee(v.historique, viewer) ? (
           <>
-            <div className="stat-card"><div className="stat-value">{p.projectLinks.length}</div><div className="stat-label">{t("Collaborations via KolBase")}</div></div>
-            <div className="stat-card"><div className="stat-value">{orgs.length}</div><div className="stat-label">{t("Organisations partenaires")}</div></div>
+            <div className="stat-card"><div className="stat-value">{p.projectLinks.length}</div><div className="stat-label">{t(p.projectLinks.length > 1 ? "Collaborations via KolBase" : "Collaboration via KolBase")}</div></div>
+            <div className="stat-card"><div className="stat-value">{orgs.length}</div><div className="stat-label">{t(orgs.length > 1 ? "Organisations partenaires" : "Organisation partenaire")}</div></div>
             <div className="stat-card"><div className="stat-value tone-electric">{responseDays ? t("{n} j", { n: responseDays }) : "—"}</div><div className="stat-label">{t("Délai de réponse moyen")}</div></div>
           </>
         ) : null}
@@ -92,7 +92,7 @@ export async function ExpertProfile({ id, viewer, solicitHref, userId = null }: 
             <dl className="facts">
               <dt>{t("Ville")}</dt><dd>{p.city ?? "—"}</dd>
               <dt>{t("Établissement")}</dt><dd>{p.hospital ?? "—"}</dd>
-              <dt><Languages size={12} /> {t("Langues")}</dt><dd>{p.languages.join(", ") || "—"}</dd>
+              <dt><Languages size={12} /> {t("Langues")}</dt><dd>{p.languages.map((l) => languageName(l, locale)).join(", ") || "—"}</dd>
               {p.orcid && (<><dt>ORCID</dt><dd><a href={`https://orcid.org/${p.orcid}`} target="_blank" rel="noreferrer">{p.orcid}</a>{p.orcidVerified && <span className="verif ok small"> <BadgeCheck size={12} /> {t("vérifié")}</span>}</dd></>)}
             </dl>
           ) : <Hidden level={v.contact} viewer={viewer} label={t("Coordonnées")} t={t} back={`/experts/${id}`} />}

@@ -13,7 +13,7 @@ type CType = { id: string; label: string; category: string; unit: string; fmv: r
 
 type EventOpt = { id: string; label: string; title: string; typeId: string; area: string | null };
 
-/** Appel à candidatures : pour une collaboration, ou pour intervenir à l'un des événements de l'organisation. */
+/** Opportunité : pour une collaboration, ou pour intervenir à l'un des événements de l'organisation. */
 export function NewCallForm({ orgId, types, ai = false, events = [], defaultEventId, blocked = null }: { orgId: string; types: readonly CType[]; ai?: boolean; events?: EventOpt[]; defaultEventId?: string; blocked?: Blocked }) {
   const t = useT();
   const locale = useLocale();
@@ -30,8 +30,8 @@ export function NewCallForm({ orgId, types, ai = false, events = [], defaultEven
   };
   return (
     <ActionForm action={action} className="card form">
-      <h2>{t("Nouvel appel à candidatures")}</h2>
-      <p className="muted">{t("Visible de tous les experts référencés, qui peuvent y candidater. Rattachez-le à un événement si la personne retenue doit y intervenir.")}</p>
+      <h2>{t("Nouvelle opportunité")}</h2>
+      <p className="muted">{t("Visible de tous les experts référencés, qui peuvent y candidater. Rattachez-la à un événement si la personne retenue doit y intervenir.")}</p>
       <Notice state={state} />
       <input type="hidden" name="orgId" value={orgId} />
       <label>{t("Événement concerné")}
@@ -52,7 +52,7 @@ export function NewCallForm({ orgId, types, ai = false, events = [], defaultEven
         <label>{t("Spécialité recherchée")}<input key={`s-${eventId}`} name="specialty" defaultValue={ev?.area ?? ""} placeholder={t("Parodontologie…")} /></label>
       </div>
       <label>{t("Description")}<textarea name="description" rows={ai ? 6 : 4} placeholder={ev ? t("Thème et format de l'intervention, profil recherché, durée de prise de parole…") : t("Contexte, profil recherché, dates, livrables…")} /></label>
-      {ai && <AiDraft kind="appel" target="description" label={t("Rédiger l'appel avec l'IA")} />}
+      {ai && <AiDraft kind="appel" target="description" label={t("Rédiger la description avec l'IA")} />}
       <div className="row">
         <label>{t("Places")}<input name="slots" type="number" min={1} max={50} defaultValue={ev ? 1 : undefined} placeholder={t("Sans limite")} /></label>
         <label>{t("Budget min (€ HT)")}<input name="budgetMin" inputMode="decimal" /></label>
@@ -60,7 +60,7 @@ export function NewCallForm({ orgId, types, ai = false, events = [], defaultEven
         <label>{t("Date limite")}<input name="deadline" type="date" /></label>
       </div>
       <p className="hint">{t("Repère : {toLocaleString} à {toLocaleString2} € HT par {unit}.", { toLocaleString: type.fmv[0].toLocaleString(intlLocale(locale)), toLocaleString2: type.fmv[1].toLocaleString(intlLocale(locale)), unit: t(type.unit) })}</p>
-      <button className="btn" disabled={pending || !!blocked}>{pending ? t("Publication…") : t("Publier l'appel")}</button>
+      <button className="btn" disabled={pending || !!blocked}>{pending ? t("Publication…") : t("Publier l'opportunité")}</button>
       {blocked && <p className="hint">{t("Publication possible {blocked} (voir le bandeau en haut de la page).", { blocked: t(BLOCKED_UNTIL[blocked]) })}</p>}
     </ActionForm>
   );

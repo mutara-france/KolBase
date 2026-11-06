@@ -265,5 +265,5 @@ export function expertNotices(key: TransitionKey, eSignature: boolean): { notice
   }
 }
 
-/** Appel à candidatures complet : toutes ses places pourvues (candidatures retenues). */
+/** Opportunité complète : toutes ses places pourvues (candidatures retenues). */
 export const callFull = (c: { slots: number | null; _count: { applications: number } }) => c.slots != null && c._count.applications >= c.slots;

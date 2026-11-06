@@ -25,10 +25,9 @@ export const PUBLIC: Record<string, string> = {
   "Le réseau scientifique de la chirurgie dentaire": "The scientific network for dentistry",
   "Trouvez le bon praticien. Montez la collaboration.": "Find the right practitioner. Set up the collaboration.",
   "Le reste suit.": "The rest follows.",
-  "Experts référencés, événements ouverts, appels en cours : tout le réseau au même endroit.":
-    "Listed experts, open events, current calls for applications: the whole network in one place.",
+  "Experts référencés, événements ouverts, opportunités en cours : tout le réseau au même endroit.":
+    "Listed experts, open events, current opportunities: the whole network in one place.",
   "Recherche": "Search",
-  "Ils publient sur KolBase": "They publish on KolBase",
   "Spécialités": "Specialties",
   "Explorer par spécialité": "Explore by specialty",
   "Les {n} experts": "All {n} experts",
@@ -50,14 +49,14 @@ export const PUBLIC: Record<string, string> = {
   "À la une": "Featured",
   "collaborations": "collaborations",
   "collaboration": "collaboration",
-  "appels ouverts": "open calls",
-  "appel ouvert": "open call",
+  "opportunités ouvertes": "open opportunities",
+  "opportunité ouverte": "open opportunity",
   "événements à venir": "upcoming events",
   "événement à venir": "upcoming event",
   "Prochain rendez-vous : {event}, le {date}": "Next event: {event}, on {date}",
   "Voir la fiche": "View profile",
   "Référencer mon organisation, c'est gratuit": "List my organisation — it's free",
-  "Appels ouverts aux praticiens": "Open calls for applications",
+  "Ouvertes aux praticiens": "Open to practitioners",
   "Toutes les opportunités": "All opportunities",
   "Candidater": "Apply",
   "Rejoindre KolBase": "Join KolBase",
@@ -65,8 +64,8 @@ export const PUBLIC: Record<string, string> = {
   "Rendez votre expertise visible.": "Make your expertise visible.",
   "Référencez-vous, choisissez ce qui est public, recevez des sollicitations.": "Get listed, choose what is public, receive collaboration requests.",
   "Trouvez vos intervenants.": "Find your speakers and experts.",
-  "Publiez des appels, sollicitez des praticiens, ouvrez vos événements. Le référencement est gratuit.":
-    "Publish calls for applications, send collaboration requests to practitioners, open your events. Listing is free.",
+  "Publiez des opportunités, sollicitez des praticiens, ouvrez vos événements. Le référencement est gratuit.":
+    "Publish opportunities, send collaboration requests to practitioners, open your events. Listing is free.",
   "Référencer mon organisation": "List my organisation",
 
   // Module de recherche de l'accueil
@@ -100,8 +99,8 @@ export const PUBLIC: Record<string, string> = {
 
   // Annuaire public des experts
   "Experts référencés": "Listed experts",
-  "{n} praticiens ont choisi d'être visibles. Chaque praticien choisit ce qu'il rend public ; la recherche avancée est réservée aux organisations inscrites.":
-    "{n} practitioners have chosen to be visible. Each practitioner decides what they make public; advanced search is reserved for registered organisations.",
+  "Chaque praticien choisit ce qu'il rend public ; la recherche avancée est réservée aux organisations inscrites.":
+    "Each practitioner decides what they make public; advanced search is reserved for registered organisations.",
   "Rechercher un praticien": "Search for a practitioner",
   "Nom, spécialité, ville, type d'intervention": "Name, specialty, city, engagement type",
   "Recherche avancée": "Advanced search",
@@ -164,15 +163,14 @@ export const PUBLIC: Record<string, string> = {
   // Organisations (annuaire et fiche)
   "Côté organisations": "For organisations",
   "Industriels, sociétés savantes, associations": "Manufacturers, scientific societies, associations",
-  "Les organisations référencées sur KolBase, leurs événements et leurs appels ouverts.":
-    "Organisations listed on KolBase, with their events and open calls for applications.",
+  "Les organisations référencées sur KolBase, leurs événements et leurs opportunités ouvertes.":
+    "Organisations listed on KolBase, with their events and open opportunities for applications.",
   "Rechercher une organisation": "Search for an organisation",
   "Nom, type, ville, domaine": "Name, type, city, field",
   "Effacer la recherche": "Clear search",
   "Aucune organisation ne correspond à cette recherche.": "No organisations match this search.",
   "{label} : réservé aux membres connectés.": "{label}: reserved for signed-in members.",
   "Gérer l'organisation": "Manage organisation",
-  "Appels ouverts": "Open calls",
   "Événements à venir": "Upcoming events",
   "Aires d'intervention": "Fields of activity",
   "Politique de collaboration": "Collaboration policy",
@@ -183,8 +181,8 @@ export const PUBLIC: Record<string, string> = {
   "Non communiqué.": "Not disclosed.",
   "Non renseigné.": "Not provided.",
   "Contact": "Contact",
-  "Aucun appel ouvert.": "No open calls.",
-  "Voir l'appel": "View call",
+  "Aucune opportunité ouverte.": "No open opportunities.",
+  "Voir l'opportunité": "View opportunity",
   "Se connecter pour candidater": "Sign in to apply",
   "Aucun événement à venir.": "No upcoming events.",
   "Et {n} autres événements à venir sur la page {link}.": "And {n} more upcoming events on the {link} page.",
@@ -302,28 +300,25 @@ export const PUBLIC: Record<string, string> = {
   "Inscription confirmée.": "Registration confirmed.",
 
   // Opportunités
-  "Dans les deux sens": "Both ways",
   "Opportunités ouvertes": "Open opportunities",
   "Appels publiés par les organisations. La candidature est réservée aux experts référencés.":
     "Calls for applications published by organisations. Only listed experts can apply.",
   "Rechercher une opportunité": "Search for an opportunity",
   "Spécialité, organisation, type de collaboration": "Specialty, organisation, collaboration type",
-  "Aucun appel ne correspond à cette recherche.": "No calls match this search.",
-  "Aucun appel ouvert pour le moment.": "No open calls at the moment.",
+  "Aucune opportunité ne correspond à cette recherche.": "No opportunities match this search.",
 
   // Aide
   "Bien démarrer sur KolBase": "Getting started on KolBase",
   "Vous êtes praticien": "You are a practitioner",
   "Créez votre compte et complétez « Mon compte ».": "Create your account and complete “My account”.",
   "Inscrivez-vous aux événements et choisissez les prestations acceptées.": "Register for events and choose the hospitality you accept.",
-  "Référencez-vous comme expert pour recevoir des sollicitations et candidater.": "Get listed as an expert to receive collaboration requests and apply to calls.",
+  "Référencez-vous comme expert pour recevoir des sollicitations et candidater.": "Get listed as an expert to receive collaboration requests and apply to opportunities.",
   "Créer mon compte": "Create my account",
   "Vous représentez une organisation": "You represent an organisation",
   "Créez votre organisation et invitez vos équipes avec leurs rôles.": "Create your organisation and invite your teams with their roles.",
   "Publiez événements et opportunités, sollicitez les experts.": "Publish events and opportunities, send collaboration requests to experts.",
   "Suivez la conformité : validation, Ordre, conventions, hospitalités.": "Track compliance: approval, French Dental Council, agreements, hospitality.",
   "Questions fréquentes": "Frequently asked questions",
-  "FAQ": "FAQ",
   "Qui peut s'inscrire ?": "Who can sign up?",
   "Tout professionnel de santé du secteur dentaire, ainsi que les membres d'organisations (industriels, sociétés savantes, associations, organismes de formation).":
     "Any healthcare professional in the dental sector, as well as members of organisations (manufacturers, scientific societies, associations, training providers).",
@@ -419,4 +414,5 @@ export const PUBLIC: Record<string, string> = {
   "Les nouvelles de KolBase": "KolBase news",
   "Nouveautés de la plateforme, réglementation des liens d'intérêts, événements et conseils pratiques.": "Platform updates, conflict-of-interest regulation, events and practical advice.",
   "Aucune actualité pour l'instant.": "No news yet.",
+  "Opportunité d'intervention": "Speaking opportunity",
 };

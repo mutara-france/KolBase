@@ -15,18 +15,21 @@ export async function SiteFooter() {
             {t("La plateforme qui met en relation les chirurgiens-dentistes et les organisations du secteur.")}
           </p>
         </div>
-        <nav className="footer-links" aria-label={t("Informations légales")}>
-          <Link href="/mentions-legales" className="footer-link">{t("Mentions légales")}</Link>
-          <Link href="/confidentialite" className="footer-link">{t("Confidentialité")}</Link>
-          <CookieSettingsButton className="footer-link" />
-          <Link href="/cgu" className="footer-link">{t("Conditions d'utilisation")}</Link>
-          <Link href="/conditions-de-vente" className="footer-link">{t("Conditions de vente")}</Link>
+        {/* Premier niveau : contenus et aide ; les informations légales sont à part, en bas. */}
+        <nav className="footer-links" aria-label={t("Pied de page")}>
           <Link href="/actualites" className="footer-link">{t("Actualités")}</Link>
           <Link href="/aide" className="footer-link">{t("Aide")}</Link>
           <LocaleSwitch className="on-dark" />
         </nav>
       </div>
       <div className="footer-bottom">
+        <nav className="footer-legal" aria-label={t("Informations légales")}>
+          <Link href="/mentions-legales" className="footer-link">{t("Mentions légales")}</Link>
+          <Link href="/confidentialite" className="footer-link">{t("Confidentialité")}</Link>
+          <CookieSettingsButton className="footer-link" />
+          <Link href="/cgu" className="footer-link">{t("Conditions d'utilisation")}</Link>
+          <Link href="/conditions-de-vente" className="footer-link">{t("Conditions de vente")}</Link>
+        </nav>
         <span>{t("© {year} KolBase. Tous droits réservés.", { year: new Date().getFullYear() })}</span>
         {locale === "en" && <span>{t("Les documents juridiques font foi en français.")}</span>}
         {process.env.SEED_DEMO === "1" && <span>{t("Environnement de démonstration — données simulées")}</span>}

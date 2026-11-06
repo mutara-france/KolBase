@@ -432,9 +432,9 @@ export default async function Page({ params, searchParams }: { params: Promise<{
                 <div className="card-head">
                   <div>
                     <h2>{t("Intervenants")}</h2>
-                    <p className="muted">{t("Lancez un appel à candidatures rattaché à l'événement : les experts référencés candidatent, vous retenez, un dossier s'ouvre pour chaque intervenant.")}</p>
+                    <p className="muted">{t("Publiez une opportunité rattachée à l'événement : les experts référencés candidatent, vous retenez, un dossier s'ouvre pour chaque intervenant.")}</p>
                   </div>
-                  <Link className="btn ghost" href={`/organisations/${id}/opportunites?evenement=${eventId}#nouvel-appel`}>{t("Lancer un appel")}</Link>
+                  <Link className="btn ghost" href={`/organisations/${id}/opportunites?evenement=${eventId}#nouvel-appel`}>{t("Publier une opportunité")}</Link>
                 </div>
                 {calls.length > 0 && (
                   <ul className="logistics-list">

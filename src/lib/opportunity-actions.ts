@@ -16,7 +16,7 @@ import { getT } from "@/lib/i18n/server";
 export type ActionState = { error?: string; ok?: string; fix?: GateLink } | undefined;
 
 /**
- * Appel à candidatures : pour une collaboration (board, étude, rédaction…) ou pour intervenir à un événement
+ * Opportunité : pour une collaboration (board, étude, rédaction…) ou pour intervenir à un événement
  * de l'organisation (formation, symposium…). Dans les deux cas, la personne retenue ouvre un dossier.
  */
 export async function createOpenCall(_: ActionState, form: FormData): Promise<ActionState> {
@@ -81,7 +81,7 @@ export async function applyToCall(_: ActionState, form: FormData): Promise<Actio
   if (!user.practitioner?.listed) return { error: t("Référencez-vous comme expert pour candidater.") };
   const callId = str(form, "callId");
   const call = await db.openCall.findUnique({ where: { id: callId }, include: { organization: true, event: true, _count: { select: { applications: { where: { status: "retained" } } } } } });
-  if (!call || call.status !== "open" || !isVerifiedOrg(call.organization)) return { error: t("Cet appel n'est plus ouvert.") };
+  if (!call || call.status !== "open" || !isVerifiedOrg(call.organization)) return { error: t("Cette opportunité n'est plus ouverte.") };
   if ((call.deadline && call.deadline < new Date()) || (call.event && call.event.startsAt < new Date())) return { error: t("La date limite est dépassée.") };
   if (call.slots && call._count.applications >= call.slots) return { error: t("Toutes les places sont pourvues.") };
   const message = str(form, "message");
@@ -162,7 +162,7 @@ export async function retainApplication(_: ActionState, form: FormData): Promise
         typeId: call.typeId,
         therapeuticArea: call.specialty ?? ev?.therapeuticArea ?? null,
         description: call.description ?? ev?.description ?? null,
-        origin: ev ? `Appel à candidatures : ${ev.title}` : "Appel à candidatures",
+        origin: ev ? `Opportunité : ${ev.title}` : "Opportunité",
         status: "ATT_EXPERTS",
         createdById: user.id,
         experts: { create: { practitionerId: app.practitionerId, status: "ATT_EXPERTS", feeCents: fee, days: units } },

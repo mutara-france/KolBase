@@ -10,7 +10,7 @@ import { getCurrentUser } from "@/lib/auth";
 
 export async function generateMetadata() {
   const { t } = await getT();
-  return { title: `${t("Appels à candidatures")} — KolBase` };
+  return { title: `${t("Opportunités")} — KolBase` };
 }
 export const dynamic = "force-dynamic";
 
@@ -26,8 +26,8 @@ export default async function Page({ searchParams }: { searchParams: Promise<{ q
       <main className="landing">
         <section className="page-band">
           <div className="page-band-inner">
-            <span className="kicker">{t("Dans les deux sens")}</span>
-            <h1>{t("Appels à candidatures")}</h1>
+            <span className="kicker">{t("Opportunités")}</span>
+            <h1>{t("Opportunités")}</h1>
             <p>{t("Les organisations cherchent des experts pour une collaboration ou pour intervenir à un événement. La candidature est réservée aux experts référencés.")}</p>
           </div>
         </section>
@@ -38,7 +38,7 @@ export default async function Page({ searchParams }: { searchParams: Promise<{ q
             <button type="submit" className="btn lg"><Search size={16} aria-hidden /> {t("Rechercher")}</button>
             {q && <Link href="/appels" className="text-sm">{t("Effacer la recherche")}</Link>}
           </form>
-          {calls.length === 0 && <p className="muted">{q ? t("Aucun appel ne correspond à cette recherche.") : t("Aucun appel ouvert pour le moment.")}</p>}
+          {calls.length === 0 && <p className="muted">{q ? t("Aucune opportunité ne correspond à cette recherche.") : t("Aucune opportunité ouverte pour le moment.")}</p>}
           <div className="grid-2">
             {calls.map((c) => (
               // « Candidater » aux praticiens, « Se connecter pour candidater » sans session ; rien pour un compte

@@ -21,7 +21,7 @@ export async function generateMetadata() {
 
 /**
  * Mes interventions (événements où l'expert a été retenu) et Mes candidatures (tous les appels à candidatures).
- * Les appels eux-mêmes sont dans « Appels à candidatures » (/opportunites).
+ * Les appels eux-mêmes sont dans « Opportunités » (/opportunites).
  */
 export default async function Page({ searchParams }: { searchParams: Promise<{ onglet?: string }> }) {
   const user = await requireUser();
@@ -50,7 +50,7 @@ export default async function Page({ searchParams }: { searchParams: Promise<{ o
   const group = onglet === "interventions" ? "agenda" : "opportunites";
   const heading = onglet === "interventions"
     ? [t("Mes interventions"), t("Les événements où vous intervenez. Vos participations en tant que public sont dans Mes inscriptions.")]
-    : [t("Mes candidatures"), t("Vos candidatures aux appels à candidatures, avec ou sans événement, et leur suite.")];
+    : [t("Mes candidatures"), null];
 
   return (
     <>
@@ -58,7 +58,7 @@ export default async function Page({ searchParams }: { searchParams: Promise<{ o
       <main className="stack">
         <SectionNav tabs={practitionerSectionTabs(group).map((tab) => ({ ...tab, label: t(tab.label) }))} active={onglet} label={group === "agenda" ? t("Rubrique Mes inscriptions") : t("Rubrique Opportunités")} />
         <h1>{heading[0]}</h1>
-        <p className="muted">{heading[1]}</p>
+        {heading[1] && <p className="muted">{heading[1]}</p>}
 
         {onglet === "interventions" && (
           <div className="grid-2">
@@ -84,7 +84,7 @@ export default async function Page({ searchParams }: { searchParams: Promise<{ o
 
         {onglet === "candidatures" && (
           <section className="card">
-            {mine.length === 0 && <p className="muted">{t("Aucune candidature.")} <Link href="/opportunites">{t("Voir les appels à candidatures")}</Link></p>}
+            {mine.length === 0 && <p className="muted">{t("Aucune candidature.")} <Link href="/opportunites">{t("Voir les opportunités")}</Link></p>}
             <ul className="applications">
               {mine.map((a) => (
                 <li key={a.id}>

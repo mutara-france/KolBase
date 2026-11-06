@@ -14,7 +14,7 @@ import { fmtDate } from "@/lib/i18n";
 
 export async function generateMetadata() {
   const { t } = await getT();
-  return { title: `${t("Appels à candidatures")} — KolBase` };
+  return { title: `${t("Opportunités")} — KolBase` };
 }
 
 
@@ -40,11 +40,11 @@ export default async function Page({ params, searchParams }: { params: Promise<{
         <BillingNotice orgId={id} motive="appel" />
         <SectionNav tabs={sectionTabs} active="appels" label={t("Rubrique Praticiens")} />
         <div className="actions spread">
-          <h1>{t("Appels à candidatures")}</h1>
-          <a className="btn" href="#nouvel-appel">{t("Nouvel appel")}</a>
+          <h1>{t("Opportunités")}</h1>
+          <a className="btn" href="#nouvel-appel">{t("Nouvelle opportunité")}</a>
         </div>
         <p className="muted">
-          {t("Un appel invite les experts référencés à candidater, pour une collaboration (board, étude, rédaction…) ou pour intervenir à l'un de vos événements (formation, symposium…). Vous retenez qui vous voulez ; chaque personne retenue reçoit une proposition d'honoraires et un dossier s'ouvre.")}
+          {t("Une opportunité invite les experts référencés à candidater, pour une collaboration (board, étude, rédaction…) ou pour intervenir à l'un de vos événements (formation, symposium…). Vous retenez qui vous voulez ; chaque personne retenue reçoit une proposition d'honoraires et un dossier s'ouvre.")}
         </p>
         {calls.length > 0 && (
           <section className="card row-list">

@@ -105,12 +105,12 @@ export default async function Page({ searchParams }: { searchParams: Promise<{ a
 
   const lede = pending.length
     ? plural(pending.length, "{n} sollicitation attend votre réponse.", "{n} sollicitations attendent votre réponse.")
-    : todos.length
+    : todos.length || profileTodos.length
       ? undefined
       : p.listed
         ? t("Rien à traiter pour le moment.")
         : canBeExpert(p.profession)
-          ? t("Vos inscriptions aux événements. Référencez-vous comme expert pour être sollicité.")
+          ? undefined // l'encart « Devenir expert référencé » le dit déjà
           : t("Vos inscriptions aux événements.");
 
   return (
@@ -179,7 +179,7 @@ export default async function Page({ searchParams }: { searchParams: Promise<{ a
                 </div>
               </article>
             ))}
-            {(todos.length > 0 || pending.length === 0) && <TodoList items={todos} />}
+            {(todos.length > 0 || (pending.length === 0 && profileTodos.length === 0)) && <TodoList items={todos} />}
             {profileTodos.length > 0 && (
               <div className="profile-steps">
                 <div className="flex-between">
@@ -196,7 +196,7 @@ export default async function Page({ searchParams }: { searchParams: Promise<{ a
               <section className="card dash-card" aria-labelledby="pour-vous">
                 <h2 id="pour-vous" className="dash-title">{t("Pour vous")}</h2>
                 {suggested.length === 0 ? (
-                  <p className="muted">{t("Aucun appel ouvert pour le moment.")}</p>
+                  <p className="muted">{t("Aucune opportunité ouverte pour le moment.")}</p>
                 ) : (
                   suggested.map((c) => (
                     <Link key={c.id} href={`/opportunites/${c.id}`} className="suggest-card">
@@ -206,7 +206,7 @@ export default async function Page({ searchParams }: { searchParams: Promise<{ a
                     </Link>
                   ))
                 )}
-                <MoreLink href="/opportunites">{t("Tous les appels à candidatures")}</MoreLink>
+                <MoreLink href="/opportunites">{t("Toutes les opportunités")}</MoreLink>
               </section>
             )}
             {p.listed && (

@@ -35,3 +35,15 @@ export const fmtTime = (locale: Locale, d: Date) => d.toLocaleTimeString(intlLoc
 /** Montant en euros (« 1 200 € » / « €1,200 »). */
 export const fmtEur = (locale: Locale, cents: number) =>
   (cents / 100).toLocaleString(intlLocale(locale), { style: "currency", currency: "EUR", maximumFractionDigits: cents % 100 ? 2 : 0 });
+
+/** Nom d'une langue saisie en code (« en » → « Anglais » / « English ») ; un nom déjà écrit reste tel quel. */
+export function languageName(code: string, locale: Locale) {
+  const c = code.trim();
+  if (!/^[a-z]{2,3}(-[a-z]{2})?$/i.test(c)) return c;
+  try {
+    const name = new Intl.DisplayNames([intlLocale(locale)], { type: "language" }).of(c);
+    return name && name.toLowerCase() !== c.toLowerCase() ? name.charAt(0).toLocaleUpperCase(intlLocale(locale)) + name.slice(1) : c;
+  } catch {
+    return c;
+  }
+}

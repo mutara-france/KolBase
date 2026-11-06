@@ -98,15 +98,15 @@ export async function publicCalls(take?: number): Promise<CallCardData[]> {
     },
     orderBy: [{ deadline: "asc" }, { createdAt: "desc" }],
   });
-  // Pages publiques : seulement les organisations qui affichent leurs appels publiquement (réglage « Appels ouverts ») ;
-  // les praticiens connectés voient tous les appels ouverts dans « Opportunités ».
+  // Pages publiques : seulement les organisations qui affichent leurs appels publiquement (réglage « Opportunités ouvertes ») ;
+  // les praticiens connectés voient toutes les opportunités ouvertes dans « Opportunités ».
   const visible = cs.filter((c) => canSee(companyVisibility(c.organization.visibility).projets, "public"));
   return visible.slice(0, take).map((c) => ({ id: c.id, title: c.title, specialty: c.specialty, typeId: c.typeId, poster: c.organization.name, posterLogo: logoSrc(c.organization), deadline: c.deadline, description: c.description, budgetMinCents: c.budgetMinCents, budgetMaxCents: c.budgetMaxCents, open: true, full: callFull(c), event: c.event ? { title: c.event.title, startsAt: c.event.startsAt } : null }));
 }
 
 /**
  * Compteurs de l'accueil et de l'aide : les mêmes règles que les pages qui listent (experts, organisations, agenda,
- * appels publics), pour qu'un « 12 appels ouverts » mène à 12 appels.
+ * appels publics), pour qu'un « 12 opportunités ouvertes » mène à 12 appels.
  */
 export async function publicCounts() {
   const [experts, verified, industriels, organizations, events, calls] = await Promise.all([
@@ -118,17 +118,6 @@ export async function publicCounts() {
     publicCalls().then((cs) => cs.length),
   ]);
   return { experts, verified, industriels, organizations, events, calls };
-}
-
-/** Organisations qui ont au moins un événement à venir ou un appel ouvert visibles du public (« Ils publient sur KolBase »). */
-export async function publishingOrgIds() {
-  const now = new Date();
-  const [events, calls] = await Promise.all([
-    db.event.findMany({ where: publicEventWhere(now), select: { organizationId: true }, distinct: ["organizationId"] }),
-    publicCalls(),
-  ]);
-  const callOrgs = await db.openCall.findMany({ where: { id: { in: calls.map((c) => c.id) } }, select: { organizationId: true }, distinct: ["organizationId"] });
-  return new Set([...events, ...callOrgs].map((x) => x.organizationId));
 }
 
 /** Spécialités des experts référencés, de la plus représentée à la moins représentée. */

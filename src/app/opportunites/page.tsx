@@ -50,7 +50,7 @@ export default async function Page({ searchParams }: { searchParams: Promise<{ t
       <main className="stack">
         <SectionNav tabs={practitionerSectionTabs("opportunites").map((tab) => ({ ...tab, label: t(tab.label) }))} active="appels" label={t("Rubrique Opportunités")} />
         <div>
-          <h1>{t("Appels à candidatures")}</h1>
+          <h1>{t("Opportunités")}</h1>
           <p className="muted">{t("Les organisations cherchent des experts pour une collaboration (board, étude, rédaction…) ou pour intervenir à un événement (formation, symposium…). Candidatez : si vous êtes retenu, vous recevez une proposition d'honoraires.")}</p>
         </div>
         <form className="card form search">
@@ -58,7 +58,7 @@ export default async function Page({ searchParams }: { searchParams: Promise<{ t
             <label>{t("Recherche")}<input name="q" defaultValue={q} placeholder={t("Spécialité, ville, sujet…")} /></label>
             <label>{t("Événement")}
               <select name="evenement" defaultValue={evenement}>
-                <option value="">{t("Tous les appels")}</option>
+                <option value="">{t("Toutes les opportunités")}</option>
                 <option value="avec">{t("Intervenir à un événement")}</option>
                 <option value="sans">{t("Collaboration hors événement")}</option>
               </select>
@@ -72,7 +72,7 @@ export default async function Page({ searchParams }: { searchParams: Promise<{ t
           </div>
           <button className="btn">{t("Filtrer")}</button>
         </form>
-        {calls.length === 0 && <p className="muted">{t("Aucun appel ouvert pour ces critères.")}</p>}
+        {calls.length === 0 && <p className="muted">{t("Aucune opportunité ouverte pour ces critères.")}</p>}
         <div className="grid">
           {calls.map((c) => (
             <Link key={c.id} href={`/opportunites/${c.id}`} className="card tile">

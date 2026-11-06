@@ -6,7 +6,7 @@ import { HomeSearch } from "@/components/HomeSearch";
 import { CallCard, EventCard, KolCard } from "@/components/PublicCards";
 import { INTERVENTION_TYPES, ORG_KIND_LABEL } from "@/lib/orgs";
 import { specialtyVisual } from "@/lib/specialties";
-import { publicCalls, publicCounts, publicEvents, publicExperts, publicOrgAgenda, publicOrgs, publicSpecialties, publishingOrgIds } from "@/lib/public-data";
+import { publicCalls, publicCounts, publicEvents, publicExperts, publicOrgAgenda, publicOrgs, publicSpecialties } from "@/lib/public-data";
 import { fmtDate } from "@/lib/i18n";
 import { getT } from "@/lib/i18n/server";
 import { NewsCard } from "@/components/News";
@@ -22,8 +22,8 @@ export const dynamic = "force-dynamic";
 export default async function Home({ searchParams }: { searchParams: Promise<{ compte?: string }> }) {
   const deleted = (await searchParams).compte === "supprime";
   const [{ t, locale }, user] = await Promise.all([getT(), getCurrentUser()]);
-  const [events, experts, orgs, calls, n, specialties, news, publishing] = await Promise.all([
-    publicEvents(3, { tracked: true }), publicExperts(4), publicOrgs(), publicCalls(2), publicCounts(), publicSpecialties(), publishedArticles(3), publishingOrgIds(),
+  const [events, experts, orgs, calls, n, specialties, news] = await Promise.all([
+    publicEvents(3, { tracked: true }), publicExperts(4), publicOrgs(), publicCalls(2), publicCounts(), publicSpecialties(), publishedArticles(3),
   ]);
   // Les prestataires (agences, logistique) ne sont pas mis en avant sur l'accueil.
   const ranked = orgs
@@ -54,7 +54,7 @@ export default async function Home({ searchParams }: { searchParams: Promise<{ c
             <div className="home-hero-text">
               <p className="home-pill">{t("Le réseau scientifique de la chirurgie dentaire")}</p>
               <h1 id="home-titre" className="home-title">{t("Trouvez le bon praticien. Montez la collaboration.")} <em>{t("Le reste suit.")}</em></h1>
-              <p className="home-lede">{t("Experts référencés, événements ouverts, appels en cours : tout le réseau au même endroit.")}</p>
+              <p className="home-lede">{t("Experts référencés, événements ouverts, opportunités en cours : tout le réseau au même endroit.")}</p>
             </div>
             <div className="home-hero-art" aria-hidden>
               {/* eslint-disable-next-line @next/next/no-img-element */}
@@ -69,20 +69,6 @@ export default async function Home({ searchParams }: { searchParams: Promise<{ c
           </div>
         </section>
 
-        {/* Seulement les organisations qui publient vraiment : au moins un événement ou un appel visible. */}
-        {ranked.some((o) => publishing.has(o.id)) && (
-          <section className="home-trust" aria-labelledby="home-confiance">
-            <div className="home-wrap">
-              <h2 id="home-confiance">{t("Ils publient sur KolBase")}</h2>
-              <ul className="trust-list">
-                {ranked.filter((o) => publishing.has(o.id)).slice(0, 5).map((o) => (
-                  <li key={o.id}><Link href={`/structures/${o.id}`}><Avatar name={o.name} size={36} square src={o.logo} />{o.name}</Link></li>
-                ))}
-              </ul>
-            </div>
-          </section>
-        )}
-
         {specialties.length > 0 && (
           <section className="home-section" aria-labelledby="home-specialites">
             <div className="home-wrap">
@@ -91,7 +77,6 @@ export default async function Home({ searchParams }: { searchParams: Promise<{ c
                   <span className="kicker">{t("Spécialités")}</span>
                   <h2 id="home-specialites">{t("Explorer par spécialité")}</h2>
                 </div>
-                <Link href="/experts" className="home-more">{t("Les {n} experts", { n: n.experts })} <ArrowRight size={16} /></Link>
               </div>
               <div className="spec-grid">
                 {specialties.slice(0, 9).map((s) => {
@@ -174,7 +159,7 @@ export default async function Home({ searchParams }: { searchParams: Promise<{ c
                   </div>
                   <dl className="org-stats">
                     <div><dt>{t(featured.collaborations > 1 ? "collaborations" : "collaboration")}</dt><dd>{featured.collaborations}</dd></div>
-                    <div><dt>{t(featured.openCalls > 1 ? "appels ouverts" : "appel ouvert")}</dt><dd>{featured.openCalls}</dd></div>
+                    <div><dt>{t(featured.openCalls > 1 ? "opportunités ouvertes" : "opportunité ouverte")}</dt><dd>{featured.openCalls}</dd></div>
                     <div><dt>{t((agenda?.upcoming ?? 0) > 1 ? "événements à venir" : "événement à venir")}</dt><dd>{agenda?.upcoming ?? 0}</dd></div>
                   </dl>
                   <div className="flex-between">
@@ -192,7 +177,6 @@ export default async function Home({ searchParams }: { searchParams: Promise<{ c
                       <span className="go" aria-hidden><ArrowRight size={18} /></span>
                     </Link>
                   ))}
-                  <Link href={orgJoinHref(user, "organisation")} className="org-join">{t("Créer l'espace de votre organisation : gratuit jusqu'à votre première action")} <ArrowRight size={18} /></Link>
                 </div>
               </div>
             </div>
@@ -205,7 +189,7 @@ export default async function Home({ searchParams }: { searchParams: Promise<{ c
               <div className="home-head">
                 <div>
                   <span className="kicker">{t("Opportunités")}</span>
-                  <h2 id="home-appels">{t("Appels ouverts aux praticiens")}</h2>
+                  <h2 id="home-appels">{t("Ouvertes aux praticiens")}</h2>
                 </div>
                 <Link href="/appels" className="home-more">{t("Toutes les opportunités")} <ArrowRight size={16} /></Link>
               </div>
@@ -247,7 +231,7 @@ export default async function Home({ searchParams }: { searchParams: Promise<{ c
             <div className="join-card aurore">
               <span className="eyebrow">{t("Organisations")}</span>
               <h2>{t("Trouvez vos intervenants.")}</h2>
-              <p>{t("Publiez des appels, sollicitez des praticiens, ouvrez vos événements. L'espace de l'organisation est gratuit jusqu'à votre première action qui engage un tiers, puis sur abonnement (premier mois offert).")}</p>
+              <p>{t("Publiez des opportunités, sollicitez des praticiens, ouvrez vos événements. L'espace de l'organisation est gratuit jusqu'à votre première action qui engage un tiers, puis sur abonnement (premier mois offert).")}</p>
               <Link href={orgJoinHref(user, "organisation")} className="btn lg white">{t("Référencer mon organisation")}</Link>
             </div>
           </div>

@@ -42,7 +42,7 @@ export default async function Page() {
       <main className="stack">
         <h1>{t("Mes suivis")}</h1>
         <p className="muted">
-          {t("Suivez des experts et des organisations depuis leur fiche (bouton « Suivre ») : vous voyez ici leurs nouvelles publications, interventions, appels et événements.")}
+          {t("Suivez des experts et des organisations depuis leur fiche (bouton « Suivre ») : vous voyez ici leurs nouvelles publications, interventions, opportunités et événements.")}
         </p>
 
         <section className="card">
