@@ -50,7 +50,7 @@ export default async function Page({ searchParams }: { searchParams: Promise<{ o
   const group = onglet === "interventions" ? "agenda" : "opportunites";
   const heading = onglet === "interventions"
     ? [t("Mes interventions"), t("Les événements où vous intervenez. Vos participations en tant que public sont dans Mes inscriptions.")]
-    : [t("Mes candidatures"), t("Vos candidatures aux appels à candidatures, avec ou sans événement, et leur suite.")];
+    : [t("Mes candidatures"), null];
 
   return (
     <>
@@ -58,7 +58,7 @@ export default async function Page({ searchParams }: { searchParams: Promise<{ o
       <main className="stack">
         <SectionNav tabs={practitionerSectionTabs(group).map((tab) => ({ ...tab, label: t(tab.label) }))} active={onglet} label={group === "agenda" ? t("Rubrique Mes inscriptions") : t("Rubrique Opportunités")} />
         <h1>{heading[0]}</h1>
-        <p className="muted">{heading[1]}</p>
+        {heading[1] && <p className="muted">{heading[1]}</p>}
 
         {onglet === "interventions" && (
           <div className="grid-2">

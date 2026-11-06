@@ -79,7 +79,7 @@ export default async function Page({ searchParams }: { searchParams: Promise<{ o
               <div><dt><Hourglass size={13} /> {t("À percevoir")}</dt><dd>{fmtEur(locale, due)}<small>{t("HT, conventions signées non payées")}</small></dd></div>
               <div><dt><FileClock size={13} /> {t("En préparation")}</dt><dd>{fmtEur(locale, preparing)}<small>{t("HT, conventions pas encore signées")}</small></dd></div>
               <div><dt><Gift size={13} /> {t("Hospitalités reçues")}</dt><dd>{fmtEur(locale, hospTotal)}<small>{t("TTC, valeur déclarée")}</small></dd></div>
-              <div><dt><Building2 size={13} /> {t("Organisations")}</dt><dd>{orgs}<small>{t("partenaires cette année")}</small></dd></div>
+              <div><dt><Building2 size={13} /> {t(orgs > 1 ? "Organisations" : "Organisation")}</dt><dd>{orgs}<small>{t(orgs > 1 ? "partenaires cette année" : "partenaire cette année")}</small></dd></div>
             </dl>
             <section className="card">
               <h2>{t("Honoraires")}</h2>

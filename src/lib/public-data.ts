@@ -120,17 +120,6 @@ export async function publicCounts() {
   return { experts, verified, industriels, organizations, events, calls };
 }
 
-/** Organisations qui ont au moins un événement à venir ou un appel ouvert visibles du public (« Ils publient sur KolBase »). */
-export async function publishingOrgIds() {
-  const now = new Date();
-  const [events, calls] = await Promise.all([
-    db.event.findMany({ where: publicEventWhere(now), select: { organizationId: true }, distinct: ["organizationId"] }),
-    publicCalls(),
-  ]);
-  const callOrgs = await db.openCall.findMany({ where: { id: { in: calls.map((c) => c.id) } }, select: { organizationId: true }, distinct: ["organizationId"] });
-  return new Set([...events, ...callOrgs].map((x) => x.organizationId));
-}
-
 /** Spécialités des experts référencés, de la plus représentée à la moins représentée. */
 export async function publicSpecialties(): Promise<{ name: string; count: number }[]> {
   const rows = await db.practitionerProfile.groupBy({ by: ["specialty"], where: { listed: true, specialty: { not: null } }, _count: { _all: true } });

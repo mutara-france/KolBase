@@ -25,16 +25,6 @@ function AreaArt({ seed, height = 132, label }: { seed: string; height?: number;
   );
 }
 
-export function StatCard({ label, value, hint, electric }: { label: string; value: number | string; hint?: string; electric?: boolean }) {
-  return (
-    <div className="stat-card">
-      <div className={`stat-value${electric ? " tone-electric" : ""}`}>{value}</div>
-      <div className="stat-label">{label}</div>
-      {hint && <div className="stat-hint">{hint}</div>}
-    </div>
-  );
-}
-
 export type EventCardData = {
   id: string; title: string; typeId: string; therapeuticArea: string | null; startsAt: Date; durationMinutes: number | null;
   format: "PRESENTIEL" | "DISTANCIEL" | "HYBRIDE"; city: string | null; capacity: number | null; registrationOpen: boolean;
@@ -138,8 +128,11 @@ export async function OrgCard({ o }: { o: OrgCardData }) {
         {supplier ? (
           <span className="text-xs">{o.coverage ? t("Zone : {zone}", { zone: o.coverage }) : ""}</span>
         ) : (
+          // Seulement les chiffres non nuls : « 0 appel ouvert · 0 collaboration » n'apprend rien.
           <span className="text-xs">
-            <span className="mono ink">{o.openCalls}</span> {t(o.openCalls > 1 ? "appels ouverts" : "appel ouvert")} · <span className="mono ink">{o.collaborations}</span> {t(o.collaborations > 1 ? "collaborations" : "collaboration")}
+            {o.openCalls > 0 && <><span className="mono ink">{o.openCalls}</span> {t(o.openCalls > 1 ? "appels ouverts" : "appel ouvert")}</>}
+            {o.openCalls > 0 && o.collaborations > 0 && " · "}
+            {o.collaborations > 0 && <><span className="mono ink">{o.collaborations}</span> {t(o.collaborations > 1 ? "collaborations" : "collaboration")}</>}
           </span>
         )}
         <span className="card-cta">{t("Voir la fiche")} <ChevronRight size={15} /></span>

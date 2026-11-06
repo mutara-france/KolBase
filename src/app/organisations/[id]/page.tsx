@@ -8,7 +8,7 @@ import { eventMoment } from "@/lib/events";
 import { supplierCategoryLabel } from "@/lib/suppliers";
 import { orgBillingLine, orgOnboarding } from "@/lib/onboarding";
 import { CheckCircle2, Circle } from "lucide-react";
-import { rnaAccepted, roleLabel, STATS_ROLES } from "@/lib/org-roles";
+import { rnaAccepted, roleLabel } from "@/lib/org-roles";
 import type { OrgKind } from "@/generated/prisma/client";
 import { de, inSentence } from "@/lib/elision";
 import { getT } from "@/lib/i18n/server";
@@ -138,21 +138,32 @@ export default async function Page({ params, searchParams }: { params: Promise<{
               <span className="muted text-sm">{t(onboarding.filter((s) => s.done).length > 1 ? "{n} étapes sur {onboarding}" : "{n} étape sur {onboarding}", { n: onboarding.filter((s) => s.done).length, onboarding: onboarding.length })}</span>
             </div>
             <div className="gauge-track"><div className="gauge-fill" style={{ width: `${Math.round((onboarding.filter((s) => s.done).length / onboarding.length) * 100)}%` }} /></div>
+            {/* Étapes restantes en clair ; les étapes faites, repliées, n'encombrent plus la prise en main. */}
             <ol className="onboarding-steps">
-              {onboarding.map((s) => (
-                <li key={s.key} className={s.done ? "done" : ""}>
-                  {s.done ? <CheckCircle2 size={18} aria-label={t("Fait")} /> : <Circle size={18} aria-label={t("À faire")} />}
-                  <span>{s.done ? <strong>{t(s.label)}</strong> : <Link href={s.href}><strong>{t(s.label)}</strong></Link>}<small>{t(s.hint)}</small></span>
+              {onboarding.filter((s) => !s.done).map((s) => (
+                <li key={s.key}>
+                  <Circle size={18} aria-label={t("À faire")} />
+                  <span><Link href={s.href}><strong>{t(s.label)}</strong></Link><small>{t(s.hint)}</small></span>
                 </li>
               ))}
             </ol>
+            {onboarding.some((s) => s.done) && (
+              <details className="onboarding-done">
+                <summary>{t(onboarding.filter((s) => s.done).length > 1 ? "{n} étapes terminées" : "{n} étape terminée", { n: onboarding.filter((s) => s.done).length })}</summary>
+                <ol className="onboarding-steps">
+                  {onboarding.filter((s) => s.done).map((s) => (
+                    <li key={s.key} className="done">
+                      <CheckCircle2 size={18} aria-label={t("Fait")} />
+                      <span><strong>{t(s.label)}</strong></span>
+                    </li>
+                  ))}
+                </ol>
+              </details>
+            )}
             {billingLine && <p className="hint onboarding-billing">{billingLine} <Link href={`${base}/abonnement`}>{t("Voir l'abonnement")}</Link></p>}
           </section>
         )}
         <DashStats stats={stats} />
-        {org.kind !== "PRESTATAIRE" && roles.some((r) => STATS_ROLES.includes(r)) && (
-          <p className="text-sm"><Link href={`${base}/statistiques`}>{t("Voir les statistiques de l'organisation")}</Link>{" "}{t(": budget engagé, experts, événements, délais.")}</p>
-        )}
         <div className={`dash-layout${timeline.length ? "" : " single"}`}>
           <section className="card dash-card" aria-labelledby="a-faire">
             <h2 id="a-faire" className="dash-title">

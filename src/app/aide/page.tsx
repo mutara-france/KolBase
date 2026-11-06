@@ -1,7 +1,5 @@
 import Link from "next/link";
 import { SiteHeader } from "@/components/SiteHeader";
-import { StatCard } from "@/components/PublicCards";
-import { publicCounts } from "@/lib/public-data";
 import { getT } from "@/lib/i18n/server";
 import { getCurrentUser } from "@/lib/auth";
 import { orgJoinHref } from "@/lib/nav";
@@ -23,7 +21,7 @@ const FAQ: [string, string, [string, string]?][] = [
 ];
 
 export default async function Page() {
-  const [n, { t }, user] = await Promise.all([publicCounts(), getT(), getCurrentUser()]);
+  const [{ t }, user] = await Promise.all([getT(), getCurrentUser()]);
   return (
     <>
       <SiteHeader variant="public" />
@@ -31,11 +29,6 @@ export default async function Page() {
         <section className="public-section">
           <div className="eyebrow mb-1">{t("Aide")}</div>
           <h1 className="section-h2">{t("Bien démarrer sur KolBase")}</h1>
-          <div className="stats-row mt-4">
-            <StatCard label={t("Experts référencés")} value={n.experts} />
-            <StatCard label={t("Événements à venir")} value={n.events} electric />
-            <StatCard label={t("Appels ouverts")} value={n.calls} />
-          </div>
           <div className="grid-2">
             <div className="card">
               <h2>{t("Vous êtes praticien")}</h2>
@@ -60,8 +53,7 @@ export default async function Page() {
           </div>
         </section>
         <section className="public-section pt-0">
-          <div className="eyebrow mb-1">{t("Questions fréquentes")}</div>
-          <h2 className="section-h2 mb-4">{t("FAQ")}</h2>
+          <h2 className="section-h2 mb-4">{t("Questions fréquentes")}</h2>
           <div className="stack">
             {FAQ.map(([q, a, link]) => (
               <details key={q} className="card faq"><summary>{t(q)}</summary><p className="mt-2">{t(a)}{link && <> <Link href={link[1]}>{t(link[0])}</Link></>}</p></details>

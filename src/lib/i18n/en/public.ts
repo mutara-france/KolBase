@@ -28,7 +28,6 @@ export const PUBLIC: Record<string, string> = {
   "Experts référencés, événements ouverts, appels en cours : tout le réseau au même endroit.":
     "Listed experts, open events, current calls for applications: the whole network in one place.",
   "Recherche": "Search",
-  "Ils publient sur KolBase": "They publish on KolBase",
   "Spécialités": "Specialties",
   "Explorer par spécialité": "Explore by specialty",
   "Les {n} experts": "All {n} experts",
@@ -100,8 +99,8 @@ export const PUBLIC: Record<string, string> = {
 
   // Annuaire public des experts
   "Experts référencés": "Listed experts",
-  "{n} praticiens ont choisi d'être visibles. Chaque praticien choisit ce qu'il rend public ; la recherche avancée est réservée aux organisations inscrites.":
-    "{n} practitioners have chosen to be visible. Each practitioner decides what they make public; advanced search is reserved for registered organisations.",
+  "Chaque praticien choisit ce qu'il rend public ; la recherche avancée est réservée aux organisations inscrites.":
+    "Each practitioner decides what they make public; advanced search is reserved for registered organisations.",
   "Rechercher un praticien": "Search for a practitioner",
   "Nom, spécialité, ville, type d'intervention": "Name, specialty, city, engagement type",
   "Recherche avancée": "Advanced search",
@@ -302,7 +301,6 @@ export const PUBLIC: Record<string, string> = {
   "Inscription confirmée.": "Registration confirmed.",
 
   // Opportunités
-  "Dans les deux sens": "Both ways",
   "Opportunités ouvertes": "Open opportunities",
   "Appels publiés par les organisations. La candidature est réservée aux experts référencés.":
     "Calls for applications published by organisations. Only listed experts can apply.",
@@ -323,7 +321,6 @@ export const PUBLIC: Record<string, string> = {
   "Publiez événements et opportunités, sollicitez les experts.": "Publish events and opportunities, send collaboration requests to experts.",
   "Suivez la conformité : validation, Ordre, conventions, hospitalités.": "Track compliance: approval, French Dental Council, agreements, hospitality.",
   "Questions fréquentes": "Frequently asked questions",
-  "FAQ": "FAQ",
   "Qui peut s'inscrire ?": "Who can sign up?",
   "Tout professionnel de santé du secteur dentaire, ainsi que les membres d'organisations (industriels, sociétés savantes, associations, organismes de formation).":
     "Any healthcare professional in the dental sector, as well as members of organisations (manufacturers, scientific societies, associations, training providers).",

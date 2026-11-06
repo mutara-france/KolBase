@@ -593,11 +593,6 @@ body:has(.sidebar) .site-footer { padding: 24px 32px; }
 .search-field input:focus, .search-field select:focus { outline: none; }
 .search-submit { flex: 0 0 auto; display: inline-flex; align-items: center; justify-content: center; gap: 10px; min-height: 68px; padding: 0 30px; border-radius: 18px; border: 0; background: var(--outremer); font: inherit; font-size: 16px; font-weight: 600; color: #fff; cursor: pointer; }
 .search-submit:hover { background: var(--outremer-deep); }
-.home-trust { padding: 36px 0 8px; }
-.home-trust .home-wrap { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 16px 40px; }
-.home-trust h2 { margin: 0; font-family: var(--font-mono); font-size: 12px; font-weight: 500; letter-spacing: 0.14em; text-transform: uppercase; color: var(--ink-soft); }
-.trust-list { flex: 1 1 700px; margin: 0; padding: 0; list-style: none; display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 16px 32px; }
-.trust-list a { display: flex; align-items: center; gap: 10px; font-family: var(--font-display); font-size: 17px; font-weight: 700; letter-spacing: -0.02em; color: var(--ink); }
 .home-section { padding: 64px 0; }
 .home-section.tinted { background: var(--bg-subtle); }
 .home-head { display: flex; flex-wrap: wrap; align-items: flex-end; justify-content: space-between; gap: 8px 24px; margin-bottom: 24px; }
@@ -636,8 +631,6 @@ body:has(.sidebar) .site-footer { padding: 24px 32px; }
 .org-row strong { display: block; font-family: var(--font-display); font-size: 17px; font-weight: 700; }
 .org-row small { font-size: 13px; color: rgba(255, 255, 255, 0.78); }
 .org-row .go { margin-left: auto; flex: none; display: flex; align-items: center; justify-content: center; width: 44px; height: 44px; border-radius: 999px; background: #fff; color: var(--outremer-deep); }
-.org-join { display: flex; align-items: center; justify-content: space-between; gap: 12px; min-height: 60px; padding: 0 20px; border-radius: 22px; border: 1px dashed rgba(255, 255, 255, 0.45); font-size: 15px; font-weight: 600; color: #fff; }
-.org-join:hover { color: #fff; background: rgba(255, 255, 255, 0.06); text-decoration: none; }
 .join-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(420px, 100%), 1fr)); gap: 20px; }
 .join-card { display: flex; flex-direction: column; align-items: flex-start; gap: 12px; padding: 32px; border-radius: 28px; background: var(--bg-subtle); }
 .join-card h2 { margin: 0; font-size: 26px; line-height: 1.12; }
@@ -991,6 +984,8 @@ body:has(.sidebar) .site-footer { padding: 24px 32px; }
 .onboarding-steps li.done strong { color: var(--ink-soft); font-weight: 500; text-decoration: line-through; text-decoration-color: var(--line-strong); }
 .onboarding-steps span { display: flex; flex-direction: column; gap: 2px; }
 .onboarding-steps small { color: var(--ink-soft); font-size: 12px; }
+.onboarding-done summary { cursor: pointer; font-size: 13px; color: var(--ink-soft); }
+.onboarding-done[open] summary { margin-bottom: 8px; }
 
 /* Petits écrans : en-têtes de carte et grilles de statistiques sans débordement. */
 @media (max-width: 640px) {

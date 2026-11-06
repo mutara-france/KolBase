@@ -6,7 +6,7 @@ import { HomeSearch } from "@/components/HomeSearch";
 import { CallCard, EventCard, KolCard } from "@/components/PublicCards";
 import { INTERVENTION_TYPES, ORG_KIND_LABEL } from "@/lib/orgs";
 import { specialtyVisual } from "@/lib/specialties";
-import { publicCalls, publicCounts, publicEvents, publicExperts, publicOrgAgenda, publicOrgs, publicSpecialties, publishingOrgIds } from "@/lib/public-data";
+import { publicCalls, publicCounts, publicEvents, publicExperts, publicOrgAgenda, publicOrgs, publicSpecialties } from "@/lib/public-data";
 import { fmtDate } from "@/lib/i18n";
 import { getT } from "@/lib/i18n/server";
 import { NewsCard } from "@/components/News";
@@ -22,8 +22,8 @@ export const dynamic = "force-dynamic";
 export default async function Home({ searchParams }: { searchParams: Promise<{ compte?: string }> }) {
   const deleted = (await searchParams).compte === "supprime";
   const [{ t, locale }, user] = await Promise.all([getT(), getCurrentUser()]);
-  const [events, experts, orgs, calls, n, specialties, news, publishing] = await Promise.all([
-    publicEvents(3, { tracked: true }), publicExperts(4), publicOrgs(), publicCalls(2), publicCounts(), publicSpecialties(), publishedArticles(3), publishingOrgIds(),
+  const [events, experts, orgs, calls, n, specialties, news] = await Promise.all([
+    publicEvents(3, { tracked: true }), publicExperts(4), publicOrgs(), publicCalls(2), publicCounts(), publicSpecialties(), publishedArticles(3),
   ]);
   // Les prestataires (agences, logistique) ne sont pas mis en avant sur l'accueil.
   const ranked = orgs
@@ -69,20 +69,6 @@ export default async function Home({ searchParams }: { searchParams: Promise<{ c
           </div>
         </section>
 
-        {/* Seulement les organisations qui publient vraiment : au moins un événement ou un appel visible. */}
-        {ranked.some((o) => publishing.has(o.id)) && (
-          <section className="home-trust" aria-labelledby="home-confiance">
-            <div className="home-wrap">
-              <h2 id="home-confiance">{t("Ils publient sur KolBase")}</h2>
-              <ul className="trust-list">
-                {ranked.filter((o) => publishing.has(o.id)).slice(0, 5).map((o) => (
-                  <li key={o.id}><Link href={`/structures/${o.id}`}><Avatar name={o.name} size={36} square src={o.logo} />{o.name}</Link></li>
-                ))}
-              </ul>
-            </div>
-          </section>
-        )}
-
         {specialties.length > 0 && (
           <section className="home-section" aria-labelledby="home-specialites">
             <div className="home-wrap">
@@ -91,7 +77,6 @@ export default async function Home({ searchParams }: { searchParams: Promise<{ c
                   <span className="kicker">{t("Spécialités")}</span>
                   <h2 id="home-specialites">{t("Explorer par spécialité")}</h2>
                 </div>
-                <Link href="/experts" className="home-more">{t("Les {n} experts", { n: n.experts })} <ArrowRight size={16} /></Link>
               </div>
               <div className="spec-grid">
                 {specialties.slice(0, 9).map((s) => {
@@ -192,7 +177,6 @@ export default async function Home({ searchParams }: { searchParams: Promise<{ c
                       <span className="go" aria-hidden><ArrowRight size={18} /></span>
                     </Link>
                   ))}
-                  <Link href={orgJoinHref(user, "organisation")} className="org-join">{t("Créer l'espace de votre organisation : gratuit jusqu'à votre première action")} <ArrowRight size={18} /></Link>
                 </div>
               </div>
             </div>

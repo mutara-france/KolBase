@@ -53,7 +53,7 @@ export default async function Page({ searchParams }: { searchParams: Promise<Par
           <div className="page-band-inner">
             <span className="kicker">{t("Réseau vérifié")}</span>
             <h1>{t("Experts référencés")}</h1>
-            <p>{t("{n} praticiens ont choisi d'être visibles. Chaque praticien choisit ce qu'il rend public ; la recherche avancée est réservée aux organisations inscrites.", { n: all.length })}</p>
+            <p>{t("Chaque praticien choisit ce qu'il rend public ; la recherche avancée est réservée aux organisations inscrites.")}</p>
           </div>
         </section>
         <section className="public-section">

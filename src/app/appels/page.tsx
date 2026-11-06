@@ -26,7 +26,7 @@ export default async function Page({ searchParams }: { searchParams: Promise<{ q
       <main className="landing">
         <section className="page-band">
           <div className="page-band-inner">
-            <span className="kicker">{t("Dans les deux sens")}</span>
+            <span className="kicker">{t("Opportunités")}</span>
             <h1>{t("Appels à candidatures")}</h1>
             <p>{t("Les organisations cherchent des experts pour une collaboration ou pour intervenir à un événement. La candidature est réservée aux experts référencés.")}</p>
           </div>

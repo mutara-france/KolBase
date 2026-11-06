@@ -105,12 +105,12 @@ export default async function Page({ searchParams }: { searchParams: Promise<{ a
 
   const lede = pending.length
     ? plural(pending.length, "{n} sollicitation attend votre réponse.", "{n} sollicitations attendent votre réponse.")
-    : todos.length
+    : todos.length || profileTodos.length
       ? undefined
       : p.listed
         ? t("Rien à traiter pour le moment.")
         : canBeExpert(p.profession)
-          ? t("Vos inscriptions aux événements. Référencez-vous comme expert pour être sollicité.")
+          ? undefined // l'encart « Devenir expert référencé » le dit déjà
           : t("Vos inscriptions aux événements.");
 
   return (
@@ -179,7 +179,7 @@ export default async function Page({ searchParams }: { searchParams: Promise<{ a
                 </div>
               </article>
             ))}
-            {(todos.length > 0 || pending.length === 0) && <TodoList items={todos} />}
+            {(todos.length > 0 || (pending.length === 0 && profileTodos.length === 0)) && <TodoList items={todos} />}
             {profileTodos.length > 0 && (
               <div className="profile-steps">
                 <div className="flex-between">

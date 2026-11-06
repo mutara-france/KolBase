@@ -3378,20 +3378,13 @@ async function submitNewOrg(page, siren) {
     const cards = await anon.page.locator("a.kol-card").allInnerTexts();
     const firstUnverified = cards.findIndex((c) => !c.includes("Identité vérifiée"));
     check("Réseau vérifié : experts vérifiés d'abord", firstUnverified === -1 || cards.slice(firstUnverified).every((c) => !c.includes("Identité vérifiée")));
-    // 5. Accueil public : compteurs alignés sur les listes, « Ils publient » justifié, filtres visibles.
+    // 5. Accueil public : compteurs alignés sur les listes, sans bandeau de logos, filtres visibles.
     await anon.page.goto(`${BASE}/appels`);
     const callCards = await anon.page.locator("article.dossier-card").count();
-    await anon.page.goto(`${BASE}/aide`);
-    const aide = await text(anon.page);
-    check("Aide : « Appels ouverts » = appels listés", new RegExp(`${callCards}\\s*Appels ouverts|Appels ouverts\\s*${callCards}`).test(aide), `${callCards} appels listés`);
     await anon.page.goto(`${BASE}/`);
-    const trust = await anon.page.locator(".trust-list a").evaluateAll((as) => as.map((a) => a.getAttribute("href").split("/").pop()));
-    let publishing = true;
-    for (const id of trust) {
-      const n = await q1(`select (select count(*) from "Event" where "organizationId" = $1 and "publishedAt" is not null and "startsAt" >= now())::int + (select count(*) from "OpenCall" where "organizationId" = $1 and status = 'open')::int as n`, [id]);
-      if (!n.n) publishing = false;
-    }
-    check("« Ils publient sur KolBase » : organisations qui publient", trust.length > 0 && publishing, trust.join(", "));
+    const callTab = await anon.page.locator('.home-search button:has-text("Opportunités")').innerText();
+    check("Accueil : « Opportunités » = appels listés", new RegExp(`Opportunités\\s*${callCards}\\b`).test(callTab), `${callTab} / ${callCards} appels listés`);
+    check("Accueil : plus de « Ils publient sur KolBase »", !(await text(anon.page)).includes("Ils publient sur KolBase"));
     await anon.page.goto(`${BASE}/experts?type=${encodeURIComponent("Conférence")}&ville=Lyon`);
     const chips = await anon.page.locator(".active-filters").innerText().catch(() => "");
     check("Recherche de l'accueil : filtres visibles sur la page de résultats", chips.includes("Type : Conférence") && chips.includes("Ville : Lyon"), chips);

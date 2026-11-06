@@ -174,7 +174,6 @@ export default async function Page({ params }: { params: Promise<{ id: string }>
             <section className="card">
               <h2 className="section-title"><Mail size={15} /> {t("Contact")}</h2>
               {v.contact === "masque" && viewer !== "proprietaire" ? <p className="muted">{t("Non communiqué.")}</p> : canSee(v.contact, viewer) ? <p>{o.contactEmail ? <a href={`mailto:${o.contactEmail}`}>{o.contactEmail}</a> : t("Non renseigné.")}</p> : lock(t("Contact"))}
-              {o.headquarters && <p className="meta-line mt-2"><MapPin size={12} /> {o.headquarters}</p>}
             </section>
           ) : <div className="grid-2">
             <section className="card">
@@ -188,7 +187,6 @@ export default async function Page({ params }: { params: Promise<{ id: string }>
               <div className="hairline mt-3 mb-3" />
               <h2 className="section-title"><Mail size={15} /> {t("Contact partenariats")}</h2>
               {v.contact === "masque" && viewer !== "proprietaire" ? <p className="muted">{t("Non communiqué.")}</p> : canSee(v.contact, viewer) ? <p>{o.contactEmail ? <a href={`mailto:${o.contactEmail}`}>{o.contactEmail}</a> : t("Non renseigné.")}</p> : lock(t("Contact"))}
-              {o.headquarters && <p className="meta-line mt-2"><MapPin size={12} /> {o.headquarters}</p>}
             </section>
           </div>}
           {!isSupplier && v.projets !== "masque" && (
