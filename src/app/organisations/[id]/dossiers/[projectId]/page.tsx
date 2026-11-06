@@ -35,6 +35,8 @@ import { signatureEnabled } from "@/lib/yousign";
 import { engagementBlock } from "@/lib/billing";
 import { getT } from "@/lib/i18n/server";
 import { fmtDate, fmtDateTime, fmtEur, intlLocale } from "@/lib/i18n";
+import { feeLevels } from "@/lib/fee-fields";
+import { fmtHours, hoursDetail, hoursOf } from "@/lib/fees";
 
 export async function generateMetadata() {
   const { t } = await getT();
@@ -141,7 +143,7 @@ export default async function Page({ params, searchParams }: { params: Promise<{
   });
   if (!project) notFound();
   const linkIds = project.experts.map((e) => e.id);
-  const [history, leads, leadPool, fromCall] = await Promise.all([
+  const [history, leads, leadPool, fromCall, levels] = await Promise.all([
     db.auditLog.findMany({
       where: { OR: [{ entityType: "Project", entityId: projectId }, { entityType: "ProjectExpert", entityId: { in: linkIds } }] },
       include: { actor: { select: { firstName: true, lastName: true } } },
@@ -156,6 +158,7 @@ export default async function Page({ params, searchParams }: { params: Promise<{
       where: { projectId, openCall: { organizationId: id } },
       select: { openCall: { select: { id: true, title: true, event: { select: { id: true, title: true, startsAt: true, city: true } } } } },
     }),
+    feeLevels(id),
   ]);
   const callEvent = fromCall?.openCall.event ?? null;
 
@@ -374,6 +377,12 @@ export default async function Page({ params, searchParams }: { params: Promise<{
                       <span className="term"><CalendarDays size={13} /> {unitCount(t, intlLocale(locale), e.days, type?.unit ?? "unité")}</span>
                       <span className="term"><Euro size={13} /> {e.feeCents != null ? fmtEur(locale, e.feeCents) : "—"}{" "}{t("HT")}</span>
                       <FmvBadge typeId={project.typeId} feeCents={e.feeCents} units={e.days} />
+                      {hoursOf(e) != null && (
+                        <span className="term" title={hoursDetail(e, t, intlLocale(locale))}>
+                          <Clock size={13} /> {t("{hours} · {rate} / h réel", { hours: fmtHours(hoursOf(e)!, intlLocale(locale)), rate: fmtEur(locale, Math.round((e.feeCents ?? 0) / hoursOf(e)!)) })}
+                        </span>
+                      )}
+                      {e.feeLevelLabel && <span className="term">{t("Grille : {label} ({rate} / h)", { label: e.feeLevelLabel, rate: e.hourlyCents != null ? fmtEur(locale, e.hourlyCents) : "—" })}</span>}
                       {e.desiredFeeCents != null && e.status === "ATT_EXPERTS" && <span className="term desired"><Euro size={13} />{" "}{t("Souhaités par l'expert : {montant} HT", { montant: fmtEur(locale, e.desiredFeeCents) })}</span>}
                     </div>
                     {counter && (
@@ -613,8 +622,16 @@ export default async function Page({ params, searchParams }: { params: Promise<{
                           orgId={id} projectId={projectId} linkId={e.id}
                           name={`${drPrefix(e.practitioner.profession)}${e.practitioner.user.firstName} ${e.practitioner.user.lastName}${e.status === "DECLINE" ? ` (${t("a décliné")})` : ""}`}
                           unit={type?.unit ?? t("unité")}
-                          units={e.days != null ? String(e.days).replace(".", ",") : ""}
-                          fee={e.feeCents != null ? String(e.feeCents / 100).replace(".", ",") : ""}
+                          levels={levels}
+                          hourlyMax={settings.remunerationHourlyMax}
+                          defaults={{
+                            units: e.days != null ? String(e.days).replace(".", ",") : "",
+                            fee: e.feeCents != null ? String(e.feeCents / 100).replace(".", ",") : "",
+                            level: e.feeLevelId ?? "",
+                            prepHours: e.prepHours != null ? String(e.prepHours).replace(".", ",") : "",
+                            interventionHours: e.interventionHours != null ? String(e.interventionHours).replace(".", ",") : "",
+                            travelHours: e.travelHours != null ? String(e.travelHours).replace(".", ",") : "",
+                          }}
                           desired={e.desiredFeeCents != null ? fmtEur(locale, e.desiredFeeCents) : null}
                         />
                       ))}
@@ -624,6 +641,8 @@ export default async function Page({ params, searchParams }: { params: Promise<{
                     <h3>{t("Solliciter un autre expert")}</h3>
                     <AddExpertForm
                       orgId={id} projectId={projectId} unit={type?.unit ?? t("unité")}
+                      levels={levels}
+                      hourlyMax={settings.remunerationHourlyMax}
                       blocked={await engagementBlock(id, "sollicitation")}
                       experts={candidates.map((c) => {
                         const v = kolVisibility(c.visibility);

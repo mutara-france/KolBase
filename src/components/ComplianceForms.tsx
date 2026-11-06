@@ -1,10 +1,11 @@
 "use client";
 
 import { useActionState } from "react";
-import { updateComplianceSettings } from "@/lib/compliance-actions";
+import { addFeeLevel, removeFeeLevel, updateComplianceSettings } from "@/lib/compliance-actions";
 import { Notice } from "@/components/AuthForms";
 import type { ComplianceSettings } from "@/lib/compliance";
-import { useT } from "@/components/I18nProvider";
+import { useLocale, useT } from "@/components/I18nProvider";
+import { intlLocale } from "@/lib/i18n/core";
 
 type Field = { key: keyof ComplianceSettings; label: string; unit: string; group: string; legal?: { min?: number; max?: number } | null };
 
@@ -37,5 +38,49 @@ export function ComplianceSettingsForm({ orgId, settings, fields, canEdit }: { o
       ))}
       {canEdit && <button className="btn" disabled={pending}>{pending ? t("Enregistrement…") : t("Enregistrer")}</button>}
     </form>
+  );
+}
+
+/**
+ * Grille de rémunération : niveaux (libellé, taux horaire HT) proposés à la saisie des honoraires d'un expert, avec
+ * son volume horaire (préparation, intervention, déplacement). Le taux réel est rapproché du seuil horaire.
+ */
+export function FeeGridForm({ orgId, levels, hourlyMax }: { orgId: string; levels: { id: string; label: string; hourlyCents: number }[]; hourlyMax: number }) {
+  const t = useT();
+  const loc = intlLocale(useLocale());
+  const [state, action, pending] = useActionState(addFeeLevel, undefined);
+  const eur = (c: number) => (c / 100).toLocaleString(loc, { style: "currency", currency: "EUR", maximumFractionDigits: 2 });
+  return (
+    <section className="card stack" id="grille">
+      <div>
+        <h2>{t("Grille de rémunération")}</h2>
+        <p className="muted">{t("Taux horaires HT par niveau d'expert ou d'activité. À la sollicitation, l'équipe Projets choisit un niveau et indique le volume horaire (préparation, intervention, déplacement) : les honoraires se calculent, et le taux réel est comparé au seuil de {max} € / h.", { max: hourlyMax })}</p>
+      </div>
+      {levels.length === 0 ? <p className="muted">{t("Aucun niveau : les honoraires se saisissent librement.")}</p> : (
+        <ul className="fee-levels">
+          {levels.map((l) => (
+            <li key={l.id}>
+              <span className="grow"><strong>{l.label}</strong></span>
+              <span className={l.hourlyCents / 100 > hourlyMax ? "warn-text" : ""}>{eur(l.hourlyCents)}{t(" / h")}</span>
+              <form action={removeFeeLevel}>
+                <input type="hidden" name="orgId" value={orgId} />
+                <input type="hidden" name="levelId" value={l.id} />
+                <button className="link danger text-xs" aria-label={t("Retirer le niveau {label}", { label: l.label })}>{t("Retirer")}</button>
+              </form>
+            </li>
+          ))}
+        </ul>
+      )}
+      <form action={action} className="form">
+        <Notice state={state} />
+        <input type="hidden" name="orgId" value={orgId} />
+        <div className="row">
+          <label>{t("Niveau")}<input name="label" maxLength={80} placeholder={t("Expert national, formateur, investigateur…")} required /></label>
+          <label className="short">{t("Taux horaire (€ HT)")}<input name="hourly" inputMode="decimal" required /></label>
+        </div>
+        <button className="btn ghost small" disabled={pending}>{pending ? t("Enregistrement…") : t("Ajouter le niveau")}</button>
+      </form>
+      <p className="hint">{t("Retirer un niveau ne modifie pas les propositions déjà faites : elles gardent leur taux.")}</p>
+    </section>
   );
 }

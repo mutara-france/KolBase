@@ -7,7 +7,8 @@ import { audit, requireUser } from "@/lib/auth";
 import { isVerifiedOrg, notVerified, requireMembership } from "@/lib/orgs";
 import { parseParisDateTime } from "@/lib/events";
 import { collabType, recruitmentOpen, SOURCING_ROLES } from "@/lib/projects";
-import { eurToCents, str, unitsOrNull, UNITS_INVALID } from "@/lib/form";
+import { eurToCents, str } from "@/lib/form";
+import { readFeeFields } from "@/lib/fee-fields";
 import { notifyApplication, notifyApplicationSent, notifyNotRetained, notifySolicitations } from "@/lib/notifications";
 import { engagementGate } from "@/lib/billing";
 import type { GateLink } from "@/lib/billing-plans";
@@ -137,11 +138,10 @@ export async function retainApplication(_: ActionState, form: FormData): Promise
   });
   if (!app) return { error: t("Candidature introuvable.") };
   if (app.status !== "pending") return { error: t("Cette candidature a déjà été traitée.") };
-  const fee = eurToCents(str(form, "fee"));
-  if (fee === null) return { error: t("Indiquez les honoraires convenus.") };
-  const parsedUnits = unitsOrNull(str(form, "units"));
-  if (parsedUnits === undefined) return { error: UNITS_INVALID };
-  const units = parsedUnits ?? 1;
+  const read = await readFeeFields(form, orgId);
+  if ("error" in read) return { error: t(read.error === "Indiquez des honoraires (0 si bénévole)." ? "Indiquez les honoraires convenus." : read.error) };
+  const terms = { ...read.data, days: read.data.days ?? 1 };
+  const { feeCents: fee, days: units } = terms;
 
   const call = app.openCall;
   const ev = call.event;
@@ -163,7 +163,7 @@ export async function retainApplication(_: ActionState, form: FormData): Promise
     const { count } = await tx.application.updateMany({ where: { id: app.id, status: "pending" }, data: { status: "retained" } });
     if (count === 0) return null;
     if (joinHost) {
-      const link = await tx.projectExpert.create({ data: { projectId: host.id, practitionerId: app.practitionerId, status: "ATT_EXPERTS", feeCents: fee, days: units } });
+      const link = await tx.projectExpert.create({ data: { projectId: host.id, practitionerId: app.practitionerId, status: "ATT_EXPERTS", ...terms } });
       if (app.message) await tx.message.create({ data: { projectId: host.id, projectExpertId: link.id, authorId: app.practitioner.userId, body: app.message, createdAt: app.createdAt } });
       await tx.application.update({ where: { id: app.id }, data: { projectId: host.id } });
       return { id: host.id, linkId: link.id, joined: true };
@@ -180,7 +180,7 @@ export async function retainApplication(_: ActionState, form: FormData): Promise
         createdById: user.id,
         // Qui retient le candidat devient responsable du dossier.
         leads: { create: { userId: user.id } },
-        experts: { create: { practitionerId: app.practitionerId, status: "ATT_EXPERTS", feeCents: fee, days: units } },
+        experts: { create: { practitionerId: app.practitionerId, status: "ATT_EXPERTS", ...terms } },
       },
       include: { experts: true },
     });

@@ -7,7 +7,7 @@ import { requireMembership } from "@/lib/orgs";
 import { COMPLIANCE_ROLES } from "@/lib/events";
 import { SETTING_FIELDS, complianceSettings, legalBound } from "@/lib/compliance";
 import { declarationRows, parseSemester, semesterKey } from "@/lib/transparence";
-import { str } from "@/lib/form";
+import { eurToCents, str } from "@/lib/form";
 import { getT } from "@/lib/i18n/server";
 
 export type ActionState = { error?: string; ok?: string } | undefined;
@@ -62,4 +62,33 @@ export async function markSemesterPublished(form: FormData) {
   await audit(user.id, "transparence.publish", "Organization", orgId, { periode: semesterKey(s), dossiers: r.projectIds.length, hospitalites: r.registrationIds.length, ref: ref ?? undefined });
   revalidatePath(`/organisations/${orgId}/conformite`);
   revalidatePath(`/organisations/${orgId}/hospitalites`);
+}
+
+// ─── Grille de rémunération ────────────────────────────────────────────────
+
+/** Ajoute un niveau à la grille de rémunération (libellé, taux horaire HT). */
+export async function addFeeLevel(_: ActionState, form: FormData): Promise<ActionState> {
+  const { t } = await getT();
+  const orgId = str(form, "orgId");
+  const { user } = await requireMembership(orgId, COMPLIANCE_ROLES);
+  const label = str(form, "label").slice(0, 80);
+  const cents = eurToCents(str(form, "hourly"), { allowZero: false });
+  if (!label) return { error: t("Indiquez le libellé du niveau (ex. « Expert national »).") };
+  if (cents === null || cents > 100000) return { error: t("Taux horaire invalide : un montant entre 1 et 1 000 € HT.") };
+  if ((await db.feeLevel.count({ where: { organizationId: orgId } })) >= 20) return { error: t("La grille compte déjà 20 niveaux.") };
+  const level = await db.feeLevel.create({ data: { organizationId: orgId, label, hourlyCents: cents } });
+  await audit(user.id, "compliance.fee_level_add", "Organization", orgId, { id: level.id, label, hourlyCents: cents });
+  revalidatePath(`/organisations/${orgId}`, "layout");
+  return { ok: t("Niveau ajouté à la grille.") };
+}
+
+/** Retire un niveau : les propositions déjà faites gardent leur taux et leur libellé. */
+export async function removeFeeLevel(form: FormData) {
+  const orgId = str(form, "orgId");
+  const { user } = await requireMembership(orgId, COMPLIANCE_ROLES);
+  const level = await db.feeLevel.findFirst({ where: { id: str(form, "levelId"), organizationId: orgId } });
+  if (!level) return;
+  await db.feeLevel.delete({ where: { id: level.id } });
+  await audit(user.id, "compliance.fee_level_remove", "Organization", orgId, { id: level.id, label: level.label, hourlyCents: level.hourlyCents });
+  revalidatePath(`/organisations/${orgId}`, "layout");
 }

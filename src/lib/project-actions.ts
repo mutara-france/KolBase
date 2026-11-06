@@ -12,7 +12,9 @@ import { fourEyes, projectAuthors } from "@/lib/four-eyes";
 import type { ProjectStatus } from "@/generated/prisma/client";
 import { complianceSettings, projectRegime } from "@/lib/compliance";
 import { missingSignedConventions } from "@/lib/project-documents";
-import { eurToCents, str, unitsOrNull, UNITS_INVALID } from "@/lib/form";
+import { eurToCents, str } from "@/lib/form";
+import { readFeeFields } from "@/lib/fee-fields";
+import { hoursOf } from "@/lib/fees";
 import { notifyCompliance, notifyCounterAccepted, notifyExpertAnswer, notifyExpertCounter, notifyExpertNotice, notifyMessage, notifyNewProposal, notifyProjectLead, notifySolicitations } from "@/lib/notifications";
 import { signatureEnabled } from "@/lib/yousign";
 import { engagementBlock, engagementGate } from "@/lib/billing";
@@ -42,11 +44,9 @@ export async function createProject(_: ActionState, form: FormData): Promise<Act
 
   const experts = [];
   for (const id of expertIds) {
-    const fee = eurToCents(str(form, `fee_${id}`));
-    const units = unitsOrNull(str(form, `units_${id}`));
-    if (fee === null) return { error: t("Indiquez des honoraires pour chaque expert (0 si bénévole).") };
-    if (units === undefined) return { error: UNITS_INVALID };
-    experts.push({ practitionerId: id, feeCents: fee, days: units });
+    const read = await readFeeFields(form, orgId, `_${id}`);
+    if ("error" in read) return { error: t(read.error === "Indiquez des honoraires (0 si bénévole)." ? "Indiquez des honoraires pour chaque expert (0 si bénévole)." : read.error) };
+    experts.push({ practitionerId: id, ...read.data });
   }
 
   const message = str(form, "message");
@@ -356,11 +356,10 @@ export async function updateExpertTerms(_: ActionState, form: FormData): Promise
   if (!project) return { error: error ?? "Dossier introuvable." };
   const link = await db.projectExpert.findFirst({ where: { id: str(form, "linkId"), projectId } });
   if (!link) return { error: t("Expert introuvable dans ce dossier.") };
-  const fee = eurToCents(str(form, "fee"));
-  const units = unitsOrNull(str(form, "units"));
-  if (fee === null) return { error: t("Indiquez des honoraires (0 si bénévole).") };
-  if (units === undefined) return { error: UNITS_INVALID };
-  const next = { feeCents: fee, days: units };
+  const read = await readFeeFields(form, orgId);
+  if ("error" in read) return { error: t(read.error) };
+  const next = read.data;
+  const fee = next.feeCents;
   if (!termsChanged(link, next)) return { ok: t("Conditions inchangées.") };
   await db.projectExpert.update({
     where: { id: link.id },
@@ -368,7 +367,7 @@ export async function updateExpertTerms(_: ActionState, form: FormData): Promise
     data: { ...next, status: "ATT_EXPERTS", respondedAt: null, responseNote: null, desiredFeeCents: null, previousFeeCents: link.feeCents !== fee ? link.feeCents : null },
   });
   await syncProjectFromExperts(projectId);
-  await audit(user.id, "project.terms", "ProjectExpert", link.id, { projectId, from: { feeCents: link.feeCents, days: link.days }, to: next, previousStatus: link.status });
+  await audit(user.id, "project.terms", "ProjectExpert", link.id, { projectId, from: { feeCents: link.feeCents, days: link.days, hours: hoursOf(link), hourlyCents: link.hourlyCents }, to: { feeCents: next.feeCents, days: next.days, hours: hoursOf(next), hourlyCents: next.hourlyCents }, previousStatus: link.status });
   notifyNewProposal(link.id);
   revalidatePath(`/organisations/${orgId}/dossiers/${projectId}`);
   return { ok: t("Nouvelle proposition envoyée à l'expert : sa réponse est de nouveau attendue.") };
@@ -388,11 +387,10 @@ export async function addProjectExpert(_: ActionState, form: FormData): Promise<
   const expert = await db.practitionerProfile.findFirst({ where: { id: practitionerId, listed: true }, select: { id: true } });
   if (!expert) return { error: t("Choisissez un expert référencé.") };
   if (await db.projectExpert.findUnique({ where: { projectId_practitionerId: { projectId, practitionerId } } })) return { error: t("Cet expert est déjà sollicité dans ce dossier.") };
-  const fee = eurToCents(str(form, "fee"));
-  const units = unitsOrNull(str(form, "units"));
-  if (fee === null) return { error: t("Indiquez des honoraires (0 si bénévole).") };
-  if (units === undefined) return { error: UNITS_INVALID };
-  const link = await db.projectExpert.create({ data: { projectId, practitionerId, feeCents: fee, days: units } });
+  const read = await readFeeFields(form, orgId);
+  if ("error" in read) return { error: t(read.error) };
+  const { feeCents: fee, days: units } = read.data;
+  const link = await db.projectExpert.create({ data: { projectId, practitionerId, ...read.data } });
   const message = str(form, "message");
   if (message) await db.message.create({ data: { projectId, projectExpertId: link.id, authorId: user.id, body: message } });
   await audit(user.id, "project.add_expert", "ProjectExpert", link.id, { projectId, feeCents: fee, days: units });

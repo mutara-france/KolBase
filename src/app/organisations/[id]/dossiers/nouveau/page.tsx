@@ -9,6 +9,8 @@ import { BillingNotice } from "@/components/BillingNotice";
 import { engagementBlock } from "@/lib/billing";
 import { canSee, kolVisibility } from "@/lib/visibility";
 import { getT } from "@/lib/i18n/server";
+import { feeLevels } from "@/lib/fee-fields";
+import { complianceSettings } from "@/lib/compliance";
 
 export async function generateMetadata() {
   const { t } = await getT();
@@ -49,6 +51,8 @@ export default async function Page({ params, searchParams }: { params: Promise<{
         <BillingNotice orgId={id} motive="sollicitation" />
         <p className="muted"><Link href={`/organisations/${id}`}>{org.name}</Link> / <Link href={`/organisations/${id}/dossiers`}>{t("Dossiers")}</Link></p>
         <NewProjectForm
+          levels={await feeLevels(id)}
+          hourlyMax={complianceSettings(org.complianceSettings).remunerationHourlyMax}
           ai={aiEnabled()}
           blocked={await engagementBlock(id, "sollicitation")}
           orgId={id}

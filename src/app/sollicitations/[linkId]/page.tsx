@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { Briefcase, Building2, CalendarDays, Euro, FileText, MapPin, MessagesSquare, Scale } from "lucide-react";
+import { Clock, Briefcase, Building2, CalendarDays, Euro, FileText, MapPin, MessagesSquare, Scale } from "lucide-react";
 import { SiteHeader } from "@/components/SiteHeader";
 import { PageHero } from "@/components/PageHero";
 import { ExpertLinkPill, Pipeline, Thread } from "@/components/ProjectBits";
@@ -16,6 +16,7 @@ import { fmtDateTime, fmtEur, intlLocale } from "@/lib/i18n";
 import { DossierTabs, type DossierTab } from "@/components/DossierTabs";
 import { FORMAT_LABEL, formatDuration } from "@/lib/events";
 import { getT } from "@/lib/i18n/server";
+import { fmtHours, hoursDetail, hoursOf } from "@/lib/fees";
 
 export async function generateMetadata() {
   const { t } = await getT();
@@ -109,6 +110,8 @@ export default async function Page({ params, searchParams }: { params: Promise<{
             { icon: <CalendarDays size={13} />, label: t("Prestation"), value: unitCount(t, intlLocale(locale), link.days, unit) },
             // Montant précédent rappelé (« 1 500 € → 1 800 € HT ») ; contre-proposition en attente de l'organisation.
             { icon: <Euro size={13} />, label: proposal ? t("Honoraires souhaités") : t("Honoraires proposés"), value: link.feeCents != null ? t("{amount} HT", { amount: link.previousFeeCents != null ? `${fmtEur(locale, link.previousFeeCents)} → ${fmtEur(locale, link.feeCents)}` : fmtEur(locale, link.feeCents) }) : "—", sub: state === "contre" && link.desiredFeeCents != null ? t("votre proposition : {amount} HT", { amount: fmtEur(locale, link.desiredFeeCents) }) : undefined },
+            // Volume horaire proposé : préparation, intervention, déplacement, et taux horaire qui en découle.
+            ...(hoursOf(link) != null ? [{ icon: <Clock size={13} />, label: t("Volume horaire"), value: fmtHours(hoursOf(link)!, intlLocale(locale)), sub: `${hoursDetail(link, t, intlLocale(locale))} · ${t("{rate} / h", { rate: fmtEur(locale, Math.round((link.feeCents ?? 0) / hoursOf(link)!)) })}` }] : []),
             ...(type ? [{ icon: <Scale size={13} />, label: t("Référence de marché"), value: t("{min} à {max} € HT", { min: num(type.fmv[0]), max: num(type.fmv[1]) }), sub: t("par {unit}", { unit: t(type.unit) }) }] : []),
             { icon: <Building2 size={13} />, label: t("Organisation"), value: p.organization.name, sub: p.organization.sector ? t(p.organization.sector) : undefined },
           ]}

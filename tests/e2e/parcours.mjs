@@ -4466,6 +4466,68 @@ async function submitNewOrg(page, siren) {
   await pgc.end();
 }
 
+// ── Grille de rémunération et volume horaire ──────────────────────────────
+{
+  const pgc = new pg.Client({ connectionString: process.env.DATABASE_URL });
+  await pgc.connect();
+  const clean = async () => {
+    await pgc.query(`delete from "Message" where "projectExpertId" in (select id from "ProjectExpert" where "projectId" = 'demo-prj-board' and "practitionerId" = 'demo-p-roux')`);
+    await pgc.query(`delete from "ProjectExpert" where "projectId" = 'demo-prj-board' and "practitionerId" = 'demo-p-roux'`);
+    await pgc.query(`delete from "FeeLevel" where label = 'Formateur e2e'`);
+  };
+  await clean();
+  // La conformité définit un niveau ; l'administratrice sans rôle Conformité n'y a pas accès.
+  const sophie = await session();
+  await login(sophie.page, "sophie.bernard@demo.kolbase.local");
+  await sophie.page.goto(`${BASE}/organisations/demo-org-dentalys/conformite?onglet=parametres`);
+  check("Paramètres de conformité : grille de rémunération (niveaux de démonstration)", (await sophie.page.locator("#grille").innerText()).includes("Expert international"));
+  await sophie.page.fill('#grille input[name="label"]', "Formateur e2e");
+  await sophie.page.fill('#grille input[name="hourly"]', "95");
+  await sophie.page.click('#grille button:has-text("Ajouter le niveau")');
+  await sophie.page.locator('#grille li:has-text("Formateur e2e")').waitFor({ timeout: 10000 }).catch(() => {});
+  check("Grille : niveau ajouté par la conformité", (await pgc.query(`select "hourlyCents" from "FeeLevel" where label = 'Formateur e2e'`)).rows[0]?.hourlyCents === 9500);
+  await sophie.page.click('#grille li:has-text("Formateur e2e") button:has-text("Retirer")');
+  await sophie.page.locator('#grille li:has-text("Formateur e2e")').waitFor({ state: "detached", timeout: 10000 }).catch(() => {});
+  check("Grille : niveau retiré", (await pgc.query(`select count(*)::int n from "FeeLevel" where label = 'Formateur e2e'`)).rows[0].n === 0);
+  await sophie.ctx.close();
+  // Projets : niveau + heures → honoraires calculés ; le taux réel au-delà du seuil est signalé.
+  const jul = await session();
+  await login(jul.page, "julien.faure@demo.kolbase.local");
+  await jul.page.goto(`${BASE}/organisations/demo-org-dentalys/dossiers/demo-prj-board?onglet=experts&modifier=1`);
+  const add = 'form:has(select[name="expertId"])';
+  await jul.page.selectOption(`${add} select[name="expertId"]`, "demo-p-roux");
+  await jul.page.selectOption(`${add} select[name="level"]`, "demo-fee-nat");
+  await jul.page.fill(`${add} input[name="prepHours"]`, "2");
+  await jul.page.fill(`${add} input[name="interventionHours"]`, "4");
+  await jul.page.fill(`${add} input[name="travelHours"]`, "2,5");
+  check("Honoraires calculés : 8,5 h × 150 € = 1 275 €", (await jul.page.inputValue(`${add} input[name="fee"]`)) === "1275");
+  await jul.page.fill(`${add} input[name="fee"]`, "2000");
+  check("Taux réel au-delà du seuil horaire : signalé", (await jul.page.locator(add).innerText()).includes("convention soumise à autorisation"));
+  await jul.page.click(`${add} button:text("Appliquer la grille")`);
+  await jul.page.click(`${add} button:has-text("Ajouter et solliciter l'expert")`);
+  await jul.page.locator('.notice.ok:has-text("Expert ajouté")').waitFor({ timeout: 10000 }).catch(() => {});
+  const link = (await pgc.query(`select id, "feeCents", "hourlyCents", "prepHours", "interventionHours", "travelHours", "feeLevelLabel" from "ProjectExpert" where "projectId" = 'demo-prj-board' and "practitionerId" = 'demo-p-roux'`)).rows[0];
+  check("Expert sollicité avec la grille : taux et heures figés", link?.feeCents === 127500 && link?.hourlyCents === 15000 && link?.prepHours === 2 && link?.interventionHours === 4 && link?.travelHours === 2.5 && link?.feeLevelLabel === "Expert national", JSON.stringify(link));
+  await jul.page.goto(`${BASE}/organisations/demo-org-dentalys/dossiers/demo-prj-board?onglet=experts`);
+  const card = (await text(jul.page)).replace(/\s+/g, " ");
+  check("Fiche de l'expert dans le dossier : heures, taux réel et niveau", card.includes("8,5 h · 150 € / h réel") && card.includes("Grille : Expert national (150 € / h)"), card.match(/8,5 h[^\n]{0,60}/)?.[0]);
+  await jul.ctx.close();
+  // L'expert voit le volume horaire proposé.
+  const roux = await session();
+  await login(roux.page, "mathieu.roux@demo.kolbase.local");
+  await roux.page.goto(`${BASE}/sollicitations/${link.id}`);
+  check("Sollicitation : volume horaire et taux affichés à l'expert", (await text(roux.page)).includes("Volume horaire") && (await text(roux.page)).includes("2,5 h de déplacement"));
+  await roux.ctx.close();
+  // Symposium de démonstration : 15 h au niveau « Expert international ».
+  const cl = await session();
+  await login(cl.page, "sophie.bernard@demo.kolbase.local");
+  await cl.page.goto(`${BASE}/organisations/demo-org-dentalys/dossiers/demo-prj-symposium?onglet=experts`);
+  check("Dossier de démonstration : 15 h au taux de 200 €", (await text(cl.page)).replace(/\s+/g, " ").includes("15 h · 200 € / h réel"));
+  await cl.ctx.close();
+  await clean();
+  await pgc.end();
+}
+
 // ── Responsables des dossiers : « Mes dossiers », co-responsables, e-mails ──
 {
   const pgc = new pg.Client({ connectionString: process.env.DATABASE_URL });

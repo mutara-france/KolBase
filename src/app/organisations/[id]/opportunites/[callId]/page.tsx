@@ -11,6 +11,8 @@ import { collabType, recruitmentOpen, SOURCING_ROLES } from "@/lib/projects";
 import { rejectApplication, setOpenCallStatus } from "@/lib/opportunity-actions";
 import { getT } from "@/lib/i18n/server";
 import { fmtDate, fmtEur, intlLocale } from "@/lib/i18n";
+import { feeLevels } from "@/lib/fee-fields";
+import { complianceSettings } from "@/lib/compliance";
 
 export async function generateMetadata() {
   const { t } = await getT();
@@ -34,6 +36,7 @@ export default async function Page({ params }: { params: Promise<{ id: string; c
     },
   });
   if (!call) notFound();
+  const levels = await feeLevels(id);
   const type = collabType(call.typeId);
   // Événement d'un dossier qui recrute encore : les candidats retenus rejoignent ce dossier.
   const host = call.event?.project && recruitmentOpen(call.event.project.status) ? call.event.project : null;
@@ -82,6 +85,8 @@ export default async function Page({ params }: { params: Promise<{ id: string; c
                       orgId={id}
                       applicationId={a.id}
                       unit={type?.unit ?? t("unité")}
+                      levels={levels}
+                      hourlyMax={complianceSettings(org.complianceSettings).remunerationHourlyMax}
                       defaultFee={call.budgetMaxCents != null ? String(call.budgetMaxCents / 100) : a.practitioner.dayRateCents != null ? String(a.practitioner.dayRateCents / 100) : ""}
                     />}
                     <form action={rejectApplication}>

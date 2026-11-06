@@ -286,6 +286,8 @@ model Organization {
   listed       Boolean  @default(false)
   visibility   Json     @default("{}")
   complianceSettings Json @default("{}")
+  // Grille de rémunération définie par la conformité (taux horaires par niveau d'expert ou d'activité).
+  feeLevels          FeeLevel[]
   // Prestataires référencés : catégories de prestation et zone couverte.
   supplierCategories String[] @default([])
   coverage           String?
@@ -499,6 +501,19 @@ model MaterialVersion {
   @@unique([materialId, version])
 }
 
+/// Niveau de la grille de rémunération d'une organisation : un libellé (ex. « Expert national ») et un taux horaire HT.
+model FeeLevel {
+  id             String          @id @default(cuid())
+  organizationId String
+  organization   Organization    @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  label          String
+  hourlyCents    Int
+  createdAt      DateTime        @default(now())
+  experts        ProjectExpert[]
+
+  @@index([organizationId])
+}
+
 model ProjectExpert {
   id             String              @id @default(cuid())
   projectId      String
@@ -514,6 +529,15 @@ model ProjectExpert {
   desiredFeeCents Int?
   // Honoraires précédents, quand l'organisation en a proposé d'autres ou a accepté ceux de l'expert.
   previousFeeCents Int?
+  // Volume horaire déclaré (heures, facultatif) et niveau de la grille de rémunération appliqué : le taux horaire réel
+  // (honoraires ÷ heures) sert au contrôle du seuil horaire. Taux et libellé du niveau sont figés à la proposition.
+  prepHours         Float?
+  interventionHours Float?
+  travelHours       Float?
+  feeLevelId        String?
+  feeLevel          FeeLevel? @relation(fields: [feeLevelId], references: [id], onDelete: SetNull)
+  feeLevelLabel     String?
+  hourlyCents       Int?
   // Paiement des honoraires, indiqué par l'organisation (visible de l'expert dans « Mes revenus »).
   paidAt         DateTime?
   paidCents      Int?

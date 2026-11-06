@@ -9,11 +9,13 @@ import { ActionForm } from "@/components/ActionForm";
 import { BLOCKED_UNTIL, type Blocked } from "@/lib/billing-plans";
 import { useLocale, useT } from "@/components/I18nProvider";
 import { intlLocale } from "@/lib/i18n/core";
+import { FeeFields } from "@/components/FeeFields";
+import type { FeeLevelOpt } from "@/lib/fees";
 
 type CType = { id: string; label: string; category: string; unit: string; fmv: readonly number[] };
 type Expert = { id: string; name: string; detail: string; dayRateCents: number | null };
 
-export function NewProjectForm({ orgId, types, experts, preselected, ai = false, blocked = null }: { orgId: string; types: readonly CType[]; experts: Expert[]; preselected: string[]; ai?: boolean; blocked?: Blocked }) {
+export function NewProjectForm({ orgId, types, experts, preselected, ai = false, blocked = null, levels = [], hourlyMax = 200 }: { orgId: string; types: readonly CType[]; experts: Expert[]; preselected: string[]; ai?: boolean; blocked?: Blocked; levels?: FeeLevelOpt[]; hourlyMax?: number }) {
   const t = useT();
   const locale = useLocale();
   const [state, action, pending] = useActionState(createProject, undefined);
@@ -83,11 +85,10 @@ export function NewProjectForm({ orgId, types, experts, preselected, ai = false,
             const e = all.find((x) => x.id === id);
             if (!e) return null;
             return (
-              <div key={id} className="fee-row">
+              <div key={id} className="fee-block">
                 <input type="hidden" name="expertId" value={id} />
                 <strong>{e.name}</strong>
-                <label>{t("Unités ({unit})", { unit: t(type.unit) })}<input name={`units_${id}`} inputMode="decimal" defaultValue="1" /></label>
-                <label>{t("Honoraires totaux (€ HT)")}<input name={`fee_${id}`} inputMode="decimal" defaultValue={e.dayRateCents != null ? String(e.dayRateCents / 100) : ""} required /></label>
+                <FeeFields unit={type.unit} levels={levels} hourlyMax={hourlyMax} suffix={`_${id}`} defaults={{ fee: e.dayRateCents != null ? String(e.dayRateCents / 100) : "" }} />
               </div>
             );
           })}

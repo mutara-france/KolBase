@@ -3,7 +3,7 @@ import { SiteHeader } from "@/components/SiteHeader";
 import { SectionNav } from "@/components/SectionNav";
 import { orgTabs } from "@/lib/org-overview";
 import { FmvBadge, StatusPill } from "@/components/ProjectBits";
-import { ComplianceSettingsForm } from "@/components/ComplianceForms";
+import { ComplianceSettingsForm, FeeGridForm } from "@/components/ComplianceForms";
 import { db } from "@/lib/db";
 import { requireMembership } from "@/lib/orgs";
 import { COMPLIANCE_ROLES } from "@/lib/events";
@@ -18,6 +18,7 @@ import { declarationRows, parseSemester, recentSemesters, semesterKey, semesterL
 import { TableWrap } from "@/components/TableWrap";
 import { getT } from "@/lib/i18n/server";
 import { fmtDate, fmtEur, intlLocale } from "@/lib/i18n";
+import { feeLevels } from "@/lib/fee-fields";
 
 export async function generateMetadata() {
   const { t } = await getT();
@@ -53,7 +54,7 @@ export default async function Page({ params, searchParams }: { params: Promise<{
   });
   const regimeOf = (p: (typeof projects)[number]) => {
     const unit = collabType(p.typeId)?.unit ?? "";
-    const rs = p.experts.map((e) => (practicesInFrance(e.practitioner.country) ? remunerationRegime(s, e.feeCents, e.days, unit) : foreignRegime(e.practitioner.country)));
+    const rs = p.experts.map((e) => (practicesInFrance(e.practitioner.country) ? remunerationRegime(s, e, unit) : foreignRegime(e.practitioner.country)));
     return rs.find((r) => r.regime === "autorisation") ?? rs[0] ?? { regime: "declaration" as Regime, reason: "Aucun expert engagé", why: { key: "Aucun expert engagé" } };
   };
   const total = (p: (typeof projects)[number]) => p.experts.reduce((x, e) => x + (e.feeCents ?? 0), 0);
@@ -191,7 +192,12 @@ export default async function Page({ params, searchParams }: { params: Promise<{
             )}
           </section>
         )}
-        {onglet === "parametres" && <ComplianceSettingsForm orgId={id} settings={s} fields={SETTING_FIELDS.map((f) => ({ ...f, legal: legalBound(f.key) }))} canEdit />}
+        {onglet === "parametres" && (
+          <>
+            <FeeGridForm orgId={id} levels={await feeLevels(id)} hourlyMax={s.remunerationHourlyMax} />
+            <ComplianceSettingsForm orgId={id} settings={s} fields={SETTING_FIELDS.map((f) => ({ ...f, legal: legalBound(f.key) }))} canEdit />
+          </>
+        )}
       </main>
     </>
   );

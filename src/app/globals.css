@@ -254,6 +254,17 @@ main.narrow { max-width: 760px; }
 .fee-row { display: flex; flex-wrap: wrap; gap: 10px; align-items: flex-end; padding: 10px 0; border-bottom: 1px solid var(--line); }
 .fee-row > strong { flex: 1 1 100%; font-size: 13.5px; }
 .fee-row label { flex: 1 1 160px; }
+/* Honoraires d'un expert : unités, niveau de la grille, volume horaire, montant. */
+.fee-block { display: flex; flex-direction: column; gap: 10px; padding: 12px 0; border-bottom: 1px solid var(--line); }
+.fee-block > strong { font-size: 13.5px; }
+.fee-fields { display: flex; flex-direction: column; gap: 10px; }
+.form .fee-fields fieldset.hours-row, .fee-fields .hours-row { flex-direction: row; flex-wrap: wrap; gap: 10px; padding: 10px 12px 12px; }
+.fee-fields .hours-row legend { font-size: 13px; font-weight: 600; color: var(--ink-soft); padding: 0 4px; }
+.fee-fields .hours-row label { flex: 1 1 110px; }
+.fee-fields .hint { margin: 0; }
+.retain-form { margin-top: 8px; padding: 14px; border: 1px solid var(--line); border-radius: 14px; background: var(--bg-subtle); }
+.fee-levels { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; }
+.fee-levels li { display: flex; align-items: center; gap: 12px; padding: 8px 0; border-bottom: 1px solid var(--line); font-size: 14px; }
 .expert-pick { max-height: 300px; overflow-y: auto; display: flex; flex-direction: column; gap: 6px; }
 .copy { display: flex; gap: 8px; }
 .copy input { flex: 1; min-width: 0; font-size: 12.5px; }

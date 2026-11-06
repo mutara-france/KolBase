@@ -416,6 +416,13 @@ async function main() {
       prev = to;
     }
   }
+  // Grille de rémunération de Dentalys (définie par la conformité) et volume horaire du symposium (15 h × 200 €/h).
+  for (const [id, label, euros] of [["demo-fee-intl", "Expert international", 200], ["demo-fee-nat", "Expert national", 150], ["demo-fee-reg", "Expert régional", 110]] as const)
+    await db.feeLevel.upsert({ where: { id }, update: {}, create: { id, organizationId: "demo-org-dentalys", label, hourlyCents: euros * 100 } });
+  await db.projectExpert.updateMany({
+    where: { id: "demo-prj-symposium-x0", feeLevelId: null },
+    data: { feeLevelId: "demo-fee-intl", feeLevelLabel: "Expert international", hourlyCents: 20000, prepHours: 7, interventionHours: 2, travelHours: 6 },
+  });
   // Co-responsable : le board implantologie est suivi à deux (Julien Faure et Marc Lefèvre).
   await db.projectLead.upsert({ where: { projectId_userId: { projectId: "demo-prj-board", userId: "demo-u-marc" } }, update: {}, create: { projectId: "demo-prj-board", userId: "demo-u-marc" } });
 
