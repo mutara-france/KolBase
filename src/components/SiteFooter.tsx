@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { Logo } from "@/components/Logo";
+import { CookieSettingsButton } from "@/components/CookieConsent";
 import { LocaleSwitch } from "@/components/LocaleSwitch";
 import { getT } from "@/lib/i18n/server";
 
@@ -17,6 +18,7 @@ export async function SiteFooter() {
         <nav className="footer-links" aria-label={t("Informations légales")}>
           <Link href="/mentions-legales" className="footer-link">{t("Mentions légales")}</Link>
           <Link href="/confidentialite" className="footer-link">{t("Confidentialité")}</Link>
+          <CookieSettingsButton className="footer-link" />
           <Link href="/cgu" className="footer-link">{t("Conditions d'utilisation")}</Link>
           <Link href="/conditions-de-vente" className="footer-link">{t("Conditions de vente")}</Link>
           <Link href="/actualites" className="footer-link">{t("Actualités")}</Link>

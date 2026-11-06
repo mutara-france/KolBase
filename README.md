@@ -174,6 +174,19 @@ Chaque exécution est enregistrée (table `TaskRun`) : `/admin` affiche un bande
 heures. `HEARTBEAT_URL` (facultatif) est appelée après chaque réussite : une sonde externe (Healthchecks.io, Better
 Stack…) alerte quand ces appels cessent.
 
+### Cookies
+
+Bandeau de consentement (CNIL, recommandation du 17 septembre 2020) : « Refuser » et « Accepter » au même niveau,
+« Personnaliser » par finalité (mesure d'audience, personnalisation et marketing), choix conservé six mois dans le
+cookie `kb_consent` puis redemandé, modifiable à tout moment par « Gérer les cookies » en pied de page. Retirer un
+accord supprime les cookies du service et recharge la page.
+
+Rien n'est chargé avant l'accord. Les services se branchent par l'environnement : `GA_MEASUREMENT_ID` (Google
+Analytics 4, mesure d'audience, cookies limités à 13 mois), `HUBSPOT_PORTAL_ID` (+ `HUBSPOT_REGION=eu1` pour un
+compte hébergé en Europe) et `META_PIXEL_ID` (marketing). La politique de confidentialité et la CSP listent d'elles-mêmes
+les services activés (`src/lib/consent.ts`). Avec HubSpot, désactiver son propre bandeau de cookies (HubSpot ›
+Paramètres › Confidentialité et consentement) pour n'en afficher qu'un.
+
 `APP_URL` est fixée dans `render.yaml` pour le service cron (https://kolbase.io) ; sans elle, la commande échoue
 en nommant la variable manquante. Activer les alertes d'échec du service cron dans Render (Settings ›
 Notifications) : dès sa création le 3 novembre, faute d'`APP_URL`, les tâches ont échoué toutes les heures sans

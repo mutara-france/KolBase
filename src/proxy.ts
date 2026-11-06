@@ -1,4 +1,5 @@
 import { NextResponse, type NextRequest } from "next/server";
+import { optionalServices, SERVICE_ORIGINS } from "@/lib/consent";
 
 /**
  * Politique de sécurité des contenus (CSP) à nonce, en observation (Report-Only) : rien n'est bloqué, les écarts sont
@@ -6,13 +7,18 @@ import { NextResponse, type NextRequest } from "next/server";
  * Next.js lit le nonce dans cet en-tête de requête et l'appose sur ses propres scripts.
  */
 function cspFor(nonce: string) {
+  // Services soumis à consentement et configurés (mesure d'audience, marketing) : chargés par un script de la page
+  // ('strict-dynamic'), ils envoient leurs mesures et images vers leurs propres domaines.
+  const extra = optionalServices().flatMap((s) => SERVICE_ORIGINS[s.id]).join(" ");
+  const more = extra ? ` ${extra}` : "";
   return [
     "default-src 'self'",
     `script-src 'self' 'nonce-${nonce}' 'strict-dynamic'`,
     "style-src 'self' 'unsafe-inline'",
-    "img-src 'self' data: blob:",
+    `img-src 'self' data: blob:${more}`,
     "font-src 'self' data:",
-    "connect-src 'self'",
+    `connect-src 'self'${more}`,
+    ...(extra ? [`frame-src${more}`] : []),
     "frame-ancestors 'none'",
     "base-uri 'self'",
     "form-action 'self'",

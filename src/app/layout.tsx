@@ -9,9 +9,12 @@ import "@fontsource/montserrat/latin-700.css";
 import "@fontsource/ibm-plex-mono/latin-400.css";
 import "@fontsource/ibm-plex-mono/latin-500.css";
 import "./globals.css";
+import { cookies } from "next/headers";
+import { CookieConsent } from "@/components/CookieConsent";
 import { SiteFooter } from "@/components/SiteFooter";
 import { I18nProvider } from "@/components/I18nProvider";
 import { getLocale, getT } from "@/lib/i18n/server";
+import { CONSENT_COOKIE, optionalServices, readConsent } from "@/lib/consent";
 import { appUrl } from "@/lib/ics";
 
 export async function generateMetadata(): Promise<Metadata> {
@@ -30,6 +33,8 @@ export async function generateMetadata(): Promise<Metadata> {
 
 export default async function RootLayout({ children }: { children: React.ReactNode }) {
   const locale = await getLocale();
+  // Choix sur les cookies lu côté serveur : le bandeau ne clignote pas pour qui a déjà répondu.
+  const consent = readConsent((await cookies()).get(CONSENT_COOKIE)?.value);
   return (
     <html lang={locale}>
       <head>
@@ -39,6 +44,7 @@ export default async function RootLayout({ children }: { children: React.ReactNo
         <I18nProvider locale={locale}>
           <div className="page">{children}</div>
           <SiteFooter />
+          <CookieConsent initial={consent} services={optionalServices()} />
         </I18nProvider>
       </body>
     </html>
