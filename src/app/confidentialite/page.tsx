@@ -68,6 +68,7 @@ export default function Page() {
             ["kb_2fa", "Étape de vérification en deux étapes, entre le mot de passe et le code", "10 minutes"],
             ["kb_lang", "Langue choisie (français ou anglais)", "1 an"],
             ["kb_espace", "Dernier espace utilisé (praticien ou organisation)", "1 an"],
+            ["kb_nav", "Menu latéral de votre espace ouvert ou réduit, selon votre dernier choix", "1 an"],
             ["kb_consent", "Mémoriser votre choix sur les cookies ci-dessous (accord ou refus, par finalité, et sa date)", "6 mois"],
             ["kb_src", "Compter l'inscription qui suit un lien de communication diffusée par KolBase (mesure des services, totaux seulement)", "30 jours"],
           ]} />

@@ -3,6 +3,9 @@ import { COMPLIANCE_ROLES, EVENT_MANAGER_ROLES, EVENT_ORGANIZER_ROLES } from "@/
 import { PROJECT_VIEW_ROLES, REVIEW_ROLES, SOURCING_ROLES } from "@/lib/projects";
 import { isAgencyOnly, STATS_ROLES } from "@/lib/org-roles";
 
+/** Barre latérale ouverte (libellés visibles) : choix mémorisé dans ce cookie ; repliée par défaut, icônes seules. */
+export const NAV_COOKIE = "kb_nav";
+
 /**
  * Navigation de l'espace connecté : cinq rubriques au plus par espace (praticien ou organisation),
  * les pages d'une même rubrique se retrouvant en onglets. Module sans dépendance serveur (utilisé aussi côté client).
