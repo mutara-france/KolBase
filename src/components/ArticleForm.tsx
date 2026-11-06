@@ -26,7 +26,7 @@ export function ArticleForm({ a, categories }: { a: A; categories: readonly stri
       </div>
       <label>Chapô<textarea name="excerpt" rows={2} required maxLength={400} defaultValue={a.excerpt} placeholder="Deux phrases qui résument l'article (liste des actualités, partage)." /></label>
       <label>Texte<textarea name="body" rows={16} required defaultValue={a.body} /></label>
-      <p className="hint">Paragraphes séparés par une ligne vide · « ## Intertitre » · lignes « - » pour une liste · **gras** · [texte du lien](https://…) ou [aide](/aide).</p>
+      <p className="hint">Paragraphes séparés par une ligne vide · « ## Intertitre » · lignes « - » pour une liste · **gras** · [texte du lien](https://…) ou [aide](/aide) · « ![légende](/etudes/…/visuel.webp) » seule sur sa ligne pour une image du site.</p>
       <div className="row">
         <label>Image (PNG, JPEG ou WebP, 1,5 Mo au plus)<input type="file" name="cover" accept="image/png,image/jpeg,image/webp" /></label>
         {a.cover && <label className="check"><input type="checkbox" name="removeCover" value="1" /> Retirer l&apos;image actuelle</label>}
