@@ -19,6 +19,8 @@ import { OrgTwoFactorForm } from "@/components/TwoFactorForms";
 import { TableWrap } from "@/components/TableWrap";
 import { getT } from "@/lib/i18n/server";
 import { fmtDate } from "@/lib/i18n";
+import { accountPhoto, expertPhotoSrc } from "@/lib/expert-photo";
+import { kolViewer } from "@/lib/visibility";
 
 export async function generateMetadata() {
   const { t } = await getT();
@@ -36,7 +38,7 @@ export default async function Page({ params, searchParams }: { params: Promise<{
   // Un prestataire mandaté (externe) ne voit pas l'équipe ni les réglages de l'organisation.
   if (roles.every((r) => r === "PRESTATAIRE")) redirect(`/organisations/${id}`);
   const [members, invitations, mandates] = await Promise.all([
-    db.membership.findMany({ where: { organizationId: id }, include: { user: true }, orderBy: { createdAt: "asc" } }),
+    db.membership.findMany({ where: { organizationId: id }, include: { user: { include: { practitioner: { select: { id: true, photoUpdatedAt: true, visibility: true, listed: true } } } } }, orderBy: { createdAt: "asc" } }),
     isAdmin
       ? db.invitation.findMany({ where: { organizationId: id, acceptedAt: null, revokedAt: null, expiresAt: { gt: new Date() } }, orderBy: { createdAt: "desc" } })
       : Promise.resolve([]),
@@ -57,6 +59,11 @@ export default async function Page({ params, searchParams }: { params: Promise<{
     if (m.createdAt < p.since) p.since = m.createdAt;
     return acc.set(m.userId, p);
   }, new Map<string, { userId: string; user: (typeof members)[number]["user"]; roles: OrgRole[]; since: Date }>()).values()];
+  // Photo d'un membre : la sienne toujours ; celle d'un collègue praticien selon son réglage « Photo » (expert référencé).
+  const memberPhoto = (u: (typeof members)[number]["user"]) => {
+    if (u.id === user.id || !u.practitioner) return accountPhoto(u);
+    return u.practitioner.listed ? expertPhotoSrc(u.practitioner, kolViewer(user, u.practitioner.id)) : null;
+  };
   const adminCount = people.filter((p) => p.roles.includes("ADMIN")).length;
   const isSupplier = org.kind === "PRESTATAIRE";
   // Arrivée depuis une action refusée faute de contrat : rappel du motif, puis reprise de l'action une fois accepté.
@@ -90,7 +97,7 @@ export default async function Page({ params, searchParams }: { params: Promise<{
               <ul className="member-list">
                 {people.map((p) => (
                   <li key={p.userId} className="member-row">
-                    <Avatar name={`${p.user.firstName} ${p.user.lastName}`} size={40} />
+                    <Avatar name={`${p.user.firstName} ${p.user.lastName}`} size={40} photo={memberPhoto(p.user)} />
                     <div className="grow" style={{ minWidth: 0 }}>
                       <strong>{p.user.firstName} {p.user.lastName}</strong>{p.userId === user.id && <span className="muted">{" "}{t("(vous)")}</span>}
                       <div className="text-xs muted">{t("{email} · membre depuis le {v}", { email: p.user.email, v: fmtDate(locale, p.since) })}{isAdmin ? (p.user.totpEnabledAt ? t(" · double authentification activée") : t(" · sans double authentification")) : ""}</div>

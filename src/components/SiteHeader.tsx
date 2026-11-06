@@ -2,7 +2,7 @@ import { cookies } from "next/headers";
 import { getCurrentUser } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { avatarColor, initialsOf } from "@/components/Avatar";
-import { photoPath } from "@/lib/expert-photo";
+import { accountPhoto, photoPath } from "@/lib/expert-photo";
 import { AppShell } from "@/components/AppShell";
 import { PublicNav } from "@/components/PublicNav";
 import { ORG_KIND_LABEL, roleLabel } from "@/lib/orgs";
@@ -104,7 +104,7 @@ export async function SiteHeader({ variant = "app", section }: { variant?: "app"
 
   return (
     <AppShell
-      user={{ name: `${drPrefix(p?.profession)}${fullName}`, initials: initialsOf(fullName), color: avatarColor(fullName), photo: p?.photoUpdatedAt ? photoPath(p.id, p.photoUpdatedAt) : null }}
+      user={{ name: `${drPrefix(p?.profession)}${fullName}`, initials: initialsOf(fullName), color: avatarColor(fullName), photo: accountPhoto({ id: user.id, photoUpdatedAt: user.photoUpdatedAt, practitioner: p }) }}
       spaces={spaces}
       initialSpace={initialSpace ? decodeURIComponent(initialSpace) : undefined}
       activeKey={section}

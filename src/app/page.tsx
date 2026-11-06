@@ -17,6 +17,8 @@ import { getCurrentUser } from "@/lib/auth";
 import { orgJoinHref } from "@/lib/nav";
 
 export const dynamic = "force-dynamic";
+// Adresse canonique : les liens suivis de paramètres (?compte=…, www) se rattachent à l'accueil.
+export const metadata = { alternates: { canonical: "/" } };
 
 /** Accueil — portail : recherche d'abord, puis le réseau (spécialités, agenda, praticiens, organisations, appels). */
 export default async function Home({ searchParams }: { searchParams: Promise<{ compte?: string }> }) {

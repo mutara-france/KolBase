@@ -1,7 +1,7 @@
 "use client";
 
 import { useActionState } from "react";
-import { addPublication, addStructure, importOrcid, removeExpertPhoto, setPhotoConsent, updateExpertPhoto, updateKolVisibility, updateOrgVisibility } from "@/lib/profile-actions";
+import { addPublication, addStructure, importOrcid, removeUserPhoto, setPhotoConsent, updateKolVisibility, updateOrgVisibility, updateUserPhoto } from "@/lib/profile-actions";
 import { Notice } from "@/components/AuthForms";
 import { Avatar } from "@/components/Avatar";
 import { ConfirmButton } from "@/components/ConfirmButton";
@@ -42,11 +42,12 @@ export function KolVisibilityForm({ v }: { v: KolVisibility }) {
 }
 
 /**
- * Photo du praticien : aperçu, envoi (recadrée et réencodée par KolBase), accord pour la communication de ses
- * interventions, retrait. Sa visibilité se règle avec les autres informations du profil.
+ * Photo de profil, pour tous les comptes : aperçu, envoi (recadrée et réencodée par KolBase), retrait. Expert
+ * référencé : visibilité réglée avec son profil, et accord pour la communication de ses interventions. Praticien non
+ * référencé : visible de lui seul. Membre d'organisation : visible de ses collègues.
  */
-export function PhotoForm({ name, src, consent, level }: { name: string; src: string | null; consent: boolean; level: string }) {
-  const [state, action, pending] = useActionState(updateExpertPhoto, undefined);
+export function PhotoForm({ name, src, consent = false, level = "", mode = "expert" }: { name: string; src: string | null; consent?: boolean; level?: string; mode?: "expert" | "praticien" | "compte" }) {
+  const [state, action, pending] = useActionState(updateUserPhoto, undefined);
   const [cState, cAction, cPending] = useActionState(setPhotoConsent, undefined);
   const t = useT();
   return (
@@ -60,9 +61,13 @@ export function PhotoForm({ name, src, consent, level }: { name: string; src: st
             {t("Un portrait de face, net, sur fond neutre. JPEG, PNG ou WebP, 10 Mo au plus. KolBase le recadre au carré et retire les informations cachées du fichier (lieu de prise de vue, appareil, date).")}
           </p>
           <p className="text-xs" style={{ margin: 0 }}>
-            {src
-              ? t(level === "public" ? "Visible de tous : votre fiche, la liste des experts, l'annuaire et les dossiers." : level === "industriels" ? "Visible des organisations inscrites seulement : réglage « Photo » de la visibilité ci-dessous." : "Masquée : vous seul la voyez (réglage « Photo » de la visibilité ci-dessous).")
-              : t("Sans photo, vos initiales s'affichent.")}
+            {mode === "compte"
+              ? t("Visible de vous, des membres de vos organisations et de l'équipe KolBase. Sans photo, vos initiales s'affichent.")
+              : mode === "praticien"
+                ? t("Visible de vous seul tant que vous n'êtes pas référencé comme expert ; elle apparaîtra ensuite sur votre fiche selon votre réglage. Sans photo, vos initiales s'affichent.")
+                : src
+                  ? t(level === "public" ? "Visible de tous : votre fiche, la liste des experts, l'annuaire et les dossiers." : level === "industriels" ? "Visible des organisations inscrites seulement : réglage « Photo » de la visibilité ci-dessous." : "Masquée : vous seul la voyez (réglage « Photo » de la visibilité ci-dessous).")
+                  : t("Sans photo, vos initiales s'affichent.")}
           </p>
         </div>
       </div>
@@ -71,7 +76,7 @@ export function PhotoForm({ name, src, consent, level }: { name: string; src: st
         <input id="photo-file" name="photo" type="file" accept="image/jpeg,image/png,image/webp" required />
         <button className="btn secondary" disabled={pending}>{pending ? t("Envoi…") : src ? t("Remplacer") : t("Ajouter ma photo")}</button>
       </form>
-      {src && (
+      {src && mode === "expert" && (
         <form action={cAction} className="stack-sm">
           <Notice state={cState} />
           <label className="check text-sm">
@@ -82,8 +87,8 @@ export function PhotoForm({ name, src, consent, level }: { name: string; src: st
         </form>
       )}
       {src && (
-        <form action={removeExpertPhoto}>
-          <ConfirmButton className="link danger" confirm={t("retirer ma photo")} summary={t("Vos initiales s'afficheront à la place, et votre accord pour la communication est retiré.")} localized>
+        <form action={removeUserPhoto}>
+          <ConfirmButton className="link danger" confirm={t("retirer ma photo")} summary={mode === "expert" ? t("Vos initiales s'afficheront à la place, et votre accord pour la communication est retiré.") : t("Vos initiales s'afficheront à la place.")} localized>
             {t("Retirer ma photo")}
           </ConfirmButton>
         </form>

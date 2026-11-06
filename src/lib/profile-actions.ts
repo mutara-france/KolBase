@@ -129,6 +129,7 @@ export async function removeStructure(form: FormData) {
 // ─── Photo du praticien ────────────────────────────────────────────────────
 
 const refreshPhoto = (practitionerId: string) => {
+  revalidatePath("/", "layout");
   revalidatePath("/compte");
   revalidatePath(`/experts/${practitionerId}`);
   revalidatePath("/experts");
@@ -171,6 +172,38 @@ export async function removeExpertPhoto() {
   ]);
   await audit(user.id, "practitioner.photo_remove", "PractitionerProfile", p.id);
   refreshPhoto(p.id);
+}
+
+/**
+ * Photo d'un compte sans profil praticien (membre d'organisation) : même contrôle et même traitement que celle d'un
+ * praticien ; visible de la personne, des membres de ses organisations et de l'équipe KolBase.
+ */
+export async function updateUserPhoto(_: ActionState, form: FormData): Promise<ActionState> {
+  const user = await requireUser();
+  const { t } = await getT();
+  if (user.practitioner) return updateExpertPhoto(_, form);
+  const file = form.get("photo");
+  if (!(file instanceof File) || file.size === 0) return { error: t("Choisissez une photo.") };
+  if (file.size > PHOTO_MAX_BYTES) return { error: t("Photo trop lourde : 10 Mo au maximum.") };
+  const result = await processPortrait(new Uint8Array(await file.arrayBuffer()));
+  if ("error" in result) return { error: t(result.error, { min: PHOTO_MIN_SIDE }) };
+  const data = new Uint8Array(result.data);
+  const thumb = new Uint8Array(result.thumb);
+  await db.$transaction([
+    db.userPhoto.upsert({ where: { userId: user.id }, update: { data, thumb }, create: { userId: user.id, data, thumb } }),
+    db.user.update({ where: { id: user.id }, data: { photoUpdatedAt: new Date() } }),
+  ]);
+  await audit(user.id, "user.photo", "User", user.id, { size: data.byteLength });
+  revalidatePath("/", "layout");
+  return { ok: t("Photo enregistrée.") };
+}
+
+export async function removeUserPhoto() {
+  const user = await requireUser();
+  if (user.practitioner) return removeExpertPhoto();
+  await db.$transaction([db.userPhoto.deleteMany({ where: { userId: user.id } }), db.user.update({ where: { id: user.id }, data: { photoUpdatedAt: null } })]);
+  await audit(user.id, "user.photo_remove", "User", user.id);
+  revalidatePath("/", "layout");
 }
 
 /** Accord pour l'usage de la photo dans la communication des interventions (révocable à tout moment). */

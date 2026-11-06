@@ -4,13 +4,14 @@ import { SiteHeader } from "@/components/SiteHeader";
 import { KolCard } from "@/components/PublicCards";
 import { publicExperts, publicSpecialties } from "@/lib/public-data";
 import { matches, normalize } from "@/lib/search";
+import { publicPage } from "@/lib/seo";
 import { getT } from "@/lib/i18n/server";
 import { getCurrentUser } from "@/lib/auth";
 import { directoryRefusal } from "@/lib/orgs";
 
 export async function generateMetadata() {
   const { t } = await getT();
-  return { title: t("Experts — KolBase") };
+  return publicPage({ title: t("Experts — KolBase"), description: t("Chirurgiens-dentistes experts référencés sur KolBase, par discipline et par ville : conférences, formations, études cliniques, conseil."), path: "/experts" });
 }
 export const dynamic = "force-dynamic";
 

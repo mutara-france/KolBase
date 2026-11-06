@@ -5,11 +5,12 @@ import { OrgCard } from "@/components/PublicCards";
 import { publicOrgs } from "@/lib/public-data";
 import { matches } from "@/lib/search";
 import { ORG_FAMILIES } from "@/lib/org-roles";
+import { publicPage } from "@/lib/seo";
 import { getT } from "@/lib/i18n/server";
 
 export async function generateMetadata() {
   const { t } = await getT();
-  return { title: t("Organisations — KolBase") };
+  return publicPage({ title: t("Organisations — KolBase"), description: t("Industriels, sociétés savantes, associations et organismes de formation du secteur dentaire, vérifiés par KolBase."), path: "/structures" });
 }
 export const dynamic = "force-dynamic";
 

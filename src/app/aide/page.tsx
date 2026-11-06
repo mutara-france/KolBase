@@ -1,12 +1,13 @@
 import Link from "next/link";
 import { SiteHeader } from "@/components/SiteHeader";
+import { publicPage } from "@/lib/seo";
 import { getT } from "@/lib/i18n/server";
 import { getCurrentUser } from "@/lib/auth";
 import { orgJoinHref } from "@/lib/nav";
 
 export async function generateMetadata() {
   const { t } = await getT();
-  return { title: t("Aide — KolBase") };
+  return publicPage({ title: t("Aide — KolBase"), description: t("Questions fréquentes sur KolBase : inscription, référencement des experts, événements, dossiers et conformité."), path: "/aide" });
 }
 export const dynamic = "force-dynamic";
 
