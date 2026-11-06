@@ -783,7 +783,11 @@ async function submitNewOrg(page, siren) {
   await anon.close();
   // Export CSV : une formule saisie comme nom est neutralisée.
   await db.query(`update "User" set "lastName"='=HYPERLINK("http://x")' where id='demo-u-lambert'`);
-  const csv = await (await ctx.request.get(`${BASE}/organisations/demo-org-dentalys/hospitalites/export`)).text();
+  // Export des hospitalités : réservé au rôle Conformité.
+  const conf = await session();
+  await login(conf.page, "sophie.bernard@demo.kolbase.local");
+  const csv = await (await conf.ctx.request.get(`${BASE}/organisations/demo-org-dentalys/hospitalites/export`)).text();
+  await conf.ctx.close();
   check("Export CSV : formule neutralisée", csv.includes(`"'=HYPERLINK(""http://x"")"`) && !/;=HYPERLINK/.test(csv));
   await db.query(`update "User" set "lastName"='Lambert' where id='demo-u-lambert'`);
   // Convention PDF : nom en alphabet étendu conservé (police Unicode embarquée).
@@ -2669,15 +2673,19 @@ async function submitNewOrg(page, siren) {
     check("Fiche de l'événement : régime par prestation", night.includes("Autorisation") && lunch.includes("Déclaration") && (await text(page)).includes("Participant qui accepte toutes les prestations : convention soumise à autorisation"), `${night} | ${lunch}`);
     await pgc.query(`insert into "Registration" (id, "eventId", "userId", profession) values ('e2e-lot2-reg-hosp', $1, 'demo-u-durand', 'Chirurgien-dentiste')`, [evId]);
     await pgc.query(`insert into "RegistrationBenefit" ("registrationId", "benefitId", "valueCents") select 'e2e-lot2-reg-hosp', id, "valueCents" from "EventBenefit" where "eventId" = $1 and "catalogId" in ('nuitee', 'dejeuner')`, [evId]);
-    await page.goto(`${BASE}/organisations/demo-org-dentalys/hospitalites`);
-    const row = await page.locator('section.card:has-text("Congrès Lot Deux") tr:has-text("DURAND")').innerText();
-    check("Hospitalités : colonne Régime", (await page.locator('section.card:has-text("Congrès Lot Deux") th:has-text("Régime")').count()) === 1 && row.includes("Autorisation"), row);
-    await page.goto(`${BASE}/organisations/demo-org-dentalys/conformite?onglet=autorisations`);
-    const auth = await page.locator('tr:has-text("Congrès Lot Deux")').innerText().catch(() => "");
-    check("Autorisations : l'hospitalité soumise à autorisation y remonte", (await text(page)).includes("Hospitalités soumises à autorisation") && auth.includes("DURAND Hélène") && auth.includes("Nuitée 180 € > 150 €") && auth.includes("Avant le"), auth);
-    const conv = await page.request.get(`${BASE}/organisations/demo-org-dentalys/hospitalites/convention/e2e-lot2-reg-hosp`);
-    check("Convention d'hospitalité (PDF) disponible pour une hospitalité soumise à autorisation", conv.status() === 200 && (conv.headers()["content-type"] ?? "").includes("pdf"));
     await ctx.close();
+    // Hospitalités, autorisations, conventions : espace de la conformité.
+    const so = await session();
+    await login(so.page, "sophie.bernard@demo.kolbase.local");
+    await so.page.goto(`${BASE}/organisations/demo-org-dentalys/hospitalites`);
+    const row = await so.page.locator('section.card:has-text("Congrès Lot Deux") tr:has-text("DURAND")').innerText();
+    check("Hospitalités : colonne Régime", (await so.page.locator('section.card:has-text("Congrès Lot Deux") th:has-text("Régime")').count()) === 1 && row.includes("Autorisation"), row);
+    await so.page.goto(`${BASE}/organisations/demo-org-dentalys/conformite?onglet=autorisations`);
+    const auth = await so.page.locator('tr:has-text("Congrès Lot Deux")').innerText().catch(() => "");
+    check("Autorisations : l'hospitalité soumise à autorisation y remonte", (await text(so.page)).includes("Hospitalités soumises à autorisation") && auth.includes("DURAND Hélène") && auth.includes("Nuitée 180 € > 150 €") && auth.includes("Avant le"), auth);
+    const conv = await so.page.request.get(`${BASE}/organisations/demo-org-dentalys/hospitalites/convention/e2e-lot2-reg-hosp`);
+    check("Convention d'hospitalité (PDF) disponible pour une hospitalité soumise à autorisation", conv.status() === 200 && (conv.headers()["content-type"] ?? "").includes("pdf"));
+    await so.ctx.close();
   }
 
   // 4. Une définition par indicateur.
@@ -2705,14 +2713,17 @@ async function submitNewOrg(page, siren) {
     await c.page.goto(`${BASE}/organisations/demo-org-dentalys/evenements/demo-ev-passe`);
     const past = n(await text(c.page));
     check("Événement passé : coût d'un devis par présent, montants en TTC", past.includes("€ TTC par présent") && /Coût réel\s*[\d ]+(,\d+)? € TTC/i.test(past) && past.includes("non consommées, elles ne sont pas déclarées"));
-    // Absents : ni « à déclarer », affichés « absent : non déclaré ».
-    await c.page.goto(`${BASE}/organisations/demo-org-dentalys/hospitalites`);
-    const todo = await c.page.locator('section.card:has-text("Soirée régénération osseuse")').innerText().catch(() => "");
-    check("Hospitalités à déclarer : sans l'absent au pointage", !todo.includes("GIRARD"), todo.slice(0, 200));
-    await c.page.goto(`${BASE}/organisations/demo-org-dentalys/hospitalites?statut=toutes`);
-    const girardRow = await c.page.locator('section.card:has-text("Soirée régénération osseuse") tr:has-text("GIRARD")').innerText().catch(() => "");
-    check("Hospitalités (toutes) : « Absent : non déclaré », pas de déclaration proposée", girardRow.includes("Absent : non déclaré") && !girardRow.includes("Marquer déclaré"), girardRow);
     await c.ctx.close();
+    // Absents : ni « à déclarer », affichés « absent : non déclaré » (espace de la conformité).
+    const so = await session();
+    await login(so.page, "sophie.bernard@demo.kolbase.local");
+    await so.page.goto(`${BASE}/organisations/demo-org-dentalys/hospitalites`);
+    const todo = await so.page.locator('section.card:has-text("Soirée régénération osseuse")').innerText().catch(() => "");
+    check("Hospitalités à déclarer : sans l'absent au pointage", !todo.includes("GIRARD"), todo.slice(0, 200));
+    await so.page.goto(`${BASE}/organisations/demo-org-dentalys/hospitalites?statut=toutes`);
+    const girardRow = await so.page.locator('section.card:has-text("Soirée régénération osseuse") tr:has-text("GIRARD")').innerText().catch(() => "");
+    check("Hospitalités (toutes) : « Absent : non déclaré », pas de déclaration proposée", girardRow.includes("Absent : non déclaré") && !girardRow.includes("Marquer déclaré"), girardRow);
+    await so.ctx.close();
     // Côté praticien absent : revenus, liens d'intérêts, Transparence, inscriptions, avis.
     await pgc.query(`insert into "Project" (id, "organizationId", title, "typeId", status, "updatedAt") values ('e2e-lot2-prj-g1', 'demo-org-orthonova', 'Atelier CFAO signé', 'travaux-pratiques', 'SIGNE', now()), ('e2e-lot2-prj-g2', 'demo-org-orthonova', 'Atelier CFAO bloqué', 'travaux-pratiques', 'BLOQUE', now())`);
     await pgc.query(`insert into "ProjectExpert" (id, "projectId", "practitionerId", status, "feeCents", days) values ('e2e-lot2-pg-1', 'e2e-lot2-prj-g1', 'demo-p-girard', 'SIGNE', 150000, 1), ('e2e-lot2-pg-2', 'e2e-lot2-prj-g2', 'demo-p-girard', 'BLOQUE', 200000, 1)`);
