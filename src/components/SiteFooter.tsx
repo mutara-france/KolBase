@@ -32,7 +32,6 @@ export async function SiteFooter() {
         </nav>
         <span>{t("© {year} KolBase. Tous droits réservés.", { year: new Date().getFullYear() })} {t("KolBase est une marque européenne déposée.")}</span>
         {locale === "en" && <span>{t("Les documents juridiques font foi en français.")}</span>}
-        {process.env.SEED_DEMO === "1" && <span>{t("Environnement de démonstration — données simulées")}</span>}
       </div>
     </footer>
   );
