@@ -57,6 +57,7 @@ export async function EventWorkspace({ orgId: id, eventId, publie, mode = "page"
       project: {
         select: {
           id: true, title: true, status: true,
+          proposal: { select: { logistics: true } },
           experts: { where: { status: { not: "DECLINE" } }, include: { practitioner: { include: { user: { select: { firstName: true, lastName: true } } } } } },
         },
       },
@@ -430,6 +431,12 @@ export async function EventWorkspace({ orgId: id, eventId, publie, mode = "page"
               <SectionHead icon={Truck} id="logistique-titre" title={t("Logistique et prestataires")} desc={t("Consultez les prestataires référencés, comparez leurs devis détaillés et retenez la meilleure offre : le coût par participant est rapproché des seuils d'hospitalité.")}>
                 {!readOnly && <Link className="btn small" href={newRfq()}>{t("Demander des devis")}</Link>}
               </SectionHead>
+              {event.project?.proposal?.logistics && (
+                <div className="info-note logistics-need">
+                  <Truck size={15} />
+                  <span><strong>{t("Besoins logistiques exprimés par l'expert")}</strong>{" "}<span className="pre-line">{event.project.proposal.logistics}</span></span>
+                </div>
+              )}
               {rfqs.length > 0 && (
                 <ul className="logistics-list">
                   {rfqs.map((r) => {

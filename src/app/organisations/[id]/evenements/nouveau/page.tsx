@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { Truck } from "lucide-react";
 import { SiteHeader } from "@/components/SiteHeader";
 import { NewEventForm } from "@/components/EventForms";
 import { requireMembership } from "@/lib/orgs";
@@ -20,13 +21,19 @@ export default async function Page({ params, searchParams }: { params: Promise<{
   const { id } = await params;
   const { dossier } = await searchParams;
   const { org } = await requireMembership(id, EVENT_ORGANIZER_ROLES);
-  const project = dossier ? await db.project.findFirst({ where: { id: dossier, organizationId: id }, select: { id: true, title: true, therapeuticArea: true, status: true } }) : null;
+  const project = dossier ? await db.project.findFirst({ where: { id: dossier, organizationId: id }, select: { id: true, title: true, therapeuticArea: true, status: true, proposal: { select: { logistics: true } } } }) : null;
   return (
     <>
       <SiteHeader />
       <main className="narrow stack">
         <BillingNotice orgId={id} motive="evenement" />
         <p className="muted"><Link href={`/organisations/${id}`}>{org.name}</Link> / <Link href={`/organisations/${id}/evenements`}>{t("Événements")}</Link></p>
+        {project?.proposal?.logistics && (
+          <div className="info-note logistics-need">
+            <Truck size={15} />
+            <span><strong>{t("Besoins logistiques exprimés par l'expert")}</strong>{" "}<span className="pre-line">{project.proposal.logistics}</span></span>
+          </div>
+        )}
         <NewEventForm
           orgId={id}
           blocked={await engagementBlock(id, "evenement")}

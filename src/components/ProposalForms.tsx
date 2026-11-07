@@ -66,6 +66,10 @@ export function ProposalForm({ orgs, types, preselected, defaultFee, defaultArea
         <label><span>{t("Calendrier envisagé")} <span className="optional">({t("facultatif")})</span></span>
           <input name="schedule" maxLength={1000} placeholder={t("Ex. : premier semestre 2027, trois sessions")} />
         </label>
+        <label><span>{t("Besoins logistiques")} <span className="optional">({t("facultatif")})</span></span>
+          <textarea name="logistics" rows={3} maxLength={2000} placeholder={t("Ex. : salle de 60 places à Lyon, vidéoprojecteur et micros, pause café et déjeuner, captation vidéo")} />
+          <span className="hint">{t("L'organisation qui accepte votre projet organise et prend en charge la logistique : vos besoins lui servent de point de départ pour l'événement et les demandes de devis aux prestataires.")}</span>
+        </label>
       </fieldset>
 
       <fieldset className="stack-sm">

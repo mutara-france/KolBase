@@ -46,7 +46,7 @@ const PROFILES = {
   ],
   "ludovic.perrin@demo.kolbase.local": [
     "/organisations/demo-sup-belleville", "/organisations/demo-sup-belleville/devis", "/organisations/demo-sup-belleville/devis/demo-rfq-cocktail",
-    "/organisations/demo-sup-belleville/devis/demo-rfq-passe-cocktail", "/organisations/demo-sup-belleville/book",
+    "/organisations/demo-sup-belleville/devis/demo-rfq-passe-cocktail", "/organisations/demo-sup-belleville/vitrine",
   ],
   "anne.chevalier@demo.kolbase.local": [
     "/admin", "/admin?onglet=organisations", "/admin?onglet=praticiens", "/admin?onglet=abonnements", "/admin?onglet=services",

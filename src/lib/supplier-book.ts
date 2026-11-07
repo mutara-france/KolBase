@@ -3,7 +3,10 @@ import { db } from "@/lib/db";
 import { quoteTtc } from "@/lib/quotes";
 
 export const PHOTO_MAX_BYTES = 800 * 1024;
-export const PHOTO_MAX = 8;
+/** Réalisations en images de la vitrine d'un prestataire. */
+export const PHOTO_MAX = 12;
+/** Bannière de la vitrine : une image large (1 600 × 400 px conseillés). */
+export const BANNER_MAX_BYTES = 1536 * 1024;
 export const EQUIPMENT = ["Vidéoprojecteur et écran", "Sonorisation et micros", "Visioconférence", "Wi-Fi", "Captation vidéo", "Salles de sous-commission", "Restauration sur place", "Parking", "Hébergement sur place"] as const;
 export const OFFER_UNITS = { personne: "par personne", forfait: "forfait", jour: "par jour", nuit: "par nuit" } as const;
 export type Capacities = { seats?: number; cocktail?: number; banquet?: number; rooms?: number };
@@ -20,6 +23,8 @@ export function readCapacities(raw: unknown): Capacities {
 }
 
 export const photoSrc = (p: { id: string; createdAt: Date }) => `/photos/${p.id}?v=${p.createdAt.getTime()}`;
+/** URL de la bannière (versionnée par sa date de mise à jour), ou null sans bannière. */
+export const bannerSrc = (o: { id: string; bannerUpdatedAt: Date | null }) => (o.bannerUpdatedAt ? `/bannieres/${o.id}?v=${o.bannerUpdatedAt.getTime()}` : null);
 
 const median = (xs: number[]) => {
   if (!xs.length) return null;

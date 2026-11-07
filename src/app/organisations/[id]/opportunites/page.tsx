@@ -1,5 +1,6 @@
-import { PageHead } from "@/components/UI";
-import { CalendarOff } from "lucide-react";
+import { EmptyState, PageHead } from "@/components/UI";
+import { CalendarOff, SearchX } from "lucide-react";
+import { ActiveFilters, FilterChips, FilterSelect } from "@/components/Filters";
 import Link from "next/link";
 import { aiEnabled } from "@/lib/ai";
 import { SiteHeader } from "@/components/SiteHeader";
@@ -20,10 +21,10 @@ export async function generateMetadata() {
 }
 
 
-export default async function Page({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: Promise<{ evenement?: string }> }) {
+export default async function Page({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: Promise<{ evenement?: string; statut?: string; type?: string; lien?: string; q?: string }> }) {
   const { t, locale } = await getT();
   const { id } = await params;
-  const { evenement } = await searchParams;
+  const { evenement, statut = "", type = "", lien = "", q = "" } = await searchParams;
   await requireMembership(id, SOURCING_ROLES);
   const now = new Date();
   const [calls, events] = await Promise.all([
@@ -35,6 +36,18 @@ export default async function Page({ params, searchParams }: { params: Promise<{
     db.event.findMany({ where: { organizationId: id, startsAt: { gte: now } }, orderBy: { startsAt: "asc" }, select: { id: true, title: true, startsAt: true, typeId: true, therapeuticArea: true } }),
   ]);
   const sectionTabs = await orgTabs("praticiens", id);
+  // Filtres : statut (pastilles avec décompte), type, avec ou sans événement, recherche.
+  const isClosed = (c: (typeof calls)[number]) => c.status !== "open" || (c.deadline != null && c.deadline < now);
+  const toReview = (c: (typeof calls)[number]) => c.applications.some((a) => a.status === "pending");
+  const byStatus = { ouvertes: calls.filter((c) => !isClosed(c)), "a-examiner": calls.filter(toReview), cloturees: calls.filter(isClosed) } as const;
+  const needle = q.trim().toLowerCase();
+  const shown = (statut in byStatus ? byStatus[statut as keyof typeof byStatus] : calls)
+    .filter((c) => !type || c.typeId === type)
+    .filter((c) => (lien === "avec" ? !!c.event : lien === "sans" ? !c.event : true))
+    .filter((c) => !needle || [c.title, c.specialty, c.description, c.event?.title].some((x) => x?.toLowerCase().includes(needle)));
+  const fparams = { statut, type, lien, q };
+  const types = COLLAB_TYPES.filter((x) => calls.some((c) => c.typeId === x.id));
+  const path = `/organisations/${id}/opportunites`;
   return (
     <>
       <SiteHeader />
@@ -48,8 +61,44 @@ export default async function Page({ params, searchParams }: { params: Promise<{
           {t("Une opportunité invite les experts référencés à candidater, pour une collaboration (board, étude, rédaction…) ou pour intervenir à l'un de vos événements (formation, symposium…). Vous retenez qui vous voulez ; chaque personne retenue reçoit une proposition d'honoraires et un dossier s'ouvre.")}
         </p>
         {calls.length > 0 && (
+          <>
+            <FilterChips
+              path={path}
+              params={fparams}
+              name="statut"
+              value={statut}
+              options={[
+                { value: "", label: t("Toutes"), count: calls.length },
+                { value: "ouvertes", label: t("Ouvertes"), count: byStatus.ouvertes.length },
+                { value: "a-examiner", label: t("Candidatures à examiner"), count: byStatus["a-examiner"].length },
+                { value: "cloturees", label: t("Clôturées"), count: byStatus.cloturees.length },
+              ]}
+            />
+            <form className="filter-bar boxed" role="search" action={path}>
+              {statut && <input type="hidden" name="statut" value={statut} />}
+              <label htmlFor="calls-q" className="sr-only">{t("Recherche")}</label>
+              <input id="calls-q" name="q" type="search" defaultValue={q} placeholder={t("Titre, spécialité, événement…")} />
+              <FilterSelect name="type" label={t("Type")} value={type} all={t("Tous les types")} options={types.map((x) => ({ value: x.id, label: t(x.label) }))} />
+              <FilterSelect name="lien" label={t("Événement")} value={lien} all={t("Avec ou sans événement")} options={[{ value: "avec", label: t("Rattachées à un événement") }, { value: "sans", label: t("Hors événement") }]} />
+              <button className="btn secondary">{t("Filtrer")}</button>
+            </form>
+            <ActiveFilters
+              path={path}
+              params={fparams}
+              ariaLabel={t("Filtres actifs")}
+              clearLabel={t("Tout effacer")}
+              labels={{
+                q: q && t("Recherche : {value}", { value: q }),
+                type: type && t("Type : {value}", { value: t(collabType(type)?.label ?? type) }),
+                lien: lien && (lien === "avec" ? t("Rattachées à un événement") : t("Hors événement")),
+              }}
+            />
+          </>
+        )}
+        {calls.length > 0 && shown.length === 0 && <div className="card empty"><EmptyState icon={SearchX} title={t("Aucune opportunité pour ces critères.")} action={<Link className="btn secondary small" href={path}>{t("Tout afficher")}</Link>} /></div>}
+        {shown.length > 0 && (
           <section className="card row-list">
-            {calls.map((c) => {
+            {shown.map((c) => {
               const pending = c.applications.filter((a) => a.status === "pending").length;
               const retained = c.applications.filter((a) => a.status === "retained").length;
               const closed = c.status !== "open" || (c.deadline != null && c.deadline < now);

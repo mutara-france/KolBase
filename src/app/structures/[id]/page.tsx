@@ -1,11 +1,11 @@
 import Link from "next/link";
 import { logoSrc } from "@/lib/logos";
 import { notFound } from "next/navigation";
-import { ArrowLeft, Award, Clock, Info, Lock, Mail, MapPin, Receipt, ShieldCheck, Star, Tag } from "lucide-react";
+import { ArrowLeft, Award, Clock, Images, Info, Lock, Mail, MapPin, Receipt, ShieldCheck, Star, Tag } from "lucide-react";
 import { SectionHead } from "@/components/UI";
 import { CategoryIcon } from "@/components/SupplierBits";
 import { EVENT_MANAGER_ROLES } from "@/lib/events";
-import { CAPACITY_LABEL, delayLabel, OFFER_UNITS, photoSrc, readCapacities, supplierBook } from "@/lib/supplier-book";
+import { bannerSrc, CAPACITY_LABEL, delayLabel, OFFER_UNITS, photoSrc, readCapacities, supplierBook } from "@/lib/supplier-book";
 import { supplierCategoryLabel } from "@/lib/suppliers";
 import { SiteHeader } from "@/components/SiteHeader";
 import { Avatar } from "@/components/Avatar";
@@ -86,15 +86,13 @@ export default async function Page({ params }: { params: Promise<{ id: string }>
               {!isSupplier && o.verification === "VERIFIED" && <Link href={`/organisations/${o.id}/membres?onglet=organisation`}>{t("La rendre visible")}</Link>}
             </p>
           )}
-          {isSupplier && photos.length > 0 && (
-            <div className={`book-banner n${Math.min(photos.length, 3)}`}>
-              {photos.slice(0, 3).map((ph) => (
-                // eslint-disable-next-line @next/next/no-img-element
-                <img key={ph.id} src={photoSrc(ph)} alt={ph.caption ?? o.name} loading="lazy" />
-              ))}
+          {isSupplier && (
+            <div className={`vitrine-banner cat-bg-${o.supplierCategories[0] ?? "evenementiel"}${bannerSrc(o) ? " photo" : ""}`}>
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              {bannerSrc(o) ? <img src={bannerSrc(o)!} alt="" /> : <CategoryIcon category={o.supplierCategories[0] ?? "evenementiel"} size={34} className="lg" />}
             </div>
           )}
-          <section className="card profile-hero">
+          <section className={`card profile-hero${isSupplier ? " on-banner" : ""}`}>
             <Avatar name={o.name} size={76} square src={logoSrc(o)} />
             <div className="grow">
               <span className="sector-tag">{t(ORG_KIND_LABEL[o.kind])}</span>
@@ -117,16 +115,19 @@ export default async function Page({ params }: { params: Promise<{ id: string }>
                 <div className="stat-card"><div className="stat-value">{book.responseRate != null ? `${book.responseRate} %` : "—"}</div><div className="stat-label">{t("Taux de réponse aux demandes")}</div></div>
                 <div className="stat-card"><div className="stat-value tone-electric">{book.references.length}</div><div className="stat-label">{t("Prestations réalisées via KolBase")}</div></div>
               </div>
-              {photos.length > 3 && (
-                <div className="gallery">
-                  {photos.map((ph) => (
-                    <figure key={ph.id}>
-                      {/* eslint-disable-next-line @next/next/no-img-element */}
-                      <img src={photoSrc(ph)} alt={ph.caption ?? o.name} loading="lazy" />
-                      {ph.caption && <figcaption>{ph.caption}</figcaption>}
-                    </figure>
-                  ))}
-                </div>
+              {photos.length > 0 && (
+                <section className="card stack-sm">
+                  <SectionHead icon={Images} title={t("Réalisations")} desc={t("Des prestations de {name}, en images.", { name: o.name })} />
+                  <div className="gallery works">
+                    {photos.map((ph) => (
+                      <figure key={ph.id}>
+                        {/* eslint-disable-next-line @next/next/no-img-element */}
+                        <img src={photoSrc(ph)} alt={ph.caption ?? o.name} loading="lazy" />
+                        {ph.caption && <figcaption>{ph.caption}</figcaption>}
+                      </figure>
+                    ))}
+                  </div>
+                </section>
               )}
               <div className="grid-2">
                 <section className="card stack-sm">

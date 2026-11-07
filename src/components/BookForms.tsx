@@ -3,7 +3,7 @@ import { SectionHead } from "@/components/UI";
 
 import { useActionState, useState } from "react";
 import { Star, Warehouse } from "lucide-react";
-import { addSupplierOffer, addSupplierPhoto, reviewSupplier, updateSupplierBook } from "@/lib/book-actions";
+import { addSupplierOffer, addSupplierPhoto, setSupplierBanner, reviewSupplier, updateSupplierBook } from "@/lib/book-actions";
 import { Notice } from "@/components/AuthForms";
 import { useT } from "@/components/I18nProvider";
 
@@ -43,11 +43,39 @@ export function PhotoForm({ orgId }: { orgId: string }) {
       <Notice state={state} />
       <input type="hidden" name="orgId" value={orgId} />
       <div className="row">
-        <label>{t("Photo (PNG, JPEG ou WebP, 800 Ko au plus)")}<input type="file" name="photo" accept="image/png,image/jpeg,image/webp" required /></label>
-        <label>{t("Légende")}<input name="caption" maxLength={120} placeholder={t("Salle Saône, configuration théâtre")} /></label>
+        <label>{t("Image (PNG, JPEG ou WebP, 800 Ko au plus)")}<input type="file" name="photo" accept="image/png,image/jpeg,image/webp" required /></label>
+        <label>{t("Légende")}<input name="caption" maxLength={160} placeholder={t("Cocktail pour 300 personnes, congrès de parodontologie")} /></label>
       </div>
-      <button className="btn small secondary" disabled={pending}>{pending ? t("Envoi…") : t("Ajouter la photo")}</button>
+      <button className="btn small secondary" disabled={pending}>{pending ? t("Envoi…") : t("Ajouter la réalisation")}</button>
     </form>
+  );
+}
+
+/** Bannière de la vitrine : aperçu, remplacement, retrait. */
+export function BannerForm({ orgId, current, onRemove }: { orgId: string; current: string | null; onRemove: (form: FormData) => void }) {
+  const t = useT();
+  const [state, action, pending] = useActionState(setSupplierBanner, undefined);
+  return (
+    <div className="stack-sm">
+      <div className={`banner-preview${current ? "" : " empty"}`}>
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        {current ? <img src={current} alt={t("Bannière actuelle")} /> : <span className="muted text-sm">{t("Pas encore de bannière : un dégradé aux couleurs de votre catégorie s'affiche à la place.")}</span>}
+      </div>
+      <form action={action} className="form banner-form" key={state?.ok ? Date.now() : "banner"}>
+        <Notice state={state} />
+        <input type="hidden" name="orgId" value={orgId} />
+        <label>{t("Image large (PNG, JPEG ou WebP, 1,5 Mo au plus ; 1 600 × 400 px conseillés)")}<input type="file" name="banner" accept="image/png,image/jpeg,image/webp" required /></label>
+        <div className="actions">
+          <button className="btn small secondary" disabled={pending}>{pending ? t("Envoi…") : current ? t("Remplacer la bannière") : t("Ajouter la bannière")}</button>
+        </div>
+      </form>
+      {current && (
+        <form action={onRemove}>
+          <input type="hidden" name="orgId" value={orgId} />
+          <button className="link danger">{t("Retirer la bannière")}</button>
+        </form>
+      )}
+    </div>
   );
 }
 

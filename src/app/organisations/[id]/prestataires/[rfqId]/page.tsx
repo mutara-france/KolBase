@@ -168,7 +168,7 @@ export default async function Page({ params }: { params: Promise<{ id: string; r
                       <Avatar name={s.supplier.name} size={36} square src={logoSrc(s.supplier)} />
                       <div className="grow">
                         <strong>{s.supplier.name}</strong>
-                        <a className="text-xs" href={`/structures/${s.supplierId}`} target="_blank" rel="noreferrer">{t("Voir le book")}</a>
+                        <a className="text-xs" href={`/structures/${s.supplierId}`} target="_blank" rel="noreferrer">{t("Voir la vitrine")}</a>
                       </div>
                       {agencyName.has(s.supplierId) && <span className="pill wait">{t("Agence mandatée")}</span>}
                     </header>
@@ -267,7 +267,7 @@ function QuoteCard({ q, r, t, locale, orgId, meId, best, ended, present, setting
         <Avatar name={q.supplier.name} size={36} square src={logoSrc(q.supplier)} />
         <div className="grow">
           <strong>{q.supplier.name}</strong>
-          <a className="text-xs" href={`/structures/${q.supplierId}`} target="_blank" rel="noreferrer">{t("Voir le book")}</a>
+          <a className="text-xs" href={`/structures/${q.supplierId}`} target="_blank" rel="noreferrer">{t("Voir la vitrine")}</a>
         </div>
         {q.status !== "submitted" && <span className={`pill ${q.status === "retained" ? "ok" : "done"}`}>{t(QUOTE_STATUS[q.status])}</span>}
       </header>

@@ -31,6 +31,7 @@ export async function submitProposal(_: ProposalState, form: FormData): Promise<
   const description = str(form, "description", 6000);
   const audience = str(form, "audience", 2000);
   const schedule = str(form, "schedule", 1000);
+  const logistics = str(form, "logistics", 2000);
   if (!title) return { error: t("Donnez un titre à votre projet.") };
   const type = collabType(typeId);
   if (!type) return { error: t("Type de collaboration invalide.") };
@@ -72,11 +73,11 @@ export async function submitProposal(_: ProposalState, form: FormData): Promise<
     attachment = { bytes, name: file.name.slice(0, 200), type: file.type };
   }
 
-  const text = proposalText({ description, audience, schedule });
+  const text = proposalText({ description, audience, schedule, logistics });
   const now = new Date();
   const { proposal, copies } = await db.$transaction(async (tx) => {
     const proposal = await tx.expertProposal.create({
-      data: { practitionerId: prac.id, title, typeId, therapeuticArea: area || null, description, audience: audience || null, schedule: schedule || null, feeCents: fee, units },
+      data: { practitionerId: prac.id, title, typeId, therapeuticArea: area || null, description, audience: audience || null, schedule: schedule || null, logistics: logistics || null, feeCents: fee, units },
     });
     const copies: { projectId: string; linkId: string; orgId: string }[] = [];
     for (const org of orgs) {

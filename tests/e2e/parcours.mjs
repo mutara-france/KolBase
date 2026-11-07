@@ -1295,21 +1295,28 @@ async function submitNewOrg(page, siren) {
   await login(sup.page, "ludovic.perrin@demo.kolbase.local");
   await sup.page.goto(`${BASE}/organisations/demo-sup-belleville/devis?onglet=fiche`);
   t = await text(sup.page);
-  check("Mon book : indicateurs, photos et catalogue", /taux de réponse/i.test(t) && t.includes("Photos (0/8)") && t.includes("Catalogue de forfaits"));
+  check("Ma vitrine : indicateurs, bannière, réalisations et catalogue", sup.page.url().endsWith("/vitrine") && /taux de réponse/i.test(t) && t.includes("Bannière") && t.includes("Réalisations (0/12)") && t.includes("Catalogue de forfaits"), sup.page.url());
   const offer = sup.page.locator("form.offer-form");
   await offer.locator('input[name="label"]').fill("Mignardises sucrées (3 pièces)");
   await offer.locator('input[name="price"]').fill("4,50");
   await offer.locator('button:has-text("Ajouter au catalogue")').click();
   await sup.page.waitForTimeout(1200);
-  check("Mon book : prestation ajoutée au catalogue", (await text(sup.page)).includes("Mignardises sucrées (3 pièces)"));
+  check("Ma vitrine : prestation ajoutée au catalogue", (await text(sup.page)).includes("Mignardises sucrées (3 pièces)"));
   const png = Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==", "base64");
   const photoForm = sup.page.locator("form.photo-form");
   await photoForm.locator('input[name="photo"]').setInputFiles({ name: "salle.png", mimeType: "image/png", buffer: png });
   await photoForm.locator('input[name="caption"]').fill("Buffet en salle Saône");
-  await photoForm.locator('button:has-text("Ajouter la photo")').click();
+  await photoForm.locator('button:has-text("Ajouter la réalisation")').click();
   await sup.page.waitForTimeout(1500);
   const src = await sup.page.locator(".gallery img").first().getAttribute("src");
-  check("Mon book : photo ajoutée", !!src && src.startsWith("/photos/"), src ?? "");
+  check("Ma vitrine : réalisation ajoutée", !!src && src.startsWith("/photos/"), src ?? "");
+  // Bannière : envoyée, servie publiquement, affichée en tête de la vitrine publique.
+  await sup.page.locator('form.banner-form input[name="banner"]').setInputFiles({ name: "banniere.png", mimeType: "image/png", buffer: png });
+  await sup.page.locator('form.banner-form button:has-text("Ajouter la bannière")').click();
+  await sup.page.locator(".banner-preview img").waitFor({ timeout: 5000 }).catch(() => {});
+  const bsrc = await sup.page.locator(".banner-preview img").getAttribute("src").catch(() => null);
+  const bres = bsrc ? await (await session()).ctx.request.get(`${BASE}${bsrc}`) : null;
+  check("Bannière : enregistrée et publique", !!bsrc && bsrc.startsWith("/bannieres/demo-sup-belleville") && !!bres?.ok() && bres.headers()["content-type"] === "image/png", bsrc ?? "");
   const pub = await session();
   const res = await pub.ctx.request.get(`${BASE}${src}`);
   check("Photo du book : publique pour un prestataire référencé", res.ok() && res.headers()["content-type"] === "image/png");
@@ -4756,6 +4763,7 @@ async function submitNewOrg(page, siren) {
   await exp.page.fill('textarea[name="description"]', "Webinaire sur le retraitement endodontique en une séance, à partir de vingt cas cliniques suivis à deux ans.");
   await exp.page.fill('textarea[name="audience"]', "Omnipraticiens, 60 minutes");
   await exp.page.fill('input[name="schedule"]', "Premier trimestre 2027");
+  await exp.page.fill('textarea[name="logistics"]', "Studio de webinaire avec régie, captation vidéo");
   await exp.page.fill('input[name="fee"]', "2500");
   check("Honoraires au-dessus du repère : signalés à la saisie", (await exp.page.locator(".proposal-form").innerText()).includes("Votre demande dépasse ce repère"));
   await exp.page.fill('input[name="fee"]', "1500");
@@ -4766,7 +4774,8 @@ async function submitNewOrg(page, siren) {
   const copies = (await pgc.query(`select p.id, p."organizationId" org, p.status, p.description, p."proposalId", x.id link from "Project" p join "ProjectExpert" x on x."projectId" = p.id where p.title = 'Étude e2e : retraitement endodontique en une séance' order by p."organizationId"`)).rows;
   const copyOf = (org) => copies.find((c) => c.org === org);
   check("Proposition : une copie par organisation, en attente de leur réponse", copies.length === 3 && copies.every((c) => c.status === "ATT_IND" && c.proposalId === copies[0].proposalId), JSON.stringify(copies.map((c) => [c.org, c.status])));
-  check("Copie : objectif, public et calendrier", !!copyOf("demo-org-dentalys")?.description?.includes("Calendrier envisagé : Premier trimestre 2027"));
+  check("Copie : objectif, public, calendrier et besoins logistiques", !!copyOf("demo-org-dentalys")?.description?.includes("Calendrier envisagé : Premier trimestre 2027") && !!copyOf("demo-org-dentalys")?.description?.includes("Besoins logistiques : Studio de webinaire"));
+  check("Proposition : besoins logistiques enregistrés", (await q1(`select logistics from "ExpertProposal" where id = $1`, [copies[0]?.proposalId]))?.logistics === "Studio de webinaire avec régie, captation vidéo");
   check("Mes propositions : envoi confirmé, trois réponses attendues", (await text(exp.page)).includes("Proposition envoyée à 3 organisations") && (await exp.page.locator('.proposal-recipients li:has-text("En attente de réponse")').count()) === 3);
   const pm = await waitMail("julien.faure@demo.kolbase.local", "Projet proposé par Dr Mathieu Roux");
   check("E-mail à l'équipe Projets, sans les autres destinataires", !!pm && /1\s500\s€/.test(pm.text) && !pm.text.includes("OrthoNova") && !pm.text.includes("Collège"), pm?.subject ?? "aucun e-mail");
@@ -5100,7 +5109,7 @@ async function submitNewOrg(page, siren) {
   check("Offre expirée : version à jour demandée au prestataire", !!(await waitMail("ludovic.perrin@demo.kolbase.local", "Message de Dentalys Implants")));
   await cl.ctx.close();
 
-  // Prestataire : la demande à part, son devis lisible ; « Mon book » a sa page.
+  // Prestataire : la demande à part, son devis lisible ; « Ma vitrine » a sa page.
   const sup = await session();
   await login(sup.page, "ludovic.perrin@demo.kolbase.local");
   await sup.page.goto(`${BASE}/organisations/demo-sup-belleville/devis`);
@@ -5110,10 +5119,34 @@ async function submitNewOrg(page, siren) {
   const mine = await sup.page.locator("section.rfq-mine").innerText();
   check("Prestataire : son devis lisible et la demande de version à jour dans les échanges", /600 € HT/.test(mine.replace(/\s+/g, " ")) && (await sup.page.locator("section.rfq-talk").innerText()).includes("version à jour"), mine.slice(0, 200));
   await sup.page.goto(`${BASE}/organisations/demo-sup-belleville/devis?onglet=fiche`);
-  check("« Mon book » : page à part, dans la navigation", sup.page.url().endsWith("/organisations/demo-sup-belleville/book") && (await sup.page.locator('a.side-link[href="/organisations/demo-sup-belleville/book"]').count()) === 1, sup.page.url());
+  check("« Ma vitrine » : page à part, dans la navigation", sup.page.url().endsWith("/organisations/demo-sup-belleville/vitrine") && (await sup.page.locator('a.side-link[href="/organisations/demo-sup-belleville/vitrine"]').count()) === 1, sup.page.url());
   await sup.ctx.close();
   await pgc.query(`delete from "Rfq" where id = 'e2e-pd-rfq'`);
   await pgc.end();
+}
+
+// ── Filtres des opportunités : publique, praticien, organisation ──────────
+{
+  const anon = await session();
+  await anon.page.goto(`${BASE}/appels?evenement=avec`);
+  const pub = await text(anon.page);
+  check("Opportunités publiques : filtre « intervenir à un événement » et pastille active", (await anon.page.locator('.active-filters a:has-text("Intervenir à un événement")').count()) === 1 && /\d+ opportunités?/.test(pub));
+  await anon.page.locator('.active-filters a:has-text("Intervenir à un événement")').click();
+  await anon.page.waitForURL((u) => !u.search.includes("evenement"));
+  check("Opportunités publiques : la pastille retire le filtre", (await anon.page.locator(".active-filters").count()) === 0);
+  await anon.ctx.close();
+  const exp = await session();
+  await login(exp.page, "antoine.martin@demo.kolbase.local");
+  await exp.page.goto(`${BASE}/opportunites`);
+  await Promise.all([exp.page.waitForURL(/candidature=sans/), exp.page.selectOption('select[name="candidature"]', "sans")]);
+  check("Opportunités (praticien) : filtre appliqué dès le choix, sans bouton", (await exp.page.locator('.active-filters a:has-text("Sans ma candidature")').count()) === 1);
+  await exp.ctx.close();
+  const org = await session();
+  await login(org.page, "claire.morel@demo.kolbase.local");
+  await org.page.goto(`${BASE}/organisations/demo-org-dentalys/opportunites?statut=a-examiner`);
+  const rows = await org.page.locator("section.row-list a.row-item").allInnerTexts();
+  check("Opportunités (organisation) : « Candidatures à examiner » ne garde que celles qui en ont", rows.length > 0 && rows.every((r) => /à examiner/.test(r)), rows.join(" | ").slice(0, 300));
+  await org.ctx.close();
 }
 
 // ── 4. Limitation des tentatives ───────────────────────────────────────────

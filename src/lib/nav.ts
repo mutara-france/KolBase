@@ -48,7 +48,7 @@ export function orgNavItems(orgId: string, roles: OrgRole[], kind: string): Shel
   const items: ShellItem[] = [{ key: "accueil", href: base, label: "Accueil", icon: "House", exact: true }];
   if (kind === "PRESTATAIRE") {
     items.push({ key: "devis", href: `${base}/devis`, label: "Demandes de devis", short: "Devis", icon: "Receipt" });
-    items.push({ key: "book", href: `${base}/book`, label: "Mon book", short: "Book", icon: "Store" });
+    items.push({ key: "vitrine", href: `${base}/vitrine`, label: "Ma vitrine", short: "Vitrine", icon: "Store" });
     return items;
   }
   if (has(roles, SOURCING_ROLES))
