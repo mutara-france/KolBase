@@ -2155,4 +2155,5 @@ export const ORGANISATION: Record<string, string> = {
   "{n} inscription": "{n} registration",
   "En signature électronique": "Out for e-signature",
   "Convention prête": "Agreement ready",
+  "Repris dans la sollicitation de chaque expert et dans sa convention.": "Included in each expert's invitation and in their agreement.",
 };

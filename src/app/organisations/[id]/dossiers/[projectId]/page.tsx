@@ -158,7 +158,7 @@ export default async function Page({ params, searchParams }: { params: Promise<{
     // Dossier né d'une candidature à un appel rattaché à un événement : l'intervention a lieu à cet événement.
     db.application.findFirst({
       where: { projectId, openCall: { organizationId: id } },
-      select: { openCall: { select: { id: true, title: true, event: { select: { id: true, title: true, startsAt: true, city: true } } } } },
+      select: { openCall: { select: { id: true, title: true, event: { select: { id: true, title: true, startsAt: true, city: true, internal: true, publishedAt: true, reviewStatus: true } } } } },
     }),
     feeLevels(id),
   ]);
@@ -429,9 +429,9 @@ export default async function Page({ params, searchParams }: { params: Promise<{
         href={tabHref("evenement")} icon={CalendarDays} label={t("Événement")} disabled={!!evTab.disabled}
         value={ev0 ? `${fmtDate(locale, ev0.startsAt)}${ev0.city ? ` · ${ev0.city}` : ""}` : evTab.disabled ? t("Sans événement") : t("À créer")}
         detail={ev0
-          ? ("internal" in ev0 && ev0.internal ? t("Réunion interne") : "publishedAt" in ev0 && ev0.publishedAt ? t("Publié dans l'agenda") : "reviewStatus" in ev0 && ev0.reviewStatus === "submitted" ? t("En attente de la conformité") : t("Brouillon"))
+          ? (ev0.internal ? t("Réunion interne") : ev0.publishedAt ? t("Publié dans l'agenda") : ev0.reviewStatus === "submitted" ? t("En attente de la conformité") : t("Brouillon"))
           : evTab.disabled ?? (isProject && !finished ? t("Date, lieu, prestataires et communication") : "")}
-        tone={ev0 ? ("publishedAt" in ev0 && ev0.publishedAt ? "ok" : "neutral") : evTab.disabled ? "neutral" : "warn"}
+        tone={ev0 ? (ev0.publishedAt ? "ok" : "neutral") : evTab.disabled ? "neutral" : "warn"}
       />
       <StateTile
         href={tabHref("conformite")} icon={Scale} label={t("Conformité")}
@@ -606,7 +606,7 @@ export default async function Page({ params, searchParams }: { params: Promise<{
                 {tiles}
               </section>
               <section className="card stack-sm" id="objet" aria-labelledby="objet-titre">
-                <SectionHead icon={FileText} id="objet-titre" title={t("Objet du dossier")} desc={[t(type?.label ?? project.typeId), project.therapeuticArea ? t(project.therapeuticArea) : null].filter(Boolean).join(" · ")} />
+                <SectionHead icon={FileText} id="objet-titre" title={t("Objet du dossier")} desc={t("Repris dans la sollicitation de chaque expert et dans sa convention.")} />
                 {project.description ? <p className="object-text">{project.description}</p> : <p className="muted">{t("Aucun objet renseigné.")}</p>}
                 {editable && (
                   <details className="inline-edit" open={modifier === "1" && active === "apercu"}>

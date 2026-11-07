@@ -435,7 +435,9 @@ const linkIn = (mail) => mail?.text.match(/https?:\/\/\S+/g)?.find((u) => !u.end
   const t = await text(claire.page);
   check("Dossier hors France : régime « Hors France », obligations belges rappelées", t.includes("Hors France") && t.includes("betransparent.be") && t.includes("Mdeon"));
   check("Dossier hors France : pas de démarche auprès de l'Ordre", !t.includes("Demander l'autorisation à l'Ordre") && !t.includes("Déclaration simple"));
-  await claire.page.click('button:has-text("Hors France")');
+  // L'étape suivante se franchit depuis la vue d'ensemble (« Prochaine étape »).
+  await claire.page.goto(`${BASE}/organisations/demo-org-dentalys/dossiers/e2e-prj-be`);
+  await claire.page.click('.next-step button:has-text("Hors France")');
   await claire.page.waitForTimeout(1200);
   const st = (await db.query(`SELECT status FROM "Project" WHERE id = 'e2e-prj-be'`)).rows[0].status;
   check("Dossier hors France : passage direct à la signature", st === "SIGNATURE", st);
@@ -1089,7 +1091,7 @@ async function submitNewOrg(page, siren) {
   await page.locator('section#rfq-demo-rfq-board-salle .quote:has-text("Espace Confluence") button:has-text("Retenir")').click();
   await page.locator('section#rfq-demo-rfq-board-salle .quote:has-text("Espace Confluence") button:has-text("Confirmer")').click();
   await page.waitForTimeout(1200);
-  await page.goto(`${BASE}/organisations/demo-org-dentalys/dossiers/demo-prj-board`);
+  await page.goto(`${BASE}/organisations/demo-org-dentalys/dossiers/demo-prj-board?onglet=budget`);
   t = await text(page);
   check("Dossier : devis retenu compté dans le budget", t.includes("Prestataires (devis retenus)") && t.includes("Salle et lieu de réception : Espace Confluence"));
   await page.goto(`${BASE}/organisations/demo-org-dentalys/dossiers/demo-prj-redaction`);
@@ -1561,8 +1563,8 @@ async function submitNewOrg(page, siren) {
   await ctx.close();
   const org = await session();
   await login(org.page, "thomas.garnier@demo.kolbase.local");
-  await org.page.goto(`${BASE}/organisations/demo-org-orthonova/dossiers/demo-prj-aligneurs?onglet=experts`);
-  check("Dossier : note d'honoraires de l'expert", (await text(org.page)).includes(`Note d'honoraires ${num}`));
+  await org.page.goto(`${BASE}/organisations/demo-org-orthonova/dossiers/demo-prj-aligneurs?onglet=budget`);
+  check("Dossier : note d'honoraires de l'expert (onglet Budget)", (await text(org.page)).includes(`N° ${num}`));
   check("Note d'honoraires : PDF pour l'organisation", (await org.ctx.request.get(`${BASE}${href}`)).ok());
   await org.ctx.close();
   const other = await session();
@@ -2818,7 +2820,8 @@ async function submitNewOrg(page, siren) {
     await login(ex.page, "mathieu.roux@demo.kolbase.local");
     await ex.page.goto(`${BASE}/sollicitations/e2e-lot2-sig-roux`);
     let et = await text(ex.page);
-    check("Expert : plus « en attente de votre signature », « Convention signée (PDF) »", !et.includes("Convention en attente de votre signature") && (await ex.page.locator('a:has-text("Convention signée (PDF)")').count()) >= 1 && et.includes("Convention signée déposée : l'organisation confirme la signature du dossier"));
+    await ex.page.goto(`${BASE}/sollicitations/e2e-lot2-sig-roux?onglet=documents`);
+    check("Expert : plus « en attente de votre signature », « Convention signée (PDF) »", !et.includes("Convention en attente de votre signature") && !(await text(ex.page)).includes("Convention en attente de votre signature") && (await ex.page.locator('a:has-text("Convention signée (PDF)")').count()) >= 1 && et.includes("Convention signée déposée : l'organisation confirme la signature du dossier"));
     await ex.ctx.close();
     // Convention de Dr Fontaine déposée sans clore la demande (cas antérieur), puis dossier passé « Signé » : demande close.
     await pgc.query(`insert into "Document" (id, "projectId", "projectExpertId", kind, name, "contentType", size, "storageKey") values ('e2e-lot2-doc-fontaine', 'e2e-lot2-prj-sig', 'e2e-lot2-sig-fontaine', 'CONVENTION_SIGNEE', 'convention-fontaine-signee.pdf', 'application/pdf', ${pdf.length}, 'dossiers/e2e-lot2-prj-sig/fontaine.pdf')`);
@@ -2830,7 +2833,7 @@ async function submitNewOrg(page, siren) {
     check("Dossier passé « Signé » : la demande encore en cours est annulée", fo?.status === "canceled" && foDb.sig === "canceled" && foDb.prj === "SIGNE", JSON.stringify({ yousign: fo?.status, db: foDb }));
     const fs = await session();
     await login(fs.page, "isabelle.fontaine@demo.kolbase.local");
-    await fs.page.goto(`${BASE}/sollicitations/e2e-lot2-sig-fontaine`);
+    await fs.page.goto(`${BASE}/sollicitations/e2e-lot2-sig-fontaine?onglet=documents`);
     et = await text(fs.page);
     check("Expert (dossier signé) : pas de demande en attente, convention signée (PDF)", !et.includes("Convention en attente de votre signature") && (await fs.page.locator('a[href="/documents/e2e-lot2-doc-fontaine"]').count()) >= 1);
     await fs.ctx.close();
@@ -3840,7 +3843,9 @@ async function submitNewOrg(page, siren) {
     const rm = await waitMail(CLAIRE, /Nicolas Blanc a supprimé son compte — Board 5a esthétique/);
     check("Compte supprimé : e-mail à l'équipe Projets", !!rm && rm.text.includes("revient en attente des experts"), rm?.text);
     await org.page.goto(`${BASE}/organisations/demo-org-dentalys/dossiers/e2e-5a-prj3`);
-    check("Compte supprimé : dossier plus soumettable, expert signalé", (await org.page.locator('form:has(input[value="submit"])').count()) === 0 && (await text(org.page)).includes("Retiré : compte supprimé"));
+    const noSubmit = (await org.page.locator('form:has(input[value="submit"])').count()) === 0;
+    await tab(org.page, "experts");
+    check("Compte supprimé : dossier plus soumettable, expert signalé", noSubmit && (await text(org.page)).includes("Retiré : compte supprimé"));
     await org.ctx.close();
   }
 
@@ -4591,7 +4596,7 @@ async function submitNewOrg(page, siren) {
   await jul.page.locator('.notice.ok:has-text("Objet du dossier enregistré")').waitFor({ timeout: 10000 }).catch(() => {});
   await jul.page.goto(`${BASE}/organisations/demo-org-dentalys/dossiers/demo-prj-board`);
   const t = await text(jul.page);
-  check("Intervention prévue : soumission en retard signalée", t.includes("Soumission à la conformité en retard de") && /intervention prévue/i.test(t));
+  check("Intervention prévue : soumission en retard signalée", t.includes("Soumission à la conformité en retard de") && /intervention le /i.test(t));
   check("Fiche dossier : abandon rangé sous « Autres actions »", (await jul.page.locator('.next-step details.more-actions:has-text("Abandonner")').count()) === 1 && !(await jul.page.locator('.next-step details.more-actions').evaluate((d) => d.open)));
   check("Fiche dossier : objet dans la vue d'ensemble, frise compacte", (await jul.page.locator('section:has(h2:has-text("Objet du dossier"))').count()) === 1 && (await jul.page.locator("header.page-hero .pipeline-compact").count()) === 1);
   await pgc.query(`update "Project" set "plannedAt" = null where id = 'demo-prj-board'`);
