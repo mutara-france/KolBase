@@ -29,6 +29,8 @@ async function session() {
 }
 /** Ouvre un onglet de la fiche affichée (dossier, collaboration du praticien). */
 const tab = (page, key) => page.goto(`${page.url().split(/[?#]/)[0]}?onglet=${key}`);
+/** Fiche dossier : déplie « Autres actions » (abandonner, revenir en accord de principe). */
+const openMore = (page) => page.evaluate(() => document.querySelectorAll("details.more-actions").forEach((d) => { d.open = true; }));
 
 async function login(page, email, password = PW, next = "") {
   await page.goto(`${BASE}/connexion${next ? `?next=${encodeURIComponent(next)}` : ""}`);
@@ -783,7 +785,11 @@ async function submitNewOrg(page, siren) {
   await anon.close();
   // Export CSV : une formule saisie comme nom est neutralisée.
   await db.query(`update "User" set "lastName"='=HYPERLINK("http://x")' where id='demo-u-lambert'`);
-  const csv = await (await ctx.request.get(`${BASE}/organisations/demo-org-dentalys/hospitalites/export`)).text();
+  // Export des hospitalités : réservé au rôle Conformité.
+  const conf = await session();
+  await login(conf.page, "sophie.bernard@demo.kolbase.local");
+  const csv = await (await conf.ctx.request.get(`${BASE}/organisations/demo-org-dentalys/hospitalites/export`)).text();
+  await conf.ctx.close();
   check("Export CSV : formule neutralisée", csv.includes(`"'=HYPERLINK(""http://x"")"`) && !/;=HYPERLINK/.test(csv));
   await db.query(`update "User" set "lastName"='Lambert' where id='demo-u-lambert'`);
   // Convention PDF : nom en alphabet étendu conservé (police Unicode embarquée).
@@ -1607,7 +1613,7 @@ async function submitNewOrg(page, siren) {
   check("Suggestion d'experts : diversité signalée", /Vincent Moreau[\s\S]*?(Déjà \d+ % de vos honoraires|collaborations? avec vous)/.test(box));
   check("Suggestion d'experts : synthèse de l'assistant", box.includes("PROPOSITION IA"));
   await page.locator('.suggest-list li:has-text("Vincent Moreau") button:has-text("Ajouter")').click();
-  check("Suggestion d'experts : ajout au dossier", (await page.locator('.fee-row:has-text("Vincent Moreau")').count()) === 1);
+  check("Suggestion d'experts : ajout au dossier", (await page.locator('.fee-block:has-text("Vincent Moreau")').count()) === 1);
   await page.goto(`${BASE}/organisations/demo-org-dentalys/dossiers/demo-prj-symposium?onglet=conformite`);
   check("Relecture assistée : réservée à la conformité", (await page.locator('button:has-text("Analyser le dossier avec l\'IA")').count()) === 0);
   await ctx.close();
@@ -2431,12 +2437,14 @@ async function submitNewOrg(page, siren) {
     await pgc.query(`update "Project" set status = 'SIGNATURE' where id = $1`, [projectId]);
     await org.page.goto(dossierUrl);
     check("En signature : « Retour en accord de principe » et abandon proposés", (await org.page.locator('button:has-text("Retour en accord de principe")').count()) === 1 && (await org.page.locator('button:has-text("Abandonner le dossier")').count()) === 1);
+    await openMore(org.page);
     await Promise.all([org.page.waitForURL(/modifier=1/), org.page.click('button:has-text("Retour en accord de principe")')]);
     check("Retour en accord de principe : dossier de nouveau modifiable", (await org.page.locator("#modifier[open]").count()) === 1);
     await pgc.query(`update "Project" set status = 'SIGNATURE' where id = $1`, [projectId]);
     await pgc.query(`insert into "ConventionSignature" (id, "projectExpertId", "requestId", status, "updatedAt") values ('e2e-lot1-sig', $1, 'e2e-lot1-req', 'ongoing', now())`, [link.id]);
     await org.page.goto(dossierUrl);
     check("Signature en cours : plus de retour en accord de principe", (await org.page.locator('button:has-text("Retour en accord de principe")').count()) === 0 && (await text(org.page)).includes("le retour en accord de principe n'est plus possible"));
+    await openMore(org.page);
     await org.page.fill('form:has(button:has-text("Abandonner le dossier")) input[name="note"]', "Budget de l'année annulé");
     await org.page.click('button:has-text("Abandonner le dossier")');
     await org.page.waitForTimeout(1200);
@@ -2669,15 +2677,19 @@ async function submitNewOrg(page, siren) {
     check("Fiche de l'événement : régime par prestation", night.includes("Autorisation") && lunch.includes("Déclaration") && (await text(page)).includes("Participant qui accepte toutes les prestations : convention soumise à autorisation"), `${night} | ${lunch}`);
     await pgc.query(`insert into "Registration" (id, "eventId", "userId", profession) values ('e2e-lot2-reg-hosp', $1, 'demo-u-durand', 'Chirurgien-dentiste')`, [evId]);
     await pgc.query(`insert into "RegistrationBenefit" ("registrationId", "benefitId", "valueCents") select 'e2e-lot2-reg-hosp', id, "valueCents" from "EventBenefit" where "eventId" = $1 and "catalogId" in ('nuitee', 'dejeuner')`, [evId]);
-    await page.goto(`${BASE}/organisations/demo-org-dentalys/hospitalites`);
-    const row = await page.locator('section.card:has-text("Congrès Lot Deux") tr:has-text("DURAND")').innerText();
-    check("Hospitalités : colonne Régime", (await page.locator('section.card:has-text("Congrès Lot Deux") th:has-text("Régime")').count()) === 1 && row.includes("Autorisation"), row);
-    await page.goto(`${BASE}/organisations/demo-org-dentalys/conformite?onglet=autorisations`);
-    const auth = await page.locator('tr:has-text("Congrès Lot Deux")').innerText().catch(() => "");
-    check("Autorisations : l'hospitalité soumise à autorisation y remonte", (await text(page)).includes("Hospitalités soumises à autorisation") && auth.includes("DURAND Hélène") && auth.includes("Nuitée 180 € > 150 €") && auth.includes("Avant le"), auth);
-    const conv = await page.request.get(`${BASE}/organisations/demo-org-dentalys/hospitalites/convention/e2e-lot2-reg-hosp`);
-    check("Convention d'hospitalité (PDF) disponible pour une hospitalité soumise à autorisation", conv.status() === 200 && (conv.headers()["content-type"] ?? "").includes("pdf"));
     await ctx.close();
+    // Hospitalités, autorisations, conventions : espace de la conformité.
+    const so = await session();
+    await login(so.page, "sophie.bernard@demo.kolbase.local");
+    await so.page.goto(`${BASE}/organisations/demo-org-dentalys/hospitalites`);
+    const row = await so.page.locator('section.card:has-text("Congrès Lot Deux") tr:has-text("DURAND")').innerText();
+    check("Hospitalités : colonne Régime", (await so.page.locator('section.card:has-text("Congrès Lot Deux") th:has-text("Régime")').count()) === 1 && row.includes("Autorisation"), row);
+    await so.page.goto(`${BASE}/organisations/demo-org-dentalys/conformite?onglet=autorisations`);
+    const auth = await so.page.locator('tr:has-text("Congrès Lot Deux")').innerText().catch(() => "");
+    check("Autorisations : l'hospitalité soumise à autorisation y remonte", (await text(so.page)).includes("Hospitalités soumises à autorisation") && auth.includes("DURAND Hélène") && auth.includes("Nuitée 180 € > 150 €") && auth.includes("Avant le"), auth);
+    const conv = await so.page.request.get(`${BASE}/organisations/demo-org-dentalys/hospitalites/convention/e2e-lot2-reg-hosp`);
+    check("Convention d'hospitalité (PDF) disponible pour une hospitalité soumise à autorisation", conv.status() === 200 && (conv.headers()["content-type"] ?? "").includes("pdf"));
+    await so.ctx.close();
   }
 
   // 4. Une définition par indicateur.
@@ -2696,8 +2708,9 @@ async function submitNewOrg(page, siren) {
     await c.page.goto(`${BASE}/organisations/demo-org-dentalys/dossiers/e2e-lot2-prj-budget`);
     const head = n(await c.page.locator("header.page-hero").innerText());
     const budget = n(await c.page.locator('section.card:has(h2:has-text("Budget et dépenses"))').innerText());
-    check("Dossier : en-tête, engagé = accepté, proposé à part", head.includes("1 engagé") && head.includes("2 000 € HT") && head.includes("1 500 € HT proposés, sans réponse") && head.includes("20 % engagé ; 1 500 € HT proposés en plus"), head);
-    check("Dossier : budget, même définition", /2 000 €\s*Honoraires engagés \(HT\)/.test(budget) && /1 500 €\s*Honoraires proposés, sans réponse \(HT\)/.test(budget) && /2 000 €\s*Total engagé \(HT\) · 20 % du budget/.test(budget), budget);
+    check("Dossier : en-tête, engagé = accepté, proposé à part", head.includes("2 000 € HT") && head.includes("1 500 € HT proposés, sans réponse") && head.includes("20 % engagé ; 1 500 € HT proposés en plus"), head);
+    check("Dossier : budget, même définition", /Honoraires engagés \(HT\)\s*2 000 €/.test(budget) && /Honoraires proposés, sans réponse \(HT\)\s*1 500 €/.test(budget) && /Total engagé \(HT\) · 20 % du budget\s*2 000 €/.test(budget), budget);
+    check("Dossier : en-tête resserré (étape en cours, objet dans la vue d'ensemble)", /étape 2 sur 7/i.test(head) && head.includes("ensuite :"), head);
     // HT / TTC toujours indiqué ; coût par participant d'un devis rapporté aux présents après l'événement.
     await c.page.goto(`${BASE}/organisations/demo-org-dentalys/prestataires`);
     const presta = n(await text(c.page));
@@ -2705,14 +2718,17 @@ async function submitNewOrg(page, siren) {
     await c.page.goto(`${BASE}/organisations/demo-org-dentalys/evenements/demo-ev-passe`);
     const past = n(await text(c.page));
     check("Événement passé : coût d'un devis par présent, montants en TTC", past.includes("€ TTC par présent") && /Coût réel\s*[\d ]+(,\d+)? € TTC/i.test(past) && past.includes("non consommées, elles ne sont pas déclarées"));
-    // Absents : ni « à déclarer », affichés « absent : non déclaré ».
-    await c.page.goto(`${BASE}/organisations/demo-org-dentalys/hospitalites`);
-    const todo = await c.page.locator('section.card:has-text("Soirée régénération osseuse")').innerText().catch(() => "");
-    check("Hospitalités à déclarer : sans l'absent au pointage", !todo.includes("GIRARD"), todo.slice(0, 200));
-    await c.page.goto(`${BASE}/organisations/demo-org-dentalys/hospitalites?statut=toutes`);
-    const girardRow = await c.page.locator('section.card:has-text("Soirée régénération osseuse") tr:has-text("GIRARD")').innerText().catch(() => "");
-    check("Hospitalités (toutes) : « Absent : non déclaré », pas de déclaration proposée", girardRow.includes("Absent : non déclaré") && !girardRow.includes("Marquer déclaré"), girardRow);
     await c.ctx.close();
+    // Absents : ni « à déclarer », affichés « absent : non déclaré » (espace de la conformité).
+    const so = await session();
+    await login(so.page, "sophie.bernard@demo.kolbase.local");
+    await so.page.goto(`${BASE}/organisations/demo-org-dentalys/hospitalites`);
+    const todo = await so.page.locator('section.card:has-text("Soirée régénération osseuse")').innerText().catch(() => "");
+    check("Hospitalités à déclarer : sans l'absent au pointage", !todo.includes("GIRARD"), todo.slice(0, 200));
+    await so.page.goto(`${BASE}/organisations/demo-org-dentalys/hospitalites?statut=toutes`);
+    const girardRow = await so.page.locator('section.card:has-text("Soirée régénération osseuse") tr:has-text("GIRARD")').innerText().catch(() => "");
+    check("Hospitalités (toutes) : « Absent : non déclaré », pas de déclaration proposée", girardRow.includes("Absent : non déclaré") && !girardRow.includes("Marquer déclaré"), girardRow);
+    await so.ctx.close();
     // Côté praticien absent : revenus, liens d'intérêts, Transparence, inscriptions, avis.
     await pgc.query(`insert into "Project" (id, "organizationId", title, "typeId", status, "updatedAt") values ('e2e-lot2-prj-g1', 'demo-org-orthonova', 'Atelier CFAO signé', 'travaux-pratiques', 'SIGNE', now()), ('e2e-lot2-prj-g2', 'demo-org-orthonova', 'Atelier CFAO bloqué', 'travaux-pratiques', 'BLOQUE', now())`);
     await pgc.query(`insert into "ProjectExpert" (id, "projectId", "practitionerId", status, "feeCents", days) values ('e2e-lot2-pg-1', 'e2e-lot2-prj-g1', 'demo-p-girard', 'SIGNE', 150000, 1), ('e2e-lot2-pg-2', 'e2e-lot2-prj-g2', 'demo-p-girard', 'BLOQUE', 200000, 1)`);
@@ -3715,9 +3731,11 @@ async function submitNewOrg(page, siren) {
     await pgc.query(`insert into "Project" (id, "organizationId", title, "typeId", status, "createdById", "updatedAt") values ('e2e-5a-prj2', 'demo-org-dentalys', 'Comité 5a occlusion', 'advisory', 'VALIDE', $1, now())`, [claireId]);
     await pgc.query(`insert into "ProjectExpert" (id, "projectId", "practitionerId", status, "feeCents", days, "respondedAt") values ('e2e-5a-l2-moreau', 'e2e-5a-prj2', 'demo-p-moreau', 'VALIDE', 120000, 1, now())`);
     await org.page.goto(`${BASE}/organisations/demo-org-dentalys/dossiers/e2e-5a-prj2`);
+    await openMore(org.page);
     await Promise.all([org.page.waitForURL(/modifier=1/), org.page.locator('form:has(input[value="back_to_accord"]) button').click()]);
     check("Retour en accord de principe : e-mail à l'expert engagé", !!(await waitMail(MOREAU, "Conditions à revoir : Comité 5a occlusion")));
     await org.page.goto(`${BASE}/organisations/demo-org-dentalys/dossiers/e2e-5a-prj2`);
+    await openMore(org.page);
     const ab = org.page.locator('form:has(input[value="abandon"])');
     await ab.locator('input[name="note"]').fill("Budget reporté à l'an prochain");
     await ab.locator("button").click();
@@ -4381,8 +4399,9 @@ async function submitNewOrg(page, siren) {
     await pgc.query(`insert into "EventBenefit" (id, "eventId", "catalogId", label, "valueCents") values ('e2e-5b-ben', 'e2e-5b-ev-auth', 'nuitee', 'Nuitée', 40000)`);
     await pgc.query(`insert into "Registration" (id, "eventId", "userId", profession) values ('e2e-5b-reg-auth', 'e2e-5b-ev-auth', 'demo-u-durand', 'Chirurgien-dentiste')`);
     await pgc.query(`insert into "RegistrationBenefit" ("registrationId", "benefitId", "valueCents") values ('e2e-5b-reg-auth', 'e2e-5b-ben', 40000)`);
+    // Tâche de la conformité (Sophie) : l'administratrice seule n'a plus la rubrique Conformité.
     const co = await session();
-    await login(co.page, CLAIRE);
+    await login(co.page, "sophie.bernard@demo.kolbase.local");
     await co.page.goto(`${BASE}/organisations/demo-org-dentalys`);
     check("Conformité : tâche « Autorisation d'hospitalité à demander »", (await text(co.page)).includes("Autorisation d'hospitalité à demander : Congrès 5b avec nuitée"));
     await co.ctx.close();
@@ -4391,6 +4410,183 @@ async function submitNewOrg(page, siren) {
     await pgc.query(`delete from "Event" where id = 'e2e-5b-ev-auth'`).catch(() => {});
   }
 
+  await pgc.end();
+}
+
+// ── Rôles : la conformité réservée au rôle Conformité ; inscriptions et statistiques géographiques ──
+{
+  const claire = await session();
+  await login(claire.page, "claire.morel@demo.kolbase.local");
+  await claire.page.goto(`${BASE}/organisations/demo-org-dentalys`);
+  check("Administratrice sans rôle Conformité : pas de rubrique Conformité", (await claire.page.locator('aside a[href="/organisations/demo-org-dentalys/conformite"]').count()) === 0);
+  await claire.page.goto(`${BASE}/organisations/demo-org-dentalys/conformite`);
+  check("Administratrice sans rôle Conformité : espace conformité refusé", claire.page.url().endsWith("/organisations/demo-org-dentalys?acces=refuse"), claire.page.url());
+  await claire.page.goto(`${BASE}/organisations/demo-org-dentalys/dossiers/demo-prj-symposium?onglet=conformite`);
+  check("Administratrice sans rôle Conformité : pas de bouton de validation", (await claire.page.locator('button:text-is("Valider")').count()) === 0);
+  // Menu du compte : « Mes inscriptions » pour un compte sans profil praticien.
+  await claire.page.click(".session-chip");
+  check("Menu du compte (organisation) : « Mes inscriptions »", (await claire.page.locator('.account-menu a[href="/inscriptions"]').count()) === 1);
+  // Statistiques : répartition par région (code postal, ou grande ville) et par ville.
+  await claire.page.goto(`${BASE}/organisations/demo-org-dentalys/statistiques`);
+  const geo = await claire.page.locator("#geographie").innerText();
+  check("Statistiques : répartition par région", geo.includes("Auvergne-Rhône-Alpes") && geo.includes("Experts rémunérés") && geo.includes("Participants aux événements"), geo.slice(0, 200));
+  await claire.page.goto(`${BASE}/organisations/demo-org-dentalys/statistiques?geo=villes`);
+  check("Statistiques : répartition par ville", (await claire.page.locator("#geographie").innerText()).includes("Lyon"));
+  await claire.ctx.close();
+  // Administratrice qui tient aussi la conformité (organisation d'une seule personne) : l'espace lui reste ouvert.
+  const anne = await session();
+  await login(anne.page, "anne.chevalier@demo.kolbase.local");
+  await anne.page.goto(`${BASE}/organisations/demo-org-academie/conformite`);
+  check("Administratrice avec le rôle Conformité : espace conformité ouvert", anne.page.url().endsWith("/organisations/demo-org-academie/conformite"), anne.page.url());
+  await anne.ctx.close();
+  // Organisation sans membre Conformité : alerte à l'administrateur (Membres, À faire).
+  const pgc = new pg.Client({ connectionString: process.env.DATABASE_URL });
+  await pgc.connect();
+  await pgc.query(`delete from "Membership" where "organizationId" = 'demo-org-cdra' and role = 'CONFORMITE'`);
+  const pierre = await session();
+  await login(pierre.page, "pierre.vidal@demo.kolbase.local");
+  await pierre.page.goto(`${BASE}/organisations/demo-org-cdra/membres`);
+  check("Sans membre Conformité : alerte dans Membres", (await pierre.page.locator("#sans-conformite").count()) === 1);
+  await pierre.page.goto(`${BASE}/organisations/demo-org-cdra`);
+  check("Sans membre Conformité : action « Attribuer le rôle Conformité »", (await text(pierre.page)).includes("Attribuer le rôle Conformité"));
+  await pgc.query(`insert into "Membership" (id, "userId", "organizationId", role) values ('e2e-cdra-conf', 'demo-u-pierre', 'demo-org-cdra', 'CONFORMITE') on conflict do nothing`);
+  await pierre.ctx.close();
+  await pgc.end();
+}
+
+// ── Opportunité publiée depuis l'événement d'un dossier : l'expert retenu rejoint ce dossier ──
+{
+  const pgc = new pg.Client({ connectionString: process.env.DATABASE_URL });
+  await pgc.connect();
+  const clean = async () => {
+    await pgc.query(`delete from "Message" where "projectExpertId" in (select id from "ProjectExpert" where "projectId" = 'demo-prj-board' and "practitionerId" = 'demo-p-roux')`);
+    await pgc.query(`delete from "ProjectExpert" where "projectId" = 'demo-prj-board' and "practitionerId" = 'demo-p-roux'`);
+    await pgc.query(`delete from "OpenCall" where id = 'e2e-call-board'`);
+  };
+  await clean();
+  await pgc.query(`insert into "OpenCall" (id, "organizationId", "eventId", title, "typeId", status, slots, "createdById") values ('e2e-call-board', 'demo-org-dentalys', 'demo-ev-board', 'Intervenant supplémentaire au board', 'advisory', 'open', 2, 'demo-u-julien')`);
+  await pgc.query(`insert into "Application" (id, "openCallId", "practitionerId", status, message) values ('e2e-app-board', 'e2e-call-board', 'demo-p-roux', 'pending', 'Disponible pour la réunion du board.')`);
+  const projects = async () => (await pgc.query(`select count(*)::int n from "Project" where "organizationId" = 'demo-org-dentalys'`)).rows[0].n;
+  const before = await projects();
+  const jul = await session();
+  await login(jul.page, "julien.faure@demo.kolbase.local");
+  await jul.page.goto(`${BASE}/organisations/demo-org-dentalys/opportunites/e2e-call-board`);
+  check("Opportunité d'un événement de dossier : le retenu rejoindra ce dossier (annoncé)", (await text(jul.page)).includes("ajoute l'expert au dossier « Board implantologie — gamme 2027 »"));
+  await jul.page.click('button:has-text("Retenir…")');
+  await jul.page.fill('input[name="units"]', "1");
+  await jul.page.fill('input[name="fee"]', "1500");
+  await Promise.all([jul.page.waitForURL(/\/dossiers\/demo-prj-board/), jul.page.click('button:has-text("Proposer ces honoraires")')]);
+  const link = (await pgc.query(`select status, "feeCents" from "ProjectExpert" where "projectId" = 'demo-prj-board' and "practitionerId" = 'demo-p-roux'`)).rows[0];
+  check("Candidat retenu : ajouté au dossier de l'événement, sans nouveau dossier", link?.status === "ATT_EXPERTS" && link?.feeCents === 150000 && (await projects()) === before, JSON.stringify(link));
+  check("Candidature rattachée au dossier de l'événement", (await pgc.query(`select "projectId" from "Application" where id = 'e2e-app-board'`)).rows[0]?.projectId === "demo-prj-board");
+  check("E-mail à l'expert : honoraires proposés", !!(await waitMail("mathieu.roux@demo.kolbase.local", "Candidature retenue : Dentalys Implants vous propose")));
+  await clean();
+  await jul.ctx.close();
+  await pgc.end();
+}
+
+// ── Grille de rémunération et volume horaire ──────────────────────────────
+{
+  const pgc = new pg.Client({ connectionString: process.env.DATABASE_URL });
+  await pgc.connect();
+  const clean = async () => {
+    await pgc.query(`delete from "Message" where "projectExpertId" in (select id from "ProjectExpert" where "projectId" = 'demo-prj-board' and "practitionerId" = 'demo-p-roux')`);
+    await pgc.query(`delete from "ProjectExpert" where "projectId" = 'demo-prj-board' and "practitionerId" = 'demo-p-roux'`);
+    await pgc.query(`delete from "FeeLevel" where label = 'Formateur e2e'`);
+  };
+  await clean();
+  // La conformité définit un niveau ; l'administratrice sans rôle Conformité n'y a pas accès.
+  const sophie = await session();
+  await login(sophie.page, "sophie.bernard@demo.kolbase.local");
+  await sophie.page.goto(`${BASE}/organisations/demo-org-dentalys/conformite?onglet=parametres`);
+  check("Paramètres de conformité : grille de rémunération (niveaux de démonstration)", (await sophie.page.locator("#grille").innerText()).includes("Expert international"));
+  await sophie.page.fill('#grille input[name="label"]', "Formateur e2e");
+  await sophie.page.fill('#grille input[name="hourly"]', "95");
+  await sophie.page.click('#grille button:has-text("Ajouter le niveau")');
+  await sophie.page.locator('#grille li:has-text("Formateur e2e")').waitFor({ timeout: 10000 }).catch(() => {});
+  check("Grille : niveau ajouté par la conformité", (await pgc.query(`select "hourlyCents" from "FeeLevel" where label = 'Formateur e2e'`)).rows[0]?.hourlyCents === 9500);
+  await sophie.page.click('#grille li:has-text("Formateur e2e") button:has-text("Retirer")');
+  await sophie.page.locator('#grille li:has-text("Formateur e2e")').waitFor({ state: "detached", timeout: 10000 }).catch(() => {});
+  check("Grille : niveau retiré", (await pgc.query(`select count(*)::int n from "FeeLevel" where label = 'Formateur e2e'`)).rows[0].n === 0);
+  await sophie.ctx.close();
+  // Projets : niveau + heures → honoraires calculés ; le taux réel au-delà du seuil est signalé.
+  const jul = await session();
+  await login(jul.page, "julien.faure@demo.kolbase.local");
+  await jul.page.goto(`${BASE}/organisations/demo-org-dentalys/dossiers/demo-prj-board?onglet=experts&modifier=1`);
+  const add = 'form:has(select[name="expertId"])';
+  await jul.page.selectOption(`${add} select[name="expertId"]`, "demo-p-roux");
+  await jul.page.selectOption(`${add} select[name="level"]`, "demo-fee-nat");
+  await jul.page.fill(`${add} input[name="prepHours"]`, "2");
+  await jul.page.fill(`${add} input[name="interventionHours"]`, "4");
+  await jul.page.fill(`${add} input[name="travelHours"]`, "2,5");
+  check("Honoraires calculés : 8,5 h × 150 € = 1 275 €", (await jul.page.inputValue(`${add} input[name="fee"]`)) === "1275");
+  await jul.page.fill(`${add} input[name="fee"]`, "2000");
+  check("Taux réel au-delà du seuil horaire : signalé", (await jul.page.locator(add).innerText()).includes("convention soumise à autorisation"));
+  await jul.page.click(`${add} button:text("Appliquer la grille")`);
+  await jul.page.click(`${add} button:has-text("Ajouter et solliciter l'expert")`);
+  await jul.page.locator('.notice.ok:has-text("Expert ajouté")').waitFor({ timeout: 10000 }).catch(() => {});
+  const link = (await pgc.query(`select id, "feeCents", "hourlyCents", "prepHours", "interventionHours", "travelHours", "feeLevelLabel" from "ProjectExpert" where "projectId" = 'demo-prj-board' and "practitionerId" = 'demo-p-roux'`)).rows[0];
+  check("Expert sollicité avec la grille : taux et heures figés", link?.feeCents === 127500 && link?.hourlyCents === 15000 && link?.prepHours === 2 && link?.interventionHours === 4 && link?.travelHours === 2.5 && link?.feeLevelLabel === "Expert national", JSON.stringify(link));
+  await jul.page.goto(`${BASE}/organisations/demo-org-dentalys/dossiers/demo-prj-board?onglet=experts`);
+  const card = (await text(jul.page)).replace(/\s+/g, " ");
+  check("Fiche de l'expert dans le dossier : heures, taux réel et niveau", card.includes("8,5 h · 150 € / h réel") && card.includes("Grille : Expert national (150 € / h)"), card.match(/8,5 h[^\n]{0,60}/)?.[0]);
+  await jul.ctx.close();
+  // L'expert voit le volume horaire proposé.
+  const roux = await session();
+  await login(roux.page, "mathieu.roux@demo.kolbase.local");
+  await roux.page.goto(`${BASE}/sollicitations/${link.id}`);
+  const rx = (await text(roux.page)).replace(/\s+/g, " ");
+  check("Sollicitation : volume horaire et taux affichés à l'expert", /volume horaire/i.test(rx) && rx.includes("2,5 h de déplacement"), rx.match(/volume horaire.{0,80}/i)?.[0]);
+  await roux.ctx.close();
+  // Symposium de démonstration : 15 h au niveau « Expert international ».
+  const cl = await session();
+  await login(cl.page, "sophie.bernard@demo.kolbase.local");
+  await cl.page.goto(`${BASE}/organisations/demo-org-dentalys/dossiers/demo-prj-symposium?onglet=experts`);
+  check("Dossier de démonstration : 15 h au taux de 200 €", (await text(cl.page)).replace(/\s+/g, " ").includes("15 h · 200 € / h réel"));
+  await cl.ctx.close();
+  await clean();
+  await pgc.end();
+}
+
+// ── Délais internes de la conformité et fiche dossier resserrée ──────────
+{
+  const pgc = new pg.Client({ connectionString: process.env.DATABASE_URL });
+  await pgc.connect();
+  // Symposium en examen, soumis il y a vingt jours : examen en retard (5 jours ouvrés par défaut). Les parcours
+  // précédents l'ont validé : il est remis « En validation », puis rétabli.
+  const symBefore = (await pgc.query(`select status from "Project" where id = 'demo-prj-symposium'`)).rows[0].status;
+  await pgc.query(`update "Project" set status = 'EN_VALID', "submittedAt" = now() - interval '20 days', "reviewReminderAt" = null where id = 'demo-prj-symposium'`);
+  const so = await session();
+  await login(so.page, "sophie.bernard@demo.kolbase.local");
+  await so.page.goto(`${BASE}/organisations/demo-org-dentalys/dossiers/demo-prj-symposium`);
+  check("Dossier en examen : retard du délai interne signalé", (await text(so.page)).includes("Examen par la conformité en retard de"));
+  check("Fiche dossier : une décision de la conformité reste visible (Bloquer)", (await so.page.locator('.next-step button:has-text("Bloquer")').count()) === 1);
+  await so.page.goto(`${BASE}/organisations/demo-org-dentalys/conformite`);
+  // Cellule « Échéance » de la ligne (la colonne Conflits peut aussi porter une pastille rouge).
+  const dueCell = await so.page.locator('section:has(h2:has-text("Dossiers à valider")) tr:has-text("Symposium ADF") td[data-label="Échéance"]').first().innerText().catch(() => "");
+  check("À valider : colonne Échéance, retard signalé", /en retard de/i.test(dueCell), dueCell);
+  const cron = () => fetch(`${BASE}/api/taches`, { method: "POST", headers: { Authorization: `Bearer ${process.env.CRON_SECRET ?? "secret-des-taches-de-test"}` } }).then((r) => r.json());
+  const r1 = await cron();
+  check("Tâches planifiées : examen en retard relancé", r1.reviewReminders >= 1 && !!(await waitMail("sophie.bernard@demo.kolbase.local", "Examen en retard : Symposium ADF")), JSON.stringify(r1));
+  const r2 = await cron();
+  check("Relance d'un examen : une fois par jour", r2.reviewReminders === 0, JSON.stringify(r2));
+  await pgc.query(`update "Project" set status = $1, "submittedAt" = now() - interval '2 days', "reviewReminderAt" = null where id = 'demo-prj-symposium'`, [symBefore]);
+  await so.ctx.close();
+  // Date d'intervention dans dix jours : la soumission (30 jours avant) est en retard ; abandon rangé sous « Autres actions ».
+  const jul = await session();
+  await login(jul.page, "julien.faure@demo.kolbase.local");
+  await jul.page.goto(`${BASE}/organisations/demo-org-dentalys/dossiers/demo-prj-board?onglet=experts&modifier=1`);
+  const inTen = new Date(Date.now() + 10 * 86400e3).toISOString().slice(0, 10);
+  await jul.page.fill('input[name="plannedAt"]', inTen);
+  await jul.page.click('button:has-text("Mettre à jour l\'objet")');
+  await jul.page.locator('.notice.ok:has-text("Objet du dossier enregistré")').waitFor({ timeout: 10000 }).catch(() => {});
+  await jul.page.goto(`${BASE}/organisations/demo-org-dentalys/dossiers/demo-prj-board`);
+  const t = await text(jul.page);
+  check("Intervention prévue : soumission en retard signalée", t.includes("Soumission à la conformité en retard de") && /intervention prévue/i.test(t));
+  check("Fiche dossier : abandon rangé sous « Autres actions »", (await jul.page.locator('.next-step details.more-actions:has-text("Abandonner")').count()) === 1 && !(await jul.page.locator('.next-step details.more-actions').evaluate((d) => d.open)));
+  check("Fiche dossier : objet dans la vue d'ensemble, frise compacte", (await jul.page.locator('section:has(h2:has-text("Objet du dossier"))').count()) === 1 && (await jul.page.locator("header.page-hero .pipeline-compact").count()) === 1);
+  await pgc.query(`update "Project" set "plannedAt" = null where id = 'demo-prj-board'`);
+  await jul.ctx.close();
   await pgc.end();
 }
 
@@ -4708,7 +4904,10 @@ async function submitNewOrg(page, siren) {
   const t = await text(page);
   check("Événement créé depuis le dossier : retour à l'onglet Événement, fiche complète", t.includes("Symposium navigation — session") && t.includes("Logistique et prestataires") && (await page.locator(".event-hero").count()) === 1);
   check("Dossier non validé : « Publier dans l'agenda » remplacé par la règle", (await page.locator('button:has-text("Publier dans l\'agenda")').count()) === 0 && t.includes("se publie une fois le dossier validé par la conformité"));
+  check("Événement d'un dossier (industriel) : validé par la conformité avec le dossier", /examiné avec le dossier/i.test(t) && (await page.locator('#validation button:has-text("Soumettre")').count()) === 0);
+  // Validation du dossier (directe en base) : la conformité valide aussi son événement, comme le fait l'action « Valider ».
   await db.query(`update "Project" set status = 'VALIDE' where id = 'e2e-nav-prj'`);
+  await db.query(`update "Event" set "reviewStatus" = 'approved', "reviewedAt" = now() where "projectId" = 'e2e-nav-prj'`);
   await page.reload();
   await Promise.all([page.waitForURL(/onglet=evenement.*publie=1/), page.click('button:has-text("Publier dans l\'agenda")')]);
   const evNav = (await db.query(`select "publishedAt" from "Event" where "projectId" = 'e2e-nav-prj'`)).rows[0];
@@ -4731,6 +4930,91 @@ async function submitNewOrg(page, siren) {
   await db.query(`delete from "Event" where "projectId" = 'e2e-nav-prj'`);
   await db.query(`delete from "Project" where id = 'e2e-nav-prj'`);
   await db.end();
+}
+
+// ── Validation des événements par la conformité (industriel) ──────────────
+{
+  const pgc = new pg.Client({ connectionString: process.env.DATABASE_URL });
+  await pgc.connect();
+  const q1 = async (sql, args = []) => (await pgc.query(sql, args)).rows[0];
+  const until = async (fn, ms = 8000) => {
+    for (const end = Date.now() + ms; Date.now() < end; await new Promise((r) => setTimeout(r, 150))) if (await fn()) return true;
+    return false;
+  };
+  const parisInput = (days, hm) => `${new Date(Date.now() + days * 864e5).toLocaleDateString("sv-SE", { timeZone: "Europe/Paris" })}T${hm}`;
+  const status = async (id) => (await q1(`select "reviewStatus" from "Event" where id = $1`, [id]))?.reviewStatus;
+  const title = "Atelier validation conformité e2e";
+  const SOPHIE = "sophie.bernard@demo.kolbase.local";
+  const JULIEN = "julien.faure@demo.kolbase.local";
+  const jul = await session();
+  await login(jul.page, JULIEN);
+  await jul.page.goto(`${BASE}/organisations/demo-org-dentalys/evenements/nouveau`);
+  check("Industriel : pas de publication immédiate, soumission à la conformité proposée", (await jul.page.locator('input[name="publish"]').count()) === 0 && (await jul.page.locator('input[name="submitReview"]').count()) === 1);
+  await jul.page.fill('input[name="title"]', title);
+  await jul.page.fill('input[name="startsAt"]', parisInput(40, "18:00"));
+  await jul.page.fill('input[name="city"]', "Lyon");
+  await jul.page.fill('input[name="venue"]', "Espace Confluence");
+  await Promise.all([jul.page.waitForURL(/\/evenements\/(?!nouveau)[^/?#]+$/), jul.page.click('button:has-text("Créer l\'événement")')]);
+  const evId = jul.page.url().match(/\/evenements\/([^/?#]+)/)[1];
+  let tx = (await text(jul.page)).replace(/\s+/g, " ");
+  check("Événement créé : à soumettre, publication après validation", /à soumettre/i.test(tx) && tx.includes("Publication possible une fois l'événement validé par la conformité") && (await jul.page.locator('button:has-text("Publier dans l\'agenda")').count()) === 0, tx.match(/validation par la conformité.{0,160}/i)?.[0]);
+  await jul.page.click('#validation button:has-text("Soumettre à la conformité")');
+  await until(async () => (await status(evId)) === "submitted");
+  check("Soumission : la conformité est prévenue par e-mail", !!(await waitMail(SOPHIE, `Événement à valider : ${title}`)));
+  await jul.page.reload();
+  check("Soumis : en attente, l'équipe Projets ne valide pas", /en attente de la conformité/i.test(await text(jul.page)) && (await jul.page.locator('button:has-text("Valider l\'événement")').count()) === 0);
+
+  const so = await session();
+  await login(so.page, SOPHIE);
+  await so.page.goto(`${BASE}/organisations/demo-org-dentalys/conformite?onglet=a-valider`);
+  check("Conformité : l'événement dans « Événements à valider »", (await so.page.locator(`#evenements a[href*="/evenements/${evId}"]`).count()) === 1);
+  await so.page.goto(`${BASE}/organisations/demo-org-dentalys/evenements/${evId}`);
+  tx = (await so.page.locator("#validation").innerText()).replace(/\s+/g, " ");
+  check("Conformité : points examinés (date, lieu, programme, hospitalités)", tx.includes("Espace Confluence, Lyon") && /à compléter/i.test(tx) && /hospitalités/i.test(tx), tx.slice(0, 240));
+  await so.page.click('#validation button:has-text("Demander des modifications")');
+  await so.page.locator("#validation .notice.error").waitFor({ timeout: 10000 }).catch(() => {});
+  check("Modifications demandées sans commentaire : refusé", (await so.page.locator("#validation").innerText()).includes("Indiquez les modifications attendues"));
+  await so.page.fill('#validation textarea[name="note"]', "Ajouter le programme scientifique détaillé.");
+  await so.page.click('#validation button:has-text("Demander des modifications")');
+  await until(async () => (await status(evId)) === "changes");
+  check("Modifications demandées : enregistrées avec le motif", (await q1(`select "reviewNote" from "Event" where id = $1`, [evId]))?.reviewNote === "Ajouter le programme scientifique détaillé.");
+  const chMail = await waitMail(JULIEN, `Modifications demandées par la conformité : ${title}`);
+  check("E-mail à l'équipe Projets : motif transmis", !!chMail && chMail.text.includes("Ajouter le programme scientifique détaillé."));
+
+  await jul.page.reload();
+  check("Équipe Projets : motif affiché, nouvelle soumission possible", (await jul.page.locator("#validation").innerText()).includes("Ajouter le programme scientifique détaillé.") && (await jul.page.locator('#validation button:has-text("Soumettre de nouveau")').count()) === 1);
+  await jul.page.click('#validation button:has-text("Soumettre de nouveau")');
+  await until(async () => (await status(evId)) === "submitted");
+
+  await so.page.reload();
+  await so.page.click('#validation button:has-text("Valider l\'événement")');
+  await until(async () => (await status(evId)) === "approved");
+  check("Validation : enregistrée, l'équipe Projets prévenue", (await status(evId)) === "approved" && !!(await waitMail(JULIEN, `Événement validé par la conformité : ${title}`)));
+
+  await jul.page.reload();
+  await Promise.all([jul.page.waitForURL(/\?publie=1/), jul.page.click('button:has-text("Publier dans l\'agenda")')]);
+  check("Validé : publication dans l'agenda", !!(await q1(`select "publishedAt" from "Event" where id = $1`, [evId]))?.publishedAt);
+  await jul.page.click("#modifier summary");
+  await jul.page.fill('#modifier input[name="startsAt"]', parisInput(41, "18:00"));
+  await jul.page.click('button:has-text("Mettre à jour l\'événement")');
+  await until(async () => (await status(evId)) === "submitted");
+  const ev = await q1(`select "reviewStatus", "reviewChanges", "publishedAt" from "Event" where id = $1`, [evId]);
+  check("Date modifiée après validation : renvoyé à la conformité, toujours en ligne", ev?.reviewStatus === "submitted" && ev.reviewChanges.includes("date") && !!ev.publishedAt, JSON.stringify(ev));
+  await so.page.reload();
+  check("Conformité : changement signalé", (await so.page.locator("#validation").innerText()).includes("Modifié après validation : date"));
+  await jul.ctx.close();
+
+  // Réglage de la conformité : validation exigée par défaut pour un industriel, désactivable.
+  await so.page.goto(`${BASE}/organisations/demo-org-dentalys/conformite?onglet=parametres`);
+  check("Paramètres : validation des événements activée (industriel)", await so.page.isChecked('#validation-evenements input[name="eventReview"]'));
+  await so.page.uncheck('#validation-evenements input[name="eventReview"]');
+  await so.page.click('#validation-evenements button:has-text("Enregistrer")');
+  await until(async () => (await q1(`select "eventReview" from "Organization" where id = 'demo-org-dentalys'`))?.eventReview === false);
+  check("Paramètres : validation des événements désactivée", (await q1(`select "eventReview" from "Organization" where id = 'demo-org-dentalys'`))?.eventReview === false);
+  await so.ctx.close();
+  await pgc.query(`update "Organization" set "eventReview" = true where id = 'demo-org-dentalys'`);
+  await pgc.query(`delete from "Event" where id = $1`, [evId]);
+  await pgc.end();
 }
 
 // ── 4. Limitation des tentatives ───────────────────────────────────────────

@@ -1,7 +1,7 @@
 import "server-only";
 import { db } from "@/lib/db";
 import { eventEnd, FOLLOWUP_DELAY_MS, FOLLOWUP_MAX_AGE_MS, REMINDER_WINDOW_MS } from "@/lib/event-followup";
-import { sendEventFollowUps, sendEventReminders, sendServiceReport } from "@/lib/notifications";
+import { sendEventFollowUps, sendEventReminders, sendOverdueReviews, sendServiceReport } from "@/lib/notifications";
 import { REPORT_DELAY_DAYS } from "@/lib/services";
 import { purgeRateLimits } from "@/lib/rate-limit";
 
@@ -27,6 +27,8 @@ export async function runDueTasks(now = new Date()) {
   });
   let reports = 0;
   for (const o of due) if (await sendServiceReport(o.id, now).catch((e) => { console.error("[bilan du service]", o.id, e); return false; })) reports++;
+  // Délais internes : examens de la conformité en retard, relancés une fois par jour.
+  const reviewReminders = await sendOverdueReviews(now);
   // Conservation : sessions et liens de connexion expirés depuis plus de 30 jours.
   const old = new Date(now.getTime() - 30 * 24 * 3600 * 1000);
   const sessions = (await db.session.deleteMany({ where: { expiresAt: { lt: old } } })).count;
@@ -35,5 +37,5 @@ export async function runDueTasks(now = new Date()) {
   const clicks = (await db.serviceClick.deleteMany({ where: { createdAt: { lt: new Date(now.getTime() - 395 * 24 * 3600 * 1000) } } })).count;
   // Limiteur de débit : tentatives de plus de 24 h.
   const attempts = await purgeRateLimits(now);
-  return { reminders, followUps, reports, purged: { sessions, tokens, clicks, attempts } };
+  return { reminders, followUps, reports, reviewReminders, purged: { sessions, tokens, clicks, attempts } };
 }

@@ -60,6 +60,12 @@ const ORGS: { id: string; name: string; kind: OrgKind; sector: string; hq: strin
     about: "Navettes gare–lieu d'événement et transferts de groupes. Prestataire fictif.", policy: "" },
 ];
 
+// Codes postaux des villes de démonstration (régions dans les statistiques).
+const DEMO_CP: Record<string, string> = {
+  Lyon: "69003", Paris: "75008", Nice: "06000", Grenoble: "38000", Villeurbanne: "69100", Toulouse: "31000", Strasbourg: "67000",
+  Rennes: "35000", Nantes: "44000", Montpellier: "34000", Marseille: "13008", Lille: "59000", Bordeaux: "33000",
+};
+
 // ─── Membres d'organisations ───────────────────────────────────────────────
 const STAFF: { id: string; first: string; last: string; org: string; roles: OrgRole[] }[] = [
   { id: "demo-u-claire", first: "Claire", last: "Morel", org: "demo-org-dentalys", roles: ["ADMIN"] },
@@ -69,8 +75,9 @@ const STAFF: { id: string; first: string; last: string; org: string; roles: OrgR
   { id: "demo-u-nadia", first: "Nadia", last: "Haddad", org: "demo-org-dentalys", roles: ["CONFORMITE"] },
   { id: "demo-u-thomas", first: "Thomas", last: "Garnier", org: "demo-org-orthonova", roles: ["ADMIN"] },
   { id: "demo-u-lea", first: "Léa", last: "Rousseau", org: "demo-org-orthonova", roles: ["CONFORMITE"] },
-  { id: "demo-u-pierre", first: "Pierre", last: "Vidal", org: "demo-org-cdra", roles: ["ADMIN"] },
-  { id: "demo-u-anne", first: "Anne", last: "Chevalier", org: "demo-org-academie", roles: ["ADMIN"] },
+  // Seuls dans leur organisation : administrateurs et chargés de la conformité (les rôles se cumulent).
+  { id: "demo-u-pierre", first: "Pierre", last: "Vidal", org: "demo-org-cdra", roles: ["ADMIN", "CONFORMITE"] },
+  { id: "demo-u-anne", first: "Anne", last: "Chevalier", org: "demo-org-academie", roles: ["ADMIN", "CONFORMITE"] },
   { id: "demo-u-karim", first: "Karim", last: "Benali", org: "demo-org-mediane", roles: ["ADMIN"] },
   { id: "demo-u-ludovic", first: "Ludovic", last: "Perrin", org: "demo-sup-belleville", roles: ["ADMIN"] },
 ];
@@ -137,6 +144,8 @@ async function main() {
       create: {
         id: o.id, name: o.name, kind: o.kind, sector: o.sector, headquarters: o.hq, areas: o.areas, about: o.about, policy: o.policy || null, listed: true, contactEmail: `contact@${MAIL}`,
         verification: "VERIFIED", verifiedAt: at(-180), verificationNote: "Organisation fictive de démonstration",
+        // Industriels : événements validés par la conformité avant publication.
+        eventReview: o.kind === "INDUSTRIEL",
       },
     });
     if (o.cats) await db.organization.updateMany({ where: { id: o.id, supplierCategories: { isEmpty: true } }, data: { supplierCategories: o.cats, coverage: o.coverage } });
@@ -177,7 +186,7 @@ async function main() {
       where: { id: p.id },
       update: { rppsVerified: verified },
       create: {
-        id: p.id, userId: uid, profession: p.profession, city: p.city, country: p.country ?? "FR", licenseNumber: p.license ?? null, rppsCheckedAt: p.country && verified ? at(-60) : null, specialty: p.specialty, subspecialty: p.sub, hospital: p.hospital,
+        id: p.id, userId: uid, profession: p.profession, city: p.city, postalCode: p.country ? null : DEMO_CP[p.city] ?? null, country: p.country ?? "FR", licenseNumber: p.license ?? null, rppsCheckedAt: p.country && verified ? at(-60) : null, specialty: p.specialty, subspecialty: p.sub, hospital: p.hospital,
         languages: p.langs ?? ["fr"], interventionTypes: p.types ?? [], dayRateCents: p.rate ? p.rate * 100 : null, orcid: p.orcid,
         bio: p.bio, listed: p.listed, rppsVerified: verified, listedAt: p.listed ? at(-200 + Math.floor(Math.random() * 150)) : null, responseDays: p.listed ? 3 : null,
       },
@@ -234,8 +243,9 @@ async function main() {
       update: {},
       create: {
         id: e.id, organizationId: e.org, title: e.title, typeId: e.type, therapeuticArea: e.area, description: e.desc,
-        startsAt: at(e.days, e.hour), durationMinutes: e.dur, format: e.format, city: e.city, venue: e.venue, capacity: e.cap,
+        startsAt: at(e.days, e.hour), durationMinutes: e.dur, format: e.format, city: e.city, postalCode: e.city ? DEMO_CP[e.city] ?? null : null, venue: e.venue, capacity: e.cap,
         publishedAt: at(Math.min(e.days, 0) - 20), registrationOpen: e.days > 0,
+        reviewStatus: "approved", reviewedAt: at(Math.min(e.days, 0) - 21),
         benefits: { create: e.benefits.map(([catalogId, label, valueCents]) => ({ id: `${e.id}-b-${catalogId}`, catalogId, label, valueCents })) },
       },
     });
@@ -371,6 +381,8 @@ async function main() {
       create: {
         id: p.id, organizationId: p.org, title: p.title, typeId: p.type, therapeuticArea: p.area, status: p.status, description: p.desc,
         complianceNote: p.note, ordreRef: p.ordre, origin: p.status === "ATT_IND" ? "Proposition de l'expert" : "Sollicitation directe", createdById: p.steps[0]?.[0], createdAt: created, proposalId,
+        // En cours d'examen : date de la dernière soumission (délai interne de la conformité).
+        submittedAt: p.status === "EN_VALID" ? at(-([...p.steps].reverse().find((s) => s[2] === "project.submit")?.[3] ?? 0)) : null,
         ...(p.closed ? { updatedAt: at(-p.closed.days), declared: true, declarationRef: p.closed.ref, declaredAt: at(-p.closed.days + 5) } : {}),
       },
     });
@@ -409,6 +421,13 @@ async function main() {
       prev = to;
     }
   }
+  // Grille de rémunération de Dentalys (définie par la conformité) et volume horaire du symposium (15 h × 200 €/h).
+  for (const [id, label, euros] of [["demo-fee-intl", "Expert international", 200], ["demo-fee-nat", "Expert national", 150], ["demo-fee-reg", "Expert régional", 110]] as const)
+    await db.feeLevel.upsert({ where: { id }, update: {}, create: { id, organizationId: "demo-org-dentalys", label, hourlyCents: euros * 100 } });
+  await db.projectExpert.updateMany({
+    where: { id: "demo-prj-symposium-x0", feeLevelId: null },
+    data: { feeLevelId: "demo-fee-intl", feeLevelLabel: "Expert international", hourlyCents: 20000, prepHours: 7, interventionHours: 2, travelHours: 6 },
+  });
   // Co-responsable : le board implantologie est suivi à deux (Julien Faure et Marc Lefèvre).
   await db.projectLead.upsert({ where: { projectId_userId: { projectId: "demo-prj-board", userId: "demo-u-marc" } }, update: {}, create: { projectId: "demo-prj-board", userId: "demo-u-marc" } });
 
@@ -708,6 +727,7 @@ async function main() {
       create: {
         id: o.id, name: o.name, kind: "INDUSTRIEL", sector: o.sector, headquarters: o.hq, areas: o.areas, about: o.about, listed: true,
         verification: "VERIFIED", verifiedAt: new Date(), verificationNote: "Organisation réelle, publiée avec son accord (nom et logo).",
+        eventReview: true,
       },
     });
     for (const userId of partnerAdmins)

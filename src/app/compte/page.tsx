@@ -186,7 +186,7 @@ export default async function Page({ searchParams }: { searchParams: Promise<{ a
           practitioner={
             p
               ? {
-                  profession: p.profession, rpps: p.rpps, country: p.country, licenseNumber: p.licenseNumber, city: p.city, specialty: p.specialty, listed: p.listed,
+                  profession: p.profession, rpps: p.rpps, country: p.country, licenseNumber: p.licenseNumber, city: p.city, postalCode: p.postalCode, specialty: p.specialty, listed: p.listed,
                   rppsStatus: !(p.country === "FR" ? p.rpps : p.licenseNumber) ? "none" : p.rppsVerified ? "verified" : p.rppsCheckedAt ? "rejected" : "pending",
                   rppsNote: p.rppsCheckNote,
                 }

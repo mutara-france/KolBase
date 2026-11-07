@@ -4,6 +4,7 @@ import { SectionNav } from "@/components/SectionNav";
 import { orgTabs } from "@/lib/org-overview";
 import { db } from "@/lib/db";
 import { requireMembership } from "@/lib/orgs";
+import { needsReview, REVIEW_LABEL } from "@/lib/event-review";
 import { EVENT_MANAGER_ROLES, EVENT_ORGANIZER_ROLES, eventMoment, eventScope, eventTypeLabel, FORMAT_LABEL, orgEventStatus } from "@/lib/events";
 import { isSuspendedOrg } from "@/lib/org-roles";
 import { getT } from "@/lib/i18n/server";
@@ -63,6 +64,8 @@ export default async function Page({ params }: { params: Promise<{ id: string }>
         </span>
         <span className="row-status">
           <span className={`pill ${status.tone}`}>{t(status.label)}</span>
+          {/* Validation par la conformité en cours ou à reprendre (avant publication, ou après une modification). */}
+          {needsReview(org, e) && !e.cancelledAt && (e.reviewStatus === "submitted" || e.reviewStatus === "changes") && <span className={`text-xs ${e.reviewStatus === "changes" ? "warn-text" : "muted"}`}>{t(REVIEW_LABEL[e.reviewStatus])}</span>}
           {logistics && <span className={`text-xs ${toCompare ? "warn-text" : "muted"}`}>{logistics}</span>}
         </span>
         <span className="row-figures">

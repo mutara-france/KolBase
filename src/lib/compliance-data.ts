@@ -50,7 +50,7 @@ export async function registerRows(orgId: string, year: number | null, rawSettin
   for (const l of links) {
     const t = collabType(l.project.typeId);
     const c = l.practitioner.country;
-    const r = practicesInFrance(c) ? remunerationRegime(s, l.feeCents, l.days, t?.unit ?? "") : foreignRegime(c);
+    const r = practicesInFrance(c) ? remunerationRegime(s, l, t?.unit ?? "") : foreignRegime(c);
     rows.push({
       kind: "remuneration", date: l.project.updatedAt, lastName: l.practitioner.user.lastName, firstName: l.practitioner.user.firstName,
       rpps: l.practitioner.rpps, country: c, license: l.practitioner.licenseNumber, city: l.practitioner.city, subject: l.project.title, nature: t?.label ?? l.project.typeId,

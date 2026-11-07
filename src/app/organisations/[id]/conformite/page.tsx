@@ -3,11 +3,12 @@ import { SiteHeader } from "@/components/SiteHeader";
 import { SectionNav } from "@/components/SectionNav";
 import { orgTabs } from "@/lib/org-overview";
 import { FmvBadge, StatusPill } from "@/components/ProjectBits";
-import { ComplianceSettingsForm } from "@/components/ComplianceForms";
+import { ComplianceSettingsForm, FeeGridForm } from "@/components/ComplianceForms";
 import { db } from "@/lib/db";
 import { requireMembership } from "@/lib/orgs";
 import { COMPLIANCE_ROLES } from "@/lib/events";
 import { collabType, STATUS_LABEL } from "@/lib/projects";
+import { setEventReviewRequired } from "@/lib/event-actions";
 import { complianceSettings, foreignRegime, hospitalityRegime, legalBound, remunerationRegime, REGIME_LABEL, regimeReason, SETTING_FIELDS, type Regime } from "@/lib/compliance";
 import { country, practicesInFrance } from "@/lib/countries";
 import { registerRows } from "@/lib/compliance-data";
@@ -18,6 +19,8 @@ import { declarationRows, parseSemester, recentSemesters, semesterKey, semesterL
 import { TableWrap } from "@/components/TableWrap";
 import { getT } from "@/lib/i18n/server";
 import { fmtDate, fmtEur, intlLocale } from "@/lib/i18n";
+import { feeLevels } from "@/lib/fee-fields";
+import { daysLate, reviewDue } from "@/lib/deadlines";
 
 export async function generateMetadata() {
   const { t } = await getT();
@@ -42,7 +45,7 @@ export default async function Page({ params, searchParams }: { params: Promise<{
   const loc = intlLocale(locale);
   const { id } = await params;
   const { onglet = "a-valider", annee, periode } = await searchParams;
-  const { org, isAdmin, roles } = await requireMembership(id, COMPLIANCE_ROLES);
+  const { org } = await requireMembership(id, COMPLIANCE_ROLES);
   const s = complianceSettings(org.complianceSettings);
   const year = annee === "toutes" ? null : Number(annee) || new Date().getFullYear();
 
@@ -53,7 +56,7 @@ export default async function Page({ params, searchParams }: { params: Promise<{
   });
   const regimeOf = (p: (typeof projects)[number]) => {
     const unit = collabType(p.typeId)?.unit ?? "";
-    const rs = p.experts.map((e) => (practicesInFrance(e.practitioner.country) ? remunerationRegime(s, e.feeCents, e.days, unit) : foreignRegime(e.practitioner.country)));
+    const rs = p.experts.map((e) => (practicesInFrance(e.practitioner.country) ? remunerationRegime(s, e, unit) : foreignRegime(e.practitioner.country)));
     return rs.find((r) => r.regime === "autorisation") ?? rs[0] ?? { regime: "declaration" as Regime, reason: "Aucun expert engagé", why: { key: "Aucun expert engagé" } };
   };
   const total = (p: (typeof projects)[number]) => p.experts.reduce((x, e) => x + (e.feeCents ?? 0), 0);
@@ -62,6 +65,10 @@ export default async function Page({ params, searchParams }: { params: Promise<{
   const dossier = (pid: string) => `/organisations/${id}/dossiers/${pid}`;
 
   const toValidate = projects.filter((p) => p.status === "EN_VALID");
+  // Événements soumis (lieu, date, programme, hospitalités), avant publication ou après une modification.
+  const eventsToValidate = org.eventReview
+    ? await db.event.findMany({ where: { organizationId: id, reviewStatus: "submitted", cancelledAt: null, internal: false }, include: { benefits: { select: { catalogId: true, valueCents: true } } }, orderBy: { reviewSubmittedAt: "asc" } })
+    : [];
   const authorizations = projects.filter((p) => p.status === "ORDRE" || p.status === "REFUS_ORDRE" || (p.status === "VALIDE" && regimeOf(p).regime === "autorisation"));
   const toPublish = projects.filter((p) => ["SIGNE", "TERMINE"].includes(p.status));
   // Hospitalités soumises à autorisation (praticiens exerçant en France) : événements à venir, ou passés et pas encore
@@ -78,7 +85,7 @@ export default async function Page({ params, searchParams }: { params: Promise<{
     .map((r) => ({ r, regime: hospitalityRegime(s, r.benefits.map((b) => ({ catalogId: b.benefit.catalogId, valueCents: b.valueCents }))) }))
     .filter((x) => x.regime.regime === "autorisation");
   const counts: Record<string, number> = {
-    "a-valider": toValidate.length,
+    "a-valider": toValidate.length + eventsToValidate.length,
     autorisations: authorizations.filter((p) => p.status !== "REFUS_ORDRE").length + hospAuthorizations.filter((x) => x.r.event.startsAt >= now).length,
     transparence: toPublish.filter((p) => !p.declared).length,
   };
@@ -191,7 +198,21 @@ export default async function Page({ params, searchParams }: { params: Promise<{
             )}
           </section>
         )}
-        {onglet === "parametres" && <ComplianceSettingsForm orgId={id} settings={s} fields={SETTING_FIELDS.map((f) => ({ ...f, legal: legalBound(f.key) }))} canEdit={isAdmin || roles.includes("CONFORMITE")} />}
+        {onglet === "parametres" && (
+          <>
+            <FeeGridForm orgId={id} levels={await feeLevels(id)} hourlyMax={s.remunerationHourlyMax} />
+            <section className="card stack-sm" id="validation-evenements">
+              <h2>{t("Validation des événements")}</h2>
+              <p className="muted">{t("Avant sa publication, la conformité valide le lieu, la date, le programme et les hospitalités de chaque événement ouvert aux praticiens ; un changement de date, de lieu, de format ou d'hospitalités le lui renvoie. Les réunions internes n'y sont pas soumises, les événements d'un dossier sont validés avec lui.")}</p>
+              <form action={setEventReviewRequired} className="stack-sm">
+                <input type="hidden" name="orgId" value={id} />
+                <label className="check"><input type="checkbox" name="eventReview" value="1" defaultChecked={org.eventReview} />{" "}{t("Valider les événements avant leur publication")}</label>
+                <button className="btn ghost small">{t("Enregistrer")}</button>
+              </form>
+            </section>
+            <ComplianceSettingsForm orgId={id} settings={s} fields={SETTING_FIELDS.map((f) => ({ ...f, legal: legalBound(f.key) }))} canEdit />
+          </>
+        )}
       </main>
     </>
   );
@@ -239,12 +260,13 @@ export default async function Page({ params, searchParams }: { params: Promise<{
     const { t, locale } = await getT();
     const conflicts = await Promise.all(toValidate.map((p) => detectConflicts(p.id)));
     return (
+      <>
       <section className="card">
         <h2>{t("Dossiers à valider")}</h2>
         {toValidate.length === 0 ? <p className="muted">{t("Aucun dossier en attente de validation.")}</p> : (
           <TableWrap label={t("Dossiers à valider")}>
             <table className="table">
-              <thead><tr><th>{t("Dossier")}</th><th>{t("Experts")}</th><th>{t("Montant")}</th><th>{t("Juste contrepartie")}</th><th>{t("Régime")}</th><th>{t("Conflits")}</th><th>{t("Soumis le")}</th></tr></thead>
+              <thead><tr><th>{t("Dossier")}</th><th>{t("Experts")}</th><th>{t("Montant")}</th><th>{t("Juste contrepartie")}</th><th>{t("Régime")}</th><th>{t("Conflits")}</th><th>{t("Soumis le")}</th><th>{t("Échéance")}</th></tr></thead>
               <tbody>
                 {toValidate.map((p, i) => {
                   const r = regimeOf(p);
@@ -257,7 +279,14 @@ export default async function Page({ params, searchParams }: { params: Promise<{
                       <td data-label="Juste contrepartie">{p.experts.map((e) => <FmvBadge key={e.id} typeId={p.typeId} feeCents={e.feeCents} units={e.days} />)}</td>
                       <td data-label="Régime"><RegimePill regime={r.regime} reason={regimeReason(r, t, loc)} /></td>
                       <td data-label="Conflits">{c.length ? <span className={`pill ${c.some((x) => x.severity === "danger") ? "bad" : "wait"}`}>{c.length}</span> : <span className="pill ok">{t("Aucun")}</span>}</td>
-                      <td data-label="Soumis le">{fmtDate(locale, p.updatedAt)}</td>
+                      <td data-label="Soumis le">{fmtDate(locale, p.submittedAt ?? p.updatedAt)}</td>
+                      {/* Délai interne d'examen (Paramètres) : en retard, signalé. */}
+                      <td data-label="Échéance">{(() => {
+                        const due = reviewDue(p.submittedAt ?? p.updatedAt, s);
+                        if (!due) return "—";
+                        const late = daysLate(due);
+                        return late > 0 ? <span className="pill bad">{t("En retard de {n} j", { n: late })}</span> : <span className="pill wait">{fmtDate(locale, due)}</span>;
+                      })()}</td>
                     </tr>
                   );
                 })}
@@ -266,6 +295,38 @@ export default async function Page({ params, searchParams }: { params: Promise<{
           </TableWrap>
         )}
       </section>
+      {org.eventReview && (
+        <section className="card" id="evenements">
+          <h2>{t("Événements à valider")}</h2>
+          <p className="muted">{t("Lieu, date, programme et hospitalités, avant la publication dans l'agenda ou après une modification. Les événements d'un dossier sont validés avec le dossier.")}</p>
+          {eventsToValidate.length === 0 ? <p className="muted">{t("Aucun événement en attente de validation.")}</p> : (
+            <TableWrap label={t("Événements à valider")}>
+              <table className="table">
+                <thead><tr><th>{t("Événement")}</th><th>{t("Date")}</th><th>{t("Lieu")}</th><th>{t("Programme")}</th><th>{t("Hospitalités")}</th><th>{t("Soumis le")}</th><th>{t("Échéance")}</th></tr></thead>
+                <tbody>
+                  {eventsToValidate.map((e) => {
+                    const hosp = hospitalityRegime(s, e.benefits);
+                    const due = reviewDue(e.reviewSubmittedAt ?? e.updatedAt, s);
+                    const late = due ? daysLate(due) : 0;
+                    return (
+                      <tr key={e.id}>
+                        <td data-label="Événement"><Link href={`/organisations/${id}/evenements/${e.id}#validation`}>{e.title}</Link>{e.reviewChanges.length > 0 && <><br /><span className="muted">{t("Modifié après validation : {changes}", { changes: e.reviewChanges.map((c) => t(c)).join(", ") })}</span></>}</td>
+                        <td data-label="Date">{fmtDate(locale, e.startsAt)}</td>
+                        <td data-label="Lieu">{e.format === "DISTANCIEL" ? t("À distance") : [e.venue, e.city].filter(Boolean).join(", ") || "—"}</td>
+                        <td data-label="Programme">{e.program ? <span className="pill ok">{t("Renseigné")}</span> : <span className="pill wait">{t("À compléter")}</span>}</td>
+                        <td data-label="Hospitalités">{e.benefits.length === 0 ? t("Aucune") : <>{fmtEur(locale, e.benefits.reduce((x, b) => x + b.valueCents, 0))}{" "}<RegimePill regime={hosp.regime} reason={regimeReason(hosp, t, loc)} /></>}</td>
+                        <td data-label="Soumis le">{fmtDate(locale, e.reviewSubmittedAt ?? e.updatedAt)}</td>
+                        <td data-label="Échéance">{!due ? "—" : late > 0 ? <span className="pill bad">{t("En retard de {n} j", { n: late })}</span> : <span className="pill wait">{fmtDate(locale, due)}</span>}</td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </TableWrap>
+          )}
+        </section>
+      )}
+      </>
     );
   }
 

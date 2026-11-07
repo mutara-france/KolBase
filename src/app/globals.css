@@ -242,6 +242,7 @@ main.narrow { max-width: 760px; }
 .form > .btn, .form > .actions .btn { align-self: flex-start; }
 .form .row { display: flex; gap: 12px; flex-wrap: wrap; }
 .form .row > label { flex: 1 1 200px; }
+.form .row > label.short { flex: 0 1 130px; min-width: 110px; }
 .form fieldset { border: 1px solid var(--line); border-radius: 14px; padding: 14px; margin: 0; display: flex; flex-direction: column; gap: 8px; }
 .form legend { font-size: 12px; font-weight: 600; color: var(--ink-soft); padding: 0 6px; }
 .checks { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 8px; }
@@ -253,6 +254,17 @@ main.narrow { max-width: 760px; }
 .fee-row { display: flex; flex-wrap: wrap; gap: 10px; align-items: flex-end; padding: 10px 0; border-bottom: 1px solid var(--line); }
 .fee-row > strong { flex: 1 1 100%; font-size: 13.5px; }
 .fee-row label { flex: 1 1 160px; }
+/* Honoraires d'un expert : unités, niveau de la grille, volume horaire, montant. */
+.fee-block { display: flex; flex-direction: column; gap: 10px; padding: 12px 0; border-bottom: 1px solid var(--line); }
+.fee-block > strong { font-size: 13.5px; }
+.fee-fields { display: flex; flex-direction: column; gap: 10px; }
+.form .fee-fields fieldset.hours-row, .fee-fields .hours-row { flex-direction: row; flex-wrap: wrap; gap: 10px; padding: 10px 12px 12px; }
+.fee-fields .hours-row legend { font-size: 13px; font-weight: 600; color: var(--ink-soft); padding: 0 4px; }
+.fee-fields .hours-row label { flex: 1 1 110px; }
+.fee-fields .hint { margin: 0; }
+.retain-form { margin-top: 8px; padding: 14px; border: 1px solid var(--line); border-radius: 14px; background: var(--bg-subtle); }
+.fee-levels { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; }
+.fee-levels li { display: flex; align-items: center; gap: 12px; padding: 8px 0; border-bottom: 1px solid var(--line); font-size: 14px; }
 .expert-pick { max-height: 300px; overflow-y: auto; display: flex; flex-direction: column; gap: 6px; }
 .copy { display: flex; gap: 8px; }
 .copy input { flex: 1; min-width: 0; font-size: 12.5px; }
@@ -327,6 +339,14 @@ main p a:not(.btn):not(.pill), .form .muted a:not(.btn) { text-decoration: under
 .pipeline li.done .lbl { color: var(--ink); }
 .pipeline li.current .dot { border-color: var(--outremer); color: var(--outremer); box-shadow: 0 0 0 5px var(--tint); }
 .pipeline li.current .lbl { color: var(--outremer); font-weight: 700; }
+/* Frise compacte (en-tête du dossier) : étape en cours nommée, barre segmentée. */
+.pipeline-compact { display: flex; flex-direction: column; gap: 8px; }
+.pipeline-compact .pc-head { margin: 0; display: flex; align-items: baseline; gap: 6px; flex-wrap: wrap; font-size: 14px; }
+.pc-bar { list-style: none; margin: 0; padding: 0; display: grid; grid-auto-flow: column; grid-auto-columns: minmax(0, 1fr); gap: 4px; }
+.pc-bar li { height: 6px; border-radius: 999px; background: var(--line); }
+.pc-bar li.done { background: var(--outremer); }
+.pc-bar li.current { background: var(--indigo); box-shadow: 0 0 0 2px var(--tint); }
+.pc-bar li.current.bad { background: var(--danger); }
 .pipeline li.current.bad .dot { border-color: var(--danger); color: var(--danger); box-shadow: 0 0 0 5px var(--danger-bg); }
 .pipeline li.current.bad .lbl { color: var(--danger); }
 @media (max-width: 760px) { .pipeline { overflow-x: auto; grid-auto-columns: 96px; padding-bottom: 4px; } }
@@ -752,6 +772,30 @@ body:has(.sidebar) .site-footer { padding: 24px 32px; }
 .quote-detail > p { margin: 8px 0 0; }
 .quote-detail td:last-child { text-align: right; white-space: nowrap; }
 .warn-text { color: #9a5b00; }
+.danger-text { color: var(--danger); }
+/* Fiche dossier : actions secondaires repliées, objet lisible, en-tête resserré. */
+.more-actions { border-top: 1px solid var(--line); padding-top: 10px; }
+.more-actions > summary { cursor: pointer; font-size: 13px; font-weight: 600; color: var(--ink-soft); list-style: none; }
+.more-actions > summary::-webkit-details-marker { display: none; }
+.more-actions > summary::before { content: "▸ "; }
+.more-actions[open] > summary::before { content: "▾ "; }
+.more-actions[open] > summary { margin-bottom: 10px; }
+.budget-lines { margin: 0 0 12px; display: flex; flex-direction: column; }
+.budget-lines > div { display: flex; justify-content: space-between; gap: 16px; padding: 7px 0; border-bottom: 1px solid var(--line); font-size: 14px; }
+.budget-lines dt { color: var(--ink-soft); }
+.budget-lines dd { margin: 0; font-family: var(--font-mono); font-weight: 500; color: var(--ink); white-space: nowrap; }
+.budget-lines > div.muted dd { color: var(--ink-soft); }
+.budget-lines > div.total { border-bottom: 0; padding-top: 10px; font-weight: 700; }
+.budget-lines > div.total dt { color: var(--ink); }
+.budget-lines > div.total dd { color: var(--outremer); font-size: 16px; }
+.budget-lines > div.total.over dd { color: var(--danger); }
+/* Validation d'un événement par la conformité : points examinés. */
+.review-points { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; }
+.review-points li { display: flex; gap: 12px; padding: 6px 0; border-bottom: 1px solid var(--line); font-size: 14px; color: var(--ink); }
+.review-points li:last-child { border-bottom: 0; }
+.review-points li > span:first-child { flex: 0 0 96px; color: var(--ink-soft); }
+.object-text { margin: 0; white-space: pre-line; line-height: 1.6; color: var(--ink); max-width: 72ch; }
+.hero-facts.slim { grid-template-columns: repeat(auto-fit, minmax(min(220px, 100%), 1fr)); }
 .logistics-list { list-style: none; margin: 8px 0 12px; padding: 0; display: flex; flex-direction: column; gap: 8px; }
 .logistics-list li { padding: 12px 14px; border: 1px solid var(--line); border-radius: 14px; background: var(--bg); display: flex; flex-direction: column; gap: 10px; }
 .logistics-row { display: grid; grid-template-columns: 1fr auto auto; gap: 12px; align-items: center; }

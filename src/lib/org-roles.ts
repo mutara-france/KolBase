@@ -52,7 +52,7 @@ export const ROLE_LABEL: Record<OrgRole, string> = {
 };
 /** Ce que chaque rôle permet, pour l'écran des membres. */
 export const ROLE_DESC: Record<OrgRole, string> = {
-  ADMIN: "Équipe, fiche et réglages de l'organisation ; accès à toutes les rubriques.",
+  ADMIN: "Équipe, fiche, réglages et abonnement de l'organisation ; dossiers et événements. La conformité demande en plus le rôle Conformité.",
   PROJETS: "Sollicite les experts, conduit les dossiers, organise les événements et consulte les prestataires.",
   CONFORMITE: "Valide les dossiers, relit les supports, suit les déclarations et les hospitalités.",
   PRESTATAIRE: "Agence externe : accès limité aux événements que l'organisation lui confie.",

@@ -34,6 +34,7 @@ export default async function Page({ params, searchParams }: { params: Promise<{
           formats={Object.entries(FORMAT_LABEL).map(([value, label]) => ({ value, label: t(label) }))}
           catalog={BENEFIT_CATALOG}
           limits={complianceSettings(org.complianceSettings)}
+          review={org.eventReview}
           project={project ? { id: project.id, title: project.title, area: project.therapeuticArea, publishable: eventPublishable(project.status) } : undefined}
         />
       </main>

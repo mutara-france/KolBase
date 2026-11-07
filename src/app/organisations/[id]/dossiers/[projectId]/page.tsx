@@ -35,6 +35,9 @@ import { signatureEnabled } from "@/lib/yousign";
 import { engagementBlock } from "@/lib/billing";
 import { getT } from "@/lib/i18n/server";
 import { fmtDate, fmtDateTime, fmtEur, intlLocale } from "@/lib/i18n";
+import { feeLevels } from "@/lib/fee-fields";
+import { fmtHours, hoursDetail, hoursOf } from "@/lib/fees";
+import { daysLate, plannedDate, reviewDue, submissionDue } from "@/lib/deadlines";
 
 export async function generateMetadata() {
   const { t } = await getT();
@@ -141,7 +144,7 @@ export default async function Page({ params, searchParams }: { params: Promise<{
   });
   if (!project) notFound();
   const linkIds = project.experts.map((e) => e.id);
-  const [history, leads, leadPool, fromCall] = await Promise.all([
+  const [history, leads, leadPool, fromCall, levels] = await Promise.all([
     db.auditLog.findMany({
       where: { OR: [{ entityType: "Project", entityId: projectId }, { entityType: "ProjectExpert", entityId: { in: linkIds } }] },
       include: { actor: { select: { firstName: true, lastName: true } } },
@@ -156,6 +159,7 @@ export default async function Page({ params, searchParams }: { params: Promise<{
       where: { projectId, openCall: { organizationId: id } },
       select: { openCall: { select: { id: true, title: true, event: { select: { id: true, title: true, startsAt: true, city: true } } } } },
     }),
+    feeLevels(id),
   ]);
   const callEvent = fromCall?.openCall.event ?? null;
 
@@ -163,6 +167,12 @@ export default async function Page({ params, searchParams }: { params: Promise<{
   const isProject = roles.some((r) => PROJECT_ROLES.includes(r));
   const isCompliance = roles.some((r) => COMPLIANCE_ROLES.includes(r));
   const settings = complianceSettings(org.complianceSettings);
+  // Délais internes : date d'intervention, échéance de soumission (recrutement) ou d'examen (en validation).
+  const planned = plannedDate(project);
+  const subDue = recruitmentOpen(project.status) ? submissionDue(planned, settings) : null;
+  const revDue = project.status === "EN_VALID" ? reviewDue(project.submittedAt, settings) : null;
+  const subLate = daysLate(subDue);
+  const revLate = daysLate(revDue);
   const regime = projectRegime(settings, type?.unit ?? "", project.experts.map((e) => ({ ...e, country: e.practitioner.country })));
   const foreignExperts = project.experts.filter((e) => e.status !== "DECLINE" && !practicesInFrance(e.practitioner.country));
   const unsigned = project.status === "SIGNATURE" ? await missingSignedConventions(projectId) : [];
@@ -295,12 +305,17 @@ export default async function Page({ params, searchParams }: { params: Promise<{
             <section className="card next-step">
               <span className="eyebrow-sm">{t("Prochaine étape")}</span>
               <p className="next-hint">{t(NEXT_HINT[project.status] ?? "")}</p>
+              {subDue && (subLate > 0
+                ? <p className="notice warn">{t("Soumission à la conformité en retard de {n} j : l'échéance interne était le {date} ({lead} jours avant l'intervention).", { n: subLate, date: fmtDate(locale, subDue), lead: settings.submissionLeadDays })}</p>
+                : <p className="hint">{t("À soumettre à la conformité avant le {date} (délai interne : {lead} jours avant l'intervention).", { date: fmtDate(locale, subDue), lead: settings.submissionLeadDays })}</p>)}
+              {revDue && (revLate > 0
+                ? <p className="notice warn">{t("Examen par la conformité en retard de {n} j : attendu avant le {date} ({days} jours ouvrés après la soumission).", { n: revLate, date: fmtDate(locale, revDue), days: settings.reviewDays })}</p>
+                : <p className="hint">{t("Examen par la conformité attendu avant le {date} ({days} jours ouvrés après la soumission).", { date: fmtDate(locale, revDue), days: settings.reviewDays })}</p>)}
               {project.status === "EN_VALID" && !isCompliance && <p className="hint">{t("En attente de l'équipe Conformité.")}</p>}
-              {fourEyesRule === "blocked" && <p className="notice warn">{FOUR_EYES_BLOCKED}</p>}
-              {fourEyesRule === "justify" && <p className="hint">{FOUR_EYES_JUSTIFY}</p>}
-              {available.length > 0 && (
-                <div className="transitions-stack">
-                  {available.map((k) => (
+              {fourEyesRule === "blocked" && <p className="notice warn">{t(FOUR_EYES_BLOCKED)}</p>}
+              {fourEyesRule === "justify" && <p className="hint">{t(FOUR_EYES_JUSTIFY)}</p>}
+              {available.length > 0 && (() => {
+                const transition = (k: TransitionKey) => (
                     <form key={k} action={advanceProject} className={`transition${DANGER.includes(k) ? " secondary" : ""}`}>
                       <input type="hidden" name="orgId" value={id} />
                       <input type="hidden" name="projectId" value={projectId} />
@@ -323,9 +338,25 @@ export default async function Page({ params, searchParams }: { params: Promise<{
                         <button className={DANGER.includes(k) ? "btn ghost" : "btn"}>{t(TRANSITIONS[k].label)}</button>
                       )}
                     </form>
-                  ))}
-                </div>
-              )}
+                );
+                const main = available.filter((k) => !DANGER.includes(k));
+                const others = available.filter((k) => DANGER.includes(k));
+                // Décision à prendre (bloquer, refus de l'Ordre, décliner une proposition) : affichée telle quelle ; les autres actions
+                // secondaires ou destructives (abandonner, revenir en arrière) sont rangées sous « Autres actions ».
+                return (
+                  <>
+                    {main.length > 0 && <div className="transitions-stack">{main.map(transition)}</div>}
+                    {others.length > 0 && (others.some((k) => k === "block" || k === "ordre_ko" || k === "decline_proposal") ? (
+                      <div className="transitions-stack">{others.map(transition)}</div>
+                    ) : (
+                      <details className="more-actions">
+                        <summary>{t("Autres actions")}</summary>
+                        <div className="transitions-stack">{others.map(transition)}</div>
+                      </details>
+                    ))}
+                  </>
+                );
+              })()}
               {signStarted && isProject && (
                 <p className="hint">{t("Une convention est en cours de signature ou déjà signée : le retour en accord de principe n'est plus possible. Si les conditions doivent changer, abandonnez le dossier (motif obligatoire) et ouvrez-en un nouveau.")}</p>
               )}
@@ -374,6 +405,12 @@ export default async function Page({ params, searchParams }: { params: Promise<{
                       <span className="term"><CalendarDays size={13} /> {unitCount(t, intlLocale(locale), e.days, type?.unit ?? "unité")}</span>
                       <span className="term"><Euro size={13} /> {e.feeCents != null ? fmtEur(locale, e.feeCents) : "—"}{" "}{t("HT")}</span>
                       <FmvBadge typeId={project.typeId} feeCents={e.feeCents} units={e.days} />
+                      {hoursOf(e) != null && (
+                        <span className="term" title={hoursDetail(e, t, intlLocale(locale))}>
+                          <Clock size={13} /> {t("{hours} · {rate} / h réel", { hours: fmtHours(hoursOf(e)!, intlLocale(locale)), rate: fmtEur(locale, Math.round((e.feeCents ?? 0) / hoursOf(e)!)) })}
+                        </span>
+                      )}
+                      {e.feeLevelLabel && <span className="term">{t("Grille : {label} ({rate} / h)", { label: e.feeLevelLabel, rate: e.hourlyCents != null ? fmtEur(locale, e.hourlyCents) : "—" })}</span>}
                       {e.desiredFeeCents != null && e.status === "ATT_EXPERTS" && <span className="term desired"><Euro size={13} />{" "}{t("Souhaités par l'expert : {montant} HT", { montant: fmtEur(locale, e.desiredFeeCents) })}</span>}
                     </div>
                     {counter && (
@@ -465,12 +502,9 @@ export default async function Page({ params, searchParams }: { params: Promise<{
             <StatusPill status={project.status} />
           </div>
           <h1>{project.title}</h1>
-          {project.description && <p className="lead">{project.description}</p>}
-          <dl className="hero-facts">
-            <div>
-              <dt><Users size={13} />{" "}{t("Experts")}</dt>
-              <dd>{t(engaged.length > 1 ? "{engaged} engagés" : "{engaged} engagé", { engaged: engaged.length })}<small>{waiting.length ? t(waiting.length > 1 ? "{waiting} réponses attendues" : "{waiting} réponse attendue", { waiting: waiting.length }) : t(live.length > 1 ? "{live} sollicités" : "{live} sollicité", { live: live.length })}</small></dd>
-            </div>
+          {/* En-tête resserré : trois repères (honoraires, budget, responsables) ; l'objet, les experts et le régime
+              sont détaillés dans la vue d'ensemble. */}
+          <dl className="hero-facts slim">
             <div>
               <dt><Euro size={13} />{" "}{t("Honoraires engagés")}</dt>
               <dd>{fmtEur(locale, total)}{" "}{t("HT")}<small>{proposed > 0 ? t("{montant} HT proposés, sans réponse", { montant: fmtEur(locale, proposed) }) : t("honoraires acceptés")}</small></dd>
@@ -479,16 +513,18 @@ export default async function Page({ params, searchParams }: { params: Promise<{
               <dt><Wallet size={13} />{" "}{t("Budget")}</dt>
               <dd>{project.budgetCents != null ? `${fmtEur(locale, project.budgetCents)} ${t("HT")}` : t("Non défini")}<small>{budgetPct != null ? `${t(supplierCents ? "{budgetPct} % engagé, prestataires compris" : "{budgetPct} % engagé", { budgetPct })}${proposed > 0 ? ` ; ${t("{montant} HT proposés en plus", { montant: fmtEur(locale, proposed) })}` : ""}` : t("à renseigner plus bas")}</small></dd>
             </div>
-            <div>
-              <dt><Scale size={13} />{" "}{t("Régime")}</dt>
-              <dd>{regime ? t(REGIME_LABEL[regime.regime]) : t("À déterminer")}<small>{regime ? regimeReason(regime, t, intlLocale(locale)) : t("selon les experts engagés")}</small></dd>
-            </div>
+            {planned && (
+              <div>
+                <dt><CalendarDays size={13} />{" "}{t("Intervention prévue")}</dt>
+                <dd>{fmtDate(locale, planned)}<small>{subDue ? t("à soumettre avant le {date}", { date: fmtDate(locale, subDue) }) : revDue ? t("examen attendu avant le {date}", { date: fmtDate(locale, revDue) }) : project.plannedAt ? t("date du dossier") : t("date de l'événement")}</small></dd>
+              </div>
+            )}
             <div>
               <dt><User size={13} />{" "}{leads.length > 1 ? t("Responsables") : t("Responsable")}</dt>
               <dd>{leads.length ? leads.slice(0, 2).map((l) => `${l.user.firstName} ${l.user.lastName}`).join(", ") + (leads.length > 2 ? ` +${leads.length - 2}` : "") : t("À désigner")}<small>{t("ouvert le {date}", { date: fmtDate(locale, project.createdAt) })}</small></dd>
             </div>
           </dl>
-          <Pipeline status={project.status} />
+          <Pipeline status={project.status} compact />
         </header>
 
         {project.status === "ATT_IND" && <p className="notice warn">{t("Projet proposé par l'expert : acceptez-le pour ouvrir le circuit (conformité, convention, signature), ou déclinez-le. Le motif éventuel lui est transmis dans vos échanges.")}</p>}
@@ -500,6 +536,12 @@ export default async function Page({ params, searchParams }: { params: Promise<{
           <div className="page-grid">
             <div className="page-main">
               {nextStep}
+              {project.description && (
+                <section className="card stack-sm">
+                  <h2 className="section-title"><FileText size={15} />{" "}{t("Objet du dossier")}</h2>
+                  <p className="object-text">{project.description}</p>
+                </section>
+              )}
               <section className="card stack-sm">
                 <div className="block-head">
                   <h2 className="section-title"><Users size={15} />{" "}{t("Experts")}</h2>
@@ -603,7 +645,7 @@ export default async function Page({ params, searchParams }: { params: Promise<{
                 <summary><h2>{t("Modifier le dossier")}</h2></summary>
                 <div className="stack">
                   <p className="hint">{t("Tant que le dossier n'est pas soumis à la conformité, vous pouvez en modifier l'objet et les conditions de chaque expert, ou solliciter un expert de plus. Des unités ou des honoraires modifiés renvoient la proposition à l'expert : sa réponse est de nouveau attendue.")}</p>
-                  <ProjectObjectForm orgId={id} projectId={projectId} title={project.title} area={project.therapeuticArea ?? ""} description={project.description ?? ""} />
+                  <ProjectObjectForm orgId={id} projectId={projectId} title={project.title} area={project.therapeuticArea ?? ""} description={project.description ?? ""} planned={project.plannedAt ? project.plannedAt.toISOString().slice(0, 10) : ""} />
                   {project.experts.length > 0 && (
                     <div className="stack-sm">
                       <h3>{t("Conditions proposées")}</h3>
@@ -613,8 +655,16 @@ export default async function Page({ params, searchParams }: { params: Promise<{
                           orgId={id} projectId={projectId} linkId={e.id}
                           name={`${drPrefix(e.practitioner.profession)}${e.practitioner.user.firstName} ${e.practitioner.user.lastName}${e.status === "DECLINE" ? ` (${t("a décliné")})` : ""}`}
                           unit={type?.unit ?? t("unité")}
-                          units={e.days != null ? String(e.days).replace(".", ",") : ""}
-                          fee={e.feeCents != null ? String(e.feeCents / 100).replace(".", ",") : ""}
+                          levels={levels}
+                          hourlyMax={settings.remunerationHourlyMax}
+                          defaults={{
+                            units: e.days != null ? String(e.days).replace(".", ",") : "",
+                            fee: e.feeCents != null ? String(e.feeCents / 100).replace(".", ",") : "",
+                            level: e.feeLevelId ?? "",
+                            prepHours: e.prepHours != null ? String(e.prepHours).replace(".", ",") : "",
+                            interventionHours: e.interventionHours != null ? String(e.interventionHours).replace(".", ",") : "",
+                            travelHours: e.travelHours != null ? String(e.travelHours).replace(".", ",") : "",
+                          }}
                           desired={e.desiredFeeCents != null ? fmtEur(locale, e.desiredFeeCents) : null}
                         />
                       ))}
@@ -624,6 +674,8 @@ export default async function Page({ params, searchParams }: { params: Promise<{
                     <h3>{t("Solliciter un autre expert")}</h3>
                     <AddExpertForm
                       orgId={id} projectId={projectId} unit={type?.unit ?? t("unité")}
+                      levels={levels}
+                      hourlyMax={settings.remunerationHourlyMax}
                       blocked={await engagementBlock(id, "sollicitation")}
                       experts={candidates.map((c) => {
                         const v = kolVisibility(c.visibility);

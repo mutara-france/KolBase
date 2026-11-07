@@ -1,7 +1,8 @@
 "use client";
 
+import Link from "next/link";
 import { useActionState, useState } from "react";
-import { createEvent, registerToEvent, saveEventProgram, updateEvent } from "@/lib/event-actions";
+import { createEvent, registerToEvent, reviewEvent, saveEventProgram, updateEvent } from "@/lib/event-actions";
 import { AiDraft } from "@/components/AiDraft";
 import { Notice } from "@/components/AuthForms";
 import { ActionForm } from "@/components/ActionForm";
@@ -18,7 +19,7 @@ type CatalogItem = { id: string; label: string; typical: number };
 /** Valeurs d'un événement existant (formulaire de modification). */
 export type EventInitial = {
   title: string; typeId: string; therapeuticArea: string; description: string; startsAt: string; durationMinutes: string;
-  format: string; capacity: string; city: string; venue: string; onlineUrl: string; benefits: { catalogId: string; valueCents: number }[];
+  format: string; capacity: string; city: string; postalCode?: string; venue: string; onlineUrl: string; benefits: { catalogId: string; valueCents: number }[];
 };
 
 type Frozen = { catalogId: string; label: string; valueCents: number }[];
@@ -88,6 +89,7 @@ function EventFields({ types, formats, catalog, initial, frozen, project, limits
       </div>
       {format !== "DISTANCIEL" && (
         <div className="row">
+          <label className="short">{t("Code postal")}<input name="postalCode" inputMode="numeric" autoComplete="postal-code" maxLength={12} defaultValue={initial?.postalCode} /></label>
           <label>{t("Ville")}<input name="city" defaultValue={initial?.city} /></label>
           <label>{t("Lieu")}<input name="venue" placeholder={t("Hôtel, salle…")} defaultValue={initial?.venue} /></label>
         </div>
@@ -131,7 +133,7 @@ function EventFields({ types, formats, catalog, initial, frozen, project, limits
   );
 }
 
-export function NewEventForm({ orgId, types, formats, catalog, project, blocked = null, limits }: { orgId: string; types: Opt[]; formats: Opt[]; catalog: readonly CatalogItem[]; project?: { id: string; title: string; area: string | null; publishable?: boolean }; blocked?: Blocked; limits?: HospitalityLimits }) {
+export function NewEventForm({ orgId, types, formats, catalog, project, blocked = null, limits, review = false }: { orgId: string; types: Opt[]; formats: Opt[]; catalog: readonly CatalogItem[]; project?: { id: string; title: string; area: string | null; publishable?: boolean }; blocked?: Blocked; limits?: HospitalityLimits; review?: boolean }) {
   const t = useT();
   const [state, action, pending] = useActionState(createEvent, undefined);
   // Créé depuis un dossier (board, comité) : réunion interne par défaut.
@@ -148,7 +150,14 @@ export function NewEventForm({ orgId, types, formats, catalog, project, blocked 
         <input type="checkbox" name="internal" value="1" checked={internal} onChange={(e) => setInternal(e.target.checked)} />{" "}{t("Réunion interne (board, comité, réunion d'experts) : ni publication dans l'agenda, ni inscriptions en ligne")}
       </label>
       {!internal && project && project.publishable === false && <p className="hint">{t(EVENT_NOT_PUBLISHABLE)}</p>}
-      {!internal && (!project || project.publishable !== false) && (
+      {/* Validation par la conformité exigée : soumission (dès la création ou depuis la fiche), puis publication. */}
+      {!internal && review && (!project || project.publishable !== false) && (
+        <>
+          <label className="check"><input type="checkbox" name="submitReview" value="1" />{" "}{t("Soumettre aussitôt à la conformité")}</label>
+          <p className="hint">{t("La conformité valide le lieu, la date, le programme et les hospitalités avant la publication. Vous pouvez aussi le lui soumettre plus tard, depuis la fiche de l'événement.")}</p>
+        </>
+      )}
+      {!internal && !review && (!project || project.publishable !== false) && (
         <label className="check"><input type="checkbox" name="publish" value="1" disabled={!!blocked} />{" "}{t("Publier immédiatement dans l'agenda")}{blocked ? ` ${t("({blocked} ; enregistrez-le en brouillon d'ici là)", { blocked: t(BLOCKED_UNTIL[blocked]) })}` : ""}</label>
       )}
       <button className="btn" disabled={pending}>{pending ? t("Création…") : t("Créer l'événement")}</button>
@@ -181,7 +190,7 @@ export function RegisterForm({ eventId, benefits, hcp, defaultStructure }: { eve
   const t = useT();
   const locale = useLocale();
   const total = benefits.filter((b) => accepted[b.id]).reduce((s, b) => s + b.valueCents, 0);
-  if (state?.ok) return <p className="notice ok">{state.ok} {t("Retrouvez-la dans « Mes inscriptions ».")}</p>;
+  if (state?.ok) return <p className="notice ok">{state.ok} <Link href="/inscriptions">{t("Retrouvez-la dans « Mes inscriptions ».")}</Link></p>;
   return (
     <form action={action} className="form">
       <Notice state={state} />
@@ -227,6 +236,29 @@ export function ProgramForm({ orgId, eventId, program, ai }: { orgId: string; ev
       <div className="actions">
         {ai && <AiDraft kind="programme" target="program" label={t("Proposer un programme avec l'IA")} />}
         <button className="btn small" disabled={pending}>{pending ? t("Enregistrement…") : t("Enregistrer le programme")}</button>
+      </div>
+    </form>
+  );
+}
+
+/**
+ * Décision de la conformité sur un événement soumis : valider, ou demander des modifications (motif transmis à
+ * l'équipe qui l'organise). `justify` : seule personne habilitée, qui l'a soumis elle-même (justification exigée).
+ */
+export function EventReviewForm({ orgId, eventId, justify = false }: { orgId: string; eventId: string; justify?: boolean }) {
+  const t = useT();
+  const [state, action, pending] = useActionState(reviewEvent, undefined);
+  return (
+    <form action={action} className="stack-sm">
+      <Notice state={state} />
+      <input type="hidden" name="orgId" value={orgId} />
+      <input type="hidden" name="eventId" value={eventId} />
+      <label>{justify ? t("Justification (obligatoire pour valider)") : t("Commentaire (obligatoire pour demander des modifications)")}
+        <textarea name="note" rows={2} maxLength={1000} placeholder={t("Ex. : préciser le programme scientifique, choisir un lieu sans caractère touristique…")} />
+      </label>
+      <div className="actions" style={{ marginTop: 0 }}>
+        <button className="btn small" name="decision" value="approve" disabled={pending}>{t("Valider l'événement")}</button>
+        <button className="btn ghost small" name="decision" value="changes" disabled={pending}>{t("Demander des modifications")}</button>
       </div>
     </form>
   );

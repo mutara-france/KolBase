@@ -167,7 +167,7 @@ export default async function Page({ params, searchParams }: { params: Promise<{
                 <p className="muted">{reg ? t("Vous étiez inscrit : votre inscription est annulée, ainsi que les prestations prévues.") : t("Cet événement est annulé : les inscriptions sont fermées.")}</p>
               ) : reg ? (
                 <>
-                  <p className="notice ok">{t("Vous êtes inscrit à cet événement.")}</p>
+                  <p className="notice ok">{t("Vous êtes inscrit à cet événement.")} <Link href="/inscriptions">{t("Voir mes inscriptions")}</Link></p>
                   {/* Lien de connexion : affiché aux seuls inscrits, jusqu'à la fin de l'événement. */}
                   {event.format !== "PRESENTIEL" && !ended && (
                     onlineUrl

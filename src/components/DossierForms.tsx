@@ -10,6 +10,8 @@ import { addProjectExpert, updateExpertTerms, updateProjectObject } from "@/lib/
 import { ActionForm } from "@/components/ActionForm";
 import { BLOCKED_UNTIL, subscribeHref, type Blocked } from "@/lib/billing-plans";
 import { dpaHref } from "@/lib/dpa";
+import { FeeFields, type FeeDefaults } from "@/components/FeeFields";
+import type { FeeLevelOpt } from "@/lib/fees";
 
 type Hidden = { orgId: string; projectId: string };
 const H = ({ orgId, projectId }: Hidden) => (<><input type="hidden" name="orgId" value={orgId} /><input type="hidden" name="projectId" value={projectId} /></>);
@@ -147,7 +149,7 @@ export function RefreshSignatureForm({ linkId }: { linkId: string }) {
 // ─── Modification du dossier (avant la signature) ──────────────────────────
 
 /** Objet du dossier : titre, domaine thérapeutique, objet et déroulé. */
-export function ProjectObjectForm({ orgId, projectId, title, area, description }: Hidden & { title: string; area: string; description: string }) {
+export function ProjectObjectForm({ orgId, projectId, title, area, description, planned = "" }: Hidden & { title: string; area: string; description: string; planned?: string }) {
   const t = useT();
   const [state, action, pending] = useActionState(updateProjectObject, undefined);
   return (
@@ -157,6 +159,7 @@ export function ProjectObjectForm({ orgId, projectId, title, area, description }
       <div className="row">
         <label>{t("Titre du dossier")}<input name="title" required defaultValue={title} /></label>
         <label>{t("Domaine thérapeutique")}<input name="therapeuticArea" defaultValue={area} /></label>
+        <label className="short">{t("Intervention prévue")}<input name="plannedAt" type="date" defaultValue={planned} /></label>
       </div>
       <label>{t("Objet et déroulé")}<textarea name="description" rows={4} defaultValue={description} /></label>
       <button className="btn ghost small" disabled={pending}>{pending ? t("Enregistrement…") : t("Mettre à jour l'objet")}</button>
@@ -165,17 +168,16 @@ export function ProjectObjectForm({ orgId, projectId, title, area, description }
 }
 
 /** Unités et honoraires d'un expert : modifiés, la proposition lui est renvoyée. */
-export function ExpertTermsForm({ orgId, projectId, linkId, name, unit, units, fee, desired }: Hidden & { linkId: string; name: string; unit: string; units: string; fee: string; desired?: string | null }) {
+export function ExpertTermsForm({ orgId, projectId, linkId, name, unit, defaults, levels, hourlyMax, desired }: Hidden & { linkId: string; name: string; unit: string; defaults: FeeDefaults; levels: FeeLevelOpt[]; hourlyMax: number; desired?: string | null }) {
   const t = useT();
   const [state, action, pending] = useActionState(updateExpertTerms, undefined);
   return (
     <ActionForm action={action} className="form terms-form">
       <H orgId={orgId} projectId={projectId} />
       <input type="hidden" name="linkId" value={linkId} />
-      <div className="fee-row">
+      <div className="fee-block">
         <strong>{name}</strong>
-        <label>{t("Unités ({unit})", { unit: t(unit) })}<input name="units" inputMode="decimal" defaultValue={units} /></label>
-        <label>{t("Honoraires totaux (€ HT)")}<input name="fee" inputMode="decimal" defaultValue={fee} required /></label>
+        <FeeFields unit={unit} levels={levels} hourlyMax={hourlyMax} defaults={defaults} />
         <button className="btn ghost small" disabled={pending}>{pending ? t("Envoi…") : t("Proposer ces conditions")}</button>
       </div>
       {desired && <p className="hint">{t("Honoraires souhaités par l'expert : {desired} HT.", { desired })}</p>}
@@ -185,7 +187,7 @@ export function ExpertTermsForm({ orgId, projectId, linkId, name, unit, units, f
 }
 
 /** Ajouter un expert référencé au dossier : il reçoit la sollicitation. */
-export function AddExpertForm({ orgId, projectId, unit, experts, blocked = null }: Hidden & { unit: string; experts: { id: string; name: string; detail: string; dayRateCents: number | null }[]; blocked?: Blocked }) {
+export function AddExpertForm({ orgId, projectId, unit, experts, blocked = null, levels = [], hourlyMax = 200 }: Hidden & { unit: string; experts: { id: string; name: string; detail: string; dayRateCents: number | null }[]; blocked?: Blocked; levels?: FeeLevelOpt[]; hourlyMax?: number }) {
   const t = useT();
   const [state, action, pending] = useActionState(addProjectExpert, undefined);
   const [expertId, setExpertId] = useState("");
@@ -201,10 +203,7 @@ export function AddExpertForm({ orgId, projectId, unit, experts, blocked = null 
           {experts.map((e) => <option key={e.id} value={e.id}>{e.name}{e.detail ? ` · ${e.detail}` : ""}</option>)}
         </select>
       </label>
-      <div className="row">
-        <label>{t("Unités ({unit})", { unit: t(unit) })}<input name="units" inputMode="decimal" defaultValue="1" /></label>
-        <label>{t("Honoraires totaux (€ HT)")}<input key={expertId} name="fee" inputMode="decimal" defaultValue={chosen?.dayRateCents != null ? String(chosen.dayRateCents / 100) : ""} required /></label>
-      </div>
+      <FeeFields key={expertId} unit={unit} levels={levels} hourlyMax={hourlyMax} defaults={{ fee: chosen?.dayRateCents != null ? String(chosen.dayRateCents / 100) : "" }} />
       <label>{t("Message d'accompagnement")}<textarea name="message" rows={2} placeholder={t("Message envoyé avec la sollicitation")} /></label>
       <button className="btn ghost small" disabled={pending || !!blocked}>{pending ? t("Envoi…") : t("Ajouter et solliciter l'expert")}</button>
       {blocked && (

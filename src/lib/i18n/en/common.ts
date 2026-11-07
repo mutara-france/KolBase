@@ -337,4 +337,7 @@ export const COMMON: Record<string, string> = {
   "Nom de votre structure": "Name of your organisation",
   "Type de structure": "Type of organisation",
   "Complétez la fiche de votre structure : KolBase contrôle le SIREN, puis la valide. Vous en serez l'administrateur et pourrez inviter vos collègues.": "Complete your organisation's profile: KolBase checks the company number, then verifies it. You will be its administrator and can invite your colleagues.",
+  "Voir mes inscriptions": "See my registrations",
+  "Code postal invalide : 5 chiffres.": "Invalid postcode: 5 digits.",
+  "Cet expert est déjà sollicité dans le dossier de l'événement.": "This expert has already been approached in the event's collaboration.",
 };

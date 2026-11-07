@@ -115,6 +115,8 @@ model PractitionerProfile {
   country       String   @default("FR")  // pays d'exercice principal (code ISO, « XX » : autre pays)
   licenseNumber String?                  // hors France : identifiant professionnel (INAMI, NPI, n° d'Ordre…)
   city          String?
+  // Code postal d'exercice (facultatif) : région dans les statistiques.
+  postalCode    String?
   hospital      String?
   specialty     String?
   subspecialty  String?
@@ -273,6 +275,8 @@ model Organization {
   name         String
   kind         OrgKind
   require2fa   Boolean  @default(false) // double authentification exigée de tous les membres
+  // Événements validés par la conformité avant publication (par défaut pour un industriel, réglable).
+  eventReview  Boolean  @default(false)
   sector       String?
   headquarters String?
   size         String?
@@ -284,6 +288,8 @@ model Organization {
   listed       Boolean  @default(false)
   visibility   Json     @default("{}")
   complianceSettings Json @default("{}")
+  // Grille de rémunération définie par la conformité (taux horaires par niveau d'expert ou d'activité).
+  feeLevels          FeeLevel[]
   // Prestataires référencés : catégories de prestation et zone couverte.
   supplierCategories String[] @default([])
   coverage           String?
@@ -447,6 +453,11 @@ model Project {
   signatureAttestedById String?
   // Motif de l'abandon du dossier : affiché à l'expert sur sa sollicitation.
   abandonNote     String?
+  // Délais internes : date d'intervention prévue (à défaut, celle de l'événement du dossier), dernière soumission à la
+  // conformité, et dernière relance de la conformité pour un examen en retard.
+  plannedAt        DateTime?
+  submittedAt      DateTime?
+  reviewReminderAt DateTime?
   // Copie d'un projet proposé par un expert (envoyé à plusieurs organisations, chacune a la sienne).
   proposalId      String?
   proposal        ExpertProposal? @relation(fields: [proposalId], references: [id], onDelete: SetNull)
@@ -497,6 +508,19 @@ model MaterialVersion {
   @@unique([materialId, version])
 }
 
+/// Niveau de la grille de rémunération d'une organisation : un libellé (ex. « Expert national ») et un taux horaire HT.
+model FeeLevel {
+  id             String          @id @default(cuid())
+  organizationId String
+  organization   Organization    @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  label          String
+  hourlyCents    Int
+  createdAt      DateTime        @default(now())
+  experts        ProjectExpert[]
+
+  @@index([organizationId])
+}
+
 model ProjectExpert {
   id             String              @id @default(cuid())
   projectId      String
@@ -512,6 +536,15 @@ model ProjectExpert {
   desiredFeeCents Int?
   // Honoraires précédents, quand l'organisation en a proposé d'autres ou a accepté ceux de l'expert.
   previousFeeCents Int?
+  // Volume horaire déclaré (heures, facultatif) et niveau de la grille de rémunération appliqué : le taux horaire réel
+  // (honoraires ÷ heures) sert au contrôle du seuil horaire. Taux et libellé du niveau sont figés à la proposition.
+  prepHours         Float?
+  interventionHours Float?
+  travelHours       Float?
+  feeLevelId        String?
+  feeLevel          FeeLevel? @relation(fields: [feeLevelId], references: [id], onDelete: SetNull)
+  feeLevelLabel     String?
+  hourlyCents       Int?
   // Paiement des honoraires, indiqué par l'organisation (visible de l'expert dans « Mes revenus »).
   paidAt         DateTime?
   paidCents      Int?
@@ -627,12 +660,24 @@ model Event {
   durationMinutes  Int?
   format           EventFormat  @default(PRESENTIEL)
   city             String?
+  // Code postal du lieu (facultatif) : région dans les statistiques.
+  postalCode       String?
   venue            String?
   capacity         Int?
   registrationOpen Boolean      @default(true)
   publishedAt      DateTime?
   // Réunion interne (board, comité…) : ni publication dans l'agenda, ni inscriptions en ligne.
   internal         Boolean      @default(false)
+  // Validation par la conformité avant publication (organisations qui l'exigent) : lieu, date, programme, hospitalités.
+  // null : non soumis ; « submitted » : en attente ; « approved » : validé ; « changes » : modifications demandées.
+  reviewStatus     String?
+  reviewSubmittedAt DateTime?
+  reviewSubmittedById String?
+  reviewedAt       DateTime?
+  reviewedById     String?
+  reviewNote       String?
+  /// Changements (date, lieu, format, hospitalités) qui ont renvoyé l'événement validé à la conformité.
+  reviewChanges    String[] @default([])
   program          String?      // programme scientifique (déroulé horaire), affiché sur la page publique
   // Lien de connexion (visioconférence, https) des événements en ligne ou hybrides : communiqué aux seuls inscrits.
   onlineUrl        String?

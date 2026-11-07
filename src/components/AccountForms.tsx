@@ -11,7 +11,7 @@ import { useT } from "@/components/I18nProvider";
 type Props = {
   user: { firstName: string; lastName: string; email: string; phone: string | null; locale: string };
   practitioner: {
-    profession: string; rpps: string | null; country: string; licenseNumber: string | null; city: string | null; specialty: string | null; listed: boolean;
+    profession: string; rpps: string | null; country: string; licenseNumber: string | null; city: string | null; postalCode?: string | null; specialty: string | null; listed: boolean;
     rppsStatus: "none" | "pending" | "verified" | "rejected"; rppsNote: string | null;
   } | null;
 };
@@ -65,6 +65,7 @@ export function ProfileForm({ user, practitioner }: Props) {
             )}
           </div>
           <div className="row">
+            <label className="short">{t("Code postal")}<input name="postalCode" inputMode="numeric" autoComplete="postal-code" maxLength={12} defaultValue={practitioner.postalCode ?? ""} /></label>
             <label>{t("Ville d'exercice")}<input name="city" defaultValue={practitioner.city ?? ""} /></label>
             <label>{t("Spécialité / domaine")}<input name="specialty" defaultValue={practitioner.specialty ?? ""} /></label>
           </div>

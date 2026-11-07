@@ -7,10 +7,12 @@ import { PageHero } from "@/components/PageHero";
 import { RetainForm } from "@/components/OpportunityForms";
 import { db } from "@/lib/db";
 import { requireMembership } from "@/lib/orgs";
-import { collabType, SOURCING_ROLES } from "@/lib/projects";
+import { collabType, recruitmentOpen, SOURCING_ROLES } from "@/lib/projects";
 import { rejectApplication, setOpenCallStatus } from "@/lib/opportunity-actions";
 import { getT } from "@/lib/i18n/server";
 import { fmtDate, fmtEur, intlLocale } from "@/lib/i18n";
+import { feeLevels } from "@/lib/fee-fields";
+import { complianceSettings } from "@/lib/compliance";
 
 export async function generateMetadata() {
   const { t } = await getT();
@@ -26,7 +28,7 @@ export default async function Page({ params }: { params: Promise<{ id: string; c
   const call = await db.openCall.findFirst({
     where: { id: callId, organizationId: id },
     include: {
-      event: { select: { id: true, title: true, startsAt: true, city: true } },
+      event: { select: { id: true, title: true, startsAt: true, city: true, project: { select: { id: true, title: true, status: true } } } },
       applications: {
         include: { practitioner: { include: { user: { select: { firstName: true, lastName: true } } } } },
         orderBy: { createdAt: "asc" },
@@ -34,7 +36,10 @@ export default async function Page({ params }: { params: Promise<{ id: string; c
     },
   });
   if (!call) notFound();
+  const levels = await feeLevels(id);
   const type = collabType(call.typeId);
+  // Événement d'un dossier qui recrute encore : les candidats retenus rejoignent ce dossier.
+  const host = call.event?.project && recruitmentOpen(call.event.project.status) ? call.event.project : null;
   const budget = [call.budgetMinCents, call.budgetMaxCents].map((c) => (c != null ? fmtEur(locale, c) : null));
 
   const pendingCount = call.applications.filter((a) => a.status === "pending").length;
@@ -80,6 +85,8 @@ export default async function Page({ params }: { params: Promise<{ id: string; c
                       orgId={id}
                       applicationId={a.id}
                       unit={type?.unit ?? t("unité")}
+                      levels={levels}
+                      hourlyMax={complianceSettings(org.complianceSettings).remunerationHourlyMax}
                       defaultFee={call.budgetMaxCents != null ? String(call.budgetMaxCents / 100) : a.practitioner.dayRateCents != null ? String(a.practitioner.dayRateCents / 100) : ""}
                     />}
                     <form action={rejectApplication}>
@@ -98,7 +105,7 @@ export default async function Page({ params }: { params: Promise<{ id: string; c
           <aside className="page-aside">
             <section className="card next-step">
               <span className="eyebrow-sm">{t("Pilotage")}</span>
-              <p className="next-hint">{call.status !== "open" ? t("Opportunité clôturée : elle n'est plus visible des experts.") : full ? t("Complet : toutes les places sont pourvues, l'opportunité ne reçoit plus de candidature.") : t(call.event ? "Les experts référencés voient l'opportunité dans « Opportunités » et sur la page de l'événement. Retenir une candidature ouvre un dossier et propose des honoraires à l'expert ; le dossier avance après son accord." : "Les experts référencés voient l'opportunité dans « Opportunités ». Retenir une candidature ouvre un dossier et propose des honoraires à l'expert ; le dossier avance après son accord.")}</p>
+              <p className="next-hint">{call.status !== "open" ? t("Opportunité clôturée : elle n'est plus visible des experts.") : full ? t("Complet : toutes les places sont pourvues, l'opportunité ne reçoit plus de candidature.") : host ? t("Les experts référencés voient l'opportunité dans « Opportunités » et sur la page de l'événement. Retenir une candidature ajoute l'expert au dossier « {title} » (onglet Experts) et lui propose des honoraires, tant que ce dossier n'est pas soumis à la conformité.", { title: host.title }) : t(call.event ? "Les experts référencés voient l'opportunité dans « Opportunités » et sur la page de l'événement. Retenir une candidature ouvre un dossier et propose des honoraires à l'expert ; le dossier avance après son accord." : "Les experts référencés voient l'opportunité dans « Opportunités ». Retenir une candidature ouvre un dossier et propose des honoraires à l'expert ; le dossier avance après son accord.")}</p>
               <form action={setOpenCallStatus} className="transitions-stack">
                 <input type="hidden" name="orgId" value={id} />
                 <input type="hidden" name="callId" value={callId} />

@@ -75,10 +75,10 @@ describe("saisie des montants", () => {
 describe("régime anti-cadeaux", () => {
   const s = DEFAULT_COMPLIANCE;
   it("rémunération : seuil par convention et taux horaire", () => {
-    expect(remunerationRegime(s, 150000, 1, "journée").regime).toBe("declaration");
-    expect(remunerationRegime(s, 250000, 2, "journée").regime).toBe("autorisation");
-    expect(remunerationRegime(s, 90000, 3, "heure").regime).toBe("autorisation");
-    expect(remunerationRegime(s, 60000, 3, "heure").regime).toBe("declaration");
+    expect(remunerationRegime(s, { feeCents: 150000, days: 1 }, "journée").regime).toBe("declaration");
+    expect(remunerationRegime(s, { feeCents: 250000, days: 2 }, "journée").regime).toBe("autorisation");
+    expect(remunerationRegime(s, { feeCents: 90000, days: 3 }, "heure").regime).toBe("autorisation");
+    expect(remunerationRegime(s, { feeCents: 60000, days: 3 }, "heure").regime).toBe("declaration");
   });
   it("hospitalité : nuitée, repas et total", () => {
     expect(hospitalityRegime(s, [{ catalogId: "nuitee", valueCents: 14000 }, { catalogId: "dejeuner", valueCents: 3400 }]).regime).toBe("declaration");
@@ -149,9 +149,14 @@ describe("navigation et rôles", () => {
   });
   it("les statistiques sont réservées au pilotage et absentes de la barre mobile au-delà de cinq entrées", () => {
     expect(orgNavItems("o", ["PRESTATAIRE"], "INDUSTRIEL").map((i) => i.key)).not.toContain("statistiques");
-    const admin = orgNavItems("o", ["ADMIN"], "INDUSTRIEL");
+    // Administrateur qui tient aussi la conformité : six rubriques, dont Statistiques hors de la barre mobile.
+    const admin = orgNavItems("o", ["ADMIN", "CONFORMITE"], "INDUSTRIEL");
     expect(admin.length).toBe(6);
     expect(admin.filter((i) => !i.secondary).length).toBe(5);
+  });
+  it("l'administrateur n'a la conformité que s'il en a aussi le rôle", () => {
+    expect(orgNavItems("o", ["ADMIN"], "INDUSTRIEL").map((i) => i.key)).toEqual(["accueil", "praticiens", "dossiers", "evenements", "statistiques"]);
+    expect(orgNavItems("o", ["ADMIN", "CONFORMITE"], "INDUSTRIEL").map((i) => i.key)).toContain("conformite");
   });
   it("la relecture des supports est rangée dans la conformité, sur un seul niveau d'onglets", () => {
     expect(orgSectionTabs("dossiers", "o", ["ADMIN"], "INDUSTRIEL").map((t) => t.key)).toEqual(["dossiers"]);
@@ -174,8 +179,8 @@ describe("navigation et rôles", () => {
 describe("seuils d'autorisation de l'arrêté du 7 août 2020", () => {
   const s = DEFAULT_COMPLIANCE;
   it("rémunération : 800 € par demi-journée, soit 1 600 € par journée", () => {
-    expect(remunerationRegime(s, 160000, 1, "journée").regime).toBe("declaration");
-    expect(remunerationRegime(s, 180000, 1, "journée").regime).toBe("autorisation");
+    expect(remunerationRegime(s, { feeCents: 160000, days: 1 }, "journée").regime).toBe("declaration");
+    expect(remunerationRegime(s, { feeCents: 180000, days: 1 }, "journée").regime).toBe("autorisation");
   });
   it("hospitalité : 15 € par collation", () => {
     expect(hospitalityRegime(s, [{ catalogId: "cafe", valueCents: 1200 }]).regime).toBe("declaration");
@@ -278,10 +283,14 @@ describe("campagne de tests : entrées piégées", () => {
     expect(unitsOrNull("100000")).toBeUndefined();
   });
   it("régime : un volume absent ou négatif ne contourne pas le seuil horaire", () => {
-    expect(remunerationRegime(s, 150000, null, "heure").regime).toBe("autorisation");
-    expect(remunerationRegime(s, 150000, -1, "heure").regime).toBe("autorisation");
-    expect(remunerationRegime(s, 150000, 10, "heure").regime).toBe("declaration");
-    expect(remunerationRegime(s, 170000, null, "journée").regime).toBe("autorisation");
+    expect(remunerationRegime(s, { feeCents: 150000, days: null }, "heure").regime).toBe("autorisation");
+    expect(remunerationRegime(s, { feeCents: 150000, days: -1 }, "heure").regime).toBe("autorisation");
+    expect(remunerationRegime(s, { feeCents: 150000, days: 10 }, "heure").regime).toBe("declaration");
+    expect(remunerationRegime(s, { feeCents: 170000, days: null }, "journée").regime).toBe("autorisation");
+    // Volume horaire déclaré : le taux horaire réel est contrôlé, quelle que soit l'unité.
+    expect(remunerationRegime(s, { feeCents: 150000, days: 1, prepHours: 4, interventionHours: 3 }, "intervention").regime).toBe("autorisation");
+    expect(remunerationRegime(s, { feeCents: 150000, days: 1, prepHours: 4, interventionHours: 3, travelHours: 1 }, "intervention").regime).toBe("declaration");
+    expect(remunerationRegime(s, { feeCents: 150000, days: 1, prepHours: 4, interventionHours: 3 }, "intervention").reason).toBe("214 €/h > 200 €/h (7 h déclarées)");
   });
   it("logo : contenu réel contrôlé (pas de SVG ni de fichier renommé)", () => {
     expect(sniffLogo(new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0]))).toBe("image/png");

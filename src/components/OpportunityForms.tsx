@@ -8,6 +8,8 @@ import { ActionForm } from "@/components/ActionForm";
 import { BLOCKED_UNTIL, type Blocked } from "@/lib/billing-plans";
 import { useLocale, useT } from "@/components/I18nProvider";
 import { intlLocale } from "@/lib/i18n/core";
+import { FeeFields } from "@/components/FeeFields";
+import type { FeeLevelOpt } from "@/lib/fees";
 
 type CType = { id: string; label: string; category: string; unit: string; fmv: readonly number[] };
 
@@ -81,19 +83,21 @@ export function ApplyForm({ callId }: { callId: string }) {
   );
 }
 
-export function RetainForm({ orgId, applicationId, unit, defaultFee }: { orgId: string; applicationId: string; unit: string; defaultFee: string }) {
+export function RetainForm({ orgId, applicationId, unit, defaultFee, levels = [], hourlyMax = 200 }: { orgId: string; applicationId: string; unit: string; defaultFee: string; levels?: FeeLevelOpt[]; hourlyMax?: number }) {
   const t = useT();
   const [state, action, pending] = useActionState(retainApplication, undefined);
   const [open, setOpen] = useState(false);
   if (!open) return <button type="button" className="link" onClick={() => setOpen(true)}>{t("Retenir…")}</button>;
   return (
-    <form action={action} className="inline wrap">
+    <form action={action} className="form retain-form">
       <Notice state={state} />
       <input type="hidden" name="orgId" value={orgId} />
       <input type="hidden" name="applicationId" value={applicationId} />
-      <input name="units" defaultValue="1" aria-label={t("Nombre ({unit})", { unit: t(unit) })} title={t("Nombre ({unit})", { unit: t(unit) })} />
-      <input name="fee" defaultValue={defaultFee} placeholder={t("Honoraires € HT")} aria-label={t("Honoraires")} required />
-      <button className="btn" disabled={pending}>{pending ? "…" : t("Proposer ces honoraires")}</button>
+      <FeeFields unit={unit} levels={levels} hourlyMax={hourlyMax} defaults={{ fee: defaultFee }} />
+      <div className="actions">
+        <button className="btn" disabled={pending}>{pending ? "…" : t("Proposer ces honoraires")}</button>
+        <button type="button" className="link" onClick={() => setOpen(false)}>{t("Annuler")}</button>
+      </div>
     </form>
   );
 }

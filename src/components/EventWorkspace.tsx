@@ -1,14 +1,16 @@
 import { aiEnabled } from "@/lib/ai";
-import { EditEventForm, ProgramForm } from "@/components/EventForms";
+import { EditEventForm, EventReviewForm, ProgramForm } from "@/components/EventForms";
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { Bell, CalendarDays, ClipboardCheck, Euro, FileDown, Gift, MapPin, Megaphone, QrCode, Star, Truck, Users } from "lucide-react";
+import { Bell, CalendarDays, ClipboardCheck, Euro, FileDown, Gift, MapPin, Megaphone, QrCode, ShieldCheck, Star, Truck, Users } from "lucide-react";
 import { StatusPill } from "@/components/ProjectBits";
 import { db } from "@/lib/db";
 import { requireMembership } from "@/lib/orgs";
 import { BENEFIT_CATALOG, COMPLIANCE_ROLES, EVENT_MANAGER_ROLES, EVENT_ORGANIZER_ROLES, EVENT_TYPES, eventScope, eventTypeLabel, FORMAT_LABEL, formatDuration, needsOnlineLink, orgEventStatus, toParisInput } from "@/lib/events";
 import { isSuspendedOrg } from "@/lib/org-roles";
-import { cancelEvent, deleteEventDraft, setEventAgency, setEventFlag } from "@/lib/event-actions";
+import { cancelEvent, deleteEventDraft, setEventAgency, setEventFlag, submitEventReview } from "@/lib/event-actions";
+import { needsReview, REVIEW_LABEL, REVIEW_TONE, reviewAllowsPublish, type ReviewStatus } from "@/lib/event-review";
+import { FOUR_EYES_BLOCKED, fourEyes } from "@/lib/four-eyes";
 import { deletableDraft, everPublished } from "@/lib/event-drafts";
 import { EVENT_NOT_PUBLISHABLE, eventPublishable } from "@/lib/projects";
 import { BillingNotice } from "@/components/BillingNotice";
@@ -201,6 +203,15 @@ export async function EventWorkspace({ orgId: id, eventId, publie, mode = "page"
   const missingLink = !event.cancelledAt && needsOnlineLink(event, now);
   const publishBlocked = !readOnly && !event.publishedAt && !event.internal ? await engagementBlock(id, "evenement") : null;
   const duration = event.durationMinutes ? formatDuration(event.durationMinutes, locale) : null;
+  // Validation par la conformité (organisations qui l'exigent) : lieu, date, programme, hospitalités, avant publication.
+  const review = needsReview(org, event) && !event.cancelledAt ? ((event.reviewStatus as ReviewStatus | null) ?? null) : undefined;
+  const reviewed = review !== undefined;
+  // Événement d'un dossier pas encore validé : la conformité l'examine avec le dossier.
+  const withDossier = reviewed && review == null && !!event.project && !eventPublishable(event.project.status);
+  const reviewPeople = reviewed ? await db.user.findMany({ where: { id: { in: [event.reviewSubmittedById, event.reviewedById].filter((x): x is string => !!x) } }, select: { id: true, firstName: true, lastName: true } }) : [];
+  const personName = (uid: string | null) => { const p = reviewPeople.find((u) => u.id === uid); return p ? `${p.firstName} ${p.lastName}` : null; };
+  const reviewRule = review === "submitted" && isCompliance && event.reviewSubmittedById ? await fourEyes(new Set([event.reviewSubmittedById]), id, user.id, COMPLIANCE_ROLES) : "ok";
+  const canPublishReview = reviewAllowsPublish(org, event);
 
   const Flag = ({ flag, label, ghost, disabled }: { flag: string; label: string; ghost?: boolean; disabled?: boolean }) => (
     <form action={setEventFlag}>
@@ -412,7 +423,7 @@ export async function EventWorkspace({ orgId: id, eventId, publie, mode = "page"
                 initial={{
                   title: event.title, typeId: event.typeId, therapeuticArea: event.therapeuticArea ?? "", description: event.description ?? "",
                   startsAt: toParisInput(event.startsAt), durationMinutes: event.durationMinutes != null ? String(event.durationMinutes) : "",
-                  format: event.format, capacity: event.capacity != null ? String(event.capacity) : "", city: event.city ?? "", venue: event.venue ?? "",
+                  format: event.format, capacity: event.capacity != null ? String(event.capacity) : "", city: event.city ?? "", postalCode: event.postalCode ?? "", venue: event.venue ?? "",
                   onlineUrl: event.onlineUrl ?? "", benefits: event.benefits.map((b) => ({ catalogId: b.catalogId, valueCents: b.valueCents })),
                 }}
               />
@@ -577,6 +588,65 @@ export async function EventWorkspace({ orgId: id, eventId, publie, mode = "page"
           </div>
 
           <aside className="page-aside">
+            {reviewed && (
+              <section className="card stack-sm review-card" id="validation" aria-labelledby="validation-titre">
+                <h2 className="section-title" id="validation-titre"><ShieldCheck size={15} /> {t("Validation par la conformité")}</h2>
+                <p><span className={`pill ${review ? REVIEW_TONE[review] : withDossier ? "wait" : ""}`}>{review ? t(REVIEW_LABEL[review]) : withDossier ? t("Examiné avec le dossier") : t("À soumettre")}</span></p>
+                {/* Points examinés : ce que la conformité valide, tel qu'il est aujourd'hui. */}
+                <ul className="review-points">
+                  <li><span>{t("Date")}</span> {fmtDate(locale, event.startsAt)} · {fmtTime(locale, event.startsAt)}</li>
+                  <li><span>{t("Lieu")}</span> {event.format === "DISTANCIEL" ? t("À distance") : [event.venue, event.city].filter(Boolean).join(", ") || <em className="warn-text">{t("à préciser")}</em>}</li>
+                  <li><span>{t("Programme")}</span> {event.program ? t("renseigné") : <em className="warn-text">{t("à compléter")}</em>}</li>
+                  <li><span>{t("Hospitalités")}</span> {event.benefits.length === 0 ? t("aucune") : <>{t("jusqu'à {amount} TTC par personne", { amount: fmtEur(locale, event.benefits.reduce((s, b) => s + b.valueCents, 0)) })} · {t(REGIME_LABEL[hospitalityRegime(settings, event.benefits).regime])}</>}</li>
+                </ul>
+                {withDossier && <p className="hint">{t("Événement du dossier « {title} » : la conformité valide le lieu, la date, le programme et les hospitalités avec le dossier.", { title: event.project!.title })}</p>}
+                {review == null && !withDossier && (
+                  <>
+                    <p className="hint">{t("La conformité valide le lieu, la date, le programme et les hospitalités avant la publication.")}</p>
+                    {!readOnly ? (
+                      <form action={submitEventReview}>
+                        <input type="hidden" name="orgId" value={id} />
+                        <input type="hidden" name="eventId" value={eventId} />
+                        <button className="btn small">{t("Soumettre à la conformité")}</button>
+                      </form>
+                    ) : <p className="hint">{t("Pas encore soumis par l'équipe qui organise l'événement.")}</p>}
+                  </>
+                )}
+                {review === "submitted" && (
+                  <>
+                    <p className="text-sm">
+                      {event.reviewSubmittedAt && (personName(event.reviewSubmittedById) ? t("Soumis le {date} par {name}.", { date: fmtDate(locale, event.reviewSubmittedAt), name: personName(event.reviewSubmittedById)! }) : t("Soumis le {date}.", { date: fmtDate(locale, event.reviewSubmittedAt) }))}
+                      {event.reviewChanges.length > 0 && <> {t("Modifié après validation : {changes}.", { changes: event.reviewChanges.map((c) => t(c)).join(", ") })}</>}
+                    </p>
+                    {event.publishedAt && <p className="hint">{t("L'événement reste en ligne pendant l'examen des modifications.")}</p>}
+                    {isCompliance
+                      ? reviewRule === "blocked" ? <p className="notice warn">{t(FOUR_EYES_BLOCKED)}</p> : <EventReviewForm orgId={id} eventId={eventId} justify={reviewRule === "justify"} />
+                      : <p className="hint">{t("En attente de la conformité : la publication sera possible une fois l'événement validé.")}</p>}
+                  </>
+                )}
+                {review === "approved" && event.reviewedAt && (
+                  <p className="text-sm">
+                    {personName(event.reviewedById) ? t("Validé le {date} par {name}.", { date: fmtDate(locale, event.reviewedAt), name: personName(event.reviewedById)! }) : t("Validé le {date}.", { date: fmtDate(locale, event.reviewedAt) })}
+                    {event.reviewNote && <> « {event.reviewNote} »</>}
+                  </p>
+                )}
+                {review === "approved" && <p className="hint">{t("Un changement de date, de lieu, de format ou d'hospitalités renvoie l'événement à la conformité.")}</p>}
+                {review === "changes" && (
+                  <>
+                    <p className="notice warn">
+                      {event.reviewedAt && (personName(event.reviewedById) ? t("Modifications demandées le {date} par {name} :", { date: fmtDate(locale, event.reviewedAt), name: personName(event.reviewedById)! }) : t("Modifications demandées le {date} :", { date: fmtDate(locale, event.reviewedAt) }))}{" "}« {event.reviewNote} »
+                    </p>
+                    {!readOnly && (
+                      <form action={submitEventReview}>
+                        <input type="hidden" name="orgId" value={id} />
+                        <input type="hidden" name="eventId" value={eventId} />
+                        <button className="btn small">{t("Soumettre de nouveau à la conformité")}</button>
+                      </form>
+                    )}
+                  </>
+                )}
+              </section>
+            )}
             <section className="card next-step">
               <span className="eyebrow-sm">{t("Diffusion")}</span>
               {event.cancelledAt ? (
@@ -617,7 +687,7 @@ export async function EventWorkspace({ orgId: id, eventId, publie, mode = "page"
                           </ConfirmButton>
                         </form>
                       ) : <span className="hint">{t("Événement avec des inscrits : son annulation relève de {name}.", { name: org.name })}</span>
-                    ) : org.verification === "VERIFIED" ? (eventPublishable(event.project?.status) ? <Flag flag="publish" label={withdrawn ? t("Republier dans l'agenda") : t("Publier dans l'agenda")} disabled={!!publishBlocked} /> : <span className="hint">{t(EVENT_NOT_PUBLISHABLE)}</span>) : <span className="hint">{t("Publication possible une fois l'organisation validée par KolBase.")}</span>}
+                    ) : org.verification === "VERIFIED" ? (!eventPublishable(event.project?.status) ? <span className="hint">{t(EVENT_NOT_PUBLISHABLE)}</span> : !canPublishReview ? <span className="hint">{t("Publication possible une fois l'événement validé par la conformité.")}</span> : <Flag flag="publish" label={withdrawn ? t("Republier dans l'agenda") : t("Publier dans l'agenda")} disabled={!!publishBlocked} />) : <span className="hint">{t("Publication possible une fois l'organisation validée par KolBase.")}</span>}
                     {/* Inscriptions : seulement pour un événement publié, avant son début (un brouillon n'en reçoit pas). */}
                     {event.publishedAt && !isPast && (event.registrationOpen ? <Flag flag="close" label={t("Fermer les inscriptions")} ghost /> : <Flag flag="open" label={t("Rouvrir les inscriptions")} ghost />)}
                     {isOrganizer && !event.publishedAt && <Flag flag="internal" label={t("En faire une réunion interne")} ghost />}

@@ -94,6 +94,9 @@ export default async function Page({ params, searchParams }: { params: Promise<{
                 </ul>
               )}
               {isAdmin && <p className="hint">{t("Cochez ou décochez un rôle : la modification est enregistrée aussitôt.")}</p>}
+              {!isSupplier && !people.some((p) => p.roles.includes("CONFORMITE")) && (
+                <p className="notice warn" id="sans-conformite">{t("Personne n'a le rôle Conformité : les dossiers soumis ne pourront pas être validés. Cochez ce rôle pour un membre, vous-même au besoin.")}</p>
+              )}
               <ul className="member-list">
                 {people.map((p) => (
                   <li key={p.userId} className="member-row">

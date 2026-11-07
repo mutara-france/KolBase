@@ -7,6 +7,7 @@ import { readFile } from "node:fs/promises";
 import path from "node:path";
 import fontkit from "@pdf-lib/fontkit";
 import { PDFDocument, StandardFonts, rgb, type PDFFont, type PDFPage } from "pdf-lib";
+import { fmtHours, hoursDetail, hoursOf } from "@/lib/fees";
 
 const A4: [number, number] = [595.28, 841.89];
 const M = 56; // marge
@@ -158,7 +159,7 @@ export type CollabConventionInput = {
   org: { name: string; headquarters: string | null; contactEmail: string | null; policy: string | null };
   expert: { firstName: string; lastName: string; email: string; profession: string; rpps: string | null; city: string | null; country?: string; licenseNumber?: string | null; structure?: { name: string; legalForm: string; siren: string | null } | null };
   project: { title: string; typeLabel: string; unit: string; therapeuticArea: string | null; description: string | null; ordreRef: string | null };
-  link: { units: number | null; feeCents: number | null };
+  link: { units: number | null; feeCents: number | null; prepHours?: number | null; interventionHours?: number | null; travelHours?: number | null };
   fmv: { min: number; max: number; perUnit: number; verdict: "ok" | "above" | "below" } | null;
   expertLocale?: string;
 };
@@ -203,6 +204,13 @@ export async function buildCollaborationConventionForSignature(i: CollabConventi
   w.rows([
     [t("Nature"), t(i.project.typeLabel)],
     [t("Volume"), `${units} ${unit}${units > 1 ? "s" : ""}`],
+    // Volume horaire déclaré : il justifie la rémunération (taux horaire réel) auprès de l'Ordre.
+    ...(hoursOf(i.link) != null
+      ? [
+          [t("Volume horaire"), `${fmtHours(hoursOf(i.link)!, intlLocale(locale))} (${hoursDetail(i.link, t, intlLocale(locale))})`],
+          [t("Taux horaire"), t("{montant} HT par heure", { montant: eur(locale, Math.round((i.link.feeCents ?? 0) / hoursOf(i.link)!)) })],
+        ] as [string, string][]
+      : []),
     [t("Honoraires"), i.link.feeCents != null ? t("{montant} HT, forfaitaires et définitifs", { montant: eur(locale, i.link.feeCents) }) : t("À définir")],
     // Le repère indicatif de KolBase n'a pas sa place dans le contrat : la juste contrepartie est documentée par l'organisation.
     // Même délai que la note d'honoraires (PAYMENT_TERMS, src/lib/fee-notes.ts).

@@ -37,3 +37,11 @@ export function unitsOrNull(v: string): number | null | undefined {
   return Number.isFinite(n) && n > 0 && n <= 1000 ? Math.round(n * 100) / 100 : undefined;
 }
 export const UNITS_INVALID = "Volume invalide : indiquez un nombre positif (heures, journées…).";
+
+/** Jour saisi (AAAA-MM-JJ, champ date) : midi UTC pour rester le même jour partout ; null si vide, undefined si illisible. */
+export function dayOrNull(v: string): Date | null | undefined {
+  if (!v) return null;
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(v)) return undefined;
+  const d = new Date(`${v}T12:00:00Z`);
+  return Number.isNaN(d.getTime()) ? undefined : d;
+}

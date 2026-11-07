@@ -217,8 +217,11 @@ export const CONFORMITY_VALIDATED: ProjectStatus[] = ["VALIDE", "ORDRE", "SIGNAT
 export const eventPublishable = (projectStatus: ProjectStatus | string | null | undefined) => projectStatus == null || (CONFORMITY_VALIDATED as string[]).includes(projectStatus);
 export const EVENT_NOT_PUBLISHABLE = "L'événement d'un dossier se publie une fois le dossier validé par la conformité : en attendant, il reste en brouillon (date, lieu, devis et agence se préparent).";
 /** Conditions d'un expert modifiées (unités, honoraires) : la proposition lui est renvoyée. */
-export const termsChanged = (before: { feeCents: number | null; days: number | null }, after: { feeCents: number | null; days: number | null }) =>
-  before.feeCents !== after.feeCents || (before.days ?? null) !== (after.days ?? null);
+type Terms = { feeCents: number | null; days: number | null; prepHours?: number | null; interventionHours?: number | null; travelHours?: number | null; hourlyCents?: number | null };
+export const termsChanged = (before: Terms, after: Terms) =>
+  before.feeCents !== after.feeCents ||
+  (before.days ?? null) !== (after.days ?? null) ||
+  (["prepHours", "interventionHours", "travelHours", "hourlyCents"] as const).some((k) => (before[k] ?? null) !== (after[k] ?? null));
 
 export const TRANSITIONS = {
   accept_proposal: { from: ["ATT_IND"], to: "ACCORD", roles: "project", label: "Accepter la proposition" },
@@ -253,7 +256,8 @@ export function fmvCheck(typeId: string, feeCents: number | null, units: number 
 
 export const MATERIAL_KINDS = { diaporama: "Diaporama", article: "Article / texte", video: "Vidéo", programme: "Programme", autre: "Autre" } as const;
 export const MATERIAL_STATUS = { submitted: "En relecture", approved: "Approuvé", changes: "Modifications demandées" } as const;
-export const REVIEW_ROLES: OrgRole[] = ["ADMIN", "CONFORMITE"];
+/** Relecture des supports scientifiques : rôle Conformité (voir COMPLIANCE_ROLES). */
+export const REVIEW_ROLES: OrgRole[] = ["CONFORMITE"];
 
 /** E-mails à l'expert lors des étapes du dossier qui le concernent (voir notifyExpertNotice). */
 export type ExpertNotice = "abandon" | "retour_accord" | "signature" | "signe" | "recrutement_clos" | "proposition_acceptee" | "proposition_declinee";

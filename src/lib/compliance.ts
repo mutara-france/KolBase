@@ -7,6 +7,7 @@
  * organisation (notamment HT / TTC). Le dépassement d'un seul seuil soumet toute la convention à autorisation.
  */
 import { country, practicesInFrance } from "@/lib/countries";
+import { type Hours, hoursOf } from "@/lib/fees";
 
 export type ComplianceSettings = {
   remunerationConventionMax: number; // € HT par convention
@@ -19,6 +20,8 @@ export type ComplianceSettings = {
   cumulAlert: number; // € HT sur 12 mois, alerte de cumul
   declarationDays: number; // délai de déclaration avant exécution (jours ouvrables)
   authorizationDays: number; // délai de demande d'autorisation avant exécution
+  submissionLeadDays: number; // délai interne : soumission à la conformité au plus tard N jours avant l'intervention
+  reviewDays: number; // délai interne : examen par la conformité en N jours ouvrés
 };
 
 export const DEFAULT_COMPLIANCE: ComplianceSettings = {
@@ -32,6 +35,8 @@ export const DEFAULT_COMPLIANCE: ComplianceSettings = {
   cumulAlert: 10000,
   declarationDays: 8,
   authorizationDays: 60,
+  submissionLeadDays: 30,
+  reviewDays: 5,
 };
 
 export const SETTING_FIELDS: { key: keyof ComplianceSettings; label: string; unit: string; group: string }[] = [
@@ -45,6 +50,8 @@ export const SETTING_FIELDS: { key: keyof ComplianceSettings; label: string; uni
   { key: "cumulAlert", label: "Alerte de cumul par expert sur 12 mois", unit: "€ HT", group: "Alertes" },
   { key: "declarationDays", label: "Délai de déclaration avant exécution", unit: "jours ouvrables", group: "Délais" },
   { key: "authorizationDays", label: "Délai de demande d'autorisation avant exécution", unit: "jours", group: "Délais" },
+  { key: "submissionLeadDays", label: "Soumission à la conformité, au plus tard avant l'intervention", unit: "jours", group: "Délais internes" },
+  { key: "reviewDays", label: "Examen d'un dossier par la conformité", unit: "jours ouvrés", group: "Délais internes" },
 ];
 
 /**
@@ -95,10 +102,18 @@ export function foreignRegime(code: string): RegimeResult {
   return result("hors_france", { key: "Exerce {where} : règles du pays d'exercice", s: { where: country(code).in } });
 }
 
-/** Régime d'une rémunération : autorisation au-delà du seuil par convention ou du taux horaire. */
-export function remunerationRegime(s: ComplianceSettings, feeCents: number | null, units: number | null, unit: string): RegimeResult {
+/**
+ * Régime d'une rémunération : autorisation au-delà du seuil par convention ou du taux horaire. Avec un volume horaire
+ * déclaré (préparation, intervention, déplacement), le taux horaire réel (honoraires ÷ heures) est contrôlé quelle
+ * que soit l'unité de la collaboration.
+ */
+export function remunerationRegime(s: ComplianceSettings, link: { feeCents: number | null; days: number | null } & Hours, unit: string): RegimeResult {
+  const { feeCents, days: units } = link;
   const fee = (feeCents ?? 0) / 100;
   if (fee > s.remunerationConventionMax) return result("autorisation", { key: "{fee} € > {max} € par convention", n: { fee, max: s.remunerationConventionMax } });
+  const hours = hoursOf(link);
+  if (hours && fee / hours > s.remunerationHourlyMax)
+    return result("autorisation", { key: "{rate} €/h > {max} €/h ({hours} h déclarées)", n: { rate: Math.round(fee / hours), max: s.remunerationHourlyMax, hours } });
   // Volume absent ou incohérent : on compte une seule unité, l'hypothèse la plus prudente.
   const known = units != null && Number.isFinite(units) && units > 0;
   const n = known ? units : 1;
@@ -117,7 +132,7 @@ export function remunerationRegime(s: ComplianceSettings, feeCents: number | nul
  * Régime d'un dossier : autorisation dès qu'un expert engagé exerçant en France dépasse un seuil.
  * Si tous les experts engagés exercent hors de France, le dossier sort du dispositif EPS (« hors France »).
  */
-export function projectRegime(s: ComplianceSettings, unit: string, experts: { status: string; feeCents: number | null; days: number | null; country?: string | null }[]) {
+export function projectRegime(s: ComplianceSettings, unit: string, experts: ({ status: string; feeCents: number | null; days: number | null; country?: string | null } & Hours)[]) {
   // Experts engagés ; les sollicitations sans réponse ne comptent que tant qu'aucun expert n'a accepté (aperçu).
   const live = experts.filter((e) => e.status !== "DECLINE");
   const accepted = live.filter((e) => e.status !== "ATT_EXPERTS");
@@ -127,7 +142,7 @@ export function projectRegime(s: ComplianceSettings, unit: string, experts: { st
     const codes = [...new Set(engaged.map((e) => e.country ?? "XX"))];
     return codes.length === 1 ? foreignRegime(codes[0]) : result("hors_france", { key: "Experts exerçant hors de France : règles de leurs pays d'exercice" });
   }
-  const regimes = french.map((e) => remunerationRegime(s, e.feeCents, e.days, unit));
+  const regimes = french.map((e) => remunerationRegime(s, e, unit));
   return regimes.find((r) => r.regime === "autorisation") ?? regimes[0] ?? null;
 }
 
