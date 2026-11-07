@@ -56,3 +56,31 @@ export function StateTile({ href, icon: Icon, label, value, detail, tone = "neut
   );
   return disabled ? <div className="state-tile disabled">{body}</div> : <Link href={href} className={`state-tile tone-${tone}`}>{body}</Link>;
 }
+
+/**
+ * En-tête d'une page de l'espace connecté : titre, une ligne d'explication, actions principales à droite.
+ * Le fil d'Ariane et les onglets de la rubrique restent au-dessus, les onglets de la page en dessous.
+ */
+export function PageHead({ title, desc, children }: { title: ReactNode; desc?: ReactNode; children?: ReactNode }) {
+  return (
+    <div className="page-head">
+      <div className="page-head-text">
+        <h1>{title}</h1>
+        {desc && <p>{desc}</p>}
+      </div>
+      {children && <div className="page-actions">{children}</div>}
+    </div>
+  );
+}
+
+/** Rien à montrer : une icône, une phrase, et l'action qui permet d'avancer. */
+export function EmptyState({ icon: Icon, title, children, action, compact = false }: { icon: LucideIcon; title?: ReactNode; children?: ReactNode; action?: ReactNode; compact?: boolean }) {
+  return (
+    <div className={`empty-state${compact ? " compact" : ""}`}>
+      <span className="sec-icon neutral" aria-hidden><Icon size={compact ? 18 : 22} strokeWidth={1.7} /></span>
+      {title && <strong>{title}</strong>}
+      {children && <p>{children}</p>}
+      {action && <div className="empty-action">{action}</div>}
+    </div>
+  );
+}

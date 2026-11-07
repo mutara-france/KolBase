@@ -1,3 +1,4 @@
+import { PageHead, EmptyState, SectionHead } from "@/components/UI";
 import Link from "next/link";
 import { Lightbulb, Plus } from "lucide-react";
 import { SiteHeader } from "@/components/SiteHeader";
@@ -50,12 +51,11 @@ export default async function Page({ searchParams }: { searchParams: Promise<{ e
   return (
     <>
       <SiteHeader />
-      <main className="narrow stack">
+      <main className="stack">
         {p?.listed && <SectionNav tabs={practitionerSectionTabs("sollicitations").map((tab) => ({ ...tab, label: t(tab.label) }))} active="propositions" label={t("Rubrique Sollicitations")} />}
-        <div className="flex-between wrap">
-          <h1 style={{ margin: 0 }}>{t("Mes propositions")}</h1>
+        <PageHead title={t("Mes propositions")} desc={t("Les projets que vous soumettez aux organisations : chacune peut l'accepter et ouvrir un dossier avec vous.")}>
           {p?.listed && sent < PROPOSALS_PER_MONTH && <Link className="btn" href="/propositions/nouvelle"><Plus size={15} /> {t("Proposer un projet")}</Link>}
-        </div>
+        </PageHead>
         {!p?.listed && <p className="notice warn">{t("Référencez-vous comme expert dans")} <Link href="/compte">{t("Mon compte")}</Link> {t("pour proposer des projets aux organisations.")}</p>}
         {just && (
           <p className="notice ok" role="status">
@@ -63,22 +63,19 @@ export default async function Page({ searchParams }: { searchParams: Promise<{ e
           </p>
         )}
         {p?.listed && proposals.length === 0 && (
-          <div className="card empty stack-sm">
-            <Lightbulb size={22} />
-            <p>{t("Un projet de formation, d'étude ou d'intervention ? Proposez-le à cinq organisations au plus : chacune peut l'accepter et ouvrir un dossier avec vous.")}</p>
+          <div className="card empty">
+            <EmptyState icon={Lightbulb} title={t("Aucune proposition pour l'instant.")} action={<Link className="btn secondary small" href="/propositions/nouvelle">{t("Proposer un projet")}</Link>}>
+              {t("Un projet de formation, d'étude ou d'intervention ? Proposez-le à cinq organisations au plus : chacune peut l'accepter et ouvrir un dossier avec vous.")}
+            </EmptyState>
           </div>
         )}
         {proposals.map((x) => {
           const type = collabType(x.typeId);
           return (
             <section key={x.id} className="card stack-sm">
-              <div className="flex-between wrap">
-                <h2 style={{ margin: 0 }}>{x.title}</h2>
+              <SectionHead icon={Lightbulb} title={x.title} desc={[type && t(type.label), x.therapeuticArea, x.feeCents != null ? t("{amount} HT", { amount: fmtEur(locale, x.feeCents) }) : null].filter(Boolean).join(" · ")}>
                 <span className="muted text-sm">{t("Envoyée le {date}", { date: fmtDate(locale, x.createdAt) })}</span>
-              </div>
-              <p className="muted text-sm" style={{ margin: 0 }}>
-                {[type && t(type.label), x.therapeuticArea, x.feeCents != null ? t("{amount} HT", { amount: fmtEur(locale, x.feeCents) }) : null].filter(Boolean).join(" · ")}
-              </p>
+              </SectionHead>
               <ul className="proposal-recipients">
                 {x.projects.map((c) => {
                   const link = c.experts[0];

@@ -1,3 +1,5 @@
+import { BookOpen, Building, Building2, KeyRound } from "lucide-react";
+import { SectionHead, PageHead } from "@/components/UI";
 import { SiteHeader } from "@/components/SiteHeader";
 import { EmailVerificationNotice, ListingForm, MyDataCard, NotificationsForm, PasswordForm, ProfileForm } from "@/components/AccountForms";
 import { retentionReasons } from "@/lib/account";
@@ -65,13 +67,7 @@ export default async function Page({ searchParams }: { searchParams: Promise<{ a
     <>
       <SiteHeader />
       <main className="narrow stack">
-        <div>
-          <h1>{t("Mon compte")}</h1>
-          <p className="muted">
-            {t(p ? (p.listed ? "Praticien · expert référencé" : "Praticien · participant") : "Compte organisation")}
-            {user.memberships.length > 0 && ` · ${user.memberships.map((m) => m.organization.name).join(", ")}`}
-          </p>
-        </div>
+        <PageHead title={t("Mon compte")} desc={<>{t(p ? (p.listed ? "Praticien · expert référencé" : "Praticien · participant") : "Compte organisation")}{user.memberships.length > 0 && ` · ${user.memberships.map((m) => m.organization.name).join(", ")}`}</>} />
         {annuaire && (
           <p className="notice error">{t("L'annuaire est réservé aux membres d'une organisation et aux experts référencés.")}</p>
         )}
@@ -140,7 +136,7 @@ export default async function Page({ searchParams }: { searchParams: Promise<{ a
         {/* Publications et structures juridiques : pour les professions qui peuvent être expertes. */}
         {p && expertCapable && (
           <section className="card stack" id="publications">
-            <h2>{t("Publications ({n})", { n: pubs.length })}</h2>
+            <SectionHead icon={BookOpen} title={t("Publications ({n})", { n: pubs.length })} />
             <OrcidImportForm
               orcid={p.orcid}
               oauth={!!orcidOAuth()}
@@ -162,7 +158,7 @@ export default async function Page({ searchParams }: { searchParams: Promise<{ a
         )}
         {p && expertCapable && (
           <section className="card stack" id="structures">
-            <h2>{t("Structures juridiques ({n})", { n: structs.length })}</h2>
+            <SectionHead icon={Building2} title={t("Structures juridiques ({n})", { n: structs.length })} />
             <p className="muted">
               {t("Sociétés d'exercice, associations, fonctions déclarées.")}{" "}
               {t("La structure de facturation, reprise par vos conventions et vos notes d'honoraires, se règle avec vos coordonnées de facturation :")}{" "}
@@ -196,7 +192,7 @@ export default async function Page({ searchParams }: { searchParams: Promise<{ a
         <div id="notifications"><NotificationsForm email={wantsEmail(user)} newsletter={subscribed(user)} practitioner={!!user.practitioner} /></div>
         <div id="identifiants"><PasswordForm email={user.email} /></div>
         <section className="card stack-sm" id="securite" aria-labelledby="securite-titre">
-          <h2 id="securite-titre">{t("Sécurité : double authentification")}</h2>
+          <SectionHead icon={KeyRound} id="securite-titre" title={t("Sécurité : double authentification")} />
           {securite && !user.totpEnabledAt && (
             <p className="notice warn" role="alert">
               {securite === "admin"
@@ -214,7 +210,7 @@ export default async function Page({ searchParams }: { searchParams: Promise<{ a
         </section>
         <div id="donnees"><MyDataCard keep={await retentionReasons(user.id)} /></div>
         <section className="card" id="organisations">
-          <h2>{t("Organisations")}</h2>
+          <SectionHead icon={Building} title={t("Organisations")} />
           <p className="muted">
             {user.memberships.length > 0
               ? t("Vous êtes membre d'au moins une organisation.")

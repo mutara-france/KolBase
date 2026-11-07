@@ -1,3 +1,4 @@
+import { SectionHead, PageHead, EmptyState } from "@/components/UI";
 import Link from "next/link";
 import { Bell, BellRing } from "lucide-react";
 import { TodoList } from "@/components/Todo";
@@ -40,14 +41,11 @@ export default async function Page() {
     <>
       <SiteHeader />
       <main className="stack">
-        <h1>{t("Mes suivis")}</h1>
-        <p className="muted">
-          {t("Suivez des experts et des organisations depuis leur fiche (bouton « Suivre ») : vous voyez ici leurs nouvelles publications, interventions, opportunités et événements.")}
-        </p>
+        <PageHead title={t("Mes suivis")} desc={t("Suivez des experts et des organisations depuis leur fiche (bouton « Suivre ») : vous voyez ici leurs nouvelles publications, interventions, opportunités et événements.")} />
 
         <section className="card">
-          <h2 className="section-title"><BellRing size={16} /> {t("Mises à jour récentes")}</h2>
-          {feed.length === 0 && <p className="muted">{t("Aucune mise à jour pour l'instant.")}</p>}
+          <SectionHead icon={BellRing} title={t("Mises à jour récentes")} />
+          {feed.length === 0 && <EmptyState compact icon={BellRing}>{t("Aucune mise à jour pour l'instant.")}</EmptyState>}
           {feed.length > 0 && (
             <TodoList
               items={feed.slice(0, 40).map((i) => ({
@@ -62,9 +60,9 @@ export default async function Page() {
         </section>
 
         <section className="stack">
-          <h2 className="section-title"><Bell size={16} /> {t("Profils suivis ({n})", { n: follows.length })}</h2>
+          <SectionHead icon={Bell} title={t("Profils suivis ({n})", { n: follows.length })} />
           {follows.length === 0 && (
-            <div className="card empty"><Bell size={22} /><p>{t("Vous ne suivez aucun profil. Le bouton « Suivre » se trouve sur chaque fiche d'expert et d'organisation.")}</p></div>
+            <div className="card empty"><EmptyState icon={Bell} title={t("Aucun profil suivi.")} action={<Link className="btn secondary small" href="/experts">{t("Parcourir les experts")}</Link>}>{t("Le bouton « Suivre » se trouve sur chaque fiche d'expert et d'organisation.")}</EmptyState></div>
           )}
           <div className="grid-2">
             {follows.map((f) => {

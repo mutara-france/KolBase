@@ -1,3 +1,4 @@
+import { SectionHead, PageHead } from "@/components/UI";
 import { SiteHeader } from "@/components/SiteHeader";
 import { EditOrgForm, InviteForm, LogoForm, MemberRolesForm, VerificationCard } from "@/components/OrgForms";
 import { Avatar } from "@/components/Avatar";
@@ -13,7 +14,7 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 import { OrgVisibilityForm } from "@/components/ProfileForms";
 import { DPA_VERSION } from "@/lib/dpa";
-import { ShieldCheck } from "lucide-react";
+import { Building2, MailPlus, ShieldCheck, Users } from "lucide-react";
 import { companyVisibility } from "@/lib/visibility";
 import { OrgTwoFactorForm } from "@/components/TwoFactorForms";
 import { TableWrap } from "@/components/TableWrap";
@@ -78,7 +79,7 @@ export default async function Page({ params, searchParams }: { params: Promise<{
       <main className="stack">
         <div>
           <p className="muted"><Link href={`/organisations/${id}`}>{org.name}</Link> / {t("Membres et réglages")}</p>
-          <h1>{t("Membres et réglages")}</h1>
+          <PageHead title={t("Membres et réglages")} desc={t("L'équipe, ses rôles et les réglages de l'organisation.")} />
         </div>
         <nav className="tabs" aria-label={t("Membres et réglages")}>
           {tabs.map(([k, l]) => <Link key={k} href={`?onglet=${k}`} className={k === onglet ? "active" : ""}>{l}</Link>)}
@@ -87,7 +88,7 @@ export default async function Page({ params, searchParams }: { params: Promise<{
         {onglet === "equipe" ? (
           <>
             <section className="card">
-              <h2>{t("Membres ({people})", { people: people.length })}</h2>
+              <SectionHead icon={Users} title={t("Membres ({people})", { people: people.length })} />
               {isAdmin && (
                 <ul className="role-legend">
                   {roleOpts.map((r) => <li key={r.value}><strong>{r.label}</strong> : {r.desc}</li>)}
@@ -117,8 +118,7 @@ export default async function Page({ params, searchParams }: { params: Promise<{
 
             {!isSupplier && (
               <section className="card stack-sm">
-                <h2>{t("Agences mandatées ({mandates})", { mandates: mandates.length })}</h2>
-                <p className="muted text-sm">{t("L'équipe d'une agence mandatée accède avec son propre compte aux seuls événements que vous lui confiez, sans invitation ; l'accès cesse à la fin du mandat.")}</p>
+                <SectionHead icon={Building2} title={t("Agences mandatées ({mandates})", { mandates: mandates.length })} desc={t("L'équipe d'une agence mandatée accède avec son propre compte aux seuls événements que vous lui confiez, sans invitation ; l'accès cesse à la fin du mandat.")} />
                 {mandates.length > 0 && (
                   <ul className="plain stack-sm">
                     {mandates.map((m) => (
@@ -138,7 +138,7 @@ export default async function Page({ params, searchParams }: { params: Promise<{
                 <InviteForm orgId={id} roles={roleOpts} />
                 {invitations.length > 0 && (
                   <section className="card">
-                    <h2>{t("Invitations en attente")}</h2>
+                    <SectionHead icon={MailPlus} title={t("Invitations en attente")} />
                     <TableWrap label={t("Invitations en attente")}>
                       <table className="table">
                         <thead><tr><th>{t("Rôle")}</th><th>{t("Mémo")}</th><th>{t("Expire le")}</th><th /></tr></thead>
@@ -176,7 +176,7 @@ export default async function Page({ params, searchParams }: { params: Promise<{
               }}
             />
             <section className="card stack-sm" id="double-authentification">
-              <h2 className="section-title"><ShieldCheck size={15} />{" "}{t("Double authentification")}</h2>
+              <SectionHead icon={ShieldCheck} title={t("Double authentification")} />
               {isAdmin ? (
                 <OrgTwoFactorForm orgId={id} required={org.require2fa} adminReady={!!user.totpEnabledAt} missing={people.filter((p) => !p.user.totpEnabledAt).length} />
               ) : (
@@ -185,7 +185,7 @@ export default async function Page({ params, searchParams }: { params: Promise<{
             </section>
             {!isSupplier && (
               <section className="card stack-sm" id="sous-traitance">
-                <h2 className="section-title"><ShieldCheck size={15} />{" "}{t("Contrat de sous-traitance (RGPD)")}</h2>
+                <SectionHead icon={ShieldCheck} title={t("Contrat de sous-traitance (RGPD)")} />
                 <p className="muted">
                   {t("Votre organisation est responsable des données qu'elle traite dans KolBase (experts, inscrits, conventions) ; l'éditeur de KolBase agit comme sous-traitant.")}
                   <Link href="/sous-traitance" target="_blank">{t("Lire le contrat (version {DPA_VERSION})", { DPA_VERSION })}</Link>

@@ -1,6 +1,7 @@
+import { SectionHead, PageHead } from "@/components/UI";
 import Link from "next/link";
 import { redirect } from "next/navigation";
-import { Building2, Euro, FileClock, Gift, Hourglass } from "lucide-react";
+import { Building2, Euro, FileClock, FileText, Gift, Hourglass, Landmark, Link2, Presentation } from "lucide-react";
 import { SiteHeader } from "@/components/SiteHeader";
 import { TableWrap } from "@/components/TableWrap";
 import { BillingForm, InterestForm, IssueNoteButton, ReportForm } from "@/components/RevenueForms";
@@ -58,10 +59,7 @@ export default async function Page({ searchParams }: { searchParams: Promise<{ o
     <>
       <SiteHeader />
       <main className="stack">
-        <div>
-          <h1>{t("Mes revenus")}</h1>
-          <p className="muted">{t("Vos honoraires, les avantages reçus et vos liens d'intérêts, tels que KolBase les connaît. Visible de vous seul.")}</p>
-        </div>
+        <PageHead title={t("Mes revenus")} desc={t("Vos honoraires, les avantages reçus et vos liens d'intérêts, tels que KolBase les connaît. Visible de vous seul.")} />
         <nav className="tabs" aria-label={t("Mes revenus")}>
           {tabs.map(([k, l]) => <Link key={k} href={`?onglet=${k}`} className={k === onglet ? "active" : ""}>{l}</Link>)}
         </nav>
@@ -82,7 +80,7 @@ export default async function Page({ searchParams }: { searchParams: Promise<{ o
               <div><dt><Building2 size={13} /> {t(orgs > 1 ? "Organisations" : "Organisation")}</dt><dd>{orgs}<small>{t(orgs > 1 ? "partenaires cette année" : "partenaire cette année")}</small></dd></div>
             </dl>
             <section className="card">
-              <h2>{t("Honoraires")}</h2>
+              <SectionHead icon={Euro} title={t("Honoraires")} />
               {fees.length === 0 ? <p className="muted">{t("Aucune collaboration engagée cette année.")}</p> : (
                 <TableWrap label={t("Honoraires")}>
                   <table className="table">
@@ -104,7 +102,7 @@ export default async function Page({ searchParams }: { searchParams: Promise<{ o
               )}
             </section>
             <section className="card">
-              <h2>{t("Hospitalités reçues")}</h2>
+              <SectionHead icon={Gift} title={t("Hospitalités reçues")} />
               {hosp.length === 0 ? <p className="muted">{t("Aucune hospitalité cette année.")}</p> : (
                 <TableWrap label={t("Hospitalités reçues")}>
                   <table className="table">
@@ -131,8 +129,7 @@ export default async function Page({ searchParams }: { searchParams: Promise<{ o
         {onglet === "facturation" && (
           <>
             <section className="card stack-sm">
-              <h2>{t("Notes d'honoraires")}</h2>
-              <p className="muted">{t("Une note par convention signée : numérotée, établie à partir de la convention et transmise à l'organisation, qui la retrouve dans le dossier.")}</p>
+              <SectionHead icon={FileText} title={t("Notes d'honoraires")} desc={t("Une note par convention signée : numérotée, établie à partir de la convention et transmise à l'organisation, qui la retrouve dans le dossier.")} />
               {toInvoice.length > 0 && (
                 <>
                   <h3 className="section-title">{t("À établir")}</h3>
@@ -170,8 +167,7 @@ export default async function Page({ searchParams }: { searchParams: Promise<{ o
               )}
             </section>
             <section className="card stack-sm">
-              <h2 id="coordonnees">{t("Coordonnées de facturation")}</h2>
-              <p className="muted">{t("Reprises par vos conventions et vos notes d'honoraires. Vérifiez les mentions applicables à votre situation avec votre comptable.")}</p>
+              <SectionHead icon={Landmark} id="coordonnees" title={t("Coordonnées de facturation")} desc={t("Reprises par vos conventions et vos notes d'honoraires. Vérifiez les mentions applicables à votre situation avec votre comptable.")} />
               <BillingForm current={{ billingEntity: payee?.name ?? "", billingLegalForm: payee?.legalForm ?? "", billingAddress: p.billingAddress ?? "", siret: p.siret ?? "", vatRegime: p.vatRegime, vatNumber: p.vatNumber ?? "", iban: p.iban ?? "" }} />
             </section>
           </>
@@ -180,13 +176,9 @@ export default async function Page({ searchParams }: { searchParams: Promise<{ o
         {onglet === "liens" && (
           <>
             <section className="card stack-sm">
-              <div className="card-head">
-                <div>
-                  <h2>{t("Déclaration de liens d'intérêts")}</h2>
-                  <p className="muted">{t("À présenter quand vous vous exprimez en public (congrès, formation, presse) : liens des {n} dernières années avec des entreprises du secteur. Vérifiez-la et complétez-la avec les liens noués hors de KolBase.", { n: INTEREST_YEARS })}</p>
-                </div>
-                <a className="btn" href="/revenus/liens-interets">{t("Télécharger la diapositive (PDF)")}</a>
-              </div>
+              <SectionHead icon={Presentation} title={t("Déclaration de liens d'intérêts")} desc={t("À présenter quand vous vous exprimez en public (congrès, formation, presse) : liens des {n} dernières années avec des entreprises du secteur. Vérifiez-la et complétez-la avec les liens noués hors de KolBase.", { n: INTEREST_YEARS })}>
+                <a className="btn small" href="/revenus/liens-interets">{t("Télécharger la diapositive (PDF)")}</a>
+              </SectionHead>
               {interests.length === 0 ? (
                 <p className="notice ok">{t("Aucun lien d'intérêts connu sur la période.")}</p>
               ) : (
@@ -205,7 +197,7 @@ export default async function Page({ searchParams }: { searchParams: Promise<{ o
               </details>
             </section>
             <section className="card stack-sm">
-              <h2>{t("Liens noués hors de KolBase")}</h2>
+              <SectionHead icon={Link2} title={t("Liens noués hors de KolBase")} />
               {ledger.declared.length > 0 && (
                 <ul className="plain stack-sm">
                   {ledger.declared.map((d) => (

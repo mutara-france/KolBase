@@ -1,5 +1,6 @@
+import { SectionHead, PageHead } from "@/components/UI";
 import Link from "next/link";
-import { AlertTriangle, CalendarDays, Clock, Download, Euro, Gift, ShieldCheck, Star, Truck, Users } from "lucide-react";
+import { AlertTriangle, BarChart3, BookOpen, CalendarDays, Clock, Download, Euro, Gift, Layers, MapPinned, PieChart, ShieldCheck, Star, Stethoscope, Timer, Truck, Users } from "lucide-react";
 import { SiteHeader } from "@/components/SiteHeader";
 import { Meter, RankedBars, StackedColumns } from "@/components/Charts";
 import { requireMembership } from "@/lib/orgs";
@@ -38,13 +39,9 @@ export default async function Page({ params, searchParams }: { params: Promise<{
     <>
       <SiteHeader />
       <main className="stack">
-        <div className="actions spread">
-          <div>
-            <h1>{t("Statistiques")}</h1>
-            <p className="muted">{t("Budget engagé, experts, événements, délais et conformité de l'organisation, année par année.")}</p>
-          </div>
+        <PageHead title={t("Statistiques")} desc={t("Budget engagé, experts, événements, délais et conformité de l'organisation, année par année.")}>
           <a className="btn ghost small" href={`${base}/statistiques/export?annee=${year}`}><Download size={14} />{" "}{t("Exporter {year} (CSV)", { year })}</a>
-        </div>
+        </PageHead>
         <nav className="chips" aria-label={t("Année")}>
           {s.years.map((y) => <Link key={y} href={`?annee=${y}`} className={`chip${y === year ? " active" : ""}`} aria-current={y === year ? "page" : undefined}>{y}</Link>)}
         </nav>
@@ -62,8 +59,7 @@ export default async function Page({ params, searchParams }: { params: Promise<{
 
         <section className="card stack-sm">
           <div>
-            <h2>{t("Budget engagé par trimestre")}</h2>
-            <p className="muted">{t("Honoraires des experts engagés à la date de leur accord ; logistique (devis retenus et dépenses) et hospitalités à la date de l'événement.")}</p>
+            <SectionHead icon={BarChart3} title={t("Budget engagé par trimestre")} desc={t("Honoraires des experts engagés à la date de leur accord ; logistique (devis retenus et dépenses) et hospitalités à la date de l'événement.")} />
           </div>
           <StackedColumns
             caption={t("Budget engagé par trimestre en {year}", { year })}
@@ -75,11 +71,11 @@ export default async function Page({ params, searchParams }: { params: Promise<{
 
         <div className="stats-grid">
           <section className="card stack-sm">
-            <h2>{t("Honoraires par type de collaboration")}</h2>
+            <SectionHead icon={Layers} title={t("Honoraires par type de collaboration")} />
             <RankedBars caption={t("Honoraires par type de collaboration")} format="eur" rows={s.byType.map((tk) => ({ label: t(tk.label), value: tk.cents, note: t(tk.projects > 1 ? "{projects} dossiers" : "{projects} dossier", { projects: tk.projects }) }))} />
           </section>
           <section className="card stack-sm">
-            <h2>{t("Concentration des honoraires")}</h2>
+            <SectionHead icon={PieChart} title={t("Concentration des honoraires")} />
             {s.top5Share == null ? <p className="muted">{t("Aucun honoraire engagé sur la période.")}</p> : (
               <>
                 <p className="text-sm"><strong>{pct(s.top5Share)}</strong>{" "}{t(s.expertCount > 1 ? "des honoraires vont aux {min} premiers experts, sur {expertCount} rémunérés." : "des honoraires vont aux {min} premiers experts, sur {expertCount} rémunéré.", { min: Math.min(5, s.expertCount), expertCount: s.expertCount })}</p>
@@ -92,12 +88,11 @@ export default async function Page({ params, searchParams }: { params: Promise<{
             )}
           </section>
           <section className="card stack-sm">
-            <h2>{t("Experts par spécialité")}</h2>
+            <SectionHead icon={Stethoscope} title={t("Experts par spécialité")} />
             <RankedBars caption={t("Experts rémunérés par spécialité")} format="int" rows={s.specialties.map((x) => ({ label: t(x.label), value: x.count, note: t(x.count > 1 ? "{count} experts" : "{count} expert", { count: x.count }) }))} />
           </section>
           <section className="card stack-sm">
-            <h2>{t("Délais")}</h2>
-            <p className="muted">{t("Médianes sur l'année, d'après l'historique des dossiers.")}</p>
+            <SectionHead icon={Timer} title={t("Délais")} desc={t("Médianes sur l'année, d'après l'historique des dossiers.")} />
             <ul className="delay-list">
               <li><Clock size={15} aria-hidden /><span>{t("Réponse des experts")}<small>{t(s.delays.expertResponse.n > 1 ? "sur {n} sollicitations" : "sur {n} sollicitation", { n: s.delays.expertResponse.n })}</small></span><strong>{days(t, s.delays.expertResponse.days)}</strong></li>
               <li><ShieldCheck size={15} aria-hidden /><span>{t("Validation par la conformité")}<small>{t(s.delays.compliance.n > 1 ? "sur {n} examens" : "sur {n} examen", { n: s.delays.compliance.n })}{s.delays.compliance.onTime != null ? ` · ${t("{pct} dans le délai interne ({days} jours ouvrés)", { pct: pct(s.delays.compliance.onTime), days: s.delays.compliance.reviewDays })}` : ""}</small></span><strong>{days(t, s.delays.compliance.days)}</strong></li>
@@ -107,16 +102,12 @@ export default async function Page({ params, searchParams }: { params: Promise<{
         </div>
 
         <section className="card stack" id="geographie" aria-labelledby="geographie-titre">
-          <div className="actions spread">
-            <div>
-              <h2 id="geographie-titre">{t("Répartition géographique {year}", { year })}</h2>
-              <p className="muted">{t("Experts rémunérés et participants selon leur lieu d'exercice, événements selon leur lieu. La région se déduit du code postal, ou à défaut des principales villes.")}</p>
-            </div>
+          <SectionHead icon={MapPinned} id="geographie-titre" title={t("Répartition géographique {year}", { year })} desc={t("Experts rémunérés et participants selon leur lieu d'exercice, événements selon leur lieu. La région se déduit du code postal, ou à défaut des principales villes.")}>
             <nav className="chips" aria-label={t("Regrouper par")}>
               <Link href={`?annee=${year}#geographie`} className={`chip${geoBy === "regions" ? " active" : ""}`} aria-current={geoBy === "regions" ? "true" : undefined}>{t("Régions")}</Link>
               <Link href={`?annee=${year}&geo=villes#geographie`} className={`chip${geoBy === "cities" ? " active" : ""}`} aria-current={geoBy === "cities" ? "true" : undefined}>{t("Villes")}</Link>
             </nav>
-          </div>
+          </SectionHead>
           <div className="grid-3">
             <div className="stack-sm">
               <h3>{t("Experts rémunérés")}</h3>
@@ -140,7 +131,7 @@ export default async function Page({ params, searchParams }: { params: Promise<{
         </section>
 
         <section className="card stack-sm">
-          <h2>{t("Événements {year}", { year })}</h2>
+          <SectionHead icon={CalendarDays} title={t("Événements {year}", { year })} />
           {s.events.length === 0 ? <p className="muted">{t("Aucun événement sur l'année.")}</p> : (
             <TableWrap label={t("Événements {year}", { year })}>
               <table className="table stats-table">
@@ -169,7 +160,7 @@ export default async function Page({ params, searchParams }: { params: Promise<{
         </section>
 
         <section className="card stack-sm">
-          <h2>{t("Conformité {year}", { year })}</h2>
+          <SectionHead icon={ShieldCheck} title={t("Conformité {year}", { year })} />
           <div className="stats-grid">
             <div className="stack-sm">
               <p className="text-sm"><ShieldCheck size={14} /> <strong>{t("Transparence Santé")}</strong> : {declaredTotal ? t(s.compliance.declared > 1 ? (declaredTotal > 1 ? "{n} dossiers déclarés sur {m} validés" : "{n} dossiers déclarés sur {m} validé") : declaredTotal > 1 ? "{n} dossier déclaré sur {m} validés" : "{n} dossier déclaré sur {m} validé", { n: s.compliance.declared, m: declaredTotal }) : t("aucun dossier validé")}.</p>
@@ -186,7 +177,7 @@ export default async function Page({ params, searchParams }: { params: Promise<{
         </section>
 
         <section className="card stack-sm" aria-labelledby="definitions">
-          <h2 id="definitions">{t("Définitions")}</h2>
+          <SectionHead icon={BookOpen} id="definitions" title={t("Définitions")} />
           <ul className="hint">
             <li><strong>{t("Engagé")}</strong>{" "}{t(": l'expert a accepté la proposition (accord de principe ou étape suivante, dossier non abandonné), comme sur l'accueil et les dossiers. Ses honoraires comptent dans le budget à la date de son accord.")}</li>
             <li><strong>{t("Budget engagé")}</strong>{" "}{t(": honoraires des experts engagés et logistique (devis retenus, dépenses), hors taxes. Les hospitalités, en valeur déclarée toutes taxes comprises, sont présentées à part.")}</li>

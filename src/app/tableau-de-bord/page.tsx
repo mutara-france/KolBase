@@ -1,3 +1,5 @@
+import { BadgeCheck, CalendarClock, Lightbulb, ListChecks, Mail, ShieldAlert, Sparkles } from "lucide-react";
+import { SectionHead } from "@/components/UI";
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { SiteHeader } from "@/components/SiteHeader";
@@ -124,40 +126,34 @@ export default async function Page({ searchParams }: { searchParams: Promise<{ a
 
         {/* Référencement proposé aux seules professions qui peuvent être expertes ; identifiant refusé : le corriger d'abord. */}
         {!p.listed && canBeExpert(p.profession) && (identityRefused ? (
-          <section className="card highlight flex-between">
-            <div>
-              <h2>{t("Identifiant non vérifié : corrigez-le")}</h2>
-              <p className="muted">{p.rppsCheckNote ? t("Motif : {note}", { note: p.rppsCheckNote }) : t("KolBase n'a pas pu vérifier votre identifiant professionnel.")} {t("Corrigez-le dans « Mon compte » : il sera contrôlé à nouveau, puis vous pourrez vous référencer.")}</p>
-            </div>
-            <Link className="btn" href="/compte#informations">{t("Corriger mon identifiant")}</Link>
+          <section className="card highlight">
+            <SectionHead icon={ShieldAlert} tone="warn" title={t("Identifiant non vérifié : corrigez-le")} desc={<>{p.rppsCheckNote ? t("Motif : {note}", { note: p.rppsCheckNote }) : t("KolBase n'a pas pu vérifier votre identifiant professionnel.")} {t("Corrigez-le dans « Mon compte » : il sera contrôlé à nouveau, puis vous pourrez vous référencer.")}</>}>
+              <Link className="btn" href="/compte#informations">{t("Corriger mon identifiant")}</Link>
+            </SectionHead>
           </section>
         ) : (
-          <section className="card highlight flex-between">
-            <div>
-              <h2>{t("Devenir expert référencé")}</h2>
-              <p className="muted">{t("Recevez des sollicitations, candidatez aux opportunités et gérez vos conventions.")}</p>
-            </div>
-            <Link className="btn" href="/compte">{t("Me référencer")}</Link>
+          <section className="card highlight">
+            <SectionHead icon={BadgeCheck} title={t("Devenir expert référencé")} desc={t("Recevez des sollicitations, candidatez aux opportunités et gérez vos conventions.")}>
+              <Link className="btn" href="/compte">{t("Me référencer")}</Link>
+            </SectionHead>
           </section>
         ))}
 
         {newsletterPending(user) && (
           <section className="card newsletter-ask" aria-labelledby="lettre">
-            <div>
-              <h2 id="lettre">{t("Recevoir la lettre d'information de KolBase ?")}</h2>
-              <p className="muted">{t("Les événements scientifiques à venir et les nouveautés de la plateforme, deux envois par mois au plus. Désinscription en un clic depuis chaque envoi.")}</p>
-            </div>
-            <form action={answerNewsletter} className="actions">
-              <input type="hidden" name="source" value="accueil" />
-              <button className="btn" name="choice" value="oui">{t("Oui, je m'abonne")}</button>
-              <button className="btn ghost" name="choice" value="non">{t("Non merci")}</button>
-            </form>
+            <SectionHead icon={Mail} id="lettre" title={t("Recevoir la lettre d'information de KolBase ?")} desc={t("Les événements scientifiques à venir et les nouveautés de la plateforme, deux envois par mois au plus. Désinscription en un clic depuis chaque envoi.")}>
+              <form action={answerNewsletter} className="actions" style={{ marginTop: 0 }}>
+                <input type="hidden" name="source" value="accueil" />
+                <button className="btn small" name="choice" value="oui">{t("Oui, je m'abonne")}</button>
+                <button className="btn ghost small" name="choice" value="non">{t("Non merci")}</button>
+              </form>
+            </SectionHead>
           </section>
         )}
 
         <div className="dash-layout">
           <section className="card dash-card" aria-labelledby="a-faire">
-            <h2 id="a-faire" className="dash-title">{t("À faire")}</h2>
+            <SectionHead icon={ListChecks} id="a-faire" title={t("À faire")} desc={pending.length ? t("Sollicitations à traiter, puis le reste.") : undefined} />
             {pending.map((l) => (
               <article key={l.id} className="solicit-card">
                 <div className="solicit-top">
@@ -194,7 +190,7 @@ export default async function Page({ searchParams }: { searchParams: Promise<{ a
           <div className="stack dash-side">
             {p.listed && (
               <section className="card dash-card" aria-labelledby="pour-vous">
-                <h2 id="pour-vous" className="dash-title">{t("Pour vous")}</h2>
+                <SectionHead icon={Sparkles} id="pour-vous" title={t("Pour vous")} desc={t("Opportunités ouvertes qui correspondent à votre profil.")} />
                 {suggested.length === 0 ? (
                   <p className="muted">{t("Aucune opportunité ouverte pour le moment.")}</p>
                 ) : (
@@ -211,14 +207,13 @@ export default async function Page({ searchParams }: { searchParams: Promise<{ a
             )}
             {p.listed && (
               <section className="card dash-card stack-sm" aria-labelledby="proposer">
-                <h2 id="proposer" className="dash-title">{t("Un projet à proposer ?")}</h2>
-                <p className="muted text-sm" style={{ margin: 0 }}>{t("Formation, étude, webinaire, comité… Soumettez-le à cinq organisations au plus : chacune peut l'accepter et ouvrir un dossier avec vous.")}</p>
+                <SectionHead icon={Lightbulb} id="proposer" title={t("Un projet à proposer ?")} desc={t("Formation, étude, webinaire, comité… Soumettez-le à cinq organisations au plus : chacune peut l'accepter et ouvrir un dossier avec vous.")} />
                 <div><Link className="btn secondary small" href="/propositions/nouvelle">{t("Proposer un projet")}</Link></div>
                 <MoreLink href="/propositions">{t("Mes propositions")}</MoreLink>
               </section>
             )}
             <section className="card dash-card" aria-labelledby="mon-agenda">
-              <h2 id="mon-agenda" className="dash-title">{t("Mon agenda")}</h2>
+              <SectionHead icon={CalendarClock} id="mon-agenda" title={t("Mon agenda")} desc={t("Vos inscriptions et interventions à venir.")} />
               <Timeline items={agenda} empty={t("Aucun événement à venir.")} />
               <MoreLink href="/evenements">{t("Parcourir les événements")}</MoreLink>
             </section>

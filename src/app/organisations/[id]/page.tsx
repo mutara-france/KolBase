@@ -1,13 +1,15 @@
+import { SectionHead } from "@/components/UI";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { SiteHeader } from "@/components/SiteHeader";
 import { CreateMenu, DashHead, DashStats, Timeline, TodoGroups, type TimelineItem } from "@/components/Dashboard";
 import { requireMembership } from "@/lib/orgs";
+import { db } from "@/lib/db";
 import { orgOverview } from "@/lib/org-overview";
 import { eventMoment } from "@/lib/events";
 import { supplierCategoryLabel } from "@/lib/suppliers";
 import { orgBillingLine, orgOnboarding } from "@/lib/onboarding";
-import { CheckCircle2, Circle } from "lucide-react";
+import { CalendarClock, CheckCircle2, Circle, ListChecks, Rocket } from "lucide-react";
 import { rnaAccepted, roleLabel } from "@/lib/org-roles";
 import type { OrgKind } from "@/generated/prisma/client";
 import { de, inSentence } from "@/lib/elision";
@@ -49,6 +51,26 @@ export default async function Page({ params, searchParams }: { params: Promise<{
   const upcoming = events.filter((e) => !e.cancelledAt && eventMoment(e, now) !== "passe");
   const pendingApps = calls.reduce((s, c) => s + c.applications.length, 0);
   const hospValue = hosp.reduce((s, r) => s + r.benefits.reduce((x, b) => x + b.valueCents, 0), 0);
+  // Prestataire : ses demandes de devis reçues, pour les mêmes repères que les autres accueils.
+  const invites =
+    org.kind === "PRESTATAIRE"
+      ? await db.rfqSupplier.findMany({
+          where: { supplierId: id, rfq: { status: { not: "draft" } } },
+          select: {
+            declined: true,
+            rfq: {
+              select: {
+                status: true, deadline: true, category: true,
+                organization: { select: { name: true } },
+                event: { select: { title: true, startsAt: true, city: true } },
+                quotes: { where: { supplierId: id }, select: { status: true, amountCents: true } },
+              },
+            },
+          },
+        })
+      : [];
+  const toQuote = invites.filter((i) => i.rfq.status === "sent" && !i.declined && i.rfq.quotes.length === 0);
+  const won = invites.filter((i) => i.rfq.quotes[0]?.status === "retained");
 
   // Trois repères au plus, choisis selon les droits.
   const stats = [
@@ -58,6 +80,9 @@ export default async function Page({ params, searchParams }: { params: Promise<{
     can.sourcing && { href: `${base}/opportunites`, value: pendingApps, label: t("Candidatures à traiter"), hint: plural(t, calls.length, "opportunité ouverte", "opportunités ouvertes") },
     can.compliance && { href: `${base}/conformite`, value: projects.filter((p) => p.status === "EN_VALID").length, label: t("Dossiers à valider") },
     can.compliance && { href: `${base}/hospitalites`, value: hosp.length, label: t("Hospitalités à déclarer"), hint: fmtEur(locale, hospValue) },
+    org.kind === "PRESTATAIRE" && { href: `${base}/devis`, value: toQuote.length, label: t("Demandes à traiter"), hint: plural(t, invites.filter((i) => i.rfq.status === "sent" && !i.declined).length, "demande en cours", "demandes en cours") },
+    org.kind === "PRESTATAIRE" && { href: `${base}/devis`, value: won.length, label: t("Devis retenus"), hint: plural(t, invites.length, "demande reçue", "demandes reçues") },
+    org.kind === "PRESTATAIRE" && { href: `${base}/devis`, value: fmtEur(locale, won.reduce((s, i) => s + (i.rfq.quotes[0]?.amountCents ?? 0), 0)), label: t("Montant retenu"), hint: t("HT, toutes prestations") },
   ]
     .filter((s): s is Exclude<typeof s, false> => !!s)
     .slice(0, 3);
@@ -78,6 +103,13 @@ export default async function Page({ params, searchParams }: { params: Promise<{
           .filter((r) => r.status === "sent" && r.deadline && r.deadline >= now)
           .map((r) => ({ date: r.deadline!, title: t("Limite des devis : {toLowerCase}", { toLowerCase: t(supplierCategoryLabel(r.category)).toLowerCase() }), detail: r.event?.title, href: `${base}/prestataires` }))
       : []),
+    // Prestataire : les prestations retenues à venir, et les demandes dont l'échéance de réponse approche.
+    ...won
+      .filter((i) => i.rfq.event && i.rfq.event.startsAt >= now)
+      .map((i) => ({ date: i.rfq.event!.startsAt, title: i.rfq.event!.title, detail: [t(supplierCategoryLabel(i.rfq.category)), i.rfq.organization.name, i.rfq.event!.city].filter(Boolean).join(" · "), href: `${base}/devis`, strong: true })),
+    ...toQuote
+      .filter((i) => i.rfq.deadline && i.rfq.deadline >= now)
+      .map((i) => ({ date: i.rfq.deadline!, title: t("Limite des devis : {toLowerCase}", { toLowerCase: t(supplierCategoryLabel(i.rfq.category)).toLowerCase() }), detail: [i.rfq.organization.name, i.rfq.event?.title].filter(Boolean).join(" · "), href: `${base}/devis` })),
     ...calls
       .filter((c) => c.deadline && c.deadline >= now)
       .map((c) => ({
@@ -133,10 +165,9 @@ export default async function Page({ params, searchParams }: { params: Promise<{
         )}
         {onboarding.length > 0 && onboarding.some((s) => !s.done) && (
           <section className="card onboarding" aria-labelledby="prise-en-main">
-            <div className="flex-between">
-              <h2 id="prise-en-main" className="dash-title">{t("Prise en main")}</h2>
+            <SectionHead icon={Rocket} id="prise-en-main" title={t("Prise en main")} desc={t("Les réglages qui rendent l'organisation opérationnelle.")}>
               <span className="muted text-sm">{t(onboarding.filter((s) => s.done).length > 1 ? "{n} étapes sur {onboarding}" : "{n} étape sur {onboarding}", { n: onboarding.filter((s) => s.done).length, onboarding: onboarding.length })}</span>
-            </div>
+            </SectionHead>
             <div className="gauge-track"><div className="gauge-fill" style={{ width: `${Math.round((onboarding.filter((s) => s.done).length / onboarding.length) * 100)}%` }} /></div>
             {/* Étapes restantes en clair ; les étapes faites, repliées, n'encombrent plus la prise en main. */}
             <ol className="onboarding-steps">
@@ -166,14 +197,12 @@ export default async function Page({ params, searchParams }: { params: Promise<{
         <DashStats stats={stats} />
         <div className={`dash-layout${timeline.length ? "" : " single"}`}>
           <section className="card dash-card" aria-labelledby="a-faire">
-            <h2 id="a-faire" className="dash-title">
-              {t("À faire")}{" "}{todos.length > 0 && <span className="count-pill">{todos.length}</span>}
-            </h2>
+            <SectionHead icon={ListChecks} id="a-faire" title={<>{t("À faire")}{" "}{todos.length > 0 && <span className="count-pill">{todos.length}</span>}</>} desc={todos.length ? t("Les plus urgentes d'abord.") : undefined} />
             <TodoGroups todos={todos} moreHref={can.view ? `${base}/dossiers` : undefined} />
           </section>
           {timeline.length > 0 && (
             <section className="card dash-card" aria-labelledby="a-venir">
-              <h2 id="a-venir" className="dash-title">{t("À venir")}</h2>
+              <SectionHead icon={CalendarClock} id="a-venir" title={t("À venir")} desc={t("Échéances et événements des prochaines semaines.")} />
               <Timeline items={timeline} />
             </section>
           )}

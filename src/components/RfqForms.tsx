@@ -1,7 +1,8 @@
 "use client";
+import { SectionHead } from "@/components/UI";
 
 import { useActionState, useState } from "react";
-import { Check, Plus, Send } from "lucide-react";
+import { Check, FilePlus2, Plus, Send, Store } from "lucide-react";
 import { createRfq, postRfqMessage, submitQuote, updateSupplierProfile } from "@/lib/rfq-actions";
 import { Notice } from "@/components/AuthForms";
 import { ActionForm } from "@/components/ActionForm";
@@ -59,8 +60,7 @@ export function NewRfqForm({ orgId, categories, suppliers, events, defaultEventI
   const toggle = (id: string) => setPicked((p) => (p.includes(id) ? p.filter((x) => x !== id) : [...p, id]));
   return (
     <ActionForm action={action} className="card form">
-      <h2>{t("Nouvelle demande de devis")}</h2>
-      <p className="muted">{t("Consultez en une fois les prestataires référencés. Ils répondent directement sur KolBase, depuis leur espace prestataire.")}</p>
+      <SectionHead icon={FilePlus2} title={t("Nouvelle demande de devis")} desc={t("Consultez en une fois les prestataires référencés. Ils répondent directement sur KolBase, depuis leur espace prestataire.")} />
       <Notice state={state} />
       <input type="hidden" name="orgId" value={orgId} />
       <input type="hidden" name="category" value={category} />
@@ -234,8 +234,7 @@ export function SupplierProfileForm({ orgId, categories, current, canEdit }: { o
   // ActionForm : la saisie (catégories, zone) reste après une erreur.
   return (
     <ActionForm action={action} className="card form">
-      <h2>{t("Fiche prestataire")}</h2>
-      <p className="muted">{t("Les organisations consultent l'annuaire par catégorie. Être référencé ne donne aucune priorité : elles choisissent librement qui consulter.")}</p>
+      <SectionHead icon={Store} title={t("Fiche prestataire")} desc={t("Les organisations consultent l'annuaire par catégorie. Être référencé ne donne aucune priorité : elles choisissent librement qui consulter.")} />
       <Notice state={state} />
       <input type="hidden" name="orgId" value={orgId} />
       <span className="label">{t("Catégories de prestation")}</span>

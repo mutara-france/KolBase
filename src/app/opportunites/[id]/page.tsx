@@ -1,7 +1,8 @@
+import { SectionHead } from "@/components/UI";
 import Link from "next/link";
 import { de } from "@/lib/elision";
 import { notFound, redirect } from "next/navigation";
-import { Briefcase, CalendarDays, Euro, Mic, Users } from "lucide-react";
+import { Briefcase, CalendarDays, Euro, Mic, ScrollText, Users } from "lucide-react";
 import { SiteHeader } from "@/components/SiteHeader";
 import { PageHero } from "@/components/PageHero";
 import { ApplyForm } from "@/components/OpportunityForms";
@@ -71,13 +72,13 @@ export default async function Page({ params }: { params: Promise<{ id: string }>
           <div className="page-main">
             {call.event && (
               <section className="card stack-sm">
-                <h2 className="section-title">{t("L'événement")}</h2>
+                <SectionHead icon={CalendarDays} title={t("L'événement")} />
                 <p><strong>{call.event.title}</strong></p>
                 <p className="muted text-sm">{fmtDate(locale, call.event.startsAt, { weekday: "long", day: "numeric", month: "long", year: "numeric" })}{call.event.city ? ` · ${call.event.city}` : ""}</p>
                 {call.event.publishedAt && <Link className="link" href={`/evenements/${call.event.id}`}>{t("Voir la page de l'événement")}</Link>}
               </section>
             )}
-            {call.organization.policy && <section className="card"><h2>{t("Politique de collaboration {de_org}", { org: call.organization.name, de_org: de(call.organization.name) })}</h2><p>{call.organization.policy}</p></section>}
+            {call.organization.policy && <section className="card"><SectionHead icon={ScrollText} title={t("Politique de collaboration {de_org}", { org: call.organization.name, de_org: de(call.organization.name) })} /><p>{call.organization.policy}</p></section>}
             <section className="card stack-sm">
               <h2 className="section-title">{call.organization.name}</h2>
               {call.organization.about && <p className="text-sm">{call.organization.about}</p>}

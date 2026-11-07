@@ -1,3 +1,4 @@
+import { PageHead } from "@/components/UI";
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { SiteHeader } from "@/components/SiteHeader";
@@ -49,10 +50,7 @@ export default async function Page({ searchParams }: { searchParams: Promise<{ t
       <SiteHeader />
       <main className="stack">
         <SectionNav tabs={practitionerSectionTabs("opportunites").map((tab) => ({ ...tab, label: t(tab.label) }))} active="appels" label={t("Rubrique Opportunités")} />
-        <div>
-          <h1>{t("Opportunités")}</h1>
-          <p className="muted">{t("Les organisations cherchent des experts pour une collaboration (board, étude, rédaction…) ou pour intervenir à un événement (formation, symposium…). Candidatez : si vous êtes retenu, vous recevez une proposition d'honoraires.")}</p>
-        </div>
+        <PageHead title={t("Opportunités")} desc={t("Les organisations cherchent des experts pour une collaboration (board, étude, rédaction…) ou pour intervenir à un événement (formation, symposium…). Candidatez : si vous êtes retenu, vous recevez une proposition d'honoraires.")} />
         <form className="card form search">
           <div className="row">
             <label>{t("Recherche")}<input name="q" defaultValue={q} placeholder={t("Spécialité, ville, sujet…")} /></label>

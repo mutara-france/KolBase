@@ -1,5 +1,6 @@
+import { SectionHead, PageHead, EmptyState } from "@/components/UI";
 import Link from "next/link";
-import { FileDown, QrCode, Star, Video } from "lucide-react";
+import { CalendarClock, CalendarDays, CalendarX, FileDown, History, QrCode, Star, Video } from "lucide-react";
 import { eventEnded } from "@/lib/event-followup";
 import { SiteHeader } from "@/components/SiteHeader";
 import { SectionNav } from "@/components/SectionNav";
@@ -106,21 +107,26 @@ export default async function Page({ searchParams }: { searchParams: Promise<{ a
   return (
     <>
       <SiteHeader />
-      <main className="narrow stack">
+      <main className="stack">
         {user.practitioner?.listed && <SectionNav tabs={practitionerSectionTabs("agenda").map((tab) => ({ ...tab, label: t(tab.label) }))} active="inscriptions" label={t("Rubrique Mes inscriptions")} />}
-        <div className="actions spread">
-          <h1>{t("Mes inscriptions")}</h1>
+        <PageHead title={t("Mes inscriptions")} desc={t("Les événements auxquels vous assistez. Les avantages que vous acceptez sont conventionnés et déclarés par l'organisateur.")}>
           <a className="btn ghost small" href="/inscriptions/calendrier">{t("Exporter vers mon agenda (.ics)")}</a>
-        </div>
-        <p className="muted">{t("Les événements auxquels vous assistez. Les avantages que vous acceptez sont conventionnés et déclarés par l'organisateur.")}</p>
+        </PageHead>
         {annulee && <p className="notice ok">{t("Inscription annulée. Un e-mail vous le confirme.")}</p>}
-        {regs.length === 0 && <p className="muted">{t("Aucune inscription.")} <Link href="/evenements">{t("Voir l'agenda")}</Link></p>}
-        {upcoming.length > 0 && <h2>{t("À venir")}</h2>}
-        {upcoming.map((r) => <Row key={r.id} r={r} />)}
-        {past.length > 0 && <h2>{t("Passés")}</h2>}
-        {past.map((r) => <Row key={r.id} r={r} />)}
-        {cancelled.length > 0 && <h2>{t("Annulés par l'organisateur")}</h2>}
-        {cancelled.map((r) => <Row key={r.id} r={r} />)}
+        {regs.length === 0 && (
+          <div className="card empty">
+            <EmptyState icon={CalendarDays} title={t("Aucune inscription.")} action={<Link className="btn secondary small" href="/evenements">{t("Voir l'agenda")}</Link>}>
+              {t("Inscrivez-vous aux événements de l'agenda : vos badges, attestations et avantages se retrouvent ici.")}
+            </EmptyState>
+          </div>
+        )}
+        {/* Une grille par période, comme « Mes interventions » : des cartes de même largeur, sans vide à droite. */}
+        {upcoming.length > 0 && <SectionHead icon={CalendarClock} title={t("À venir")} />}
+        {upcoming.length > 0 && <div className="grid-2">{upcoming.map((r) => <Row key={r.id} r={r} />)}</div>}
+        {past.length > 0 && <SectionHead icon={History} title={t("Passés")} />}
+        {past.length > 0 && <div className="grid-2">{past.map((r) => <Row key={r.id} r={r} />)}</div>}
+        {cancelled.length > 0 && <SectionHead icon={CalendarX} title={t("Annulés par l'organisateur")} />}
+        {cancelled.length > 0 && <div className="grid-2">{cancelled.map((r) => <Row key={r.id} r={r} />)}</div>}
       </main>
     </>
   );

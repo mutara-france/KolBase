@@ -3,7 +3,7 @@ import { EditEventForm, EventReviewForm, ProgramForm } from "@/components/EventF
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { Bell, Building2, CalendarDays, Pencil, ClipboardCheck, Euro, FileDown, FolderOpen, Gift, ListOrdered, MapPin, Megaphone, QrCode, ShieldCheck, Star, Truck, Users } from "lucide-react";
-import { SectionHead } from "@/components/DossierUI";
+import { SectionHead } from "@/components/UI";
 import { StatusPill } from "@/components/ProjectBits";
 import { db } from "@/lib/db";
 import { requireMembership } from "@/lib/orgs";
@@ -344,7 +344,7 @@ export async function EventWorkspace({ orgId: id, eventId, publie, mode = "page"
           <section className="card stack-sm bilan" aria-labelledby="bilan">
             <div className="card-head">
               <div>
-                <h2 id="bilan"><ClipboardCheck size={18} />{" "}{t("Bilan de l'événement")}</h2>
+                <SectionHead icon={ClipboardCheck} id="bilan" title={t("Bilan de l'événement")} />
                 <p className="muted">{pointed ? t("D'après le pointage à l'accueil et les devis retenus.") : t("Aucun participant pointé : la présence n'est pas connue, les chiffres portent sur les inscrits.")}</p>
               </div>
               {!readOnly && <a className="btn ghost small" href={`/organisations/${id}/evenements/${eventId}/emargement`}><FileDown size={14} />{" "}{t("Feuille d'émargement")}</a>}
@@ -383,7 +383,7 @@ export async function EventWorkspace({ orgId: id, eventId, publie, mode = "page"
 
         {ended && !event.internal && (
           <section className="card stack-sm" aria-labelledby="avis">
-            <h2 id="avis"><Star size={18} />{" "}{t("Avis des participants")}</h2>
+            <SectionHead icon={Star} id="avis" title={t("Avis des participants")} />
             {survey.count === 0 ? (
               <p className="muted">{t("Aucune réponse pour l'instant.")}{followed.length ? "" : t(" Le questionnaire part avec le remerciement, après l'événement.")}</p>
             ) : (

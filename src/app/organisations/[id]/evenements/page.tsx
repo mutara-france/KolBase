@@ -1,3 +1,5 @@
+import { CalendarClock, CalendarDays, History, PlayCircle } from "lucide-react";
+import { SectionHead, PageHead, EmptyState } from "@/components/UI";
 import Link from "next/link";
 import { SiteHeader } from "@/components/SiteHeader";
 import { SectionNav } from "@/components/SectionNav";
@@ -81,30 +83,31 @@ export default async function Page({ params }: { params: Promise<{ id: string }>
       <SiteHeader />
       <main className="stack">
         <SectionNav tabs={sectionTabs} active="evenements" label={t("Rubrique Événements")} />
-        <div className="actions spread">
-          <h1>{isOrganizer ? t("Événements") : t("Événements confiés")}</h1>
-          <div className="actions">
-            <a className="link" href={`/organisations/${id}/evenements/calendrier`}>{t("Ajouter à mon agenda (.ics)")}</a>
-            {isOrganizer && <Link className="btn" href={`/organisations/${id}/evenements/nouveau`}>{t("Nouvel événement")}</Link>}
-          </div>
-        </div>
+        <PageHead title={isOrganizer ? t("Événements") : t("Événements confiés")} desc={isOrganizer ? t("Vos réunions, formations et symposiums : logistique, inscriptions, présence et bilan.") : t("Les événements que des organisations ont confiés à votre agence.")}>
+          <a className="link" href={`/organisations/${id}/evenements/calendrier`}>{t("Ajouter à mon agenda (.ics)")}</a>
+          {isOrganizer && <Link className="btn" href={`/organisations/${id}/evenements/nouveau`}>{t("Nouvel événement")}</Link>}
+        </PageHead>
         {events.length === 0 ? (
-          <div className="card empty"><p className="muted">{t("Aucun événement pour l'instant.")}</p></div>
+          <div className="card empty">
+            <EmptyState icon={CalendarDays} title={t("Aucun événement pour l'instant.")} action={isOrganizer ? <Link className="btn secondary small" href={`/organisations/${id}/evenements/nouveau`}>{t("Nouvel événement")}</Link> : undefined}>
+              {isOrganizer ? t("Réunion, formation ou symposium : créez-le, préparez la logistique, puis publiez-le dans l'agenda.") : t("Les événements que les organisations vous confient apparaîtront ici.")}
+            </EmptyState>
+          </div>
         ) : (
           <>
             {ongoing.length > 0 && (
               <section className="card row-list" aria-label={t("Événements en cours")}>
-                <h2 className="section-title">{t("En cours ({ongoing})", { ongoing: ongoing.length })}</h2>
+                <SectionHead icon={PlayCircle} title={t("En cours ({ongoing})", { ongoing: ongoing.length })} />
                 {ongoing.map((e) => <Row key={e.id} e={e} />)}
               </section>
             )}
             <section className="card row-list" aria-label={t("Événements à venir")}>
-              <h2 className="section-title">{t("À venir ({upcoming})", { upcoming: upcoming.length })}</h2>
+              <SectionHead icon={CalendarClock} title={t("À venir ({upcoming})", { upcoming: upcoming.length })} />
               {upcoming.length === 0 ? <p className="muted">{t("Aucun événement à venir.")}</p> : upcoming.map((e) => <Row key={e.id} e={e} />)}
             </section>
             {past.length > 0 && (
               <section className="card row-list" aria-label={t("Événements passés")}>
-                <h2 className="section-title">{t("Passés ({past})", { past: past.length })}</h2>
+                <SectionHead icon={History} title={t("Passés ({past})", { past: past.length })} />
                 {past.map((e) => <Row key={e.id} e={e} />)}
               </section>
             )}

@@ -1,3 +1,5 @@
+import { BookOpen, CalendarCheck, FileSpreadsheet, FolderCheck, Gift, Send, Stamp } from "lucide-react";
+import { SectionHead, PageHead } from "@/components/UI";
 import Link from "next/link";
 import { SiteHeader } from "@/components/SiteHeader";
 import { SectionNav } from "@/components/SectionNav";
@@ -97,12 +99,12 @@ export default async function Page({ params, searchParams }: { params: Promise<{
       <SiteHeader />
       <main className="stack">
         <SectionNav tabs={sectionTabs} active={onglet} label={t("Rubrique Conformité")} />
-        <h1>{t(TABS.find(([k]) => k === onglet)?.[1] ?? "Espace conformité")}</h1>
+        <PageHead title={t(TABS.find(([k]) => k === onglet)?.[1] ?? "Espace conformité")} />
 
         {onglet === "a-valider" && <ToValidate />}
         {onglet === "autorisations" && (
           <section className="card">
-            <h2>{t("Autorisations")}</h2>
+            <SectionHead icon={Stamp} title={t("Autorisations")} />
             <p className="muted">
               {t("Dossiers validés dont le montant dépasse un seuil d'autorisation, et demandes en cours auprès de l'Ordre. La demande doit être adressée au moins {authorizationDays} jours avant l'exécution ; sous les seuils, une déclaration {declarationDays} jours ouvrables avant suffit.", { authorizationDays: s.authorizationDays, declarationDays: s.declarationDays })}
             </p>
@@ -124,8 +126,7 @@ export default async function Page({ params, searchParams }: { params: Promise<{
                 </table>
               </TableWrap>
             )}
-            <h2>{t("Hospitalités soumises à autorisation")}</h2>
-            <p className="muted">{t("Conventions d'hospitalité dont une prestation ou le total dépasse un seuil : l'autorisation de l'Ordre est à demander au moins {authorizationDays} jours avant l'événement.", { authorizationDays: s.authorizationDays })}</p>
+            <SectionHead icon={Gift} title={t("Hospitalités soumises à autorisation")} desc={t("Conventions d'hospitalité dont une prestation ou le total dépasse un seuil : l'autorisation de l'Ordre est à demander au moins {authorizationDays} jours avant l'événement.", { authorizationDays: s.authorizationDays })} />
             {hospAuthorizations.length === 0 ? <p className="muted">{t("Aucune hospitalité soumise à autorisation.")}</p> : (
               <TableWrap label={t("Hospitalités soumises à autorisation")}>
                 <table className="table">
@@ -153,10 +154,9 @@ export default async function Page({ params, searchParams }: { params: Promise<{
         {onglet === "transparence" && <Declaration />}
         {onglet === "transparence" && (
           <section className="card">
-            <div className="actions spread">
-              <h2>{t("Suivi des publications")}</h2>
-              <a className="btn ghost" href={`/organisations/${id}/conformite/export?type=transparence&annee=${year ?? "toutes"}`}>{t("Exporter (CSV)")}</a>
-            </div>
+            <SectionHead icon={Send} title={t("Suivi des publications")} desc={t("Dossiers à publier sur la plateforme Transparence Santé, et ceux déjà publiés.")}>
+              <a className="btn ghost small" href={`/organisations/${id}/conformite/export?type=transparence&annee=${year ?? "toutes"}`}>{t("Exporter (CSV)")}</a>
+            </SectionHead>
             <p className="muted">
               {t("Conventions de collaboration signées et leur publication sur Transparence Santé. Les hospitalités se suivent une à une dans la page")}
               <Link href={`/organisations/${id}/hospitalites`}>{t("Hospitalités")}</Link>.
@@ -202,8 +202,7 @@ export default async function Page({ params, searchParams }: { params: Promise<{
           <>
             <FeeGridForm orgId={id} levels={await feeLevels(id)} hourlyMax={s.remunerationHourlyMax} />
             <section className="card stack-sm" id="validation-evenements">
-              <h2>{t("Validation des événements")}</h2>
-              <p className="muted">{t("Avant sa publication, la conformité valide le lieu, la date, le programme et les hospitalités de chaque événement ouvert aux praticiens ; un changement de date, de lieu, de format ou d'hospitalités le lui renvoie. Les réunions internes n'y sont pas soumises, les événements d'un dossier sont validés avec lui.")}</p>
+              <SectionHead icon={CalendarCheck} title={t("Validation des événements")} desc={t("Avant sa publication, la conformité valide le lieu, la date, le programme et les hospitalités de chaque événement ouvert aux praticiens ; un changement de date, de lieu, de format ou d'hospitalités le lui renvoie. Les réunions internes n'y sont pas soumises, les événements d'un dossier sont validés avec lui.")} />
               <form action={setEventReviewRequired} className="stack-sm">
                 <input type="hidden" name="orgId" value={id} />
                 <label className="check"><input type="checkbox" name="eventReview" value="1" defaultChecked={org.eventReview} />{" "}{t("Valider les événements avant leur publication")}</label>
@@ -224,13 +223,9 @@ export default async function Page({ params, searchParams }: { params: Promise<{
     const base = `/organisations/${id}/conformite`;
     return (
       <section className="card stack-sm">
-        <div className="card-head">
-          <div>
-            <h2>{t("Préparer la déclaration")}</h2>
-            <p className="muted">{t("Une ligne par convention, rémunération et avantage, avec les libellés de la plateforme Transparence Santé : rémunérations et avantages sont rattachés à leur convention.")}</p>
-          </div>
-          <a className="btn" href={`${base}/declaration?periode=${semesterKey(sem)}`}>{t(r.rows.length > 1 ? "Télécharger le fichier ({rows} lignes)" : "Télécharger le fichier ({rows} ligne)", { rows: r.rows.length })}</a>
-        </div>
+        <SectionHead icon={FileSpreadsheet} title={t("Préparer la déclaration")} desc={t("Une ligne par convention, rémunération et avantage, avec les libellés de la plateforme Transparence Santé : rémunérations et avantages sont rattachés à leur convention.")}>
+<a className="btn" href={`${base}/declaration?periode=${semesterKey(sem)}`}>{t(r.rows.length > 1 ? "Télécharger le fichier ({rows} lignes)" : "Télécharger le fichier ({rows} ligne)", { rows: r.rows.length })}</a>
+</SectionHead>
         <nav className="chips" aria-label={t("Semestre")}>
           {recentSemesters().map((x) => <Link key={semesterKey(x)} href={`?onglet=transparence&periode=${semesterKey(x)}`} className={`chip${semesterKey(x) === semesterKey(sem) ? " active" : ""}`}>{t(semesterLabel(x))}</Link>)}
         </nav>
@@ -262,7 +257,7 @@ export default async function Page({ params, searchParams }: { params: Promise<{
     return (
       <>
       <section className="card">
-        <h2>{t("Dossiers à valider")}</h2>
+        <SectionHead icon={FolderCheck} title={t("Dossiers à valider")} />
         {toValidate.length === 0 ? <p className="muted">{t("Aucun dossier en attente de validation.")}</p> : (
           <TableWrap label={t("Dossiers à valider")}>
             <table className="table">
@@ -297,8 +292,7 @@ export default async function Page({ params, searchParams }: { params: Promise<{
       </section>
       {org.eventReview && (
         <section className="card" id="evenements">
-          <h2>{t("Événements à valider")}</h2>
-          <p className="muted">{t("Lieu, date, programme et hospitalités, avant la publication dans l'agenda ou après une modification. Les événements d'un dossier sont validés avec le dossier.")}</p>
+          <SectionHead icon={CalendarCheck} title={t("Événements à valider")} desc={t("Lieu, date, programme et hospitalités, avant la publication dans l'agenda ou après une modification. Les événements d'un dossier sont validés avec le dossier.")} />
           {eventsToValidate.length === 0 ? <p className="muted">{t("Aucun événement en attente de validation.")}</p> : (
             <TableWrap label={t("Événements à valider")}>
               <table className="table">
@@ -337,10 +331,9 @@ export default async function Page({ params, searchParams }: { params: Promise<{
     const sum = rows.reduce((x, r) => x + r.amountCents, 0);
     return (
       <section className="card">
-        <div className="actions spread">
-          <h2>{t("Registre des conventions")}</h2>
-          <a className="btn ghost" href={`/organisations/${id}/conformite/export?type=registre&annee=${year ?? "toutes"}`}>{t("Exporter (CSV)")}</a>
-        </div>
+        <SectionHead icon={BookOpen} title={t("Registre des conventions")} desc={t("Toutes les conventions signées, avec leur régime et leurs montants.")}>
+          <a className="btn ghost small" href={`/organisations/${id}/conformite/export?type=registre&annee=${year ?? "toutes"}`}>{t("Exporter (CSV)")}</a>
+        </SectionHead>
         <nav className="tabs">
           {years.map((y) => <Link key={y} href={`?onglet=registre&annee=${y}`} className={y === year ? "active" : ""}>{y}</Link>)}
           <Link href="?onglet=registre&annee=toutes" className={year === null ? "active" : ""}>{t("Toutes")}</Link>

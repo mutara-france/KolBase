@@ -1,3 +1,5 @@
+import { UserX } from "lucide-react";
+import { SectionHead, PageHead } from "@/components/UI";
 import Link from "next/link";
 import { SiteHeader } from "@/components/SiteHeader";
 import { SectionNav } from "@/components/SectionNav";
@@ -101,10 +103,9 @@ export default async function Page({ params, searchParams }: { params: Promise<{
       <SiteHeader />
       <main className="stack">
         <SectionNav tabs={sectionTabs} active="dossiers" label={t("Rubrique Dossiers")} />
-        <div className="actions spread">
-          <h1>{t("Dossiers de collaboration")}</h1>
+        <PageHead title={t("Dossiers de collaboration")} desc={t("Une collaboration par dossier, de la sollicitation des experts à la déclaration Transparence Santé.")}>
           {canCreate && <Link className="btn" href={`${base}/nouveau`}>{t("Nouveau dossier")}</Link>}
-        </div>
+        </PageHead>
         <nav className="tabs" aria-label={t("Dossiers affichés")}>
           {views.map(([k, l]) => <Link key={k} href={href({ vue: k, etat: "en-cours" })} className={k === vue ? "active" : ""} aria-current={k === vue ? "page" : undefined}>{l}</Link>)}
         </nav>
@@ -114,7 +115,7 @@ export default async function Page({ params, searchParams }: { params: Promise<{
         {toAssign.length > 0 && (
           <section className="card row-list" aria-labelledby="a-attribuer">
             <div className="block-head">
-              <h2 id="a-attribuer" className="section-title">{t("À attribuer ({n})", { n: unassignedOpen })}</h2>
+              <SectionHead icon={UserX} id="a-attribuer" tone="warn" title={t("À attribuer ({n})", { n: unassignedOpen })} />
               {unassignedOpen > toAssign.length && <Link className="link text-sm" href={href({ vue: "sans", etat: "en-cours" })}>{t("Voir tout")}</Link>}
             </div>
             <p className="hint">{t("Dossiers en cours sans responsable, visibles de toute l'équipe Projets. Ouvrez-en un pour vous en désigner responsable ; le faire avancer vous l'attribue aussi.")}</p>

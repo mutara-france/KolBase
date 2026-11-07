@@ -1,4 +1,6 @@
 "use client";
+import { BadgeCheck, Bell, Database, KeyRound, UserRound } from "lucide-react";
+import { SectionHead } from "@/components/UI";
 
 import { inSentence } from "@/lib/elision";
 import { useActionState, useState } from "react";
@@ -25,7 +27,7 @@ export function ProfileForm({ user, practitioner }: Props) {
   const sameCountry = countryCode === practitioner?.country;
   return (
     <form action={action} className="card form">
-      <h2>{t("Informations personnelles")}</h2>
+      <SectionHead icon={UserRound} title={t("Informations personnelles")} />
       <Notice state={state} />
       <div className="row">
         <label>{t("Prénom")}<input name="firstName" maxLength={120} defaultValue={user.firstName} required /></label>
@@ -98,7 +100,7 @@ export function PasswordForm({ email }: { email: string }) {
   const t = useT();
   return (
     <form action={action} className="card form">
-      <h2>{t("Identifiants de connexion")}</h2>
+      <SectionHead icon={KeyRound} title={t("Identifiants de connexion")} />
       <p className="muted">{t("E-mail de connexion :")} <strong>{email}</strong></p>
       <Notice state={state} />
       <label>{t("Mot de passe actuel")}<input name="current" type="password" autoComplete="current-password" required /></label>
@@ -122,8 +124,7 @@ export function ListingForm({ listed, eligible, idMissing, rpps }: {
   if (!listed && !eligible)
     return (
       <section className="card">
-        <h2>{t("Référencement comme expert")}</h2>
-        <p className="muted">{t("Le référencement comme expert (KOL) est réservé aux chirurgiens-dentistes, orthodontistes, chirurgiens oraux et stomatologues. Votre compte vous permet de vous inscrire aux événements.")}</p>
+        <SectionHead icon={BadgeCheck} title={t("Référencement comme expert")} desc={t("Le référencement comme expert (KOL) est réservé aux chirurgiens-dentistes, orthodontistes, chirurgiens oraux et stomatologues. Votre compte vous permet de vous inscrire aux événements.")} />
       </section>
     );
   return (
@@ -194,7 +195,7 @@ export function NotificationsForm({ email, newsletter = false, practitioner = tr
   const t = useT();
   return (
     <form action={action} className="card form">
-      <h2>{t("Notifications")}</h2>
+      <SectionHead icon={Bell} title={t("Notifications")} />
       <Notice state={state} />
       <label className="check">
         <input type="checkbox" name="email" value="1" defaultChecked={email} /> {t("Recevoir par e-mail les sollicitations, réponses, messages, candidatures et devis")}
@@ -226,8 +227,7 @@ export function MyDataCard({ keep }: { keep: { conventions: number; hospitalitie
   ].filter(Boolean).join(` ${t("et")} `);
   return (
     <section className="card form">
-      <h2>{t("Mes données")}</h2>
-      <p className="muted">{t("Téléchargez l'ensemble des données de votre compte (profil, publications, inscriptions, collaborations, messages, liens d'intérêts déclarés, notes d'honoraires) au format JSON.")}</p>
+      <SectionHead icon={Database} title={t("Mes données")} desc={t("Téléchargez l'ensemble des données de votre compte (profil, publications, inscriptions, collaborations, messages, liens d'intérêts déclarés, notes d'honoraires) au format JSON.")} />
       <div className="actions"><a className="btn ghost" href="/compte/export">{t("Télécharger mes données")}</a></div>
       <details>
         <summary>{t("Supprimer mon compte")}</summary>

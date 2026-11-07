@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { CalendarDays, Clock, Euro, FileDown, FileSignature, FileText, Globe, ImageDown, LayoutDashboard, Megaphone, MessagesSquare, Scale, Sparkles, User, UserPlus, Users, Wallet } from "lucide-react";
-import { SectionHead, StateTile } from "@/components/DossierUI";
+import { SectionHead, StateTile } from "@/components/UI";
 import { detectConflicts } from "@/lib/conflicts";
 import { aiEnabled } from "@/lib/ai";
 import { Avatar } from "@/components/Avatar";
