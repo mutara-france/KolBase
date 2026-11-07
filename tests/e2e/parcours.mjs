@@ -3382,6 +3382,9 @@ async function submitNewOrg(page, siren) {
     check("Accès refusé : message sur l'accueil de l'organisation", jul.page.url().endsWith("?acces=refuse") && (await text(jul.page)).includes("réservée à d'autres rôles"), jul.page.url());
     // 7. « Solliciter » depuis l'espace courant.
     await pgc.query(`insert into "Membership" (id, "userId", "organizationId", role) values ('e2e-lot4-m', 'demo-u-julien', 'demo-org-cdra', 'PROJETS')`);
+    // La page précédente mémorise son espace (kb_espace) une fois hydratée : attendre cette écriture avant de la remplacer.
+    await jul.page.waitForLoadState("networkidle");
+    await jul.page.waitForFunction(() => document.cookie.includes("kb_espace="), null, { timeout: 5000 }).catch(() => {});
     await jul.ctx.addCookies([{ name: "kb_espace", value: "demo-org-cdra", url: BASE }]);
     await jul.page.goto(`${BASE}/experts/demo-p-martin`);
     const solicit = (await jul.page.locator('a:has-text("Solliciter")').first().getAttribute("href")) ?? "";
