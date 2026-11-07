@@ -1,7 +1,8 @@
 "use client";
+import { SectionHead } from "@/components/UI";
 
 import { useActionState, useState } from "react";
-import { Star } from "lucide-react";
+import { Star, Warehouse } from "lucide-react";
 import { addSupplierOffer, addSupplierPhoto, reviewSupplier, updateSupplierBook } from "@/lib/book-actions";
 import { Notice } from "@/components/AuthForms";
 import { useT } from "@/components/I18nProvider";
@@ -14,8 +15,7 @@ export function BookForm({ orgId, capacities, equipment, options, accessible, pr
   const [state, action, pending] = useActionState(updateSupplierBook, undefined);
   return (
     <form action={action} className="card form">
-      <h2>{t("Capacités et équipements")}</h2>
-      <p className="muted">{t("Ces informations apparaissent sur votre page publique et aident les organisations à vous consulter à bon escient.")}</p>
+      <SectionHead icon={Warehouse} title={t("Capacités et équipements")} desc={t("Ces informations apparaissent sur votre page publique et aident les organisations à vous consulter à bon escient.")} />
       <Notice state={state} />
       <input type="hidden" name="orgId" value={orgId} />
       <div className="row">

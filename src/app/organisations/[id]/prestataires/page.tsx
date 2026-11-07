@@ -1,3 +1,4 @@
+import { PageHead, EmptyState } from "@/components/UI";
 import { ReviewForm } from "@/components/BookForms";
 import { aiEnabled } from "@/lib/ai";
 import Link from "next/link";
@@ -116,7 +117,7 @@ export default async function Page({ params, searchParams }: { params: Promise<{
       <main className="stack">
         <BillingNotice orgId={id} motive="devis" />
         <SectionNav tabs={sectionTabs} active="prestataires" label={t("Rubrique Événements")} />
-        <h1>{t("Prestataires et devis")}</h1>
+        <PageHead title={t("Prestataires et devis")} desc={t("Consultez les prestataires référencés, comparez leurs devis et confiez vos événements à une agence.")} />
         <div className="stats">
           <div className="card stat"><span className="muted">{t("Devis à comparer")}</span><strong>{rfqs.filter((r) => r.status === "sent" && r.quotes.length > 0 && !r.conflicted).length}</strong></div>
           <div className="card stat"><span className="muted">{t("Prestations attribuées")}</span><strong>{awarded.length}</strong></div>
@@ -128,7 +129,7 @@ export default async function Page({ params, searchParams }: { params: Promise<{
 
         {onglet === "demandes" && (
           <>
-            {rfqs.length === 0 && <div className="card empty"><Receipt size={22} /><p className="muted">{t("Aucune demande de devis.")}</p></div>}
+            {rfqs.length === 0 && <div className="card empty"><EmptyState icon={Receipt} title={t("Aucune demande de devis.")} action={<Link className="btn secondary small" href="?onglet=nouvelle">{t("Nouvelle demande")}</Link>}>{t("Décrivez votre besoin (salle, traiteur, transport…) : les prestataires référencés vous répondent par un devis.")}</EmptyState></div>}
             {rfqs.map((r) => {
               const st = RFQ_STATUS[rfqDisplayStatus(r)];
               const best = r.quotes.length > 1 && !r.conflicted ? r.quotes[0].id : null;

@@ -2,7 +2,9 @@
  * Mise en page : chaque page principale, pour chaque profil (visiteur, praticien, organisation, administration),
  * sur téléphone (360 px), tablette (768 px) et ordinateur (1280 px), en français et en anglais (téléphone).
  * Repère : la page plus large que l'écran, un élément qui dépasse de son conteneur, un texte coupé, deux blocs
- * collés ou qui se chevauchent, une image cassée. Échoue sur toute anomalie.
+ * collés ou qui se chevauchent, une image cassée, un texte collé au bord de sa carte (marge intérieure manquante),
+ * un contenu caché sous une barre fixe (barre d'onglets du téléphone) ou sous la barre du haut (barre collante mal
+ * placée). Échoue sur toute anomalie.
  * Usage : BASE=http://localhost:3000 DEMO_PASSWORD=… node tests/e2e/affichage.mjs  (base fraîche, démo chargée)
  * Captures : SHOTS=/dossier pour enregistrer chaque page (relecture à l'œil).
  */
@@ -93,6 +95,43 @@ function inspect() {
     return bg && bg !== "transparent" && !/rgba\(.*,\s*0\)$/.test(bg);
   };
 
+  // Texte collé au bord intérieur de sa boîte (carte, bandeau, bouton…) : marge intérieure manquante ou annulée.
+  // Boîte au sens visuel : un fond, ou un cadre sur les côtés (un simple filet haut ou bas n'en fait pas une).
+  const framed = (a) => {
+    const s = getComputedStyle(a);
+    const bg = s.backgroundColor;
+    if (bg && bg !== "transparent" && !/rgba\(.*,\s*0\)$/.test(bg)) return true;
+    return parseFloat(s.borderLeftWidth) > 0 && parseFloat(s.borderRightWidth) > 0;
+  };
+  const boxOf = (el) => {
+    for (let a = el; a && a !== document.body; a = a.parentElement) {
+      if (/^(INPUT|SELECT|TEXTAREA|OPTION|TD|TH|TR|TABLE)$/.test(a.tagName)) return null;
+      if (a.classList.contains("avatar") || a.classList.contains("page") || a.tagName === "MAIN") return null;
+      if (framed(a)) return a;
+    }
+    return null;
+  };
+  for (const el of document.body.querySelectorAll("*")) {
+    if (el.closest("svg, script, style, noscript, template, .sr-only, table") || !shown(el)) continue;
+    for (const n of el.childNodes) {
+      if (n.nodeType !== 3 || !n.textContent.trim()) continue;
+      const box = boxOf(el);
+      if (!box) break;
+      const range = document.createRange();
+      range.selectNodeContents(n);
+      const tr = range.getBoundingClientRect();
+      if (!tr.width || !tr.height) continue;
+      const bs = getComputedStyle(box);
+      const br = box.getBoundingClientRect();
+      // Bandeau pleine largeur, ou rangée qui défile (onglets) : le bord n'est pas celui d'une carte.
+      if (br.width >= vw - 2 || bs.overflowX !== "visible") break;
+      const innerL = br.left + parseFloat(bs.borderLeftWidth), innerR = br.right - parseFloat(bs.borderRightWidth);
+      const gap = Math.min(tr.left - innerL, innerR - tr.right);
+      if (gap < 4 && gap > -40) out.push({ kind: "texte-colle-au-bord", px: Math.round(gap), where: `${name(el)} (dans ${box.tagName.toLowerCase()}.${[...box.classList].slice(0, 2).join(".")})` });
+      break;
+    }
+  }
+
   const over = document.documentElement.scrollWidth - vw;
   if (over > 1) out.push({ kind: "page-plus-large-que-l-ecran", px: over, where: "document" });
 
@@ -167,6 +206,38 @@ function inspect() {
   return out;
 }
 
+/**
+ * Barres fixes et collantes. En bas de page, rien d'utile ne doit rester sous une barre fixe (barre d'onglets du
+ * téléphone) ; une barre collante (onglets d'une fiche) ne doit pas glisser sous la barre du haut.
+ */
+async function fixedBars() {
+  const out = [];
+  const shown = (el) => { const r = el.getBoundingClientRect(); const s = getComputedStyle(el); return r.width > 0 && r.height > 0 && s.display !== "none" && s.visibility !== "hidden"; };
+  const label = (el) => `${el.tagName.toLowerCase()}.${[...el.classList].slice(0, 2).join(".")}`;
+  const all = [...document.body.querySelectorAll("*")];
+  const bottomBars = all.filter((el) => getComputedStyle(el).position === "fixed" && shown(el) && Math.abs(el.getBoundingClientRect().bottom - innerHeight) < 2 && el.getBoundingClientRect().height < 140 && !el.closest(".cookie-banner"));
+  if (bottomBars.length) {
+    window.scrollTo(0, document.documentElement.scrollHeight);
+    await new Promise((r) => setTimeout(r, 120));
+    for (const bar of bottomBars) {
+      const br = bar.getBoundingClientRect();
+      // Dernier contenu de la page (pied de page compris) : il doit pouvoir défiler au-dessus de la barre.
+      const texts = all.filter((el) => !bar.contains(el) && shown(el) && getComputedStyle(el).position !== "fixed" && [...el.childNodes].some((n) => n.nodeType === 3 && n.textContent.trim()));
+      const hidden = texts.filter((el) => { const r = el.getBoundingClientRect(); return r.bottom > br.top + 2 && r.top < br.bottom; });
+      if (hidden.length) out.push({ kind: "cache-sous-barre-fixe", where: `${label(bar)} masque « ${hidden.at(-1).innerText.trim().slice(0, 40)} »` });
+    }
+    window.scrollTo(0, 0);
+  }
+  // Barres collantes : une fois collées, elles restent sous la barre du haut, sans la chevaucher.
+  const top = document.querySelector(".top-bar, .public-nav");
+  const topH = top && getComputedStyle(top).position === "sticky" ? top.getBoundingClientRect().height : 0;
+  for (const el of all.filter((e) => getComputedStyle(e).position === "sticky" && e !== top && shown(e) && !top?.contains(e))) {
+    const t = parseFloat(getComputedStyle(el).top);
+    if (Number.isFinite(t) && t < topH - 1) out.push({ kind: "barre-collante-sous-l-en-tete", px: Math.round(topH - t), where: `${label(el)} (top ${t} px, barre du haut ${Math.round(topH)} px)` });
+  }
+  return out;
+}
+
 const browser = withConsent(await chromium.launch(), BASE);
 const all = [];
 const db = process.env.DATABASE_URL ? new pg.Client({ connectionString: process.env.DATABASE_URL }) : null;
@@ -197,6 +268,7 @@ for (const [who, paths] of Object.entries(PROFILES)) {
         }
         await page.evaluate(() => document.fonts.ready);
         for (const f of await page.evaluate(inspect)) all.push({ tag, ...f });
+        for (const f of await page.evaluate(fixedBars)) all.push({ tag, ...f });
         if (SHOTS) await page.screenshot({ path: `${SHOTS}/${vp.name}-${locale}-${who.split("@")[0]}-${path.replace(/[/?=&]+/g, "_")}.png`, fullPage: true });
       }
       await ctx.close();

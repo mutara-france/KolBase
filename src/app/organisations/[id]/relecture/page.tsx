@@ -1,3 +1,4 @@
+import { PageHead, EmptyState } from "@/components/UI";
 import Link from "next/link";
 import { FlaskConical } from "lucide-react";
 import { SiteHeader } from "@/components/SiteHeader";
@@ -38,12 +39,11 @@ export default async function Page({ params, searchParams }: { params: Promise<{
       <SiteHeader />
       <main className="stack">
         <SectionNav tabs={sectionTabs} active="relecture" label={t("Rubrique Conformité")} />
-        <h1>{t("Supports à relire")}</h1>
-        <p className="muted">{t("Supports soumis par les experts et les équipes : approuvez-les ou demandez des modifications avant toute diffusion.")}</p>
+        <PageHead title={t("Supports à relire")} desc={t("Supports soumis par les experts et les équipes : approuvez-les ou demandez des modifications avant toute diffusion.")} />
         <nav className="tabs">
           {tabs.map(([k, l]) => <Link key={k} href={`?onglet=${k}`} className={k === onglet ? "active" : ""}>{l}</Link>)}
         </nav>
-        {shown.length === 0 && <div className="card empty"><FlaskConical size={22} /><p>{t("Aucun support")}{" "}{onglet === "a-relire" ? t("en attente de relecture") : t("soumis")}.</p></div>}
+        {shown.length === 0 && <div className="card empty"><EmptyState icon={FlaskConical} title={`${t("Aucun support")} ${onglet === "a-relire" ? t("en attente de relecture") : t("soumis")}.`} /></div>}
         {shown.map((p) => (
           <section key={p.id} className="stack-sm">
             <div className="eyebrow-sm">

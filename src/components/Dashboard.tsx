@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { ArrowRight, ChevronDown, Plus } from "lucide-react";
+import { ArrowRight, ArrowUpRight, ChevronDown, Plus } from "lucide-react";
 import { TodoList, type TodoItem } from "@/components/Todo";
 import { fmtDate } from "@/lib/i18n";
 import { getT } from "@/lib/i18n/server";
@@ -49,9 +49,10 @@ export function DashStats({ stats }: { stats: { href: string; value: number | st
   return (
     <div className="dash-stats">
       {stats.map((s) => (
+        // Même dessin que les repères d'un dossier : libellé, valeur, précision ; toute la tuile mène à la rubrique.
         <Link key={s.label} href={s.href} className="dash-stat">
+          <span className="dash-stat-label">{s.label}<ArrowUpRight size={15} aria-hidden /></span>
           <span className="dash-stat-value">{s.value}</span>
-          <span className="dash-stat-label">{s.label}</span>
           {s.hint && <span className="dash-stat-hint">{s.hint}</span>}
         </Link>
       ))}

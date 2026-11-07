@@ -1,6 +1,7 @@
+import { PageHead, EmptyState } from "@/components/UI";
 import Link from "next/link";
 import { redirect } from "next/navigation";
-import { CalendarDays, Clock, Megaphone } from "lucide-react";
+import { CalendarDays, Clock, Megaphone, Send } from "lucide-react";
 import { SiteHeader } from "@/components/SiteHeader";
 import { SectionNav } from "@/components/SectionNav";
 import { practitionerSectionTabs } from "@/lib/nav";
@@ -50,19 +51,24 @@ export default async function Page({ searchParams }: { searchParams: Promise<{ o
   const group = onglet === "interventions" ? "agenda" : "opportunites";
   const heading = onglet === "interventions"
     ? [t("Mes interventions"), t("Les événements où vous intervenez. Vos participations en tant que public sont dans Mes inscriptions.")]
-    : [t("Mes candidatures"), null];
+    : [t("Mes candidatures"), t("Vos candidatures aux opportunités des organisations, et leur réponse.")];
 
   return (
     <>
       <SiteHeader section={group} />
       <main className="stack">
         <SectionNav tabs={practitionerSectionTabs(group).map((tab) => ({ ...tab, label: t(tab.label) }))} active={onglet} label={group === "agenda" ? t("Rubrique Mes inscriptions") : t("Rubrique Opportunités")} />
-        <h1>{heading[0]}</h1>
-        {heading[1] && <p className="muted">{heading[1]}</p>}
+        <PageHead title={heading[0]} desc={heading[1] ?? undefined} />
 
         {onglet === "interventions" && (
           <div className="grid-2">
-            {speaking.length === 0 && <div className="card empty"><Megaphone size={22} /><p>{t("Vous n'intervenez sur aucun événement pour l'instant.")}</p></div>}
+            {speaking.length === 0 && (
+              <div className="card empty">
+                <EmptyState icon={Megaphone} title={t("Vous n'intervenez sur aucun événement pour l'instant.")} action={<Link className="btn secondary small" href="/opportunites">{t("Voir les opportunités")}</Link>}>
+                  {t("Candidatez aux opportunités d'intervention : si vous êtes retenu, l'événement apparaît ici.")}
+                </EmptyState>
+              </div>
+            )}
             {speaking.map((a) => {
               const ev = a.openCall.event!;
               return (
@@ -84,7 +90,11 @@ export default async function Page({ searchParams }: { searchParams: Promise<{ o
 
         {onglet === "candidatures" && (
           <section className="card">
-            {mine.length === 0 && <p className="muted">{t("Aucune candidature.")} <Link href="/opportunites">{t("Voir les opportunités")}</Link></p>}
+            {mine.length === 0 && (
+              <EmptyState icon={Send} title={t("Aucune candidature.")} action={<Link className="btn secondary small" href="/opportunites">{t("Voir les opportunités")}</Link>}>
+                {t("Les organisations publient leurs besoins d'experts : candidatez en un message.")}
+              </EmptyState>
+            )}
             <ul className="applications">
               {mine.map((a) => (
                 <li key={a.id}>

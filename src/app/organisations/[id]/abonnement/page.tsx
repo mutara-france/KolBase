@@ -1,6 +1,7 @@
+import { SectionHead, PageHead } from "@/components/UI";
 import Link from "next/link";
 import { redirect } from "next/navigation";
-import { CheckCircle2, CreditCard, Gift } from "lucide-react";
+import { CheckCircle2, CreditCard, Gift, PackageCheck } from "lucide-react";
 import { SiteHeader } from "@/components/SiteHeader";
 import { db } from "@/lib/db";
 import { isAgencyOnly, requireMembership } from "@/lib/orgs";
@@ -45,7 +46,7 @@ export default async function Page({ params, searchParams }: { params: Promise<{
       <SiteHeader />
       <main className="narrow stack">
         <p className="muted"><Link href={`/organisations/${id}`}>{org.name}</Link> / {t("Abonnement")}</p>
-        <h1>{t("Abonnement")}</h1>
+        <PageHead title={t("Abonnement")} desc={t("Votre formule, sa facturation et ce qu'elle comprend.")} />
         {!stripeEnabled() && <p className="notice">{t("La facturation n'est pas encore activée sur KolBase : toutes les fonctions restent accessibles.")}</p>}
         {sp.session && ok && (
           <div className="notice ok stack-sm" role="status">
@@ -115,7 +116,7 @@ export default async function Page({ params, searchParams }: { params: Promise<{
         </section>
 
         <section className="card stack-sm">
-          <h2>{t("Ce qui est compris")}</h2>
+          <SectionHead icon={PackageCheck} title={t("Ce qui est compris")} />
           {supplier ? (
             <ul className="plain check-list">
               <li><CheckCircle2 size={15} /> <span><strong>{t("Gratuit :")}</strong>{" "}{t("référencement dans l'annuaire, book, réception des demandes de devis et réponses jusqu'au premier devis retenu")}{won ? ` ${t("(vous en avez {won})", { won })}` : ""}.</span></li>

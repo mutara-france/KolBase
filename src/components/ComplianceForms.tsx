@@ -1,4 +1,6 @@
 "use client";
+import { Coins, SlidersHorizontal } from "lucide-react";
+import { SectionHead } from "@/components/UI";
 
 import { useActionState } from "react";
 import { addFeeLevel, removeFeeLevel, updateComplianceSettings } from "@/lib/compliance-actions";
@@ -15,7 +17,7 @@ export function ComplianceSettingsForm({ orgId, settings, fields, canEdit }: { o
   const groups = [...new Set(fields.map((f) => f.group))];
   return (
     <form action={action} className="card form">
-      <h2>{t("Paramètres de conformité")}</h2>
+      <SectionHead icon={SlidersHorizontal} title={t("Paramètres de conformité")} />
       <p className="muted">
         {t("Valeurs par défaut reprises des arrêtés du 7 août 2020 (seuils au-delà desquels une autorisation est requise). Votre organisation peut les rendre plus strictes (seuils plus bas, délais plus longs), jamais plus souples.")}
       </p>
@@ -54,8 +56,7 @@ export function FeeGridForm({ orgId, levels, hourlyMax }: { orgId: string; level
   return (
     <section className="card stack" id="grille">
       <div>
-        <h2>{t("Grille de rémunération")}</h2>
-        <p className="muted">{t("Taux horaires HT par niveau d'expert ou d'activité. À la sollicitation, l'équipe Projets choisit un niveau et indique le volume horaire (préparation, intervention, déplacement) : les honoraires se calculent, et le taux réel est comparé au seuil de {max} € / h.", { max: hourlyMax })}</p>
+        <SectionHead icon={Coins} title={t("Grille de rémunération")} desc={t("Taux horaires HT par niveau d'expert ou d'activité. À la sollicitation, l'équipe Projets choisit un niveau et indique le volume horaire (préparation, intervention, déplacement) : les honoraires se calculent, et le taux réel est comparé au seuil de {max} € / h.", { max: hourlyMax })} />
       </div>
       {levels.length === 0 ? <p className="muted">{t("Aucun niveau : les honoraires se saisissent librement.")}</p> : (
         <ul className="fee-levels">

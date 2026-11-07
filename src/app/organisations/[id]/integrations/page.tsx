@@ -1,3 +1,4 @@
+import { PageHead } from "@/components/UI";
 import Link from "next/link";
 import { CalendarDays, FileSignature, FileSpreadsheet, Info, Link2, Users } from "lucide-react";
 import { SiteHeader } from "@/components/SiteHeader";
@@ -67,8 +68,7 @@ export default async function Page({ params }: { params: Promise<{ id: string }>
       <SiteHeader />
       <main className="stack">
         <p className="muted"><Link href={`/organisations/${id}`}>{org.name}</Link> / {t("Intégrations")}</p>
-        <h1>{t("Intégrations")}</h1>
-        <p className="muted">{t("KolBase s'interface avec les outils déjà en place plutôt que de les remplacer.")}</p>
+        <PageHead title={t("Intégrations")} desc={t("KolBase s'interface avec les outils déjà en place plutôt que de les remplacer.")} />
         <div className="grid-2">
           {items.map((i) => (
             <section key={i.name} className="card stack-sm">

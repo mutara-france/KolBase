@@ -1,10 +1,11 @@
+import { SectionHead, PageHead, EmptyState } from "@/components/UI";
 import { BookForm, OfferForm, PhotoForm } from "@/components/BookForms";
 import { removeSupplierOffer, removeSupplierPhoto } from "@/lib/book-actions";
 import { delayLabel, EQUIPMENT, OFFER_UNITS, PHOTO_MAX, photoSrc, readCapacities, supplierBook } from "@/lib/supplier-book";
 import { aiEnabled } from "@/lib/ai";
 import Link from "next/link";
 import { redirect } from "next/navigation";
-import { Receipt } from "lucide-react";
+import { Gauge, Images, Package, Receipt } from "lucide-react";
 import { SiteHeader } from "@/components/SiteHeader";
 import { QuoteForm, RfqMessageForm, SupplierProfileForm } from "@/components/RfqForms";
 import { Thread } from "@/components/ProjectBits";
@@ -51,7 +52,7 @@ export default async function Page({ params, searchParams }: { params: Promise<{
   const current = invites.filter((i) => (i.rfq.status === "sent" && !i.declined) || (i.rfq.status === "awarded" && i.rfq.quotes[0]?.status === "retained" && (!i.rfq.event || i.rfq.event.startsAt >= new Date())));
   const shown = onglet === "en-cours" ? current : invites;
   const won = invites.filter((i) => i.rfq.quotes[0]?.status === "retained");
-  const tabs = [["en-cours", `En cours (${current.length})`], ["toutes", `Toutes (${invites.length})`], ["fiche", "Mon book"]] as const;
+  const tabs = [["en-cours", t("En cours ({n})", { n: current.length })], ["toutes", t("Toutes ({n})", { n: invites.length })], ["fiche", t("Mon book")]] as const;
   const book = onglet === "fiche" ? await supplierBook(id, true) : null;
   const [photos, offers] = await Promise.all([
     onglet === "fiche" ? db.organizationPhoto.findMany({ where: { organizationId: id }, select: { id: true, caption: true, createdAt: true }, orderBy: { position: "asc" } }) : Promise.resolve([]),
@@ -62,7 +63,7 @@ export default async function Page({ params, searchParams }: { params: Promise<{
     <>
       <SiteHeader />
       <main className="stack">
-        <h1>{t("Demandes de devis")}</h1>
+        <PageHead title={t("Demandes de devis")} desc={t("Les demandes des organisations : répondez par un devis détaillé, échangez, suivez vos prestations retenues.")} />
         <BillingNotice orgId={id} motive="reponse" />
         {!org.listed && <p className="notice warn">{t("Votre organisation n'apparaît pas dans l'annuaire des prestataires. Complétez la fiche prestataire pour être consulté.")}</p>}
         <div className="stats">
@@ -79,8 +80,7 @@ export default async function Page({ params, searchParams }: { params: Promise<{
             <section className="card stack-sm">
               <div className="card-head">
                 <div>
-                  <h2>{t("Vos indicateurs")}</h2>
-                  <p className="muted">{t("Calculés à partir de votre activité sur KolBase ; les organisations voient la note, le délai et le taux de réponse.")}</p>
+                  <SectionHead icon={Gauge} title={t("Vos indicateurs")} desc={t("Calculés à partir de votre activité sur KolBase ; les organisations voient la note, le délai et le taux de réponse.")} />
                 </div>
                 <Link className="btn ghost" href={`/structures/${id}`}>{t("Voir ma page publique")}</Link>
               </div>
@@ -106,8 +106,7 @@ export default async function Page({ params, searchParams }: { params: Promise<{
               <>
                 <BookForm orgId={id} capacities={readCapacities(org.capacities)} equipment={org.equipment} options={EQUIPMENT} accessible={org.accessible} priceHint={org.priceHint ?? ""} />
                 <section className="card stack-sm">
-                  <h2>{t("Photos ({photos}/{PHOTO_MAX})", { photos: photos.length, PHOTO_MAX })}</h2>
-                  <p className="muted">{t("Vos salles, vos réalisations : les photos apparaissent en tête de votre page publique.")}</p>
+                  <SectionHead icon={Images} title={t("Photos ({photos}/{PHOTO_MAX})", { photos: photos.length, PHOTO_MAX })} desc={t("Vos salles, vos réalisations : les photos apparaissent en tête de votre page publique.")} />
                   {photos.length > 0 && (
                     <div className="gallery">
                       {photos.map((ph) => (
@@ -125,8 +124,7 @@ export default async function Page({ params, searchParams }: { params: Promise<{
                   {photos.length < PHOTO_MAX && <PhotoForm orgId={id} />}
                 </section>
                 <section className="card stack-sm">
-                  <h2>{t("Catalogue de forfaits")}</h2>
-                  <p className="muted">{t("Vos prestations courantes et leur prix : vous les ajoutez en un clic à vos devis, et les organisations voient vos prix « à partir de ».")}</p>
+                  <SectionHead icon={Package} title={t("Catalogue de forfaits")} desc={t("Vos prestations courantes et leur prix : vous les ajoutez en un clic à vos devis, et les organisations voient vos prix « à partir de ».")} />
                   {offers.length > 0 && (
                     <ul className="offer-list">
                       {offers.map((o) => (
@@ -147,7 +145,7 @@ export default async function Page({ params, searchParams }: { params: Promise<{
           </>
         ) : (
           <>
-            {shown.length === 0 && <div className="card empty"><Receipt size={22} /><p className="muted">{t("Aucune demande")}{" "}{onglet === "en-cours" ? t("en cours") : t("reçue")}.</p></div>}
+            {shown.length === 0 && <div className="card empty"><EmptyState icon={Receipt} title={`${t("Aucune demande")} ${onglet === "en-cours" ? t("en cours") : t("reçue")}.`}>{t("Les organisations vous adressent leurs demandes de devis depuis votre fiche prestataire.")}</EmptyState></div>}
             {shown.map(({ rfq: r, declined }) => {
               const q = r.quotes[0];
               const closed = r.status !== "sent";

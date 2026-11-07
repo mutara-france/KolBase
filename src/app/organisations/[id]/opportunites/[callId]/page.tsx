@@ -1,3 +1,4 @@
+import { SectionHead } from "@/components/UI";
 import Link from "next/link";
 import type { ApplicationStatus } from "@/generated/prisma/client";
 import { notFound } from "next/navigation";
@@ -68,7 +69,7 @@ export default async function Page({ params }: { params: Promise<{ id: string; c
         <div className="page-grid">
           <div className="page-main">
         <section className="card">
-          <h2>{t("Candidatures ({applications})", { applications: call.applications.length })}</h2>
+          <SectionHead icon={Inbox} title={t("Candidatures ({applications})", { applications: call.applications.length })} />
           {call.applications.length === 0 && <p className="muted">{t("Aucune candidature pour l'instant.")}</p>}
           <ul className="applications">
             {call.applications.map((a) => (
@@ -115,7 +116,7 @@ export default async function Page({ params }: { params: Promise<{ id: string; c
             </section>
             {call.event && (
               <section className="card stack-sm">
-                <h2 className="section-title">{t("Événement")}</h2>
+                <SectionHead icon={CalendarDays} title={t("Événement")} />
                 <Link href={`/organisations/${id}/evenements/${call.event.id}`}><strong>{call.event.title}</strong></Link>
                 <span className="muted text-sm">{fmtDate(locale, call.event.startsAt)}{call.event.city ? ` · ${call.event.city}` : ""}</span>
                 <p className="hint">{t("Les personnes retenues interviennent à cet événement ; leur dossier précise l'intervention.")}</p>

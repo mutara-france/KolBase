@@ -1,4 +1,6 @@
 "use client";
+import { Megaphone } from "lucide-react";
+import { SectionHead } from "@/components/UI";
 
 import { AiDraft } from "@/components/AiDraft";
 import { useActionState, useState } from "react";
@@ -32,8 +34,7 @@ export function NewCallForm({ orgId, types, ai = false, events = [], defaultEven
   };
   return (
     <ActionForm action={action} className="card form">
-      <h2>{t("Nouvelle opportunité")}</h2>
-      <p className="muted">{t("Visible de tous les experts référencés, qui peuvent y candidater. Rattachez-la à un événement si la personne retenue doit y intervenir.")}</p>
+      <SectionHead icon={Megaphone} title={t("Nouvelle opportunité")} desc={t("Visible de tous les experts référencés, qui peuvent y candidater. Rattachez-la à un événement si la personne retenue doit y intervenir.")} />
       <Notice state={state} />
       <input type="hidden" name="orgId" value={orgId} />
       <label>{t("Événement concerné")}

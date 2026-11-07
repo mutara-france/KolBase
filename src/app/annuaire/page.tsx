@@ -1,3 +1,4 @@
+import { PageHead } from "@/components/UI";
 import Link from "next/link";
 import { SiteHeader } from "@/components/SiteHeader";
 import { SectionNav } from "@/components/SectionNav";
@@ -59,7 +60,7 @@ export default async function Page({ searchParams }: { searchParams: Promise<{ q
       <SiteHeader />
       <main className="stack">
         <SectionNav tabs={sectionTabs} active="rechercher" label={t("Rubrique Praticiens")} />
-        <h1>{t("Annuaire des experts")}</h1>
+        <PageHead title={t("Annuaire des experts")} desc={t("Les praticiens référencés comme experts : recherchez par spécialité, ville ou type d'intervention.")} />
         <form className="card form search">
           <div className="row">
             <label>{t("Recherche")}<input name="q" defaultValue={q} placeholder={t("Nom, spécialité, type d'intervention…")} /></label>

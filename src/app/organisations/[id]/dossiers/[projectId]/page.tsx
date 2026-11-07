@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { CalendarDays, Clock, Euro, FileDown, FileSignature, FileText, Globe, ImageDown, LayoutDashboard, Megaphone, MessagesSquare, Scale, Sparkles, User, UserPlus, Users, Wallet } from "lucide-react";
-import { SectionHead, StateTile } from "@/components/DossierUI";
+import { SectionHead, StateTile } from "@/components/UI";
 import { detectConflicts } from "@/lib/conflicts";
 import { aiEnabled } from "@/lib/ai";
 import { Avatar } from "@/components/Avatar";
@@ -719,7 +719,7 @@ export default async function Page({ params, searchParams }: { params: Promise<{
                   {recruitmentOpen(project.status) && <Link className="btn ghost small" href={`/organisations/${id}/opportunites?evenement=${selectedEvent.id}#nouvel-appel`}>{t("Publier une opportunité")}</Link>}
                 </SectionHead>
                 {calls.length > 0 && (
-                  <ul className="row-list">
+                  <ul className="opp-list">
                     {calls.map((c) => {
                       const kept = c.applications.filter((a) => a.status === "retained");
                       const pending = c.applications.filter((a) => a.status === "pending").length;

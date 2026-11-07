@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { Clock, Briefcase, Building2, CalendarDays, Euro, FileSignature, FileText, MapPin, MessagesSquare, Reply, Scale } from "lucide-react";
-import { SectionHead } from "@/components/DossierUI";
+import { SectionHead } from "@/components/UI";
 import { SiteHeader } from "@/components/SiteHeader";
 import { PageHero } from "@/components/PageHero";
 import { ExpertLinkPill, Pipeline, Thread } from "@/components/ProjectBits";

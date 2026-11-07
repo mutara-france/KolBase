@@ -1,5 +1,5 @@
 import { AlertTriangle, ExternalLink, FileCheck, FileSignature, FileText, Info, Receipt, ShieldAlert, Users, Wallet } from "lucide-react";
-import { SectionHead } from "@/components/DossierUI";
+import { SectionHead } from "@/components/UI";
 import { markExpertPaid } from "@/lib/revenue-actions";
 import { parisToday } from "@/lib/events";
 import { db } from "@/lib/db";
@@ -414,7 +414,7 @@ export async function ExpertSignatureBlock({ linkId, signature, email, projectSt
   if (s.status === "ongoing")
     return (
       <section className="card highlight stack-sm">
-        <h2 className="section-title"><FileSignature size={15} /> {t("Convention en attente de votre signature")}</h2>
+        <SectionHead icon={FileSignature} title={t("Convention en attente de votre signature")} />
         <p>
           {t("Yousign, notre prestataire de signature électronique, vous a envoyé un e-mail à {email} avec le lien pour signer.", { email })}
           {s.sentAt ? ` ${t("Demande du {date}.", { date: fmtDate(locale, s.sentAt) })}` : ""}{" "}

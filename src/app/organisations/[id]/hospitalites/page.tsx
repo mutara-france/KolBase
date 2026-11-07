@@ -1,3 +1,4 @@
+import { PageHead } from "@/components/UI";
 import Link from "next/link";
 import { SiteHeader } from "@/components/SiteHeader";
 import { SectionNav } from "@/components/SectionNav";
@@ -61,13 +62,9 @@ export default async function Page({ params, searchParams }: { params: Promise<{
       <SiteHeader />
       <main className="stack">
         <SectionNav tabs={sectionTabs} active="hospitalites" label={t("Rubrique Conformité")} />
-        <div className="actions spread">
-          <h1>{t("Hospitalités")}</h1>
-          <a className="btn ghost" href={`/organisations/${id}/hospitalites/export?statut=${statut}`}>{t("Exporter (CSV)")}</a>
-        </div>
-        <p className="muted">
-          {t("Avantages acceptés par des professionnels de santé lors de vos événements. Chacun doit faire l'objet d'une convention d'hospitalité et d'une publication sur Transparence Santé. Les inscrits sans avantage n'apparaissent pas ici.")}
-        </p>
+        <PageHead title={t("Hospitalités")} desc={t("Avantages acceptés par des professionnels de santé lors de vos événements. Chacun doit faire l'objet d'une convention d'hospitalité et d'une publication sur Transparence Santé. Les inscrits sans avantage n'apparaissent pas ici.")}>
+          <a className="btn ghost small" href={`/organisations/${id}/hospitalites/export?statut=${statut}`}>{t("Exporter (CSV)")}</a>
+        </PageHead>
         <nav className="tabs">
           {tabs.map(([k, l]) => <Link key={k} href={`?statut=${k}`} className={k === statut ? "active" : ""}>{t(l)}</Link>)}
         </nav>

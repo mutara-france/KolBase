@@ -1,4 +1,6 @@
 "use client";
+import { BadgeCheck, Building2, Image, UserPlus } from "lucide-react";
+import { SectionHead } from "@/components/UI";
 
 import { inSentence } from "@/lib/elision";
 import { useActionState, useState, useTransition } from "react";
@@ -45,7 +47,7 @@ export function EditOrgForm({ org, supplier = false }: { org: Org; supplier?: bo
   const [state, action, pending] = useActionState(updateOrganization, undefined);
   return (
     <form action={action} className="card form">
-      <h2>{t("Fiche de l'organisation")}</h2>
+      <SectionHead icon={Building2} title={t("Fiche de l'organisation")} />
       <Notice state={state} />
       <input type="hidden" name="orgId" value={org.id} />
       <label>{t("Nom")}<input name="name" maxLength={120} defaultValue={org.name} required /></label>
@@ -74,8 +76,7 @@ export function InviteForm({ orgId, roles }: { orgId: string; roles: Opt[] }) {
   const [copied, setCopied] = useState(false);
   return (
     <form action={action} className="card form">
-      <h2>{t("Inviter un membre")}</h2>
-      <p className="muted">{t("KolBase génère un lien d'invitation, valable 14 jours et à usage unique. Avec une adresse, l'invitation part par e-mail et seule cette adresse peut l'accepter ; sans adresse, transmettez le lien vous-même.")}</p>
+      <SectionHead icon={UserPlus} title={t("Inviter un membre")} desc={t("KolBase génère un lien d'invitation, valable 14 jours et à usage unique. Avec une adresse, l'invitation part par e-mail et seule cette adresse peut l'accepter ; sans adresse, transmettez le lien vous-même.")} />
       <Notice state={state} />
       {state?.link && (
         <div className="copy">
@@ -104,8 +105,7 @@ export function ExpertProfileForm({ p, types }: { p: Expert; types: string[] }) 
   const t = useT();
   return (
     <form action={action} className="card form">
-      <h2>{t("Profil expert")}</h2>
-      <p className="muted">{t("Ces informations apparaissent dans l'annuaire, consulté par les organisations.")}</p>
+      <SectionHead icon={BadgeCheck} title={t("Profil expert")} desc={t("Ces informations apparaissent dans l'annuaire, consulté par les organisations.")} />
       <Notice state={state} />
       <label>{t("Présentation")}<textarea name="bio" rows={4} defaultValue={p.bio ?? ""} placeholder={t("Parcours, domaines d'expertise, publications marquantes…")} /></label>
       <div className="row">
@@ -205,7 +205,7 @@ export function LogoForm({ orgId, name, src, verified, supplier = false }: { org
   const [state, action, pending] = useActionState(updateOrgLogo, undefined);
   return (
     <section className="card form">
-      <h2>{t("Logo")}</h2>
+      <SectionHead icon={Image} title={t("Logo")} />
       <Notice state={state} />
       <div className="actions" style={{ alignItems: "center" }}>
         <Avatar name={name} size={64} square src={src} />

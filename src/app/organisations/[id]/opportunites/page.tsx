@@ -1,3 +1,5 @@
+import { PageHead } from "@/components/UI";
+import { CalendarOff } from "lucide-react";
 import Link from "next/link";
 import { aiEnabled } from "@/lib/ai";
 import { SiteHeader } from "@/components/SiteHeader";
@@ -39,10 +41,9 @@ export default async function Page({ params, searchParams }: { params: Promise<{
       <main className="stack">
         <BillingNotice orgId={id} motive="appel" />
         <SectionNav tabs={sectionTabs} active="appels" label={t("Rubrique Praticiens")} />
-        <div className="actions spread">
-          <h1>{t("Opportunités")}</h1>
+        <PageHead title={t("Opportunités")} desc={t("Publiez une collaboration ou une intervention : les experts référencés candidatent, vous retenez et proposez vos honoraires.")}>
           <a className="btn" href="#nouvel-appel">{t("Nouvelle opportunité")}</a>
-        </div>
+        </PageHead>
         <p className="muted">
           {t("Une opportunité invite les experts référencés à candidater, pour une collaboration (board, étude, rédaction…) ou pour intervenir à l'un de vos événements (formation, symposium…). Vous retenez qui vous voulez ; chaque personne retenue reçoit une proposition d'honoraires et un dossier s'ouvre.")}
         </p>
@@ -57,7 +58,7 @@ export default async function Page({ params, searchParams }: { params: Promise<{
                   {c.event ? (
                     <span className="date-block" aria-hidden><strong>{fmtDate(locale, c.event.startsAt, { day: "numeric" })}</strong><small>{fmtDate(locale, c.event.startsAt, { month: "short" })}</small></span>
                   ) : (
-                    <span className="date-block muted-block" aria-hidden><small>{t("sans")}</small><small>{t("événement")}</small></span>
+                    <span className="date-block muted-block" title={t("Sans événement")}><CalendarOff size={20} strokeWidth={1.7} aria-hidden /><span className="sr-only">{t("Sans événement")}</span></span>
                   )}
                   <span className="row-main">
                     <strong>{c.title}</strong>

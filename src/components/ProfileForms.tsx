@@ -1,4 +1,6 @@
 "use client";
+import { Camera, Eye, Globe } from "lucide-react";
+import { SectionHead } from "@/components/UI";
 
 import { useActionState } from "react";
 import { addPublication, addStructure, importOrcid, removeUserPhoto, setPhotoConsent, updateKolVisibility, updateOrgVisibility, updateUserPhoto } from "@/lib/profile-actions";
@@ -31,8 +33,7 @@ export function KolVisibilityForm({ v }: { v: KolVisibility }) {
   const tr = (levels: { id: string; label: string; hint: string }[]) => levels.map((l) => ({ ...l, label: t(l.label), hint: t(l.hint) }));
   return (
     <form action={action} className="card form">
-      <h2>{t("Visibilité de mon profil")}</h2>
-      <p className="muted">{t("Choisissez, information par information, qui peut la voir sur votre fiche publique.")}</p>
+      <SectionHead icon={Eye} title={t("Visibilité de mon profil")} desc={t("Choisissez, information par information, qui peut la voir sur votre fiche publique.")} />
       <Notice state={state} />
       {KOL_VIS_FIELDS.map((f) => <VisRow key={f.key} name={f.key} label={t(f.label)} desc={t(f.desc)} value={v[f.key]} levels={tr(KOL_VISIBILITY_LEVELS)} />)}
       <VisRow name="projets" label={t("Collaborations")} desc={t("Organisations et dossiers menés via KolBase.")} value={v.projets} levels={tr(PROJECT_VISIBILITY_LEVELS)} />
@@ -52,7 +53,7 @@ export function PhotoForm({ name, src, consent = false, level = "", mode = "expe
   const t = useT();
   return (
     <section className="card form" id="photo">
-      <h2>{t("Photo")}</h2>
+      <SectionHead icon={Camera} title={t("Photo")} />
       <Notice state={state} />
       <div className="photo-preview">
         <Avatar name={name} size={96} photo={src} ring />
@@ -103,7 +104,7 @@ export function OrgVisibilityForm({ orgId, v, listed }: { orgId: string; v: Comp
   const levels = VISIBILITY_LEVELS.map((l) => ({ ...l, label: t(l.label), hint: t(l.hint) }));
   return (
     <form action={action} className="card form">
-      <h2>{t("Page publique de l'organisation")}</h2>
+      <SectionHead icon={Globe} title={t("Page publique de l'organisation")} />
       <Notice state={state} />
       <input type="hidden" name="orgId" value={orgId} />
       <label className="check"><input type="checkbox" name="listed" value="1" defaultChecked={listed} /> {t("Organisation référencée : visible sur le site public")}</label>
