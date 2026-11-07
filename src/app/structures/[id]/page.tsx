@@ -1,7 +1,10 @@
 import Link from "next/link";
 import { logoSrc } from "@/lib/logos";
 import { notFound } from "next/navigation";
-import { ArrowLeft, Clock, Lock, Mail, MapPin, ShieldCheck, Star } from "lucide-react";
+import { ArrowLeft, Award, Clock, Info, Lock, Mail, MapPin, Receipt, ShieldCheck, Star, Tag } from "lucide-react";
+import { SectionHead } from "@/components/UI";
+import { CategoryIcon } from "@/components/SupplierBits";
+import { EVENT_MANAGER_ROLES } from "@/lib/events";
 import { CAPACITY_LABEL, delayLabel, OFFER_UNITS, photoSrc, readCapacities, supplierBook } from "@/lib/supplier-book";
 import { supplierCategoryLabel } from "@/lib/suppliers";
 import { SiteHeader } from "@/components/SiteHeader";
@@ -59,6 +62,9 @@ export default async function Page({ params }: { params: Promise<{ id: string }>
       ])
     : [null, [], []];
   const caps = readCapacities(o.capacities);
+  // « Demander un devis » : membre d'une organisation cliente qui gère ses événements (pas par un mandat d'agence).
+  const askFrom = isSupplier && user ? user.memberships.find((m) => m.organization.kind !== "PRESTATAIRE" && EVENT_MANAGER_ROLES.includes(m.role) && !viaMandate(m)) : null;
+  const askHref = askFrom ? `/organisations/${askFrom.organizationId}/prestataires?onglet=nouvelle&cat=${o.supplierCategories[0] ?? ""}&prestataire=${o.id}` : null;
   const lock = (label: string) => (
     <p className="hidden-note"><Lock size={13} /> {t("{label} : réservé aux membres connectés.", { label })} {viewer === "public" && <Link href={`/connexion?next=${encodeURIComponent(`/structures/${o.id}`)}`}>{t("Se connecter")}</Link>}</p>
   );
@@ -80,14 +86,28 @@ export default async function Page({ params }: { params: Promise<{ id: string }>
               {!isSupplier && o.verification === "VERIFIED" && <Link href={`/organisations/${o.id}/membres?onglet=organisation`}>{t("La rendre visible")}</Link>}
             </p>
           )}
+          {isSupplier && photos.length > 0 && (
+            <div className={`book-banner n${Math.min(photos.length, 3)}`}>
+              {photos.slice(0, 3).map((ph) => (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img key={ph.id} src={photoSrc(ph)} alt={ph.caption ?? o.name} loading="lazy" />
+              ))}
+            </div>
+          )}
           <section className="card profile-hero">
             <Avatar name={o.name} size={76} square src={logoSrc(o)} />
             <div className="grow">
               <span className="sector-tag">{t(ORG_KIND_LABEL[o.kind])}</span>
               <h1 className="profile-name">{o.name}</h1>
               <p className="text-sm">{[o.sector ? t(o.sector) : null, o.headquarters].filter(Boolean).join(" · ")}</p>
+              {isSupplier && o.supplierCategories.length > 0 && (
+                <div className="cat-tags">{o.supplierCategories.map((c) => <span key={c} className="cat-tag"><CategoryIcon category={c} size={12} className="xs" /> {t(supplierCategoryLabel(c))}</span>)}</div>
+              )}
             </div>
-            {isMember ? <Link className="btn ghost" href={`/organisations/${o.id}`}>{t("Gérer l'organisation")}</Link> : <FollowButton type="organization" id={o.id} userId={user?.id ?? null} label={t("cette organisation")} />}
+            <div className="profile-actions">
+              {askHref && <Link className="btn" href={askHref}><Receipt size={15} /> {t("Demander un devis")}</Link>}
+              {isMember ? <Link className="btn ghost" href={`/organisations/${o.id}`}>{t("Gérer l'organisation")}</Link> : <FollowButton type="organization" id={o.id} userId={user?.id ?? null} label={t("cette organisation")} />}
+            </div>
           </section>
           {isSupplier && book && (
             <>
@@ -97,7 +117,7 @@ export default async function Page({ params }: { params: Promise<{ id: string }>
                 <div className="stat-card"><div className="stat-value">{book.responseRate != null ? `${book.responseRate} %` : "—"}</div><div className="stat-label">{t("Taux de réponse aux demandes")}</div></div>
                 <div className="stat-card"><div className="stat-value tone-electric">{book.references.length}</div><div className="stat-label">{t("Prestations réalisées via KolBase")}</div></div>
               </div>
-              {photos.length > 0 && (
+              {photos.length > 3 && (
                 <div className="gallery">
                   {photos.map((ph) => (
                     <figure key={ph.id}>
@@ -110,9 +130,8 @@ export default async function Page({ params }: { params: Promise<{ id: string }>
               )}
               <div className="grid-2">
                 <section className="card stack-sm">
-                  <h2 className="section-title">{t("Présentation")}</h2>
+                  <SectionHead icon={Info} title={t("Présentation")} />
                   {o.about ? <p>{o.about}</p> : <p className="muted">{t("Pas encore de présentation.")}</p>}
-                  {o.supplierCategories.length > 0 && <div className="tags">{o.supplierCategories.map((c) => <span key={c} className="tag">{t(supplierCategoryLabel(c))}</span>)}</div>}
                   {o.coverage && <p className="meta-line"><MapPin size={12} /> {t("Zone couverte : {zone}", { zone: o.coverage })}</p>}
                   {Object.keys(caps).length > 0 && (
                     <ul className="plain text-sm">
@@ -124,38 +143,40 @@ export default async function Page({ params }: { params: Promise<{ id: string }>
                   )}
                 </section>
                 <section className="card stack-sm">
-                  <h2 className="section-title">{t("Tarifs indicatifs")}</h2>
+                  <SectionHead icon={Tag} title={t("Tarifs indicatifs")} />
                   {o.priceHint && <p>{o.priceHint}</p>}
                   {offers.length > 0 ? (
                     <ul className="offer-list">
                       {offers.map((f) => <li key={f.id}><span>{f.label}</span><span><strong>{t("{amount} HT", { amount: (f.unitCents / 100).toLocaleString("fr-FR", { style: "currency", currency: "EUR" }) })}</strong> <span className="muted text-sm">{t(OFFER_UNITS[f.unit as keyof typeof OFFER_UNITS] ?? f.unit)}</span></span></li>)}
                     </ul>
                   ) : !o.priceHint && <p className="muted">{t("Sur devis.")}</p>}
-                  <p className="hint">{t("Les organisations consultent ce prestataire depuis « Prestataires et devis » : il répond par un devis détaillé.")}</p>
+                  <p className="hint">{askHref ? t("Demandez-lui un devis : il répond par un devis détaillé, que vous comparez aux autres.") : t("Les organisations consultent ce prestataire depuis « Prestataires et devis » : il répond par un devis détaillé.")}</p>
                 </section>
               </div>
               <section className="card stack-sm">
-                <h2 className="section-title">{t("Références")}</h2>
+                <SectionHead icon={Award} title={t("Références")} desc={t("Événements scientifiques organisés via KolBase ; le nom des clients n'est pas affiché.")} />
                 {book.references.length === 0 ? <p className="muted">{t("Pas encore de prestation réalisée via KolBase.")}</p> : (
-                  <ul className="plain stack-sm">
+                  <ul className="ref-list">
                     {book.references.slice(0, 10).map((r, i) => (
-                      <li key={i} className="text-sm">
-                        {t(supplierCategoryLabel(r.category))}{r.city ? ` · ${r.city}` : ""} · {r.date.toLocaleDateString(locale === "en" ? "en-GB" : "fr-FR", { month: "long", year: "numeric", timeZone: "Europe/Paris" })}{r.headcount ? ` · ${t("{n} participants", { n: r.headcount })}` : ""}
+                      <li key={i}>
+                        <CategoryIcon category={r.category} size={15} />
+                        <span>
+                          <strong>{t(supplierCategoryLabel(r.category))}</strong>
+                          <span className="muted text-sm">{[r.city, r.date.toLocaleDateString(locale === "en" ? "en-GB" : "fr-FR", { month: "long", year: "numeric", timeZone: "Europe/Paris" }), r.headcount ? t("{n} participants", { n: r.headcount }) : null].filter(Boolean).join(" · ")}</span>
+                        </span>
                       </li>
                     ))}
                   </ul>
                 )}
-                <p className="hint">{t("Événements scientifiques organisés via KolBase ; le nom des clients n'est pas affiché.")}</p>
               </section>
               <section className="card stack-sm">
-                <h2 className="section-title">{t("Avis vérifiés")}</h2>
+                <SectionHead icon={Star} title={t("Avis vérifiés")} desc={t("Avis laissés uniquement par les organisations qui ont retenu ce prestataire, après la prestation ; le nom des clients n'est pas affiché.")} />
                 {book.reviews.length === 0 ? <p className="muted">{t("Aucun avis pour l'instant.")}</p> : book.reviews.map((r) => (
                   <div key={r.id} className="review">
                     <span><span className="rating">{Array.from({ length: r.rating }, (_, i) => <Star key={i} size={14} />)}</span> <strong>{t("Organisation cliente")}</strong> <span className="muted text-xs">{r.createdAt.toLocaleDateString(locale === "en" ? "en-GB" : "fr-FR", { month: "long", year: "numeric", timeZone: "Europe/Paris" })}</span></span>
                     {r.comment && <p className="text-sm">{r.comment}</p>}
                   </div>
                 ))}
-                <p className="hint">{t("Avis laissés uniquement par les organisations qui ont retenu ce prestataire, après la prestation ; le nom des clients n'est pas affiché.")}</p>
               </section>
             </>
           )}
@@ -171,8 +192,8 @@ export default async function Page({ params }: { params: Promise<{ id: string }>
             <div className="stat-card"><div className="stat-value">{o._count.projects}</div><div className="stat-label">{t("Collaborations")}</div></div>
           </div>}
           {isSupplier ? (
-            <section className="card">
-              <h2 className="section-title"><Mail size={15} /> {t("Contact")}</h2>
+            <section className="card stack-sm">
+              <SectionHead icon={Mail} title={t("Contact")} />
               {v.contact === "masque" && viewer !== "proprietaire" ? <p className="muted">{t("Non communiqué.")}</p> : canSee(v.contact, viewer) ? <p>{o.contactEmail ? <a href={`mailto:${o.contactEmail}`}>{o.contactEmail}</a> : t("Non renseigné.")}</p> : lock(t("Contact"))}
             </section>
           ) : <div className="grid-2">

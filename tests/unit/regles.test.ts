@@ -139,8 +139,8 @@ describe("dates à Paris", () => {
 });
 
 describe("navigation et rôles", () => {
-  it("un prestataire n'a que l'accueil et les devis", () => {
-    expect(orgNavItems("o", ["ADMIN"], "PRESTATAIRE").map((i) => i.key)).toEqual(["accueil", "devis"]);
+  it("un prestataire n'a que l'accueil, les devis et son book", () => {
+    expect(orgNavItems("o", ["ADMIN"], "PRESTATAIRE").map((i) => i.key)).toEqual(["accueil", "devis", "book"]);
     expect(orgSectionTabs("dossiers", "o", ["ADMIN"], "PRESTATAIRE")).toEqual([]);
   });
   it("la conformité voit les dossiers et la conformité, pas les praticiens ni les événements", () => {

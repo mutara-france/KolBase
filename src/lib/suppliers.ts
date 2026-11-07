@@ -44,5 +44,36 @@ export function rfqView<R extends { suppliers: { supplierId: string }[]; quotes:
   return { ...r, conflicted, suppliers: r.suppliers.filter(mine), quotes: r.quotes.filter(mine), messages: r.messages.filter(mine) };
 }
 
+/** Délai minimal entre deux relances d'un même prestataire, et après l'envoi de la demande (heures). */
+export const REMIND_AFTER_HOURS = 48;
+
+/** Prestataires relançables sur une demande envoyée : ni devis, ni déclin, pas relancés depuis 48 heures. */
+export function remindable<S extends { supplierId: string; declined: boolean; remindedAt?: Date | null }>(r: { status: string; sentAt: Date | null; suppliers: S[]; quotes: { supplierId: string }[] }, now = new Date()): S[] {
+  const since = new Date(now.getTime() - REMIND_AFTER_HOURS * 36e5);
+  if (r.status !== "sent" || (r.sentAt && r.sentAt > since)) return [];
+  return r.suppliers.filter((s) => !s.declined && !r.quotes.some((q) => q.supplierId === s.supplierId) && (!s.remindedAt || s.remindedAt < since));
+}
+
+/**
+ * Où en est une demande, pour la ranger côté client : à décider (devis reçus), en attente de réponses, brouillon,
+ * attribuée (prestation à venir, ou réalisée), annulée. Une demande où l'organisation de l'utilisateur est
+ * consultée (agence de l'événement) se range à part : il n'y décide rien.
+ */
+export type RfqGroup = "decide" | "waiting" | "draft" | "awarded" | "cancelled" | "consulted";
+export function rfqGroup(r: { status: string; quotes: unknown[]; conflicted?: boolean }): RfqGroup {
+  if (r.conflicted) return "consulted";
+  if (r.status === "sent") return r.quotes.length > 0 ? "decide" : "waiting";
+  return r.status as RfqGroup;
+}
+
+/** Côté prestataire : à traiter (devis attendu), devis envoyé (décision attendue), retenu, ou terminé. */
+export type SupplierGroup = "todo" | "sent" | "won" | "closed";
+export function supplierGroup(r: { status: string }, quote: { status: string } | undefined, declined: boolean): SupplierGroup {
+  if (quote?.status === "retained") return "won";
+  if (r.status !== "sent") return "closed";
+  if (quote) return "sent";
+  return declined ? "closed" : "todo";
+}
+
 /** Annuler une demande : l'organisation cliente (organisateurs) ou l'auteur de la demande, jamais en conflit d'intérêts. */
 export const canCancelRfq = (p: { organizer: boolean; author: boolean; conflicted: boolean }) => !p.conflicted && (p.organizer || p.author);

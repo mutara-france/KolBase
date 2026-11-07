@@ -30,9 +30,9 @@ export async function orgOnboarding(orgId: string): Promise<OnboardingStep[]> {
     return [
       { key: "validation", label: "Faire valider votre société", hint: "Le SIREN est contrôlé par KolBase avant votre référencement.", href: `${base}/membres?onglet=organisation`, done: org.verification === "VERIFIED" },
       { key: "logo", label: "Ajouter votre logo", hint: "Il apparaît dans l'annuaire et sur vos devis.", href: `${base}/membres?onglet=organisation`, done: !!org.logoUpdatedAt },
-      { key: "fiche", label: "Choisir vos catégories et votre zone", hint: "Les organisations consultent l'annuaire par catégorie.", href: `${base}/devis?onglet=fiche`, done: org.supplierCategories.length > 0 },
-      { key: "book", label: "Compléter votre book", hint: "Photos, capacités, équipements et prix indicatif.", href: `${base}/devis?onglet=fiche`, done: org._count.photos > 0 || !!org.priceHint },
-      { key: "catalogue", label: "Créer votre catalogue de forfaits", hint: "Vos prestations courantes s'ajoutent à un devis en un clic.", href: `${base}/devis?onglet=fiche`, done: org._count.offers > 0 },
+      { key: "fiche", label: "Choisir vos catégories et votre zone", hint: "Les organisations consultent l'annuaire par catégorie.", href: `${base}/book`, done: org.supplierCategories.length > 0 },
+      { key: "book", label: "Compléter votre book", hint: "Photos, capacités, équipements et prix indicatif.", href: `${base}/book`, done: org._count.photos > 0 || !!org.priceHint },
+      { key: "catalogue", label: "Créer votre catalogue de forfaits", hint: "Vos prestations courantes s'ajoutent à un devis en un clic.", href: `${base}/book`, done: org._count.offers > 0 },
       { key: "equipe", label: "Inviter votre équipe", hint: "Plusieurs personnes peuvent répondre aux demandes.", href: `${base}/membres`, done: team },
     ];
   }

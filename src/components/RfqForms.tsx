@@ -2,7 +2,8 @@
 import { SectionHead } from "@/components/UI";
 
 import { useActionState, useState } from "react";
-import { Check, FilePlus2, Plus, Send, Store } from "lucide-react";
+import { Check, Plus, Send, Star, Store } from "lucide-react";
+import { CategoryIcon } from "@/components/SupplierBits";
 import { createRfq, postRfqMessage, submitQuote, updateSupplierProfile } from "@/lib/rfq-actions";
 import { Notice } from "@/components/AuthForms";
 import { ActionForm } from "@/components/ActionForm";
@@ -14,88 +15,117 @@ import { useLocale, useT } from "@/components/I18nProvider";
 import { intlLocale, type Locale } from "@/lib/i18n/core";
 
 type Cat = { id: string; label: string };
-type Supplier = { id: string; name: string; categories: string[]; city: string | null; coverage: string | null; about: string | null; since: number; rating?: number | null; reviews?: number };
+type Supplier = {
+  id: string; name: string; categories: string[]; city: string | null; coverage: string | null; about: string | null; since: number; rating?: number | null; reviews?: number;
+  logo?: string | null; priceHint?: string | null; from?: string | null;
+};
 type EventOpt = { id: string; label: string; city: string | null; capacity: number | null; agencyId?: string | null };
 
 /**
- * Prestataire de l'annuaire. `eventAgency` : l'agence à qui l'événement choisi est confié. La consulter reste
- * possible (choix conscient du client) ; elle ne verra alors sur la demande que son propre devis.
+ * Prestataire à consulter (nouvelle demande). `eventAgency` : l'agence à qui l'événement choisi est confié. La consulter
+ * reste possible (choix conscient du client) ; elle ne verra alors sur la demande que son propre devis.
  */
-export function SupplierLine({ s, catLabel, selected, onToggle, eventAgency = false }: { s: Supplier; catLabel: string; selected?: boolean; onToggle?: () => void; eventAgency?: boolean }) {
+function SupplierPick({ s, selected, onToggle, eventAgency = false }: { s: Supplier; selected: boolean; onToggle: () => void; eventAgency?: boolean }) {
   const t = useT();
   return (
-    <div className={`supplier${selected ? " selected" : ""}`}>
-      <Avatar name={s.name} size={38} square />
+    <div className={`supplier pick${selected ? " selected" : ""}`}>
+      <Avatar name={s.name} size={40} square src={s.logo} />
       <div className="supplier-body">
-        <div>
-          <strong>{s.name}</strong> <span className="pill electric">{t("Référencé")}</span>
-          {eventAgency && <span className="pill wait">{" "}{t("Agence de cet événement")}</span>}
-          {s.rating != null && <span className="rating"> ★ {s.rating.toFixed(1).replace(".", ",")} <span className="muted text-xs">{t("({reviews} avis)", { reviews: s.reviews })}</span></span>}
+        <div className="supplier-name">
+          <strong>{s.name}</strong>
+          {s.rating != null && <span className="rating-badge" title={t("({reviews} avis)", { reviews: s.reviews })}><Star size={11} /> {s.rating.toFixed(1).replace(".", ",")}</span>}
+          {eventAgency && <span className="pill wait">{t("Agence de cet événement")}</span>}
         </div>
-        <div className="muted">{catLabel}{s.coverage ? ` · ${s.coverage}` : s.city ? ` · ${s.city}` : ""}{" "}{t("· référencé depuis {since} ·", { since: s.since })}{" "}<a href={`/structures/${s.id}`} target="_blank" rel="noreferrer">{t("voir le book")}</a></div>
-        {!onToggle && s.about && <p>{s.about}</p>}
+        <div className="muted text-xs">{[s.coverage ?? s.city, s.from ?? s.priceHint, t("référencé depuis {since}", { since: s.since })].filter(Boolean).join(" · ")}{" · "}<a href={`/structures/${s.id}`} target="_blank" rel="noreferrer">{t("voir le book")}</a></div>
         {eventAgency && (
           <p className="text-xs warn-text">
             {t("L'événement lui est confié : si vous la consultez, elle répond comme les autres prestataires, ne voit sur cette demande que son propre devis, et la décision revient à votre équipe.")}
           </p>
         )}
       </div>
-      {onToggle && (
-        <button type="button" className={selected ? "btn small" : "btn ghost small"} onClick={onToggle}>
-          {selected ? <><Check size={13} />{" "}{t("Sélectionné")}</> : <><Plus size={13} />{" "}{t("Consulter")}</>}
-        </button>
-      )}
+      <button type="button" className={selected ? "btn small" : "btn ghost small"} onClick={onToggle} aria-pressed={selected}>
+        {selected ? <><Check size={13} />{" "}{t("Sélectionné")}</> : <><Plus size={13} />{" "}{t("Consulter")}</>}
+      </button>
     </div>
   );
 }
 
-export function NewRfqForm({ orgId, categories, suppliers, events, defaultEventId, defaultCategory, ai = false, blocked = null }: { orgId: string; categories: Cat[]; suppliers: Supplier[]; events: EventOpt[]; defaultEventId?: string; defaultCategory?: string; ai?: boolean; blocked?: Blocked }) {
+/** Nouvelle demande en trois étapes (prestation, besoin, prestataires), avec un récapitulatif qui suit la saisie. */
+export function NewRfqForm({ orgId, categories, suppliers, events, defaultEventId, defaultCategory, defaultSupplier, ai = false, blocked = null }: { orgId: string; categories: Cat[]; suppliers: Supplier[]; events: EventOpt[]; defaultEventId?: string; defaultCategory?: string; defaultSupplier?: string; ai?: boolean; blocked?: Blocked }) {
   const t = useT();
+  const locale = useLocale();
   const [state, action, pending] = useActionState(createRfq, undefined);
-  const [category, setCategory] = useState(categories.some((c) => c.id === defaultCategory) ? defaultCategory! : categories[0].id);
-  const [picked, setPicked] = useState<string[]>([]);
+  // Depuis l'annuaire ou le book d'un prestataire : sa catégorie et lui-même déjà choisis.
+  const preset = suppliers.find((s) => s.id === defaultSupplier);
+  const initialCat = categories.some((c) => c.id === defaultCategory) ? defaultCategory! : preset?.categories[0] ?? categories[0].id;
+  const [category, setCategory] = useState(initialCat);
+  const [picked, setPicked] = useState<string[]>(preset && preset.categories.includes(initialCat) ? [preset.id] : []);
   const [eventId, setEventId] = useState(defaultEventId ?? "");
   const ev = events.find((e) => e.id === eventId);
+  const [headcount, setHeadcount] = useState(ev?.capacity ? String(ev.capacity) : "");
+  const [deadline, setDeadline] = useState("");
   const matching = suppliers.filter((s) => s.categories.includes(category));
   const toggle = (id: string) => setPicked((p) => (p.includes(id) ? p.filter((x) => x !== id) : [...p, id]));
+  const catLabel = categories.find((c) => c.id === category)?.label ?? "";
+  const pickedNames = picked.map((id) => suppliers.find((s) => s.id === id)?.name).filter(Boolean) as string[];
   return (
-    <ActionForm action={action} className="card form">
-      <SectionHead icon={FilePlus2} title={t("Nouvelle demande de devis")} desc={t("Consultez en une fois les prestataires référencés. Ils répondent directement sur KolBase, depuis leur espace prestataire.")} />
-      <Notice state={state} />
+    <ActionForm action={action} className="rfq-new">
       <input type="hidden" name="orgId" value={orgId} />
       <input type="hidden" name="category" value={category} />
       {picked.map((id) => <input key={id} type="hidden" name="supplierIds" value={id} />)}
-      <label>{t("Événement concerné")}
-        <select name="eventId" value={eventId} onChange={(e) => setEventId(e.target.value)}>
-          <option value="">{t("— aucun —")}</option>
-          {events.map((e) => <option key={e.id} value={e.id}>{e.label}</option>)}
-        </select>
-      </label>
-      <span className="label">{t("Type de prestation")}</span>
-      <div className="chips">
-        {categories.map((c) => (
-          <button key={c.id} type="button" className={`chip${c.id === category ? " active" : ""}`} onClick={() => { setCategory(c.id); setPicked([]); }}>{c.label}</button>
-        ))}
+      <div className="rfq-new-main">
+        <Notice state={state} />
+        <section className="card form rfq-step">
+          <h2 className="rfq-step-title"><span className="step-num">1</span> {t("La prestation")}</h2>
+          <label>{t("Événement concerné")}
+            <select name="eventId" value={eventId} onChange={(e) => { setEventId(e.target.value); const c = events.find((x) => x.id === e.target.value)?.capacity; if (c) setHeadcount(String(c)); }}>
+              <option value="">{t("— aucun —")}</option>
+              {events.map((e) => <option key={e.id} value={e.id}>{e.label}</option>)}
+            </select>
+          </label>
+          <span className="label">{t("Type de prestation")}</span>
+          <div className="chips cat-chips">
+            {categories.map((c) => (
+              <button key={c.id} type="button" className={`chip chip-icon${c.id === category ? " active" : ""}`} aria-pressed={c.id === category} onClick={() => { setCategory(c.id); setPicked((p) => p.filter((id) => suppliers.find((s) => s.id === id)?.categories.includes(c.id))); }}>
+                <CategoryIcon category={c.id} size={13} className="xs" /> {c.label}
+              </button>
+            ))}
+          </div>
+        </section>
+        <section className="card form rfq-step">
+          <h2 className="rfq-step-title"><span className="step-num">2</span> {t("Le besoin")}</h2>
+          <label>{t("Besoin")}<textarea name="needs" rows={ai ? 6 : 4} required placeholder={t("Prestations attendues, contraintes horaires, niveau de service…")} /></label>
+          {ai && <AiDraft kind="besoin" target="needs" label={t("Rédiger le besoin avec l'IA")} />}
+          <div className="row">
+            <label>{t("Participants attendus")}<input name="headcount" type="number" min={1} value={headcount} onChange={(e) => setHeadcount(e.target.value)} placeholder={t("Selon l'événement")} /></label>
+            <label>{t("Réponse attendue avant")}<input name="deadline" type="date" value={deadline} onChange={(e) => setDeadline(e.target.value)} /></label>
+          </div>
+        </section>
+        <section className="card form rfq-step">
+          <div className="flex-between wrap">
+            <h2 className="rfq-step-title"><span className="step-num">3</span> {t("Les prestataires à consulter")}</h2>
+            <SelectAll count={matching.length} all={matching.length > 0 && matching.every((m) => picked.includes(m.id))} onAll={() => setPicked(matching.every((m) => picked.includes(m.id)) ? [] : matching.map((m) => m.id))} />
+          </div>
+          <p className="hint">{t("Référencés dans la catégorie « {cat} ». Chacun ne voit que sa propre réponse ; vous comparez tous les devis.", { cat: catLabel })}</p>
+          <div className="stack-sm">
+            {matching.map((s) => <SupplierPick key={s.id} s={s} selected={picked.includes(s.id)} onToggle={() => toggle(s.id)} eventAgency={!!ev?.agencyId && ev.agencyId === s.id} />)}
+            {matching.length === 0 && <p className="muted">{t("Aucun prestataire référencé dans cette catégorie pour l'instant.")}</p>}
+          </div>
+        </section>
       </div>
-      <span className="label flex-between">
-        <span>{t(picked.length > 1 ? "Prestataires à consulter — {picked} sélectionnés" : "Prestataires à consulter — {picked} sélectionné", { picked: picked.length })}</span>
-        <SelectAll count={matching.length} all={matching.length > 0 && matching.every((m) => picked.includes(m.id))} onAll={() => setPicked(matching.every((m) => picked.includes(m.id)) ? [] : matching.map((m) => m.id))} />
-      </span>
-      <div className="stack-sm">
-        {matching.map((s) => <SupplierLine key={s.id} s={s} catLabel={categories.find((c) => c.id === category)!.label} selected={picked.includes(s.id)} onToggle={() => toggle(s.id)} eventAgency={!!ev?.agencyId && ev.agencyId === s.id} />)}
-        {matching.length === 0 && <p className="muted">{t("Aucun prestataire référencé dans cette catégorie pour l'instant.")}</p>}
-      </div>
-      <label>{t("Besoin")}<textarea name="needs" rows={ai ? 6 : 3} required placeholder={t("Prestations attendues, contraintes horaires, niveau de service…")} /></label>
-      {ai && <AiDraft kind="besoin" target="needs" label={t("Rédiger le besoin avec l'IA")} />}
-      <div className="row">
-        <label>{t("Participants attendus")}<input key={eventId} name="headcount" type="number" min={1} defaultValue={ev?.capacity ?? undefined} placeholder={t("Selon l'événement")} /></label>
-        <label>{t("Réponse attendue avant")}<input name="deadline" type="date" /></label>
-      </div>
-      <div className="actions">
+      <aside className="card rfq-recap" aria-label={t("Récapitulatif")}>
+        <span className="eyebrow-sm">{t("Récapitulatif")}</span>
+        <div className="recap-cat"><CategoryIcon category={category} size={18} /> <strong>{catLabel}</strong></div>
+        <dl className="recap-list">
+          <div><dt>{t("Événement")}</dt><dd>{ev ? ev.label : t("aucun")}</dd></div>
+          <div><dt>{t("Participants")}</dt><dd>{headcount || "—"}</dd></div>
+          <div><dt>{t("Réponse avant")}</dt><dd>{deadline ? new Date(`${deadline}T12:00`).toLocaleDateString(intlLocale(locale), { day: "numeric", month: "short", year: "numeric" }) : t("sans date")}</dd></div>
+          <div><dt>{t("Prestataires consultés")}</dt><dd>{pickedNames.length ? pickedNames.join(", ") : t("à choisir à l'étape 3")}</dd></div>
+        </dl>
         <button className="btn" name="intent" value="send" disabled={pending || picked.length === 0 || !!blocked}><Send size={14} /> {picked.length > 1 ? t("Envoyer aux {picked} prestataires", { picked: picked.length }) : t("Envoyer au prestataire")}</button>
         <button className="btn ghost" name="intent" value="draft" disabled={pending || picked.length === 0}>{t("Enregistrer en brouillon")}</button>
-      </div>
-      {blocked && <p className="hint">{t("Envoi possible {blocked} ; le brouillon reste possible dès maintenant.", { blocked: t(BLOCKED_UNTIL[blocked]) })}</p>}
+        {blocked && <p className="hint">{t("Envoi possible {blocked} ; le brouillon reste possible dès maintenant.", { blocked: t(BLOCKED_UNTIL[blocked]) })}</p>}
+      </aside>
     </ActionForm>
   );
 }

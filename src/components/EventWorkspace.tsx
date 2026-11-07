@@ -450,14 +450,14 @@ export async function EventWorkspace({ orgId: id, eventId, publie, mode = "page"
                                 ? `${t("Votre organisation est consultée : l'organisation conduit cette demande")}${ref ? ` · ${t("votre devis {montant} TTC", { montant: fmtEur(locale, ttc) })}` : ""}`
                                 : <>
                                     {t(r._count.suppliers > 1 ? "{quotes} devis sur {suppliers} prestataires consultés" : "{quotes} devis sur {suppliers} prestataire consulté", { quotes: r.quotes.length, suppliers: r._count.suppliers })}
-                                    {ref ? ` · ${kept ? t("retenu : {name}", { name: kept.supplier.name }) : "meilleure offre"} ${fmtEur(locale, ttc)} TTC` : ""}
+                                    {ref ? ` · ${kept ? t("retenu : {name}", { name: kept.supplier.name }) : t("meilleure offre")} ${fmtEur(locale, ttc)} ${t("TTC")}` : ""}
                                   </>}
                             </div>
                             {pp && <div className={`text-xs ${pp.over ? "warn-text" : "muted"}`}>{t("≈ {amount} € TTC {per}", { amount: pp.each.toLocaleString(intlLocale(locale), { maximumFractionDigits: 2 }), per: t(perHeadLabel(r.category)) })}{pp.limit ? (pp.over ? ` ${t("· au-dessus du seuil {of} ({max} € TTC)", { of: t(pp.limit.of), max: pp.limit.max })}` : ` ${t("· sous le seuil {of}", { of: t(pp.limit.of) })}`) : ""}</div>}
                             {ref && head.perPresent != null && <div className="text-xs muted">{t("Pour information : {toLocaleString} € TTC par présent ({present} au pointage)", { toLocaleString: head.perPresent.toLocaleString(intlLocale(locale), { maximumFractionDigits: 2 }), present: present.length })}</div>}
                           </div>
                           <span className={`pill ${st.tone}`}>{t(st.label)}</span>
-                          {!readOnly && <Link className="btn ghost small" href={`/organisations/${id}/prestataires?onglet=demandes#rfq-${r.id}`}>{kept ? t("Voir") : t("Comparer")}</Link>}
+                          {!readOnly && <Link className="btn ghost small" href={`/organisations/${id}/prestataires/${r.id}`}>{kept ? t("Voir") : t("Comparer")}</Link>}
                         </div>
                         {isOrganizer && kept && pp && HOSPITALITY_CATS.includes(r.category) && event.benefits.length > 0 && (
                           <form action={applyQuoteToBenefit} className="apply-benefit">

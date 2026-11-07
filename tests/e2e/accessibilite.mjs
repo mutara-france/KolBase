@@ -12,7 +12,7 @@ const PW = process.env.DEMO_PASSWORD;
 if (!PW) throw new Error("DEMO_PASSWORD est nécessaire.");
 
 const PAGES = {
-  public: ["/", "/annuaire", "/evenements", "/evenements/demo-ev-soiree-implanto", "/experts/demo-p-durand", "/actualites", "/connexion", "/inscription", "/mot-de-passe-oublie", "/mentions-legales"],
+  public: ["/", "/annuaire", "/evenements", "/evenements/demo-ev-soiree-implanto", "/experts/demo-p-durand", "/structures/demo-sup-belleville", "/actualites", "/connexion", "/inscription", "/mot-de-passe-oublie", "/mentions-legales"],
   "helene.durand@demo.kolbase.local": ["/tableau-de-bord", "/sollicitations", "/sollicitations/demo-prj-board-x1", "/sollicitations/demo-prj-board-x1?onglet=messagerie", "/sollicitations/demo-prj-board-x1?onglet=evenement", "/propositions", "/inscriptions", "/compte", "/revenus"],
   "julien.faure@demo.kolbase.local": [
     "/organisations/demo-org-dentalys",
@@ -27,10 +27,15 @@ const PAGES = {
     "/organisations/demo-org-dentalys/dossiers/demo-prj-board?onglet=evenement",
     "/organisations/demo-org-dentalys/dossiers/demo-prj-board?onglet=marketing",
     "/organisations/demo-org-dentalys/devis",
+    "/organisations/demo-org-dentalys/prestataires",
+    "/organisations/demo-org-dentalys/prestataires?onglet=nouvelle",
+    "/organisations/demo-org-dentalys/prestataires?onglet=annuaire",
+    "/organisations/demo-org-dentalys/prestataires/demo-rfq-cocktail",
     "/organisations/demo-org-dentalys/intervenants",
     "/organisations/demo-org-dentalys/statistiques",
     "/organisations/demo-org-dentalys/membres",
   ],
+  "ludovic.perrin@demo.kolbase.local": ["/organisations/demo-sup-belleville/devis", "/organisations/demo-sup-belleville/devis/demo-rfq-cocktail", "/organisations/demo-sup-belleville/book"],
   "anne.chevalier@demo.kolbase.local": ["/admin", "/admin?onglet=lancement"],
 };
 

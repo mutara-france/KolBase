@@ -4,14 +4,14 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 import {
-  BarChart3, Bell, CalendarDays, Check, ChevronDown, ExternalLink, FileText, Folder, House, LogOut, Megaphone, PanelLeftClose, PanelLeftOpen, Plug, Receipt, Send, ShieldCheck, UserRound, Users, Building2, Wallet,
+  BarChart3, Bell, CalendarDays, Check, ChevronDown, ExternalLink, FileText, Folder, House, LogOut, Megaphone, PanelLeftClose, PanelLeftOpen, Plug, Receipt, Send, ShieldCheck, Store, UserRound, Users, Building2, Wallet,
 } from "lucide-react";
 import { Logo } from "@/components/Logo";
 import { signOut } from "@/lib/auth-actions";
 import { bottomBar, itemMatches, NAV_COOKIE, type ShellIcon, type ShellItem, type ShellSpace } from "@/lib/nav";
 import { useT } from "@/components/I18nProvider";
 
-const ICONS: Record<ShellIcon, typeof House> = { House, Users, Folder, FileText, CalendarDays, ShieldCheck, Send, Megaphone, UserRound, Receipt, Plug, ExternalLink, Wallet, BarChart3 };
+const ICONS: Record<ShellIcon, typeof House> = { House, Users, Folder, FileText, CalendarDays, ShieldCheck, Send, Megaphone, UserRound, Receipt, Plug, ExternalLink, Wallet, BarChart3, Store };
 const COOKIE = "kb_espace";
 
 const spaceMatches = (s: ShellSpace, path: string) => path === s.home || path.startsWith(s.home + "/") || s.items.some((i) => itemMatches(i, path));
