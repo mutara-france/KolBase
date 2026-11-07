@@ -3,9 +3,9 @@ import { db } from "@/lib/db";
 import { quoteTtc } from "@/lib/quotes";
 
 export const PHOTO_MAX_BYTES = 800 * 1024;
-/** Réalisations en images de la vitrine d'un prestataire. */
+/** Réalisations en images de la page d'un prestataire. */
 export const PHOTO_MAX = 12;
-/** Bannière de la vitrine : une image large (1 600 × 400 px conseillés). */
+/** Bannière de la page du prestataire : une image large (1 600 × 400 px conseillés). */
 export const BANNER_MAX_BYTES = 1536 * 1024;
 export const EQUIPMENT = ["Vidéoprojecteur et écran", "Sonorisation et micros", "Visioconférence", "Wi-Fi", "Captation vidéo", "Salles de sous-commission", "Restauration sur place", "Parking", "Hébergement sur place"] as const;
 export const OFFER_UNITS = { personne: "par personne", forfait: "forfait", jour: "par jour", nuit: "par nuit" } as const;

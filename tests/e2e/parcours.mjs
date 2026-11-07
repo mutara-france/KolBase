@@ -1295,13 +1295,13 @@ async function submitNewOrg(page, siren) {
   await login(sup.page, "ludovic.perrin@demo.kolbase.local");
   await sup.page.goto(`${BASE}/organisations/demo-sup-belleville/devis?onglet=fiche`);
   t = await text(sup.page);
-  check("Ma vitrine : indicateurs, bannière, réalisations et catalogue", sup.page.url().endsWith("/vitrine") && /taux de réponse/i.test(t) && t.includes("Bannière") && t.includes("Réalisations (0/12)") && t.includes("Catalogue de forfaits"), sup.page.url());
+  check("Ma page prestataire : indicateurs, bannière, réalisations et catalogue", sup.page.url().endsWith("/page-prestataire") && /taux de réponse/i.test(t) && t.includes("Bannière") && t.includes("Réalisations (0/12)") && t.includes("Catalogue de forfaits"), sup.page.url());
   const offer = sup.page.locator("form.offer-form");
   await offer.locator('input[name="label"]').fill("Mignardises sucrées (3 pièces)");
   await offer.locator('input[name="price"]').fill("4,50");
   await offer.locator('button:has-text("Ajouter au catalogue")').click();
   await sup.page.waitForTimeout(1200);
-  check("Ma vitrine : prestation ajoutée au catalogue", (await text(sup.page)).includes("Mignardises sucrées (3 pièces)"));
+  check("Ma page prestataire : prestation ajoutée au catalogue", (await text(sup.page)).includes("Mignardises sucrées (3 pièces)"));
   const png = Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==", "base64");
   const photoForm = sup.page.locator("form.photo-form");
   await photoForm.locator('input[name="photo"]').setInputFiles({ name: "salle.png", mimeType: "image/png", buffer: png });
@@ -1309,8 +1309,8 @@ async function submitNewOrg(page, siren) {
   await photoForm.locator('button:has-text("Ajouter la réalisation")').click();
   await sup.page.waitForTimeout(1500);
   const src = await sup.page.locator(".gallery img").first().getAttribute("src");
-  check("Ma vitrine : réalisation ajoutée", !!src && src.startsWith("/photos/"), src ?? "");
-  // Bannière : envoyée, servie publiquement, affichée en tête de la vitrine publique.
+  check("Ma page prestataire : réalisation ajoutée", !!src && src.startsWith("/photos/"), src ?? "");
+  // Bannière : envoyée, servie publiquement, affichée en tête de la page publique.
   await sup.page.locator('form.banner-form input[name="banner"]').setInputFiles({ name: "banniere.png", mimeType: "image/png", buffer: png });
   await sup.page.locator('form.banner-form button:has-text("Ajouter la bannière")').click();
   await sup.page.locator(".banner-preview img").waitFor({ timeout: 5000 }).catch(() => {});
@@ -4382,14 +4382,14 @@ async function submitNewOrg(page, siren) {
     await hu.page.goto(`${BASE}/organisations/e2e-5b-sup/devis?onglet=fiche`);
     const dv = await text(hu.page);
     check("Prestataire en attente : bandeau sans « l'abonnement se règle ensuite »", dv.includes("jusqu'à votre premier devis retenu") && !dv.includes("l'abonnement se règle ensuite"));
-    const form = hu.page.locator('form:has(h2:has-text("Fiche prestataire"))');
+    const form = hu.page.locator('form:has(h2:has-text("Catégories et zone"))');
     await form.locator('input[name="categories"][value="restauration"]').check();
     await form.locator('input[name="coverage"]').fill("Lyon et sa région");
     await form.locator('input[name="listed"]').check();
     await form.locator('button:has-text("Enregistrer")').click();
     await form.locator(".notice").waitFor({ timeout: 5000 }).catch(() => {});
     const sup = await q1(`select "supplierCategories" c, coverage, listed from "Organization" where id = 'e2e-5b-sup'`);
-    check("Fiche prestataire en attente : catégories et zone enregistrées, référencement à la validation", (await form.innerText()).includes("Catégories et zone enregistrées") && sup?.coverage === "Lyon et sa région" && sup?.listed === false && (await form.locator('input[name="coverage"]').inputValue()) === "Lyon et sa région", JSON.stringify(sup));
+    check("Page prestataire en attente : catégories et zone enregistrées, référencement à la validation", (await form.innerText()).includes("Catégories et zone enregistrées") && sup?.coverage === "Lyon et sa région" && sup?.listed === false && (await form.locator('input[name="coverage"]').inputValue()) === "Lyon et sa région", JSON.stringify(sup));
     await hu.page.goto(`${BASE}/organisations/e2e-5b-sup/membres?onglet=organisation`);
     const mem = await text(hu.page);
     check("Prestataire : fiche sans domaines thérapeutiques ni politique de collaboration, textes adaptés", !mem.includes("Domaines thérapeutiques") && !mem.includes("Politique de collaboration") && mem.includes("annuaire des prestataires") && !mem.includes("ni publier d'événements"));
@@ -5109,7 +5109,7 @@ async function submitNewOrg(page, siren) {
   check("Offre expirée : version à jour demandée au prestataire", !!(await waitMail("ludovic.perrin@demo.kolbase.local", "Message de Dentalys Implants")));
   await cl.ctx.close();
 
-  // Prestataire : la demande à part, son devis lisible ; « Ma vitrine » a sa page.
+  // Prestataire : la demande à part, son devis lisible ; « Ma page prestataire » à part.
   const sup = await session();
   await login(sup.page, "ludovic.perrin@demo.kolbase.local");
   await sup.page.goto(`${BASE}/organisations/demo-sup-belleville/devis`);
@@ -5119,7 +5119,7 @@ async function submitNewOrg(page, siren) {
   const mine = await sup.page.locator("section.rfq-mine").innerText();
   check("Prestataire : son devis lisible et la demande de version à jour dans les échanges", /600 € HT/.test(mine.replace(/\s+/g, " ")) && (await sup.page.locator("section.rfq-talk").innerText()).includes("version à jour"), mine.slice(0, 200));
   await sup.page.goto(`${BASE}/organisations/demo-sup-belleville/devis?onglet=fiche`);
-  check("« Ma vitrine » : page à part, dans la navigation", sup.page.url().endsWith("/organisations/demo-sup-belleville/vitrine") && (await sup.page.locator('a.side-link[href="/organisations/demo-sup-belleville/vitrine"]').count()) === 1, sup.page.url());
+  check("« Ma page prestataire » : page à part, dans la navigation", sup.page.url().endsWith("/organisations/demo-sup-belleville/page-prestataire") && (await sup.page.locator('a.side-link[href="/organisations/demo-sup-belleville/page-prestataire"]').count()) === 1, sup.page.url());
   await sup.ctx.close();
   await pgc.query(`delete from "Rfq" where id = 'e2e-pd-rfq'`);
   await pgc.end();

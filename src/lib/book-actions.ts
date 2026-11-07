@@ -20,7 +20,7 @@ async function requireSupplierAdmin(orgId: string) {
   return ctx;
 }
 const refresh = (orgId: string) => {
-  revalidatePath(`/organisations/${orgId}/vitrine`);
+  revalidatePath(`/organisations/${orgId}/page-prestataire`);
   revalidatePath(`/structures/${orgId}`);
 };
 
@@ -36,7 +36,7 @@ export async function updateSupplierBook(_: FormState, form: FormData): Promise<
   });
   await audit(user.id, "supplier.book", "Organization", orgId);
   refresh(orgId);
-  return { ok: t("Vitrine enregistrée.") };
+  return { ok: t("Page prestataire enregistrée.") };
 }
 
 export async function addSupplierPhoto(_: FormState, form: FormData): Promise<FormState> {
@@ -57,7 +57,7 @@ export async function addSupplierPhoto(_: FormState, form: FormData): Promise<Fo
   return { ok: t("Réalisation ajoutée.") };
 }
 
-/** Bannière de la vitrine : une image large, remplacée à chaque envoi. */
+/** Bannière de la page du prestataire : une image large, remplacée à chaque envoi. */
 export async function setSupplierBanner(_: FormState, form: FormData): Promise<FormState> {
   const { t } = await getT();
   const orgId = str(form, "orgId");

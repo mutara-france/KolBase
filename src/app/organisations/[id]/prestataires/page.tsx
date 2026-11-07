@@ -312,7 +312,7 @@ function SupplierCard({ s, t, locale, askHref }: { s: DirectorySupplier; t: T; l
         </ul>
         <div className="supplier-card-actions">
           <Link className="btn small" href={askHref}>{t("Demander un devis")}</Link>
-          <a className="btn ghost small" href={`/structures/${s.id}`} target="_blank" rel="noreferrer">{t("Voir la vitrine")}</a>
+          <a className="btn ghost small" href={`/structures/${s.id}`} target="_blank" rel="noreferrer">{t("Voir sa page")}</a>
         </div>
       </div>
     </article>

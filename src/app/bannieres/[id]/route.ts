@@ -3,7 +3,7 @@ import { getCurrentUser } from "@/lib/auth";
 import { isPlatformAdmin } from "@/lib/platform";
 import { LOGO_TYPES } from "@/lib/logos";
 
-/** Bannière de la vitrine d'un prestataire : publique si l'organisation est validée et référencée, sinon réservée à ses membres. */
+/** Bannière de la page d'un prestataire : publique si l'organisation est validée et référencée, sinon réservée à ses membres. */
 export async function GET(_: Request, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
   const banner = await db.organizationBanner.findUnique({ where: { organizationId: id }, include: { organization: { select: { verification: true, listed: true } } } });

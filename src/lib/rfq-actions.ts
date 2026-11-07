@@ -379,9 +379,9 @@ export async function updateSupplierProfile(_: ActionState, form: FormData): Pro
   const listed = asked && isVerifiedOrg(ctxOrg);
   await db.organization.update({ where: { id: orgId }, data: { supplierCategories: categories, coverage: str(form, "coverage") || null, listed } });
   await audit(user.id, "supplier.profile", "Organization", orgId, { categories, listed });
-  revalidatePath(`/organisations/${orgId}/vitrine`);
+  revalidatePath(`/organisations/${orgId}/page-prestataire`);
   if (asked && !listed)
     return { ok: isSuspendedOrg(ctxOrg) ? `Catégories et zone enregistrées. ${ORG_SUSPENDED}` : t("Catégories et zone enregistrées. Le référencement dans l'annuaire suivra la validation de l'organisation par KolBase.") };
-  return { ok: t("Fiche prestataire enregistrée.") };
+  return { ok: t("Catégories et zone enregistrées.") };
 }
 

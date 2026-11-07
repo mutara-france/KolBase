@@ -16,10 +16,10 @@ import { fmtEur, intlLocale } from "@/lib/i18n";
 
 export async function generateMetadata() {
   const { t } = await getT();
-  return { title: `${t("Ma vitrine")} — KolBase` };
+  return { title: `${t("Ma page prestataire")} — KolBase` };
 }
 
-/** La vitrine d'un prestataire auprès des organisations : bannière, fiche, capacités, réalisations, catalogue, et ses indicateurs. */
+/** La page d'un prestataire auprès des organisations : bannière, fiche, capacités, réalisations, catalogue, et ses indicateurs. */
 export default async function Page({ params }: { params: Promise<{ id: string }> }) {
   const { t, locale } = await getT();
   const { id } = await params;
@@ -36,7 +36,7 @@ export default async function Page({ params }: { params: Promise<{ id: string }>
     <>
       <SiteHeader />
       <main className="stack">
-        <PageHead title={t("Ma vitrine")} desc={t("Ce que voient les organisations avant de vous demander un devis : bannière, catégories, capacités, réalisations et forfaits.")}>
+        <PageHead title={t("Ma page prestataire")} desc={t("Ce que voient les organisations avant de vous demander un devis : bannière, catégories, capacités, réalisations et forfaits.")}>
           <Link className="btn ghost" href={`/structures/${id}`}><ExternalLink size={15} /> {t("Voir ma page publique")}</Link>
         </PageHead>
         <BillingNotice orgId={id} motive="reponse" />
@@ -63,12 +63,12 @@ export default async function Page({ params }: { params: Promise<{ id: string }>
         {isAdmin && (
           <>
             <section className="card stack-sm">
-              <SectionHead icon={ImageIcon} title={t("Bannière")} desc={t("L'image large en tête de votre vitrine et de votre carte dans l'annuaire des prestataires.")} />
+              <SectionHead icon={ImageIcon} title={t("Bannière")} desc={t("L'image large en tête de votre page et de votre carte dans l'annuaire des prestataires.")} />
               <BannerForm orgId={id} current={bannerSrc(org)} onRemove={removeSupplierBanner} />
             </section>
             <BookForm orgId={id} capacities={readCapacities(org.capacities)} equipment={org.equipment} options={EQUIPMENT} accessible={org.accessible} priceHint={org.priceHint ?? ""} />
             <section className="card stack-sm">
-              <SectionHead icon={Images} title={t("Réalisations ({photos}/{PHOTO_MAX})", { photos: photos.length, PHOTO_MAX })} desc={t("Vos réalisations en images (buffets, salles, installations, supports…), avec une légende : elles s'affichent sur votre vitrine.")} />
+              <SectionHead icon={Images} title={t("Réalisations ({photos}/{PHOTO_MAX})", { photos: photos.length, PHOTO_MAX })} desc={t("Vos réalisations en images (buffets, salles, installations, supports…), avec une légende : elles s'affichent sur votre page.")} />
               {photos.length > 0 && (
                 <div className="gallery">
                   {photos.map((ph) => (

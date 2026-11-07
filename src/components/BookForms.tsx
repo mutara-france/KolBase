@@ -51,7 +51,7 @@ export function PhotoForm({ orgId }: { orgId: string }) {
   );
 }
 
-/** Bannière de la vitrine : aperçu, remplacement, retrait. */
+/** Bannière de la page du prestataire : aperçu, remplacement, retrait. */
 export function BannerForm({ orgId, current, onRemove }: { orgId: string; current: string | null; onRemove: (form: FormData) => void }) {
   const t = useT();
   const [state, action, pending] = useActionState(setSupplierBanner, undefined);

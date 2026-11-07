@@ -35,7 +35,7 @@ const PAGES = {
     "/organisations/demo-org-dentalys/statistiques",
     "/organisations/demo-org-dentalys/membres",
   ],
-  "ludovic.perrin@demo.kolbase.local": ["/organisations/demo-sup-belleville/devis", "/organisations/demo-sup-belleville/devis/demo-rfq-cocktail", "/organisations/demo-sup-belleville/vitrine"],
+  "ludovic.perrin@demo.kolbase.local": ["/organisations/demo-sup-belleville/devis", "/organisations/demo-sup-belleville/devis/demo-rfq-cocktail", "/organisations/demo-sup-belleville/page-prestataire"],
   "anne.chevalier@demo.kolbase.local": ["/admin", "/admin?onglet=lancement"],
 };
 

@@ -52,7 +52,7 @@ export default async function Page({ params, searchParams }: { params: Promise<{
           orderBy: { startsAt: "asc" },
         }),
   ]);
-  const roleOpts = invitableRoles(org.kind).map((value) => ({ value, label: t(roleLabel(value, org.kind)), desc: t(org.kind === "PRESTATAIRE" ? (value === "ADMIN" ? "Équipe, fiche prestataire et devis." : "Répond aux demandes de devis.") : ROLE_DESC[value]) }));
+  const roleOpts = invitableRoles(org.kind).map((value) => ({ value, label: t(roleLabel(value, org.kind)), desc: t(org.kind === "PRESTATAIRE" ? (value === "ADMIN" ? "Équipe, page prestataire et devis." : "Répond aux demandes de devis.") : ROLE_DESC[value]) }));
   // Une ligne par personne, avec l'ensemble de ses rôles.
   const people = [...members.reduce((acc, m) => {
     const p = acc.get(m.userId) ?? { userId: m.userId, user: m.user, roles: [] as OrgRole[], since: m.createdAt };
@@ -221,7 +221,7 @@ export default async function Page({ params, searchParams }: { params: Promise<{
               <>
                 <EditOrgForm supplier={isSupplier} org={{ id: org.id, name: org.name, sector: org.sector, headquarters: org.headquarters, contactEmail: org.contactEmail, about: org.about, policy: org.policy, areas: org.areas }} />
                 <LogoForm supplier={isSupplier} orgId={id} name={org.name} src={logoSrc(org)} verified={org.verification === "VERIFIED"} />
-                {/* Le référencement d'un prestataire se règle avec sa fiche prestataire (page Demandes de devis). */}
+                {/* Le référencement d'un prestataire se règle avec sa page prestataire. */}
                 {!isSupplier && <OrgVisibilityForm orgId={id} v={companyVisibility(org.visibility)} listed={org.listed} />}
               </>
             ) : (
