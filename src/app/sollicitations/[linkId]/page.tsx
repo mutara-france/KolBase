@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { Clock, Briefcase, Building2, CalendarDays, Euro, FileText, MapPin, MessagesSquare, Scale } from "lucide-react";
+import { Clock, Briefcase, Building2, CalendarDays, Euro, FileSignature, FileText, MapPin, MessagesSquare, Reply, Scale } from "lucide-react";
+import { SectionHead } from "@/components/DossierUI";
 import { SiteHeader } from "@/components/SiteHeader";
 import { PageHero } from "@/components/PageHero";
 import { ExpertLinkPill, Pipeline, Thread } from "@/components/ProjectBits";
@@ -89,9 +90,9 @@ export default async function Page({ params, searchParams }: { params: Promise<{
   const toSign = engaged && p.status === "SIGNATURE" && !signedHref;
   const tabs: DossierTab[] = [
     { key: "mission", label: t("Mission"), icon: Briefcase, alert: link.status === "ATT_EXPERTS" && !abandoned && !closed },
-    { key: "messagerie", label: t("Messagerie"), icon: MessagesSquare, count: link.messages.length || undefined, alert: toAnswer },
-    { key: "documents", label: t("Documents et convention"), icon: FileText, alert: toSign, disabled: engaged ? undefined : t("Après votre accord de principe") },
     { key: "evenement", label: t("Événement"), icon: CalendarDays, count: events.length > 1 ? events.length : undefined, disabled: events.length ? undefined : t("Aucun événement rattaché") },
+    { key: "documents", label: t("Documents et convention"), icon: FileText, alert: toSign, disabled: engaged ? undefined : t("Après votre accord de principe") },
+    { key: "messagerie", label: t("Messagerie"), icon: MessagesSquare, count: link.messages.length || undefined, alert: toAnswer },
   ];
   const active = tabs.find((tb) => tb.key === onglet && !tb.disabled)?.key ?? "mission";
   const href = (k: string) => (k === "mission" ? `/sollicitations/${link.id}` : `/sollicitations/${link.id}?onglet=${k}`);
@@ -125,7 +126,10 @@ export default async function Page({ params, searchParams }: { params: Promise<{
           <div className="page-grid">
             <div className="page-main">
               {link.status === "ATT_EXPERTS" && !abandoned && !closed && (
-                <section className="card highlight"><h2>{t("Votre réponse")}</h2><RespondForm linkId={link.id} /></section>
+                <section className="card highlight" aria-labelledby="reponse-titre">
+                  <SectionHead icon={Reply} id="reponse-titre" title={t("Votre réponse")} desc={t("Accord de principe, refus, ou d'autres honoraires : {org} est prévenue par e-mail.", { org: p.organization.name })} />
+                  <RespondForm linkId={link.id} />
+                </section>
               )}
             <section className={`card next-step`}>
               <span className="eyebrow-sm">{t("Prochaine étape")}</span>
@@ -141,16 +145,15 @@ export default async function Page({ params, searchParams }: { params: Promise<{
               )}
               {engaged && !awaitingOrg && (
                 <div className="transitions-stack">
-                  {signedHref && <a className="btn secondary" href={signedHref}>{t("Convention signée (PDF)")}</a>}
-                  <a className="btn ghost" href={`/sollicitations/${link.id}/convention`} target="_blank" rel="noreferrer">{t("Projet de convention (PDF)")}</a>
+                  <Link className={toSign ? "btn" : "btn ghost"} href={href("documents")}>{signedHref ? t("Convention signée") : t("Voir la convention")}</Link>
                 </div>
               )}
             </section>
               {toAnswer && <p className="notice"><Link href={href("messagerie")}>{t("{org} vous a écrit : répondre dans la messagerie", { org: p.organization.name })}</Link></p>}
             </div>
             <aside className="page-aside">
-            <section className="card stack-sm">
-              <h2 className="section-title">{p.organization.name}</h2>
+            <section className="card stack-sm" aria-labelledby="organisation-titre">
+              <SectionHead icon={Building2} id="organisation-titre" title={p.organization.name} desc={p.organization.sector ? t(p.organization.sector) : undefined} />
               {p.organization.about && <p className="text-sm clamp-4">{p.organization.about}</p>}
               {p.organization.policy && <p className="text-xs muted">{t("Politique de collaboration")} : {p.organization.policy}</p>}
               {orgIsPublic(p.organization) && <Link className="link" href={`/structures/${p.organizationId}`}>{t("Voir la page de l'organisation")}</Link>}
@@ -173,8 +176,8 @@ export default async function Page({ params, searchParams }: { params: Promise<{
         {active === "documents" && (
           <div className="stack">
             <ExpertSignatureBlock linkId={link.id} signature={link.signature} email={user.email} projectStatus={p.status} signedDocId={signedDocId} />
-            <section className="card stack-sm">
-              <h2 className="section-title"><FileText size={15} />{" "}{t("Convention")}</h2>
+            <section className="card stack-sm" aria-labelledby="convention-titre">
+              <SectionHead icon={FileSignature} id="convention-titre" title={t("Convention")} desc={signedHref ? t("Signée par les deux parties.") : t("Le projet de convention, tel que l'organisation vous le propose.")} tone={signedHref ? "ok" : "brand"} />
               <div className="actions">
                 {signedHref && <a className="btn secondary" href={signedHref}>{t("Convention signée (PDF)")}</a>}
                 <a className="btn ghost" href={`/sollicitations/${link.id}/convention`} target="_blank" rel="noreferrer">{t("Projet de convention (PDF)")}</a>
@@ -189,8 +192,7 @@ export default async function Page({ params, searchParams }: { params: Promise<{
           <div className="stack">
             {events.map((ev) => (
               <section key={ev.id} className="card stack-sm">
-                <span className="eyebrow-sm">{t(FORMAT_LABEL[ev.format])}{ev.internal ? ` · ${t("réunion interne")}` : ""}</span>
-                <h2 style={{ margin: 0 }}>{ev.title}</h2>
+                <SectionHead icon={CalendarDays} title={ev.title} desc={`${t(FORMAT_LABEL[ev.format])}${ev.internal ? ` · ${t("réunion interne")}` : ""}`} />
                 <ul className="plain stack-sm text-sm">
                   <li><CalendarDays size={14} />{" "}{fmtDateTime(locale, ev.startsAt)}{ev.durationMinutes ? ` · ${formatDuration(ev.durationMinutes, locale)}` : ""}</li>
                   <li><MapPin size={14} />{" "}{ev.format === "DISTANCIEL" ? t("En ligne") : [ev.venue, ev.city].filter(Boolean).join(", ") || t("Lieu à préciser")}</li>

@@ -168,7 +168,7 @@ export function ProjectObjectForm({ orgId, projectId, title, area, description, 
 }
 
 /** Unités et honoraires d'un expert : modifiés, la proposition lui est renvoyée. */
-export function ExpertTermsForm({ orgId, projectId, linkId, name, unit, defaults, levels, hourlyMax, desired }: Hidden & { linkId: string; name: string; unit: string; defaults: FeeDefaults; levels: FeeLevelOpt[]; hourlyMax: number; desired?: string | null }) {
+export function ExpertTermsForm({ orgId, projectId, linkId, name, hideName = false, unit, defaults, levels, hourlyMax, desired }: Hidden & { linkId: string; name: string; hideName?: boolean; unit: string; defaults: FeeDefaults; levels: FeeLevelOpt[]; hourlyMax: number; desired?: string | null }) {
   const t = useT();
   const [state, action, pending] = useActionState(updateExpertTerms, undefined);
   return (
@@ -176,7 +176,8 @@ export function ExpertTermsForm({ orgId, projectId, linkId, name, unit, defaults
       <H orgId={orgId} projectId={projectId} />
       <input type="hidden" name="linkId" value={linkId} />
       <div className="fee-block">
-        <strong>{name}</strong>
+        {/* Dans la carte de l'expert, son nom est déjà affiché : gardé pour les lecteurs d'écran. */}
+        <strong className={hideName ? "sr-only" : undefined}>{name}</strong>
         <FeeFields unit={unit} levels={levels} hourlyMax={hourlyMax} defaults={defaults} />
         <button className="btn ghost small" disabled={pending}>{pending ? t("Envoi…") : t("Proposer ces conditions")}</button>
       </div>

@@ -2,7 +2,8 @@ import { aiEnabled } from "@/lib/ai";
 import { EditEventForm, EventReviewForm, ProgramForm } from "@/components/EventForms";
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { Bell, CalendarDays, ClipboardCheck, Euro, FileDown, Gift, MapPin, Megaphone, QrCode, ShieldCheck, Star, Truck, Users } from "lucide-react";
+import { Bell, Building2, CalendarDays, Pencil, ClipboardCheck, Euro, FileDown, FolderOpen, Gift, ListOrdered, MapPin, Megaphone, QrCode, ShieldCheck, Star, Truck, Users } from "lucide-react";
+import { SectionHead } from "@/components/DossierUI";
 import { StatusPill } from "@/components/ProjectBits";
 import { db } from "@/lib/db";
 import { requireMembership } from "@/lib/orgs";
@@ -43,7 +44,7 @@ const HOSPITALITY_CATS = ["restauration", "hebergement"];
  * (« dossier » : tout sauf les services de communication) ou onglet « Marketing » (« marketing » : les services seuls).
  * `retour` : adresse de l'onglet du dossier, où ramènent les actions qui redirigent (publication).
  */
-export async function EventWorkspace({ orgId: id, eventId, publie, mode = "page", retour }: { orgId: string; eventId: string; publie?: string; mode?: "page" | "dossier" | "marketing"; retour?: string }) {
+export async function EventWorkspace({ orgId: id, eventId, publie, mode = "page", retour, expertsHref }: { orgId: string; eventId: string; publie?: string; mode?: "page" | "dossier"; retour?: string; expertsHref?: string }) {
   const { t, locale } = await getT();
   const { org, roles, user } = await requireMembership(id, [...EVENT_MANAGER_ROLES, "CONFORMITE"]);
   const isOrganizer = roles.some((r) => EVENT_ORGANIZER_ROLES.includes(r));
@@ -223,13 +224,10 @@ export async function EventWorkspace({ orgId: id, eventId, publie, mode = "page"
     </form>
   );
 
-  /** Services de communication KolBase : sur la page de l'événement, ou dans l'onglet « Marketing » du dossier. */
+  /** Services de communication KolBase : avec l'événement, sur sa page comme dans l'onglet Événement du dossier. */
   const servicesSection = isOrganizer && !event.internal && (offers.length > 0 || event.serviceOrders.length > 0) ? (
               <section className="card stack-sm" aria-labelledby="services">
-                <div>
-                  <h2 id="services"><Megaphone size={18} />{" "}{t("Faire connaître l'événement")}</h2>
-                  <p className="muted">{t("Services réalisés par l'équipe KolBase, facturés une fois réalisés (prix HT). Chaque service est mesuré : visiteurs et inscriptions obtenus, bilan envoyé par e-mail une semaine après.")}</p>
-                </div>
+                <SectionHead icon={Megaphone} id="services" title={t("Faire connaître l'événement")} desc={t("Services réalisés par l'équipe KolBase, facturés une fois réalisés (prix HT). Chaque service est mesuré : visiteurs et inscriptions obtenus, bilan envoyé par e-mail une semaine après.")} />
                 {event.serviceOrders.length > 0 && (
                   <ul className="plain stack-sm">
                     {groupOrders(event.serviceOrders).map((g) => {
@@ -279,7 +277,6 @@ export async function EventWorkspace({ orgId: id, eventId, publie, mode = "page"
                 )}
               </section>
   ) : null;
-  if (mode === "marketing") return servicesSection;
 
   return (
     <>
@@ -328,7 +325,7 @@ export async function EventWorkspace({ orgId: id, eventId, publie, mode = "page"
                 {pack ? <> {pack.label} : <strong>{pack.price}</strong>{" "}{t("au lieu de {compareAt}.", { compareAt: pack.compareAt })}</> : null}
               </p>
             </div>
-            <a className="btn" href={mode === "dossier" && retour ? retour.replace("onglet=evenement", "onglet=marketing") : "#services"}>{t("Voir les services")}</a>
+            <a className="btn" href="#services">{t("Voir les services")}</a>
           </section>
         )}
 
@@ -410,7 +407,7 @@ export async function EventWorkspace({ orgId: id, eventId, publie, mode = "page"
         <div className="page-grid">
           <div className="page-main">
             {!readOnly && !event.cancelledAt && <details className="card edit-block" id="modifier" open={missingLink}>
-              <summary><h2>{t("Modifier l'événement")}</h2></summary>
+              <summary><SectionHead icon={Pencil} title={t("Modifier l'événement")} desc={t("Titre, date, lieu, format et hospitalités proposées.")} /></summary>
               <EditEventForm
                 orgId={id}
                 eventId={eventId}
@@ -429,14 +426,10 @@ export async function EventWorkspace({ orgId: id, eventId, publie, mode = "page"
               />
             </details>}
 
-            <section className="card logistics">
-              <div className="card-head">
-                <div>
-                  <h2>{t("Logistique et prestataires")}</h2>
-                  <p className="muted">{t("Consultez les prestataires référencés, comparez leurs devis détaillés et retenez la meilleure offre : le coût par participant est rapproché des seuils d'hospitalité.")}</p>
-                </div>
-                {!readOnly && <Link className="btn" href={newRfq()}>{t("Demander des devis")}</Link>}
-              </div>
+            <section className="card logistics" aria-labelledby="logistique-titre">
+              <SectionHead icon={Truck} id="logistique-titre" title={t("Logistique et prestataires")} desc={t("Consultez les prestataires référencés, comparez leurs devis détaillés et retenez la meilleure offre : le coût par participant est rapproché des seuils d'hospitalité.")}>
+                {!readOnly && <Link className="btn small" href={newRfq()}>{t("Demander des devis")}</Link>}
+              </SectionHead>
               {rfqs.length > 0 && (
                 <ul className="logistics-list">
                   {rfqs.map((r) => {
@@ -493,15 +486,11 @@ export async function EventWorkspace({ orgId: id, eventId, publie, mode = "page"
               )}
             </section>
 
-            {isOrganizer && (
-              <section className="card stack-sm">
-                <div className="card-head">
-                  <div>
-                    <h2>{t("Intervenants")}</h2>
-                    <p className="muted">{t("Publiez une opportunité rattachée à l'événement : les experts référencés candidatent, vous retenez, un dossier s'ouvre pour chaque intervenant.")}</p>
-                  </div>
-                  <Link className="btn ghost" href={`/organisations/${id}/opportunites?evenement=${eventId}#nouvel-appel`}>{t("Publier une opportunité")}</Link>
-                </div>
+            {isOrganizer && mode === "page" && (
+              <section className="card stack-sm" aria-labelledby="intervenants-titre">
+                <SectionHead icon={Users} id="intervenants-titre" title={t("Intervenants")} desc={event.project ? t("Publiez une opportunité rattachée à l'événement : les experts référencés candidatent, ceux que vous retenez rejoignent le dossier de l'événement.") : t("Publiez une opportunité rattachée à l'événement : les experts référencés candidatent, vous retenez, un dossier s'ouvre pour chaque intervenant.")}>
+                  <Link className="btn ghost small" href={`/organisations/${id}/opportunites?evenement=${eventId}#nouvel-appel`}>{t("Publier une opportunité")}</Link>
+                </SectionHead>
                 {calls.length > 0 && (
                   <ul className="logistics-list">
                     {calls.map((c) => {
@@ -529,9 +518,17 @@ export async function EventWorkspace({ orgId: id, eventId, publie, mode = "page"
               </section>
             )}
 
-            {event.internal && (
-              <section className="card">
-                <h2>{t("Participants")}</h2>
+            {event.internal && mode === "dossier" && expertsHref && (
+              <section className="card stack-sm" aria-labelledby="participants-titre">
+                <SectionHead icon={Users} id="participants-titre" title={t("Participants")} desc={t("Réunion interne : les participants sont les experts du dossier ({n} sollicités, {m} engagés).", { n: experts.length, m: experts.filter((e) => e.status !== "ATT_EXPERTS").length })}>
+                  <Link className="btn ghost small" href={expertsHref}>{t("Voir les experts")}</Link>
+                </SectionHead>
+                <p className="hint">{t("Les hospitalités offertes aux experts (repas, nuitée) relèvent de leur convention : précisez-les dans le dossier.")}</p>
+              </section>
+            )}
+            {event.internal && !(mode === "dossier" && expertsHref) && (
+              <section className="card stack-sm" aria-labelledby="participants-titre">
+                <SectionHead icon={Users} id="participants-titre" title={t("Participants")} />
                 {experts.length === 0 ? (
                   <p className="muted">{event.project ? t("Aucun expert engagé dans le dossier pour l'instant.") : t("Réunion interne sans dossier rattaché : les participants ne sont pas suivis ici.")}</p>
                 ) : (
@@ -548,18 +545,17 @@ export async function EventWorkspace({ orgId: id, eventId, publie, mode = "page"
               </section>
             )}
 
-            {mode === "page" && servicesSection}
+            {servicesSection}
 
-            <section className="card">
-              <div className="block-head">
-                <h2>{t("Programme")}</h2>
-                {!event.internal && event.publishedAt && event.program && <Link className="link" href={`/evenements/${event.id}`}>{t("voir sur la page publique")}</Link>}
-              </div>
+            <section className="card" aria-labelledby="programme-titre">
+              <SectionHead icon={ListOrdered} id="programme-titre" title={t("Programme")} desc={event.internal ? t("Ordre du jour, horaires et intervenants.") : t("Affiché sur la page publique de l'événement.")}>
+                {!event.internal && event.publishedAt && event.program && <Link className="link text-sm" href={`/evenements/${event.id}`}>{t("voir sur la page publique")}</Link>}
+              </SectionHead>
               {readOnly ? (event.program ? <p className="pre-line">{event.program}</p> : <p className="muted">{t("Aucun programme.")}</p>) : <ProgramForm orgId={id} eventId={eventId} program={event.program ?? ""} ai={aiEnabled()} />}
             </section>
 
-            <section className="card">
-              <h2>{t("Hospitalités proposées")}</h2>
+            <section className="card" aria-labelledby="hospitalites-titre">
+              <SectionHead icon={Gift} id="hospitalites-titre" title={t("Hospitalités proposées")} desc={t("Prestations offertes aux participants, avec le régime de chacune.")} />
               {event.benefits.length === 0 ? <p className="muted">{t("Aucune.")}</p> : (
                 <>
                   {/* Régime par prestation, avec les seuils de l'organisation (participant exerçant en France). */}
@@ -590,7 +586,7 @@ export async function EventWorkspace({ orgId: id, eventId, publie, mode = "page"
           <aside className="page-aside">
             {reviewed && (
               <section className="card stack-sm review-card" id="validation" aria-labelledby="validation-titre">
-                <h2 className="section-title" id="validation-titre"><ShieldCheck size={15} /> {t("Validation par la conformité")}</h2>
+                <SectionHead icon={ShieldCheck} id="validation-titre" title={t("Validation par la conformité")} tone={review === "changes" ? "danger" : review === "approved" ? "ok" : "warn"} />
                 <p><span className={`pill ${review ? REVIEW_TONE[review] : withDossier ? "wait" : ""}`}>{review ? t(REVIEW_LABEL[review]) : withDossier ? t("Examiné avec le dossier") : t("À soumettre")}</span></p>
                 {/* Points examinés : ce que la conformité valide, tel qu'il est aujourd'hui. */}
                 <ul className="review-points">
@@ -706,7 +702,7 @@ export async function EventWorkspace({ orgId: id, eventId, publie, mode = "page"
 
             {!event.internal && !ended && !event.cancelledAt && (
               <section className="card stack-sm">
-                <h2 className="section-title"><QrCode size={15} /> {isPast ? t("Événement en cours") : t("Accueil le jour J")}</h2>
+                <SectionHead icon={QrCode} title={isPast ? t("Événement en cours") : t("Accueil le jour J")} />
                 {isPast && <p className="notice">{t(event.registrations.length > 1 ? (present.length > 1 ? "{n} présents sur {m} inscrits." : "{n} présent sur {m} inscrits.") : "{n} présent sur {m} inscrit.", { n: present.length, m: event.registrations.length })}{" "}{t("Les retardataires peuvent encore être pointés ; les absents, le bilan et les attestations viennent après la fin, le {date} à {time}.", { date: fmtDate(locale, eventEnd(event)), time: fmtTime(locale, eventEnd(event)) })}</p>}
                 <p className="muted text-sm">{t("Chaque inscrit a un badge (QR code) dans « Mes inscriptions ». Scannez-le avec l'appareil photo du téléphone, ou cherchez son nom dans la liste.")}</p>
                 {!readOnly && <div className="transitions-stack">
@@ -725,7 +721,7 @@ export async function EventWorkspace({ orgId: id, eventId, publie, mode = "page"
 
             {isOrganizer && (
               <section className="card stack-sm">
-                <h2 className="section-title">{t("Agence")}</h2>
+                <SectionHead icon={Building2} title={t("Agence")} />
                 <p className="muted text-sm">
                   {event.agency ? t("Confié à {name} : son équipe gère cet événement avec son propre compte.", { name: event.agency.name }) : t("Géré par votre équipe. Vous pouvez le confier à une agence événementielle : elle est mandatée au passage et prévenue par e-mail.")}
                 </p>
@@ -747,7 +743,7 @@ export async function EventWorkspace({ orgId: id, eventId, publie, mode = "page"
 
             {mode === "page" && isOrganizer && event.project && (
               <section className="card stack-sm">
-                <h2 className="section-title">{t("Dossier lié")}</h2>
+                <SectionHead icon={FolderOpen} title={t("Dossier lié")} />
                 <Link href={`/organisations/${id}/dossiers/${event.project.id}`}><strong>{event.project.title}</strong></Link>
                 <span><StatusPill status={event.project.status} /></span>
                 <p className="hint">{t("Experts, conventions et conformité se suivent dans le dossier ; les devis retenus ici s'ajoutent à son budget.")}</p>
@@ -757,11 +753,10 @@ export async function EventWorkspace({ orgId: id, eventId, publie, mode = "page"
         </div>
 
         {!event.internal && (
-              <section className="card">
-                <div className="actions spread">
-                  <h2>{t("Inscrits")}</h2>
+              <section className="card" aria-labelledby="inscrits-titre">
+                <SectionHead icon={Users} id="inscrits-titre" title={t("Inscrits")} desc={event.registrations.length ? t(event.registrations.length > 1 ? "{n} inscriptions" : "{n} inscription", { n: event.registrations.length }) : undefined}>
                   {event.registrations.length > 0 && <a className="btn ghost small" href={`/organisations/${id}/evenements/${eventId}/export`}>{t("Exporter (CSV)")}</a>}
-                </div>
+                </SectionHead>
                 {event.registrations.length === 0 ? (
                   <p className="muted">{t("Aucune inscription pour l'instant.")}</p>
                 ) : (
