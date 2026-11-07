@@ -164,7 +164,7 @@ export async function BudgetTab({ orgId, projectId, canEdit }: { orgId: string; 
                       <td data-label="Poste">{t(supplierCategoryLabel(q.rfq.category))} : {q.supplier.name}</td>
                       <td data-label="Montant HT" className="num">{fmtEur(locale, q.amountCents)}</td>
                       <td data-label="Statut"><span className="pill ok">{t("Devis retenu")}</span></td>
-                      {canEdit && <td><a className="link" href={`/organisations/${orgId}/prestataires#rfq-${q.rfqId}`}>{t("Voir le devis")}</a></td>}
+                      {canEdit && <td><a className="link" href={`/organisations/${orgId}/prestataires/${q.rfqId}`}>{t("Voir le devis")}</a></td>}
                     </tr>
                   ))}
                   {project.expenses.map((e) => (

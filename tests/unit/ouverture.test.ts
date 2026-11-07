@@ -116,7 +116,7 @@ describe("prix annoncé avant l'action", () => {
   it("après l'activation : reprendre l'action", () => {
     expect(resumeAction("o1", "evenement", "ev1")).toMatchObject({ label: "Publier maintenant", publish: "ev1" });
     expect(resumeAction("o1", "sollicitation", null)?.href).toBe("/organisations/o1/dossiers/nouveau");
-    expect(resumeAction("o1", "devis", "r1")?.href).toBe("/organisations/o1/prestataires#rfq-r1");
+    expect(resumeAction("o1", "devis", "r1")?.href).toBe("/organisations/o1/prestataires/r1");
     expect(resumeAction("o1", "reponse")?.href).toBe("/organisations/o1/devis");
     expect(resumeAction("o1", null)).toBeNull();
   });

@@ -437,14 +437,22 @@ export function notifyCompliance(projectId: string, step: "submit" | "validate" 
   });
 }
 
-/** Demande de devis envoyée : prévient chaque prestataire consulté. */
-export function notifyRfqSent(rfqId: string) {
+/**
+ * Demande de devis envoyée : prévient chaque prestataire consulté. `only` : seulement ces prestataires (ajoutés à une
+ * demande déjà envoyée, ou relancés) ; `reminder` : relance d'un prestataire resté sans réponse.
+ */
+export function notifyRfqSent(rfqId: string, { only, reminder = false }: { only?: string[]; reminder?: boolean } = {}) {
   later(async () => {
     const r = await db.rfq.findUnique({ where: { id: rfqId }, include: { organization: { select: { name: true } }, suppliers: true } });
     if (!r) return;
-    for (const s of r.suppliers) {
+    for (const s of r.suppliers.filter((x) => !only || only.includes(x.supplierId))) {
       const team = await db.membership.findMany({ where: { organizationId: s.supplierId }, include: { user: { select: userSelect } } });
-      await send(team.map((m) => m.user), (t) => ({ subject: t("Demande de devis {de_org}", { de_org: de(r.organization.name) }), text: t("Bonjour,\n\n{organization} vous consulte pour une prestation.{v}", { organization: r.organization.name, v: r.deadline ? t(" Réponse attendue avant le {date}.", { date: r.deadline.toLocaleDateString("fr-FR", { timeZone: "Europe/Paris" }) }) : "" }), cta: { label: t("Répondre à la demande"), href: `/organisations/${s.supplierId}/devis` } }));
+      const due = r.deadline ? r.deadline.toLocaleDateString("fr-FR", { timeZone: "Europe/Paris" }) : null;
+      await send(team.map((m) => m.user), (t) =>
+        reminder
+          ? { subject: t("Relance : demande de devis {de_org}", { de_org: de(r.organization.name), org: r.organization.name }), text: t("Bonjour,\n\n{organization} attend toujours votre réponse à sa demande de devis.{v}\n\nVous pouvez envoyer un devis, poser une question ou décliner la demande.", { organization: r.organization.name, v: due ? t(" Réponse attendue avant le {date}.", { date: due }) : "" }), cta: { label: t("Répondre à la demande"), href: `/organisations/${s.supplierId}/devis/${r.id}` } }
+          : { subject: t("Demande de devis {de_org}", { de_org: de(r.organization.name) }), text: t("Bonjour,\n\n{organization} vous consulte pour une prestation.{v}", { organization: r.organization.name, v: due ? t(" Réponse attendue avant le {date}.", { date: due }) : "" }), cta: { label: t("Répondre à la demande"), href: `/organisations/${s.supplierId}/devis/${r.id}` } },
+      );
     }
   });
 }
@@ -457,7 +465,7 @@ export function notifyQuote(rfqId: string, supplierId: string, revised = false) 
       db.organization.findUnique({ where: { id: supplierId }, select: { name: true } }),
     ]);
     if (!r || !supplier) return;
-    await send(await rfqContacts(r), (t) => ({ subject: revised ? t("Devis révisé par {name}", { name: supplier.name }) : t("Devis reçu {de_org}", { de_org: de(supplier.name) }), text: revised ? t("Bonjour,\n\n{name} a révisé son devis.", { name: supplier.name }) : t("Bonjour,\n\n{name} a répondu à votre demande de devis.", { name: supplier.name }), cta: { label: t("Comparer les devis"), href: `/organisations/${r.organizationId}/prestataires#rfq-${r.id}` } }));
+    await send(await rfqContacts(r), (t) => ({ subject: revised ? t("Devis révisé par {name}", { name: supplier.name }) : t("Devis reçu {de_org}", { de_org: de(supplier.name) }), text: revised ? t("Bonjour,\n\n{name} a révisé son devis.", { name: supplier.name }) : t("Bonjour,\n\n{name} a répondu à votre demande de devis.", { name: supplier.name }), cta: { label: t("Comparer les devis"), href: `/organisations/${r.organizationId}/prestataires/${r.id}` } }));
   });
 }
 
@@ -510,7 +518,7 @@ export function notifyEventWithdrawn(eventId: string, agencyId: string) {
   later(async () => {
     const e = await db.event.findUnique({ where: { id: eventId }, include: { organization: { select: { name: true } }, agency: { select: { name: true } } } });
     if (!e || e.agencyId === agencyId) return;
-    await send(await supplierTeam(agencyId), (t) => ({ subject: t("« {title} » n'est plus confié à votre agence", { title: e.title }), text: t("Bonjour,\n\n{organization} {v} « {title} ». Votre équipe n'y a plus accès ; vos devis et échanges en tant que prestataire restent dans vos demandes de devis.", { organization: e.organization.name, v: e.agencyId ? t("a confié l'événement à une autre agence") : t("reprend l'organisation de l'événement"), title: e.title }), cta: { label: t("Voir mes demandes de devis"), href: `/organisations/${agencyId}/devis?onglet=toutes` } }));
+    await send(await supplierTeam(agencyId), (t) => ({ subject: t("« {title} » n'est plus confié à votre agence", { title: e.title }), text: t("Bonjour,\n\n{organization} {v} « {title} ». Votre équipe n'y a plus accès ; vos devis et échanges en tant que prestataire restent dans vos demandes de devis.", { organization: e.organization.name, v: e.agencyId ? t("a confié l'événement à une autre agence") : t("reprend l'organisation de l'événement"), title: e.title }), cta: { label: t("Voir mes demandes de devis"), href: `/organisations/${agencyId}/devis` } }));
   });
 }
 
@@ -520,7 +528,7 @@ export function notifyMandateEnded(mandateId: string, eventTitles: string[]) {
     const m = await db.mandate.findUnique({ where: { id: mandateId }, include: { mandator: { select: { name: true } } } });
     if (!m) return;
     const list = eventTitles.length ? `\n\nÉvénements concernés : ${eventTitles.map((x) => `« ${x} »`).join(", ")}.` : "";
-    await send(await supplierTeam(m.agencyId), (t) => ({ subject: t("Fin du mandat {de_org}", { de_org: de(m.mandator.name) }), text: t("Bonjour,\n\n{mandator} a mis fin au mandat de votre agence. Votre équipe n'accède plus à son espace ni aux événements qu'elle vous avait confiés.{list}", { mandator: m.mandator.name, list }), cta: { label: t("Voir mes demandes de devis"), href: `/organisations/${m.agencyId}/devis?onglet=toutes` } }));
+    await send(await supplierTeam(m.agencyId), (t) => ({ subject: t("Fin du mandat {de_org}", { de_org: de(m.mandator.name) }), text: t("Bonjour,\n\n{mandator} a mis fin au mandat de votre agence. Votre équipe n'accède plus à son espace ni aux événements qu'elle vous avait confiés.{list}", { mandator: m.mandator.name, list }), cta: { label: t("Voir mes demandes de devis"), href: `/organisations/${m.agencyId}/devis` } }));
   });
 }
 
@@ -542,12 +550,12 @@ export function notifyAward(rfqId: string, actorId?: string) {
     const what = r.event ? `pour « ${r.event.title} »` : "";
     for (const q of r.quotes) {
       const kept = q.status === "retained";
-      await send(await supplierTeam(q.supplierId), (t) => ({ subject: kept ? t("Votre devis est retenu par {organization}", { organization: r.organization.name }) : t("Votre devis n'est pas retenu par {organization}", { organization: r.organization.name }), text: kept ? t("Bonjour,\n\n{organization} a retenu votre devis {what}. Vous pouvez échanger avec l'organisation depuis la demande pour préparer la prestation.", { organization: r.organization.name, what }) : t("Bonjour,\n\n{organization} a retenu une autre offre {what}. Merci pour votre proposition.", { organization: r.organization.name, what }), cta: { label: t("Voir la demande"), href: `/organisations/${q.supplierId}/devis?onglet=toutes` } }));
+      await send(await supplierTeam(q.supplierId), (t) => ({ subject: kept ? t("Votre devis est retenu par {organization}", { organization: r.organization.name }) : t("Votre devis n'est pas retenu par {organization}", { organization: r.organization.name }), text: kept ? t("Bonjour,\n\n{organization} a retenu votre devis {what}. Vous pouvez échanger avec l'organisation depuis la demande pour préparer la prestation.", { organization: r.organization.name, what }) : t("Bonjour,\n\n{organization} a retenu une autre offre {what}. Merci pour votre proposition.", { organization: r.organization.name, what }), cta: { label: t("Voir la demande"), href: `/organisations/${q.supplierId}/devis/${r.id}` } }));
     }
     const kept = r.quotes.find((q) => q.status === "retained");
     const agency = await eventAgency(r.event);
     if (!kept || !actorId || !agency) return;
-    const href = `/organisations/${r.organizationId}/prestataires#rfq-${r.id}`;
+    const href = `/organisations/${r.organizationId}/prestataires/${r.id}`;
     const others = r.quotes.length - 1;
     const rest = others > 0 ? ` ${others} autre${others > 1 ? "s" : ""} devis ${others > 1 ? "sont écartés" : "est écarté"}.` : "";
     if (agency.team.some((u) => u.id === actorId)) {
@@ -566,7 +574,7 @@ export function notifyQuoteProposed(rfqId: string, actorId: string) {
     const q = r?.quotes.find((x) => x.id === r.proposedQuoteId);
     const agency = await eventAgency(r?.event ?? null);
     if (!r || !q || !agency) return;
-    await send(await members(r.organizationId, EVENT_ORGANIZER_ROLES), (t) => ({ subject: t("Devis à retenir : {name} propose {supplier}", { name: agency.name, supplier: q.supplier.name }), text: t("Bonjour,\n\n{name}, agence mandatée{v}, vous propose de retenir le devis {de_org}. La décision vous revient : retenez ce devis ou un autre depuis la demande.", { name: agency.name, v: r.event ? t(" pour « {event} »", { event: r.event.title }) : "", de_org: de(quoteSummary(q)) }), cta: { label: t("Décider"), href: `/organisations/${r.organizationId}/prestataires#rfq-${r.id}` } }), actorId);
+    await send(await members(r.organizationId, EVENT_ORGANIZER_ROLES), (t) => ({ subject: t("Devis à retenir : {name} propose {supplier}", { name: agency.name, supplier: q.supplier.name }), text: t("Bonjour,\n\n{name}, agence mandatée{v}, vous propose de retenir le devis {de_org}. La décision vous revient : retenez ce devis ou un autre depuis la demande.", { name: agency.name, v: r.event ? t(" pour « {event} »", { event: r.event.title }) : "", de_org: de(quoteSummary(q)) }), cta: { label: t("Décider"), href: `/organisations/${r.organizationId}/prestataires/${r.id}` } }), actorId);
   });
 }
 
@@ -581,13 +589,13 @@ export function notifyRfqCancelled(rfqId: string, actorId: string) {
     // Brouillon jamais envoyé : les prestataires n'en ont pas eu connaissance.
     for (const s of r.sentAt ? r.suppliers : []) {
       if (s.declined) continue;
-      await send(await supplierTeam(s.supplierId), (t) => ({ subject: t("Demande de devis annulée par {organization}", { organization: r.organization.name }), text: t("Bonjour,\n\n{organization} a annulé sa demande de devis{v}. Aucune réponse n'est plus attendue.", { organization: r.organization.name, v: r.event ? t(" pour « {event} »", { event: r.event.title }) : "" }), cta: { label: t("Voir mes demandes"), href: `/organisations/${s.supplierId}/devis?onglet=toutes` } }));
+      await send(await supplierTeam(s.supplierId), (t) => ({ subject: t("Demande de devis annulée par {organization}", { organization: r.organization.name }), text: t("Bonjour,\n\n{organization} a annulé sa demande de devis{v}. Aucune réponse n'est plus attendue.", { organization: r.organization.name, v: r.event ? t(" pour « {event} »", { event: r.event.title }) : "" }), cta: { label: t("Voir mes demandes"), href: `/organisations/${s.supplierId}/devis/${r.id}` } }));
     }
     const organizers = await members(r.organizationId, EVENT_ORGANIZER_ROLES);
     if (organizers.some((u) => u.id === actorId)) return;
     const actor = await db.user.findUnique({ where: { id: actorId }, select: { firstName: true, lastName: true, memberships: { where: { organization: { kind: "PRESTATAIRE" } }, select: { organization: { select: { name: true } } } } } });
     const who = actor ? `${actor.firstName} ${actor.lastName}${actor.memberships[0] ? ` (${actor.memberships[0].organization.name})` : ""}` : "L'auteur de la demande";
-    await send(organizers, (t) => ({ subject: t("Demande de devis annulée{v}", { v: r.event ? ` : ${r.event.title}` : "" }), text: t("Bonjour,\n\n{who} a annulé la demande de devis{v} ({supplierCategoryLabel}). Les prestataires consultés sont prévenus.", { who, v: r.event ? t(" pour « {event} »", { event: r.event.title }) : "", supplierCategoryLabel: supplierCategoryLabel(r.category) }), cta: { label: t("Voir la demande"), href: `/organisations/${r.organizationId}/prestataires#rfq-${r.id}` } }), actorId);
+    await send(organizers, (t) => ({ subject: t("Demande de devis annulée{v}", { v: r.event ? ` : ${r.event.title}` : "" }), text: t("Bonjour,\n\n{who} a annulé la demande de devis{v} ({supplierCategoryLabel}). Les prestataires consultés sont prévenus.", { who, v: r.event ? t(" pour « {event} »", { event: r.event.title }) : "", supplierCategoryLabel: supplierCategoryLabel(r.category) }), cta: { label: t("Voir la demande"), href: `/organisations/${r.organizationId}/prestataires/${r.id}` } }), actorId);
   });
 }
 
@@ -600,7 +608,7 @@ export function notifyProposalWithdrawn(rfqId: string, supplierId: string, propo
       db.user.findUnique({ where: { id: proposerId }, select: userSelect }),
     ]);
     if (!r || !supplier || !proposer) return;
-    await send([proposer], (t) => ({ subject: t("Devis proposé révisé : {name}{v}", { name: supplier.name, v: r.event ? ` (${r.event.title})` : "" }), text: t("Bonjour,\n\n{name} a révisé le devis que vous aviez proposé à l'organisation{v}. Votre proposition portait sur l'ancienne version : elle est retirée. Relisez la nouvelle version et proposez-la de nouveau si elle vous convient.", { name: supplier.name, v: r.event ? t(" pour « {event} »", { event: r.event.title }) : "" }), cta: { label: t("Voir la demande"), href: `/organisations/${r.organizationId}/prestataires#rfq-${r.id}` } }));
+    await send([proposer], (t) => ({ subject: t("Devis proposé révisé : {name}{v}", { name: supplier.name, v: r.event ? ` (${r.event.title})` : "" }), text: t("Bonjour,\n\n{name} a révisé le devis que vous aviez proposé à l'organisation{v}. Votre proposition portait sur l'ancienne version : elle est retirée. Relisez la nouvelle version et proposez-la de nouveau si elle vous convient.", { name: supplier.name, v: r.event ? t(" pour « {event} »", { event: r.event.title }) : "" }), cta: { label: t("Voir la demande"), href: `/organisations/${r.organizationId}/prestataires/${r.id}` } }));
   });
 }
 
@@ -613,7 +621,7 @@ export function notifyRfqDeclined(rfqId: string, supplierId: string, actorId: st
     ]);
     if (!r || !invite) return;
     const name = invite.supplier.name;
-    await send(await rfqContacts(r), (t) => ({ subject: t("{name} décline votre demande de devis{v}", { name, v: r.event ? ` (${r.event.title})` : "" }), text: t("Bonjour,\n\n{name} ne répondra pas à votre demande de devis{v} ({supplierCategoryLabel}).{v2}", { name, v: r.event ? t(" pour « {event} »", { event: r.event.title }) : "", supplierCategoryLabel: supplierCategoryLabel(r.category), v2: invite.declineNote ? t("\n\nMotif : {declineNote}", { declineNote: invite.declineNote }) : "" }), cta: { label: t("Voir la demande"), href: `/organisations/${r.organizationId}/prestataires#rfq-${r.id}` } }), actorId);
+    await send(await rfqContacts(r), (t) => ({ subject: t("{name} décline votre demande de devis{v}", { name, v: r.event ? ` (${r.event.title})` : "" }), text: t("Bonjour,\n\n{name} ne répondra pas à votre demande de devis{v} ({supplierCategoryLabel}).{v2}", { name, v: r.event ? t(" pour « {event} »", { event: r.event.title }) : "", supplierCategoryLabel: supplierCategoryLabel(r.category), v2: invite.declineNote ? t("\n\nMotif : {declineNote}", { declineNote: invite.declineNote }) : "" }), cta: { label: t("Voir la demande"), href: `/organisations/${r.organizationId}/prestataires/${r.id}` } }), actorId);
   });
 }
 
@@ -626,9 +634,9 @@ export function notifyRfqMessage(rfqId: string, supplierId: string, fromSupplier
     ]);
     if (!r || !supplier) return;
     if (fromSupplier) {
-      await send(await rfqContacts(r), (t) => ({ subject: t("Question {de_org} sur votre demande de devis", { de_org: de(supplier.name) }), text: t("Bonjour,\n\n{name} vous a écrit au sujet de votre demande de devis.", { name: supplier.name }), cta: { label: t("Répondre"), href: `/organisations/${r.organizationId}/prestataires#rfq-${r.id}` } }), authorId);
+      await send(await rfqContacts(r), (t) => ({ subject: t("Question {de_org} sur votre demande de devis", { de_org: de(supplier.name) }), text: t("Bonjour,\n\n{name} vous a écrit au sujet de votre demande de devis.", { name: supplier.name }), cta: { label: t("Répondre"), href: `/organisations/${r.organizationId}/prestataires/${r.id}` } }), authorId);
     } else {
-      await send(await supplierTeam(supplierId), (t) => ({ subject: t("Message {de_org} sur une demande de devis", { de_org: de(r.organization.name) }), text: t("Bonjour,\n\n{organization} vous a écrit au sujet de sa demande de devis.", { organization: r.organization.name }), cta: { label: t("Répondre"), href: `/organisations/${supplierId}/devis` } }), authorId);
+      await send(await supplierTeam(supplierId), (t) => ({ subject: t("Message {de_org} sur une demande de devis", { de_org: de(r.organization.name) }), text: t("Bonjour,\n\n{organization} vous a écrit au sujet de sa demande de devis.", { organization: r.organization.name }), cta: { label: t("Répondre"), href: `/organisations/${supplierId}/devis/${r.id}` } }), authorId);
     }
   });
 }

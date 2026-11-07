@@ -24,7 +24,7 @@ const ORG = "/organisations/demo-org-dentalys";
 const PROFILES = {
   public: [
     "/", "/experts", "/experts/demo-p-martin", "/evenements", "/evenements/demo-ev-soiree-implanto", "/appels", "/opportunites",
-    "/opportunites/demo-call-bordeaux", "/structures", "/structures/demo-org-dentalys", "/annuaire",
+    "/opportunites/demo-call-bordeaux", "/structures", "/structures/demo-org-dentalys", "/structures/demo-sup-belleville", "/annuaire",
     "/actualites", "/actualites/attestations-de-presence-et-questionnaire", "/aide", "/cgu", "/conditions-de-vente",
     "/confidentialite", "/mentions-legales", "/sous-traitance", "/connexion", "/inscription", "/mot-de-passe-oublie",
   ],
@@ -39,9 +39,14 @@ const PROFILES = {
     `${ORG}/dossiers`, `${ORG}/dossiers?etat=tous`, `${ORG}/dossiers/nouveau`, `${ORG}/dossiers/demo-prj-board`, `${ORG}/dossiers/demo-prj-symposium`,
     `${ORG}/devis`, `${ORG}/devis?onglet=fiche`, `${ORG}/intervenants`, `${ORG}/hospitalites`, `${ORG}/statistiques`, `${ORG}/membres`,
     `${ORG}/membres?onglet=organisation`, `${ORG}/prestataires`, `${ORG}/prestataires?onglet=agences`, `${ORG}/prestataires?onglet=demandes`,
-    `${ORG}/prestataires?onglet=nouvelle`, `${ORG}/conformite`, `${ORG}/conformite?onglet=autorisations`, `${ORG}/conformite?onglet=registre`,
+    `${ORG}/prestataires?onglet=nouvelle`, `${ORG}/prestataires?onglet=annuaire`, `${ORG}/prestataires/demo-rfq-cocktail`, `${ORG}/prestataires/demo-rfq-passe-cocktail`,
+    `${ORG}/conformite`, `${ORG}/conformite?onglet=autorisations`, `${ORG}/conformite?onglet=registre`,
     `${ORG}/conformite?onglet=transparence`, `${ORG}/conformite?onglet=parametres`, `${ORG}/relecture`, `${ORG}/integrations`,
     `${ORG}/abonnement`, `${ORG}/opportunites`, "/organisations/nouvelle",
+  ],
+  "ludovic.perrin@demo.kolbase.local": [
+    "/organisations/demo-sup-belleville", "/organisations/demo-sup-belleville/devis", "/organisations/demo-sup-belleville/devis/demo-rfq-cocktail",
+    "/organisations/demo-sup-belleville/devis/demo-rfq-passe-cocktail", "/organisations/demo-sup-belleville/book",
   ],
   "anne.chevalier@demo.kolbase.local": [
     "/admin", "/admin?onglet=organisations", "/admin?onglet=praticiens", "/admin?onglet=abonnements", "/admin?onglet=services",

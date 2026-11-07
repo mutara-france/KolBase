@@ -20,7 +20,7 @@ async function requireSupplierAdmin(orgId: string) {
   return ctx;
 }
 const refresh = (orgId: string) => {
-  revalidatePath(`/organisations/${orgId}/devis`);
+  revalidatePath(`/organisations/${orgId}/book`);
   revalidatePath(`/structures/${orgId}`);
 };
 
@@ -110,7 +110,7 @@ export async function reviewSupplier(_: FormState, form: FormData): Promise<Form
   const review = await db.supplierReview.create({ data: { supplierId: kept.supplierId, clientId: orgId, rfqId: rfq.id, authorId: user.id, rating, comment: str(form, "comment").slice(0, 1000) || null } });
   await audit(user.id, "supplier.review", "SupplierReview", review.id, { rating });
   notifySupplierReview(review.id);
-  revalidatePath(`/organisations/${orgId}/prestataires`);
+  revalidatePath(`/organisations/${orgId}/prestataires`, "layout");
   revalidatePath(`/structures/${kept.supplierId}`);
   return { ok: t("Merci : votre avis est publié sur la page du prestataire.") };
 }

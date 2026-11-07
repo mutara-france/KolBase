@@ -223,15 +223,15 @@ export const orgOverview = cache(async (orgId: string) => {
       // Agence consultée sur la demande : l'organisation la conduit seule, rien à faire ici pour l'agence.
       if (rfqConflict(r.suppliers.map((s) => s.supplierId), ownOrgs)) continue;
       const label = r.event?.title ?? t("Demande de devis");
-      if (r.status === "draft") todos.push({ href: `${base}/prestataires`, title: t("Demande de devis à envoyer : {title}", { title: label }), icon: "Receipt" });
+      if (r.status === "draft") todos.push({ href: `${base}/prestataires/${r.id}`, title: t("Demande de devis à envoyer : {title}", { title: label }), icon: "Receipt" });
       else if (r.proposedQuoteId && can.organizer)
-        todos.push({ href: `${base}/prestataires#rfq-${r.id}`, title: t("Devis à retenir : {title}", { title: label }), detail: t("Proposé par l'agence mandatée"), icon: "Receipt", tone: "warn" });
+        todos.push({ href: `${base}/prestataires/${r.id}`, title: t("Devis à retenir : {title}", { title: label }), detail: t("Proposé par l'agence mandatée"), icon: "Receipt", tone: "warn" });
       else if (r._count.quotes > 0)
-        todos.push({ href: `${base}/prestataires`, title: t("Devis à comparer : {title}", { title: label }), detail: t(r._count.suppliers > 1 ? (r._count.quotes > 1 ? "{n} devis reçus sur {m} prestataires" : "{n} devis reçu sur {m} prestataires") : "{n} devis reçu sur {m} prestataire", { n: r._count.quotes, m: r._count.suppliers }), icon: "Receipt", tone: "warn" });
+        todos.push({ href: `${base}/prestataires/${r.id}`, title: t("Devis à comparer : {title}", { title: label }), detail: t(r._count.suppliers > 1 ? (r._count.quotes > 1 ? "{n} devis reçus sur {m} prestataires" : "{n} devis reçu sur {m} prestataires") : "{n} devis reçu sur {m} prestataire", { n: r._count.quotes, m: r._count.suppliers }), icon: "Receipt", tone: "warn" });
     }
   }
   for (const w of waitingQuotes)
-    todos.push({ href: `${base}/devis`, title: t("Devis demandé par {name}", { name: w.rfq.organization.name }), detail: w.rfq.event?.title ?? w.rfq.needs.slice(0, 60), icon: "Receipt", tone: "warn" });
+    todos.push({ href: `${base}/devis/${w.rfqId}`, title: t("Devis demandé par {name}", { name: w.rfq.organization.name }), detail: w.rfq.event?.title ?? w.rfq.needs.slice(0, 60), icon: "Receipt", tone: "warn" });
   // Prestataire : après un premier devis retenu, l'abonnement est à activer pour répondre à de nouvelles demandes.
   if (org.kind === "PRESTATAIRE" && roles.includes("ADMIN") && (await billingBlocked(orgId, "reponse")))
     todos.unshift({ href: subscribeHref(orgId, "reponse"), title: t("Activer l'abonnement"), detail: t("Premier devis retenu : l'abonnement (premier mois offert) permet de répondre à de nouvelles demandes"), icon: "Receipt", tone: "warn" });
@@ -259,9 +259,9 @@ export const orgOverview = cache(async (orgId: string) => {
       if (seen.has(key)) continue;
       seen.add(key);
       if (isSupplier && !m.fromSupplier)
-        todos.push({ href: `${base}/devis`, title: from("Message de {name}", m.rfq.organization.name), detail: m.rfq.event?.title ?? t("Demande de devis"), icon: "MessageSquare", tone: "warn" });
+        todos.push({ href: `${base}/devis/${m.rfqId}`, title: from("Message de {name}", m.rfq.organization.name), detail: m.rfq.event?.title ?? t("Demande de devis"), icon: "MessageSquare", tone: "warn" });
       if (!isSupplier && m.fromSupplier)
-        todos.push({ href: `${base}/prestataires#rfq-${m.rfqId}`, title: from("Question de {name}", m.supplier.name), detail: m.rfq.event?.title ?? t("Demande de devis"), icon: "MessageSquare", tone: "warn" });
+        todos.push({ href: `${base}/prestataires/${m.rfqId}`, title: from("Question de {name}", m.supplier.name), detail: m.rfq.event?.title ?? t("Demande de devis"), icon: "MessageSquare", tone: "warn" });
     }
   }
 
@@ -278,7 +278,7 @@ export const orgOverview = cache(async (orgId: string) => {
       },
     });
     for (const r of confided) {
-      const href = `/organisations/${r.organizationId}/prestataires#rfq-${r.id}`;
+      const href = `/organisations/${r.organizationId}/prestataires/${r.id}`;
       const label = r.event?.title ?? t("Demande de devis");
       if (r._count.quotes > 0 && !r.proposedQuoteId)
         todos.push({ href, title: t("Devis à comparer : {title}", { title: label }), detail: `${r.organization.name} · ${t(r._count.quotes > 1 ? "{n} devis reçus" : "{n} devis reçu", { n: r._count.quotes })}`, icon: "Receipt", tone: "warn" });

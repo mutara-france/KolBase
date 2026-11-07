@@ -102,7 +102,7 @@ export function resumeAction(orgId: string, motive: Motive | null, objet?: strin
     case "evenement": return id ? { href: `${base}/evenements/${id}`, label: "Publier maintenant", publish: id } : { href: `${base}/evenements`, label: "Revenir aux événements" };
     case "sollicitation": return id ? { href: `${base}/dossiers/${id}?onglet=experts&solliciter=1#solliciter`, label: "Revenir au dossier" } : { href: `${base}/dossiers/nouveau`, label: "Envoyer les sollicitations" };
     case "appel": return { href: `${base}/opportunites#nouvel-appel`, label: "Publier l'opportunité" };
-    case "devis": return { href: id ? `${base}/prestataires#rfq-${id}` : `${base}/prestataires?onglet=nouvelle`, label: "Envoyer la demande de devis" };
+    case "devis": return { href: id ? `${base}/prestataires/${id}` : `${base}/prestataires?onglet=nouvelle`, label: "Envoyer la demande de devis" };
     case "reponse": return { href: `${base}/devis`, label: "Répondre aux demandes de devis" };
     case "proposition": return { href: id ? `${base}/dossiers/${id}` : `${base}/dossiers`, label: "Revenir à la proposition" };
     default: return null;

@@ -11,7 +11,7 @@ export const NAV_COOKIE = "kb_nav";
  * les pages d'une même rubrique se retrouvant en onglets. Module sans dépendance serveur (utilisé aussi côté client).
  */
 
-export type ShellIcon = "House" | "Users" | "Folder" | "FileText" | "CalendarDays" | "ShieldCheck" | "Send" | "Megaphone" | "UserRound" | "Receipt" | "Plug" | "ExternalLink" | "Wallet" | "BarChart3";
+export type ShellIcon = "House" | "Users" | "Folder" | "FileText" | "CalendarDays" | "ShieldCheck" | "Send" | "Megaphone" | "UserRound" | "Receipt" | "Plug" | "ExternalLink" | "Wallet" | "BarChart3" | "Store";
 export type ShellItem = { key: string; href: string; label: string; short?: string; icon: ShellIcon; badge?: number; match?: string[]; exact?: boolean; /** Absente de la barre du bas (mobile) quand elle compterait plus de cinq entrées. */ secondary?: boolean };
 export type ShellLink = { href: string; label: string; icon: ShellIcon };
 export type ShellSpace = {
@@ -48,6 +48,7 @@ export function orgNavItems(orgId: string, roles: OrgRole[], kind: string): Shel
   const items: ShellItem[] = [{ key: "accueil", href: base, label: "Accueil", icon: "House", exact: true }];
   if (kind === "PRESTATAIRE") {
     items.push({ key: "devis", href: `${base}/devis`, label: "Demandes de devis", short: "Devis", icon: "Receipt" });
+    items.push({ key: "book", href: `${base}/book`, label: "Mon book", short: "Book", icon: "Store" });
     return items;
   }
   if (has(roles, SOURCING_ROLES))

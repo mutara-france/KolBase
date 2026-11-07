@@ -6,7 +6,7 @@ import { db } from "@/lib/db";
 import { audit } from "@/lib/auth";
 import { isSuspendedOrg, isVerifiedOrg, notVerified, ORG_SUSPENDED, requireMembership } from "@/lib/orgs";
 import { EVENT_MANAGER_ROLES, EVENT_ORGANIZER_ROLES, eventScope, parseParisDateTime } from "@/lib/events";
-import { canCancelRfq, SUPPLIER_CATEGORIES } from "@/lib/suppliers";
+import { canCancelRfq, remindable, SUPPLIER_CATEGORIES } from "@/lib/suppliers";
 import { eurToCents, intOrNull, str } from "@/lib/form";
 import { defaultVatBp, isVatBp, linesTotal, linesTtc, mainVat, MAX_LINES, quoteTtc, withVat, type QuoteLine } from "@/lib/quotes";
 import { MAX_UPLOAD_BYTES, putObject, safeFileName, storageEnabled } from "@/lib/storage";
@@ -76,7 +76,7 @@ export async function createRfq(_: ActionState, form: FormData): Promise<ActionS
   });
   await audit(user.id, send ? "rfq.send" : "rfq.create", "Rfq", rfq.id, { suppliers: supplierIds.length });
   if (send) notifyRfqSent(rfq.id);
-  redirect(`/organisations/${orgId}/prestataires`);
+  redirect(`/organisations/${orgId}/prestataires/${rfq.id}`);
 }
 
 export async function sendRfq(form: FormData) {
@@ -91,7 +91,7 @@ export async function sendRfq(form: FormData) {
   if (!count) return;
   await audit(user.id, "rfq.send", "Rfq", rfqId);
   notifyRfqSent(rfqId);
-  revalidatePath(`/organisations/${orgId}/prestataires`);
+  revalidatePath(`/organisations/${orgId}/prestataires`, "layout");
 }
 
 /**
@@ -110,7 +110,7 @@ export async function cancelRfq(form: FormData) {
   if (!count) return;
   await audit(user.id, "rfq.cancel", "Rfq", rfqId);
   notifyRfqCancelled(rfqId, user.id);
-  revalidatePath(`/organisations/${orgId}/prestataires`);
+  revalidatePath(`/organisations/${orgId}/prestataires`, "layout");
 }
 
 /** Retenir un devis : les autres propositions passent en « non retenu ». */
@@ -142,7 +142,7 @@ export async function awardQuote(form: FormData) {
     const client = (await db.organization.findUnique({ where: { id: orgId }, select: { name: true } }))?.name ?? "Une organisation";
     if (await markSupplierTriggered(quote.supplierId, `Premier devis retenu par ${client}`)) notifySupplierBilling(quote.supplierId, client);
   }
-  revalidatePath(`/organisations/${orgId}/prestataires`);
+  revalidatePath(`/organisations/${orgId}/prestataires`, "layout");
 }
 
 /** Agence mandatée sans droit de retenir : elle propose un devis aux organisateurs, qui décident. */
@@ -156,7 +156,68 @@ export async function proposeQuote(form: FormData) {
   await db.rfq.update({ where: { id: quote.rfqId }, data: { proposedQuoteId: quote.id, proposedById: user.id, proposedAt: new Date() } });
   await audit(user.id, "rfq.propose", "Rfq", quote.rfqId, { quoteId: quote.id, supplierId: quote.supplierId, amountCents: quote.amountCents });
   notifyQuoteProposed(quote.rfqId, user.id);
-  revalidatePath(`/organisations/${orgId}/prestataires`);
+  revalidatePath(`/organisations/${orgId}/prestataires`, "layout");
+}
+
+/** Droits sur une demande envoyée (ajouter, relancer, demander une version à jour) : équipe de l'événement, hors conflit d'intérêts. */
+async function sentRfqFor(orgId: string, rfqId: string) {
+  const { user, roles } = await requireMembership(orgId, EVENT_MANAGER_ROLES);
+  const rfq = await db.rfq.findFirst({ where: { id: rfqId, organizationId: orgId, ...rfqScope(user, roles), status: "sent" }, include: { suppliers: true, quotes: { select: { supplierId: true } } } });
+  if (!rfq || (await rfqConflicted(rfqId, user))) return null;
+  return { user, rfq };
+}
+
+/** Consulter un ou plusieurs prestataires de plus sur une demande déjà envoyée (même catégorie, référencés). */
+export async function addRfqSuppliers(form: FormData) {
+  const orgId = str(form, "orgId");
+  const rfqId = str(form, "rfqId");
+  const ctx = await sentRfqFor(orgId, rfqId);
+  if (!ctx) return;
+  const { user, rfq } = ctx;
+  const ids = [...new Set(form.getAll("supplierIds").map(String))].filter((id) => !rfq.suppliers.some((s) => s.supplierId === id));
+  if (ids.length === 0) return;
+  // Une agence ne se consulte pas elle-même pour le compte du client.
+  const ok = await db.organization.findMany({
+    where: { id: { in: ids, notIn: ownSuppliers(user) }, kind: "PRESTATAIRE", listed: true, verification: "VERIFIED", supplierCategories: { has: rfq.category } },
+    select: { id: true },
+  });
+  if (ok.length === 0) return;
+  await db.rfqSupplier.createMany({ data: ok.map((s) => ({ rfqId, supplierId: s.id })), skipDuplicates: true });
+  await audit(user.id, "rfq.add_suppliers", "Rfq", rfqId, { suppliers: ok.length });
+  notifyRfqSent(rfqId, { only: ok.map((s) => s.id) });
+  revalidatePath(`/organisations/${orgId}/prestataires`, "layout");
+}
+
+/** Relancer les prestataires consultés restés sans réponse (ni devis, ni déclin) : au plus une fois par 48 heures chacun. */
+export async function remindRfqSuppliers(form: FormData) {
+  const orgId = str(form, "orgId");
+  const rfqId = str(form, "rfqId");
+  const ctx = await sentRfqFor(orgId, rfqId);
+  if (!ctx) return;
+  const { user, rfq } = ctx;
+  const ids = remindable(rfq).map((s) => s.supplierId);
+  if (ids.length === 0) return;
+  await db.rfqSupplier.updateMany({ where: { rfqId, supplierId: { in: ids } }, data: { remindedAt: new Date() } });
+  await audit(user.id, "rfq.remind", "Rfq", rfqId, { suppliers: ids.length });
+  notifyRfqSent(rfqId, { only: ids, reminder: true });
+  revalidatePath(`/organisations/${orgId}/prestataires`, "layout");
+}
+
+/** Demander au prestataire une version à jour de son devis (offre expirée, conditions à revoir) : un message dans son fil. */
+export async function requestQuoteUpdate(form: FormData) {
+  const { t, locale } = await getT();
+  const orgId = str(form, "orgId");
+  const quote = await db.quote.findFirst({ where: { id: str(form, "quoteId"), rfq: { organizationId: orgId } }, select: { rfqId: true, supplierId: true, validUntil: true } });
+  if (!quote) return;
+  const ctx = await sentRfqFor(orgId, quote.rfqId);
+  if (!ctx) return;
+  const body = quote.validUntil && quote.validUntil < new Date()
+    ? t("Votre offre a expiré le {date}. Pouvez-vous nous envoyer une version à jour de votre devis ?", { date: quote.validUntil.toLocaleDateString(locale === "en" ? "en-GB" : "fr-FR", { timeZone: "Europe/Paris" }) })
+    : t("Pouvez-vous nous envoyer une version à jour de votre devis ?");
+  await db.rfqMessage.create({ data: { rfqId: quote.rfqId, supplierId: quote.supplierId, authorId: ctx.user.id, body, fromSupplier: false } });
+  await audit(ctx.user.id, "rfq.request_update", "Rfq", quote.rfqId, { supplierId: quote.supplierId });
+  notifyRfqMessage(quote.rfqId, quote.supplierId, false, ctx.user.id);
+  revalidatePath(`/organisations/${orgId}/prestataires`, "layout");
 }
 
 /**
@@ -205,7 +266,7 @@ export async function postRfqMessage(_: ActionState, form: FormData): Promise<Ac
   await db.rfqMessage.create({ data: { rfqId, supplierId, authorId: user.id, body, fromSupplier } });
   await audit(user.id, "rfq.message", "Rfq", rfqId, { supplierId, fromSupplier });
   notifyRfqMessage(rfqId, supplierId, fromSupplier, user.id);
-  revalidatePath(fromSupplier ? `/organisations/${orgId}/devis` : `/organisations/${orgId}/prestataires`);
+  revalidatePath(fromSupplier ? `/organisations/${orgId}/devis` : `/organisations/${orgId}/prestataires`, "layout");
   // Messagerie du dossier (fils des prestataires de son événement).
   if (!fromSupplier) revalidatePath(`/organisations/${orgId}/dossiers`, "layout");
   return { ok: t("Message envoyé.") };
@@ -289,7 +350,7 @@ export async function submitQuote(_: ActionState, form: FormData): Promise<Actio
   if (invite.declined) await db.rfqSupplier.update({ where: { rfqId_supplierId: { rfqId, supplierId: orgId } }, data: { declined: false, declineNote: null, declinedAt: null } });
   await audit(user.id, existing ? "quote.revise" : "quote.submit", "Quote", q.id, { rfqId, amountCents, revision: existing ? existing.revision + 1 : 1 });
   notifyQuote(rfqId, orgId, !!existing);
-  revalidatePath(`/organisations/${orgId}/devis`);
+  revalidatePath(`/organisations/${orgId}/devis`, "layout");
   return { ok: existing ? `Devis révisé (version ${existing.revision + 1}).` : t("Devis transmis.") };
 }
 
@@ -303,7 +364,7 @@ export async function declineRfq(form: FormData) {
   if (!count) return;
   await audit(user.id, "rfq.decline", "Rfq", rfqId, { supplierId: orgId, note: declineNote ?? undefined });
   notifyRfqDeclined(rfqId, orgId, user.id);
-  revalidatePath(`/organisations/${orgId}/devis`);
+  revalidatePath(`/organisations/${orgId}/devis`, "layout");
 }
 
 export async function updateSupplierProfile(_: ActionState, form: FormData): Promise<ActionState> {
@@ -318,7 +379,7 @@ export async function updateSupplierProfile(_: ActionState, form: FormData): Pro
   const listed = asked && isVerifiedOrg(ctxOrg);
   await db.organization.update({ where: { id: orgId }, data: { supplierCategories: categories, coverage: str(form, "coverage") || null, listed } });
   await audit(user.id, "supplier.profile", "Organization", orgId, { categories, listed });
-  revalidatePath(`/organisations/${orgId}/devis`);
+  revalidatePath(`/organisations/${orgId}/book`);
   if (asked && !listed)
     return { ok: isSuspendedOrg(ctxOrg) ? `Catégories et zone enregistrées. ${ORG_SUSPENDED}` : t("Catégories et zone enregistrées. Le référencement dans l'annuaire suivra la validation de l'organisation par KolBase.") };
   return { ok: t("Fiche prestataire enregistrée.") };
