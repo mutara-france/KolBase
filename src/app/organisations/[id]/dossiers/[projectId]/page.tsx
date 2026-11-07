@@ -719,7 +719,7 @@ export default async function Page({ params, searchParams }: { params: Promise<{
                   {recruitmentOpen(project.status) && <Link className="btn ghost small" href={`/organisations/${id}/opportunites?evenement=${selectedEvent.id}#nouvel-appel`}>{t("Publier une opportunité")}</Link>}
                 </SectionHead>
                 {calls.length > 0 && (
-                  <ul className="row-list">
+                  <ul className="opp-list">
                     {calls.map((c) => {
                       const kept = c.applications.filter((a) => a.status === "retained");
                       const pending = c.applications.filter((a) => a.status === "pending").length;

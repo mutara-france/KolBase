@@ -1421,10 +1421,10 @@ a.doc-chip:hover { text-decoration: none; border-color: #cfc8f5; background: var
 .add-card[open] > summary .sec-head { margin-bottom: 16px; }
 .add-card > summary:hover h3 { color: var(--outremer); }
 .add-card:not([open]) { border-style: dashed; background: var(--bg-subtle); }
-.row-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; }
-.row-list li { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; padding: 12px 0; border-top: 1px solid var(--line); }
-.row-list li:first-child { border-top: 0; padding-top: 2px; }
-.row-list .grow { flex: 1 1 220px; min-width: 0; }
+.opp-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; }
+.opp-list li { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; padding: 12px 0; border-top: 1px solid var(--line); }
+.opp-list li:first-child { border-top: 0; padding-top: 2px; }
+.opp-list .grow { flex: 1 1 220px; min-width: 0; }
 
 /* Documents : une ligne par convention */
 .convention-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; border: 1px solid var(--line); border-radius: 14px; overflow: hidden; }
