@@ -4562,7 +4562,9 @@ async function submitNewOrg(page, siren) {
   check("Dossier en examen : retard du délai interne signalé", (await text(so.page)).includes("Examen par la conformité en retard de"));
   check("Fiche dossier : une décision de la conformité reste visible (Bloquer)", (await so.page.locator('.next-step button:has-text("Bloquer")').count()) === 1);
   await so.page.goto(`${BASE}/organisations/demo-org-dentalys/conformite`);
-  check("À valider : colonne Échéance, retard signalé", (await so.page.locator('tr:has-text("Symposium ADF") .pill.bad').innerText().catch(() => "")).includes("En retard de"));
+  // Cellule « Échéance » de la ligne (la colonne Conflits peut aussi porter une pastille rouge).
+  const dueCell = await so.page.locator('section:has(h2:has-text("Dossiers à valider")) tr:has-text("Symposium ADF") td[data-label="Échéance"]').first().innerText().catch(() => "");
+  check("À valider : colonne Échéance, retard signalé", /en retard de/i.test(dueCell), dueCell);
   const cron = () => fetch(`${BASE}/api/taches`, { method: "POST", headers: { Authorization: `Bearer ${process.env.CRON_SECRET ?? "secret-des-taches-de-test"}` } }).then((r) => r.json());
   const r1 = await cron();
   check("Tâches planifiées : examen en retard relancé", r1.reviewReminders >= 1 && !!(await waitMail("sophie.bernard@demo.kolbase.local", "Examen en retard : Symposium ADF")), JSON.stringify(r1));
