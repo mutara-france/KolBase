@@ -8,6 +8,7 @@ import { db } from "@/lib/db";
 import { requireUser } from "@/lib/auth";
 import { callFull, COLLAB_TYPES, collabType } from "@/lib/projects";
 import { fmtDate, fmtEur } from "@/lib/i18n";
+import { ActiveFilters, FilterSelect } from "@/components/Filters";
 import { getT } from "@/lib/i18n/server";
 
 export async function generateMetadata() {
@@ -15,12 +16,25 @@ export async function generateMetadata() {
   return { title: `${t("Opportunités")} — KolBase` };
 }
 
-export default async function Page({ searchParams }: { searchParams: Promise<{ type?: string; q?: string; evenement?: string }> }) {
+type Search = { type?: string; q?: string; evenement?: string; specialite?: string; ville?: string; candidature?: string; tri?: string };
+
+export default async function Page({ searchParams }: { searchParams: Promise<Search> }) {
   const user = await requireUser();
   if (!user.practitioner?.listed) redirect("/compte?candidater=1#referencement");
-  const { type = "", q = "", evenement = "" } = await searchParams;
+  const { type = "", q = "", evenement = "", specialite = "", ville = "", candidature = "", tri = "" } = await searchParams;
   const { t, locale } = await getT();
   const now = new Date();
+  const open = {
+    status: "open" as const,
+    organization: { verification: "VERIFIED" as const },
+    AND: [{ OR: [{ deadline: null }, { deadline: { gte: now } }] }, { OR: [{ eventId: null }, { event: { startsAt: { gte: now } } }] }],
+  };
+  // Valeurs proposées dans les filtres : celles des opportunités ouvertes.
+  const facets = await db.openCall.findMany({ where: open, select: { specialty: true, typeId: true, event: { select: { city: true } } } });
+  const specialties = [...new Set(facets.map((f) => f.specialty).filter((x): x is string => !!x))].sort((a, b) => a.localeCompare(b, "fr"));
+  const cities = [...new Set(facets.map((f) => f.event?.city).filter((x): x is string => !!x))].sort((a, b) => a.localeCompare(b, "fr"));
+  const types = COLLAB_TYPES.filter((x) => facets.some((f) => f.typeId === x.id));
+  const mine = user.practitioner.specialty;
   const calls = await db.openCall.findMany({
     where: {
       status: "open",
@@ -33,6 +47,9 @@ export default async function Page({ searchParams }: { searchParams: Promise<{ t
       ],
       ...(evenement === "avec" ? { eventId: { not: null } } : evenement === "sans" ? { eventId: null } : {}),
       ...(type ? { typeId: type } : {}),
+      ...(specialite ? { specialty: specialite } : {}),
+      ...(ville ? { event: { city: ville } } : {}),
+      ...(candidature === "sans" ? { applications: { none: { practitionerId: user.practitioner.id } } } : candidature === "avec" ? { applications: { some: { practitionerId: user.practitioner.id } } } : {}),
     },
     include: {
       organization: { select: { name: true } },
@@ -41,9 +58,12 @@ export default async function Page({ searchParams }: { searchParams: Promise<{ t
       // Places pourvues : l'appel est affiché « Complet ».
       _count: { select: { applications: { where: { status: "retained" } } } },
     },
-    orderBy: [{ deadline: "asc" }, { createdAt: "desc" }],
+    // Tri : échéance la plus proche (par défaut), plus récentes, ou budget le plus élevé.
+    orderBy: tri === "recentes" ? [{ createdAt: "desc" }] : tri === "budget" ? [{ budgetMaxCents: { sort: "desc", nulls: "last" } }, { deadline: "asc" }] : [{ deadline: { sort: "asc", nulls: "last" } }, { createdAt: "desc" }],
     take: 100,
   });
+  const params = { q, type, evenement, specialite, ville, candidature, tri };
+  const typeLabel = (id: string) => t(collabType(id)?.label ?? id);
 
   return (
     <>
@@ -51,25 +71,36 @@ export default async function Page({ searchParams }: { searchParams: Promise<{ t
       <main className="stack">
         <SectionNav tabs={practitionerSectionTabs("opportunites").map((tab) => ({ ...tab, label: t(tab.label) }))} active="appels" label={t("Rubrique Opportunités")} />
         <PageHead title={t("Opportunités")} desc={t("Les organisations cherchent des experts pour une collaboration (board, étude, rédaction…) ou pour intervenir à un événement (formation, symposium…). Candidatez : si vous êtes retenu, vous recevez une proposition d'honoraires.")} />
-        <form className="card form search">
-          <div className="row">
-            <label>{t("Recherche")}<input name="q" defaultValue={q} placeholder={t("Spécialité, ville, sujet…")} /></label>
-            <label>{t("Événement")}
-              <select name="evenement" defaultValue={evenement}>
-                <option value="">{t("Toutes les opportunités")}</option>
-                <option value="avec">{t("Intervenir à un événement")}</option>
-                <option value="sans">{t("Collaboration hors événement")}</option>
-              </select>
-            </label>
-            <label>{t("Type")}
-              <select name="type" defaultValue={type}>
-                <option value="">{t("Tous")}</option>
-                {COLLAB_TYPES.map((x) => <option key={x.id} value={x.id}>{t(x.label)}</option>)}
-              </select>
-            </label>
-          </div>
+        <form className="filter-bar boxed" role="search" action="/opportunites">
+          <label htmlFor="opp-q" className="sr-only">{t("Recherche")}</label>
+          <input id="opp-q" name="q" type="search" defaultValue={q} placeholder={t("Spécialité, ville, sujet…")} />
+          <FilterSelect name="evenement" label={t("Événement")} value={evenement} all={t("Avec ou sans événement")} options={[{ value: "avec", label: t("Intervenir à un événement") }, { value: "sans", label: t("Collaboration hors événement") }]} />
+          <FilterSelect name="type" label={t("Type")} value={type} all={t("Tous les types")} options={types.map((x) => ({ value: x.id, label: t(x.label) }))} />
+          {specialties.length > 0 && <FilterSelect name="specialite" label={t("Spécialité")} value={specialite} all={t("Toutes les spécialités")} options={specialties.map((x) => ({ value: x, label: t(x) }))} />}
+          {cities.length > 0 && <FilterSelect name="ville" label={t("Ville")} value={ville} all={t("Toutes les villes")} options={cities.map((x) => ({ value: x, label: x }))} />}
+          <FilterSelect name="candidature" label={t("Mes candidatures")} value={candidature} all={t("Avec ou sans ma candidature")} options={[{ value: "sans", label: t("Sans ma candidature") }, { value: "avec", label: t("Où j'ai candidaté") }]} />
+          <FilterSelect name="tri" label={t("Trier")} value={tri} all={t("Échéance la plus proche")} options={[{ value: "recentes", label: t("Plus récentes") }, { value: "budget", label: t("Budget le plus élevé") }]} />
           <button className="btn">{t("Filtrer")}</button>
         </form>
+        <div className="list-meta">
+          <span className="muted text-sm">{t(calls.length > 1 ? "{n} opportunités" : "{n} opportunité", { n: calls.length })}</span>
+          {mine && specialite !== mine && specialties.includes(mine) && <Link className="chip" href={`/opportunites?${new URLSearchParams(Object.entries({ ...params, specialite: mine }).filter(([, v]) => v))}`}>{t("Ma spécialité : {s}", { s: t(mine) })}</Link>}
+        </div>
+        <ActiveFilters
+          path="/opportunites"
+          params={params}
+          ariaLabel={t("Filtres actifs")}
+          clearLabel={t("Tout effacer")}
+          labels={{
+            q: q && t("Recherche : {value}", { value: q }),
+            evenement: evenement && (evenement === "avec" ? t("Intervenir à un événement") : t("Collaboration hors événement")),
+            type: type && t("Type : {value}", { value: typeLabel(type) }),
+            specialite: specialite && t("Spécialité : {value}", { value: t(specialite) }),
+            ville: ville && t("Ville : {value}", { value: ville }),
+            candidature: candidature && (candidature === "sans" ? t("Sans ma candidature") : t("Où j'ai candidaté")),
+            tri: tri && (tri === "recentes" ? t("Plus récentes") : t("Budget le plus élevé")),
+          }}
+        />
         {calls.length === 0 && <p className="muted">{t("Aucune opportunité ouverte pour ces critères.")}</p>}
         <div className="grid">
           {calls.map((c) => (

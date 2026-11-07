@@ -44,7 +44,7 @@ export default function Page() {
           <>Pour les données personnelles qu&apos;elle traite dans KolBase (experts, inscrits, conventions), l&apos;organisation est responsable de traitement et l&apos;éditeur agit comme sous-traitant selon le <Link href="/sous-traitance">contrat de sous-traitance</Link>.</>,
         ]}</P>],
         ["Prestataires et agences", <P key="6">{[
-          "Le référencement d'un prestataire, sa fiche, son book et la réception de demandes de devis sont gratuits. Le prestataire décrit fidèlement ses prestations, ses tarifs et ses références ; les avis affichés proviennent uniquement d'organisations l'ayant effectivement retenu.",
+          "Le référencement d'un prestataire, sa page et la réception de demandes de devis sont gratuits. Le prestataire décrit fidèlement ses prestations, ses tarifs et ses références ; les avis affichés proviennent uniquement d'organisations l'ayant effectivement retenu.",
           "Les devis sont établis sous la seule responsabilité du prestataire, qui contracte directement avec l'organisation. L'éditeur n'intervient ni dans leur négociation ni dans leur exécution.",
           "Une agence mandatée accède aux seuls événements que l'organisation lui confie, pendant la durée du mandat, et y agit au nom de cette organisation.",
         ]}</P>],

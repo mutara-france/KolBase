@@ -15,7 +15,7 @@ import { RFQ_STATUS, rfqDisplayStatus, rfqGroup, SUPPLIER_CATEGORIES, supplierCa
 import { endMandate, setMandateAward } from "@/lib/event-actions";
 import { quoteTtc } from "@/lib/quotes";
 import { orgRfqs, supplierDirectory, type DirectorySupplier, type OrgRfq } from "@/lib/rfq-org";
-import { CAPACITY_LABEL, OFFER_UNITS, photoSrc, readCapacities } from "@/lib/supplier-book";
+import { bannerSrc, CAPACITY_LABEL, OFFER_UNITS, photoSrc, readCapacities } from "@/lib/supplier-book";
 import { logoSrc } from "@/lib/logos";
 import { BillingNotice } from "@/components/BillingNotice";
 import { engagementBlock } from "@/lib/billing";
@@ -42,9 +42,13 @@ export default async function Page({ params, searchParams }: { params: Promise<{
   const { rfqs, mandates, creators, isOrganizer, now } = await orgRfqs(id, user, roles);
   // Une agence ne se consulte pas elle-même pour le compte du client.
   const ownIds = user.memberships.map((m) => m.organizationId);
-  const [suppliers, events] = await Promise.all([
+  const [suppliers, events, fromExpert] = await Promise.all([
     supplierDirectory(ownIds),
     onglet === "nouvelle" ? db.event.findMany({ where: { organizationId: id, ...scope, startsAt: { gte: now } }, orderBy: { startsAt: "asc" } }) : Promise.resolve([]),
+    // Événement d'un dossier proposé par un expert : ses besoins logistiques préremplissent le besoin.
+    onglet === "nouvelle" && evenement
+      ? db.event.findFirst({ where: { id: evenement, organizationId: id, ...scope }, select: { project: { select: { proposal: { select: { logistics: true } } } } } })
+      : Promise.resolve(null),
   ]);
   const awarded = rfqs.filter((r) => r.status === "awarded");
   // Montants retenus visibles seulement (une agence consultée ne voit pas celui d'un concurrent).
@@ -82,6 +86,7 @@ export default async function Page({ params, searchParams }: { params: Promise<{
               defaultEventId={evenement}
               defaultCategory={cat}
               defaultSupplier={prestataire}
+              defaultNeeds={fromExpert?.project?.proposal?.logistics ?? undefined}
             />
           </>
         ) : (
@@ -284,9 +289,9 @@ function SupplierCard({ s, t, locale, askHref }: { s: DirectorySupplier; t: T; l
   const capKeys = (Object.keys(caps) as (keyof typeof caps)[]).slice(0, 2);
   return (
     <article className="card supplier-card">
-      <div className={`supplier-cover cat-bg-${s.categories[0]}${s.cover ? " photo" : ""}`}>
+      <div className={`supplier-cover cat-bg-${s.categories[0]}${s.banner || s.cover ? " photo" : ""}`}>
         {/* eslint-disable-next-line @next/next/no-img-element */}
-        {s.cover ? <img src={photoSrc(s.cover)} alt="" loading="lazy" /> : <CategoryIcon category={s.categories[0]} size={26} className="lg" />}
+        {s.banner ? <img src={bannerSrc(s.banner)!} alt="" loading="lazy" /> : s.cover ? <img src={photoSrc(s.cover)} alt="" loading="lazy" /> : <CategoryIcon category={s.categories[0]} size={26} className="lg" />}
       </div>
       <div className="supplier-card-body">
         <div className="supplier-card-head">
@@ -307,7 +312,7 @@ function SupplierCard({ s, t, locale, askHref }: { s: DirectorySupplier; t: T; l
         </ul>
         <div className="supplier-card-actions">
           <Link className="btn small" href={askHref}>{t("Demander un devis")}</Link>
-          <a className="btn ghost small" href={`/structures/${s.id}`} target="_blank" rel="noreferrer">{t("Voir le book")}</a>
+          <a className="btn ghost small" href={`/structures/${s.id}`} target="_blank" rel="noreferrer">{t("Voir sa page")}</a>
         </div>
       </div>
     </article>

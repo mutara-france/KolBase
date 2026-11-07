@@ -42,8 +42,8 @@ export default async function Page({ params, searchParams }: { params: Promise<{
   const { t, locale } = await getT();
   const { id } = await params;
   const { onglet } = await searchParams;
-  // « Mon book » a sa propre page.
-  if (onglet === "fiche") redirect(`/organisations/${id}/book`);
+  // La page du prestataire a sa propre adresse.
+  if (onglet === "fiche") redirect(`/organisations/${id}/page-prestataire`);
   const { org } = await requireMembership(id);
   if (org.kind !== "PRESTATAIRE") redirect(`/organisations/${id}`);
 
@@ -74,10 +74,10 @@ export default async function Page({ params, searchParams }: { params: Promise<{
       <SiteHeader />
       <main className="stack">
         <PageHead title={t("Demandes de devis")} desc={t("Les demandes des organisations : répondez par un devis détaillé, échangez, suivez vos prestations retenues.")}>
-          <Link className="btn ghost" href={`/organisations/${id}/book`}><Store size={15} /> {t("Mon book")}</Link>
+          <Link className="btn ghost" href={`/organisations/${id}/page-prestataire`}><Store size={15} /> {t("Ma page prestataire")}</Link>
         </PageHead>
         <BillingNotice orgId={id} motive="reponse" />
-        {!org.listed && <p className="notice warn">{t("Votre organisation n'apparaît pas dans l'annuaire des prestataires. Complétez la fiche prestataire pour être consulté.")} <Link href={`/organisations/${id}/book`}>{t("Mon book")}</Link></p>}
+        {!org.listed && <p className="notice warn">{t("Votre organisation n'apparaît pas dans l'annuaire des prestataires. Complétez votre page prestataire pour être consulté.")} <Link href={`/organisations/${id}/page-prestataire`}>{t("Ma page prestataire")}</Link></p>}
         <div className="stats">
           <div className="card stat"><span className="muted">{t("À traiter")}</span><strong>{todo.length}</strong></div>
           <div className="card stat"><span className="muted">{t("Devis retenus")}</span><strong>{won.length}</strong></div>
@@ -85,8 +85,8 @@ export default async function Page({ params, searchParams }: { params: Promise<{
         </div>
         {invites.length === 0 && (
           <div className="card empty">
-            <EmptyState icon={Inbox} title={t("Aucune demande reçue.")} action={<Link className="btn secondary small" href={`/organisations/${id}/book`}>{t("Compléter mon book")}</Link>}>
-              {t("Les organisations vous adressent leurs demandes de devis depuis votre fiche prestataire.")}
+            <EmptyState icon={Inbox} title={t("Aucune demande reçue.")} action={<Link className="btn secondary small" href={`/organisations/${id}/page-prestataire`}>{t("Compléter ma page prestataire")}</Link>}>
+              {t("Les organisations vous adressent leurs demandes de devis depuis votre page prestataire.")}
             </EmptyState>
           </div>
         )}

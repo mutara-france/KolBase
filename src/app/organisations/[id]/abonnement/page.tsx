@@ -119,7 +119,7 @@ export default async function Page({ params, searchParams }: { params: Promise<{
           <SectionHead icon={PackageCheck} title={t("Ce qui est compris")} />
           {supplier ? (
             <ul className="plain check-list">
-              <li><CheckCircle2 size={15} /> <span><strong>{t("Gratuit :")}</strong>{" "}{t("référencement dans l'annuaire, book, réception des demandes de devis et réponses jusqu'au premier devis retenu")}{won ? ` ${t("(vous en avez {won})", { won })}` : ""}.</span></li>
+              <li><CheckCircle2 size={15} /> <span><strong>{t("Gratuit :")}</strong>{" "}{t("référencement dans l'annuaire, page prestataire, réception des demandes de devis et réponses jusqu'au premier devis retenu")}{won ? ` ${t("(vous en avez {won})", { won })}` : ""}.</span></li>
               <li><CheckCircle2 size={15} /> <span><strong>{t("Abonnement :")}</strong>{" "}{t("répondre à de nouvelles demandes après un premier devis retenu ; les prestations retenues et les échanges en cours restent toujours accessibles.")}</span></li>
               <li><CheckCircle2 size={15} /> <span>{t("Payer ne change jamais votre place dans l'annuaire.")}</span></li>
             </ul>

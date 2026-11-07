@@ -146,8 +146,13 @@ export const PROPOSAL_ANSWER_LABEL: Record<ProposalAnswer, string> = {
 };
 
 /** Texte reçu par l'organisation : l'objectif, puis le public et le calendrier quand l'expert les a précisés. */
-export function proposalText(p: { description: string; audience?: string | null; schedule?: string | null }) {
-  return [p.description, p.audience ? `Public et format : ${p.audience}` : null, p.schedule ? `Calendrier envisagé : ${p.schedule}` : null].filter(Boolean).join("\n\n");
+export function proposalText(p: { description: string; audience?: string | null; schedule?: string | null; logistics?: string | null }) {
+  return [
+    p.description,
+    p.audience ? `Public et format : ${p.audience}` : null,
+    p.schedule ? `Calendrier envisagé : ${p.schedule}` : null,
+    p.logistics ? `Besoins logistiques : ${p.logistics}` : null,
+  ].filter(Boolean).join("\n\n");
 }
 
 export const STATUS_TONE: Record<ProjectStatus, "wait" | "ok" | "bad" | "done"> = {

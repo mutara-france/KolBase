@@ -1531,12 +1531,12 @@ details.fold[open] > summary h2::after { content: " ▾"; }
 .supplier-cover.photo { height: 132px; background: var(--bg-subtle); }
 .supplier-cover img { width: 100%; height: 100%; object-fit: cover; display: block; }
 .supplier-cover .cat-icon.lg { background: #fff; box-shadow: 0 6px 18px rgba(14, 0, 102, 0.08); }
-.supplier-cover.cat-bg-restauration { background: linear-gradient(135deg, #fdeee7, #fff); }
-.supplier-cover.cat-bg-evenementiel { background: linear-gradient(135deg, #f3e8fd, #fff); }
-.supplier-cover.cat-bg-communication { background: linear-gradient(135deg, #fbeaf1, #fff); }
-.supplier-cover.cat-bg-transport { background: linear-gradient(135deg, #e3f4f5, #fff); }
-.supplier-cover.cat-bg-impression { background: linear-gradient(135deg, var(--ok-bg), #fff); }
-.supplier-cover.cat-bg-hebergement { background: linear-gradient(135deg, #eeebfe, #fff); }
+:is(.supplier-cover, .vitrine-banner).cat-bg-restauration { background: linear-gradient(135deg, #fdeee7, #fff); }
+:is(.supplier-cover, .vitrine-banner).cat-bg-evenementiel { background: linear-gradient(135deg, #f3e8fd, #fff); }
+:is(.supplier-cover, .vitrine-banner).cat-bg-communication { background: linear-gradient(135deg, #fbeaf1, #fff); }
+:is(.supplier-cover, .vitrine-banner).cat-bg-transport { background: linear-gradient(135deg, #e3f4f5, #fff); }
+:is(.supplier-cover, .vitrine-banner).cat-bg-impression { background: linear-gradient(135deg, var(--ok-bg), #fff); }
+:is(.supplier-cover, .vitrine-banner).cat-bg-hebergement { background: linear-gradient(135deg, #eeebfe, #fff); }
 .supplier-card-body { padding: 16px 18px 18px; display: flex; flex-direction: column; gap: 10px; flex: 1; }
 .supplier-card-head { display: flex; align-items: center; gap: 10px; margin-top: -38px; }
 .supplier-card-head .avatar { border: 3px solid #fff; box-shadow: 0 4px 12px rgba(14, 0, 102, 0.12); }
@@ -1648,11 +1648,16 @@ details.fold[open] > summary h2::after { content: " ▾"; }
 .decline-form summary { cursor: pointer; }
 
 /* Page publique d'un prestataire : bandeau de photos, références. */
-.book-banner { display: grid; gap: 8px; border-radius: 20px; overflow: hidden; height: 240px; }
-.book-banner.n2 { grid-template-columns: 2fr 1fr; }
-.book-banner.n3 { grid-template-columns: 2fr 1fr; grid-template-rows: 1fr 1fr; }
-.book-banner.n3 img:first-child { grid-row: 1 / 3; }
-.book-banner img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.vitrine-banner { position: relative; height: 220px; border-radius: 22px; overflow: hidden; display: grid; place-items: center; background: linear-gradient(135deg, var(--tint), #fff); border: 1px solid var(--line); }
+.vitrine-banner.photo { border: 0; background: var(--bg-subtle); }
+.vitrine-banner img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.vitrine-banner .cat-icon.lg { width: 72px; height: 72px; border-radius: 22px; background: #fff; margin-bottom: 48px; box-shadow: 0 10px 26px rgba(14, 0, 102, 0.1); }
+.profile-hero.on-banner { position: relative; z-index: 1; margin: -72px 24px 0; box-shadow: 0 14px 34px rgba(14, 0, 102, 0.1); }
+.gallery.works img { height: 190px; }
+.gallery.works figcaption { font-size: 12.5px; color: var(--ink); padding: 8px 10px; }
+.banner-preview { height: 140px; border-radius: 16px; overflow: hidden; border: 1px dashed var(--line-strong); display: grid; place-items: center; background: var(--bg-subtle); }
+.banner-preview img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.banner-preview.empty { padding: 16px; text-align: center; }
 .profile-actions { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
 .ref-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; }
 .ref-list li { display: flex; align-items: center; gap: 12px; padding: 10px 0; border-bottom: 1px solid var(--line); }
@@ -1674,10 +1679,9 @@ details.fold[open] > summary h2::after { content: " ▾"; }
 @media (max-width: 640px) {
   .rfq-hero-top .cat-icon.lg { width: 44px; height: 44px; }
   .q-ttc { font-size: 24px; }
-  .book-banner { height: 180px; }
-  .book-banner.n3 { grid-template-columns: 1fr; grid-template-rows: 1fr; }
-  .book-banner.n3 img:not(:first-child), .book-banner.n2 img:not(:first-child) { display: none; }
-  .book-banner.n2 { grid-template-columns: 1fr; }
+  .vitrine-banner { height: 150px; border-radius: 18px; }
+  .vitrine-banner .cat-icon.lg { width: 56px; height: 56px; margin-bottom: 36px; }
+  .profile-hero.on-banner { margin: -48px 10px 0; }
   /* Devis envoyé : une ligne = la désignation, puis quantité, TVA et total. */
   .quote-table, .quote-table tbody { display: block; }
   .quote-table tr { display: grid; grid-template-columns: minmax(0, 1fr) auto auto; gap: 2px 10px; padding: 7px 0; border-bottom: 1px dashed var(--line); }
@@ -1687,3 +1691,18 @@ details.fold[open] > summary h2::after { content: " ▾"; }
   .offer-list li { flex-wrap: wrap; }
   .offer-list li .actions { flex-wrap: wrap; white-space: normal; gap: 4px 10px; }
 }
+
+/* Filtres des listes : barre de filtres, filtres actifs, décomptes. */
+.filter-bar .filter-field { display: contents; }
+.filter-bar.boxed { margin: 0; padding: 12px; background: #fff; border: 1px solid var(--line); border-radius: 20px; }
+.filter-bar.boxed input { font-size: 14px; padding: 10px 14px; }
+.filter-bar.boxed select { font-size: 14px; padding: 10px 34px 10px 14px; max-width: 250px; }
+.active-filters { align-items: center; }
+.chip-x { display: inline-flex; align-items: center; gap: 4px; }
+.chip-count { margin-left: 6px; min-width: 20px; padding: 0 6px; border-radius: 999px; background: var(--bg-subtle); font-size: 11.5px; font-weight: 600; text-align: center; }
+.chip.active .chip-count { background: #fff; }
+a.chip { display: inline-flex; align-items: center; text-decoration: none; }
+.list-meta { display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap; }
+.list-count { margin: -8px 0 12px; }
+.logistics-need { margin-top: 2px; }
+.logistics-need .pre-line { display: block; margin-top: 2px; color: var(--ink); }

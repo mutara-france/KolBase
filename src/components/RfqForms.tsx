@@ -36,7 +36,7 @@ function SupplierPick({ s, selected, onToggle, eventAgency = false }: { s: Suppl
           {s.rating != null && <span className="rating-badge" title={t("({reviews} avis)", { reviews: s.reviews })}><Star size={11} /> {s.rating.toFixed(1).replace(".", ",")}</span>}
           {eventAgency && <span className="pill wait">{t("Agence de cet événement")}</span>}
         </div>
-        <div className="muted text-xs">{[s.coverage ?? s.city, s.from ?? s.priceHint, t("référencé depuis {since}", { since: s.since })].filter(Boolean).join(" · ")}{" · "}<a href={`/structures/${s.id}`} target="_blank" rel="noreferrer">{t("voir le book")}</a></div>
+        <div className="muted text-xs">{[s.coverage ?? s.city, s.from ?? s.priceHint, t("référencé depuis {since}", { since: s.since })].filter(Boolean).join(" · ")}{" · "}<a href={`/structures/${s.id}`} target="_blank" rel="noreferrer">{t("voir sa page")}</a></div>
         {eventAgency && (
           <p className="text-xs warn-text">
             {t("L'événement lui est confié : si vous la consultez, elle répond comme les autres prestataires, ne voit sur cette demande que son propre devis, et la décision revient à votre équipe.")}
@@ -51,11 +51,11 @@ function SupplierPick({ s, selected, onToggle, eventAgency = false }: { s: Suppl
 }
 
 /** Nouvelle demande en trois étapes (prestation, besoin, prestataires), avec un récapitulatif qui suit la saisie. */
-export function NewRfqForm({ orgId, categories, suppliers, events, defaultEventId, defaultCategory, defaultSupplier, ai = false, blocked = null }: { orgId: string; categories: Cat[]; suppliers: Supplier[]; events: EventOpt[]; defaultEventId?: string; defaultCategory?: string; defaultSupplier?: string; ai?: boolean; blocked?: Blocked }) {
+export function NewRfqForm({ orgId, categories, suppliers, events, defaultEventId, defaultCategory, defaultSupplier, defaultNeeds, ai = false, blocked = null }: { orgId: string; categories: Cat[]; suppliers: Supplier[]; events: EventOpt[]; defaultEventId?: string; defaultCategory?: string; defaultSupplier?: string; defaultNeeds?: string; ai?: boolean; blocked?: Blocked }) {
   const t = useT();
   const locale = useLocale();
   const [state, action, pending] = useActionState(createRfq, undefined);
-  // Depuis l'annuaire ou le book d'un prestataire : sa catégorie et lui-même déjà choisis.
+  // Depuis l'annuaire ou la page d'un prestataire : sa catégorie et lui-même déjà choisis.
   const preset = suppliers.find((s) => s.id === defaultSupplier);
   const initialCat = categories.some((c) => c.id === defaultCategory) ? defaultCategory! : preset?.categories[0] ?? categories[0].id;
   const [category, setCategory] = useState(initialCat);
@@ -94,7 +94,8 @@ export function NewRfqForm({ orgId, categories, suppliers, events, defaultEventI
         </section>
         <section className="card form rfq-step">
           <h2 className="rfq-step-title"><span className="step-num">2</span> {t("Le besoin")}</h2>
-          <label>{t("Besoin")}<textarea name="needs" rows={ai ? 6 : 4} required placeholder={t("Prestations attendues, contraintes horaires, niveau de service…")} /></label>
+          <label>{t("Besoin")}<textarea name="needs" rows={ai ? 6 : 4} required defaultValue={defaultNeeds} placeholder={t("Prestations attendues, contraintes horaires, niveau de service…")} /></label>
+          {defaultNeeds && <p className="hint">{t("Prérempli avec les besoins logistiques exprimés par l'expert : gardez ce qui concerne ce prestataire.")}</p>}
           {ai && <AiDraft kind="besoin" target="needs" label={t("Rédiger le besoin avec l'IA")} />}
           <div className="row">
             <label>{t("Participants attendus")}<input name="headcount" type="number" min={1} value={headcount} onChange={(e) => setHeadcount(e.target.value)} placeholder={t("Selon l'événement")} /></label>
@@ -264,7 +265,7 @@ export function SupplierProfileForm({ orgId, categories, current, canEdit }: { o
   // ActionForm : la saisie (catégories, zone) reste après une erreur.
   return (
     <ActionForm action={action} className="card form">
-      <SectionHead icon={Store} title={t("Fiche prestataire")} desc={t("Les organisations consultent l'annuaire par catégorie. Être référencé ne donne aucune priorité : elles choisissent librement qui consulter.")} />
+      <SectionHead icon={Store} title={t("Catégories et zone")} desc={t("Les organisations consultent l'annuaire par catégorie. Être référencé ne donne aucune priorité : elles choisissent librement qui consulter.")} />
       <Notice state={state} />
       <input type="hidden" name="orgId" value={orgId} />
       <span className="label">{t("Catégories de prestation")}</span>

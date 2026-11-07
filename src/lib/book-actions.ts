@@ -7,7 +7,7 @@ import { requireMembership } from "@/lib/orgs";
 import { EVENT_ORGANIZER_ROLES } from "@/lib/events";
 import { eurToCents, str } from "@/lib/form";
 import { sniffLogo } from "@/lib/logos";
-import { EQUIPMENT, OFFER_UNITS, PHOTO_MAX, PHOTO_MAX_BYTES, readCapacities } from "@/lib/supplier-book";
+import { BANNER_MAX_BYTES, EQUIPMENT, OFFER_UNITS, PHOTO_MAX, PHOTO_MAX_BYTES, readCapacities } from "@/lib/supplier-book";
 import { notifySupplierReview } from "@/lib/notifications";
 import { getT } from "@/lib/i18n/server";
 
@@ -20,7 +20,7 @@ async function requireSupplierAdmin(orgId: string) {
   return ctx;
 }
 const refresh = (orgId: string) => {
-  revalidatePath(`/organisations/${orgId}/book`);
+  revalidatePath(`/organisations/${orgId}/page-prestataire`);
   revalidatePath(`/structures/${orgId}`);
 };
 
@@ -36,7 +36,7 @@ export async function updateSupplierBook(_: FormState, form: FormData): Promise<
   });
   await audit(user.id, "supplier.book", "Organization", orgId);
   refresh(orgId);
-  return { ok: t("Book enregistré.") };
+  return { ok: t("Page prestataire enregistrée.") };
 }
 
 export async function addSupplierPhoto(_: FormState, form: FormData): Promise<FormState> {
@@ -44,17 +44,49 @@ export async function addSupplierPhoto(_: FormState, form: FormData): Promise<Fo
   const orgId = str(form, "orgId");
   const { user } = await requireSupplierAdmin(orgId);
   const file = form.get("photo");
-  if (!(file instanceof File) || file.size === 0) return { error: t("Choisissez une photo.") };
+  if (!(file instanceof File) || file.size === 0) return { error: t("Choisissez une image.") };
   if (file.size > PHOTO_MAX_BYTES) return { error: t("Photo trop lourde : 800 Ko au maximum.") };
   const bytes = new Uint8Array(await file.arrayBuffer());
   const type = sniffLogo(bytes);
   if (!type) return { error: t("Format non reconnu : PNG, JPEG ou WebP uniquement.") };
   const count = await db.organizationPhoto.count({ where: { organizationId: orgId } });
-  if (count >= PHOTO_MAX) return { error: t("{PHOTO_MAX} photos au maximum : retirez-en une d'abord.", { PHOTO_MAX }) };
-  const photo = await db.organizationPhoto.create({ data: { organizationId: orgId, data: bytes, contentType: type, caption: str(form, "caption").slice(0, 120) || null, position: count } });
+  if (count >= PHOTO_MAX) return { error: t("{PHOTO_MAX} réalisations au maximum : retirez-en une d'abord.", { PHOTO_MAX }) };
+  const photo = await db.organizationPhoto.create({ data: { organizationId: orgId, data: bytes, contentType: type, caption: str(form, "caption").slice(0, 160) || null, position: count } });
   await audit(user.id, "supplier.photo", "OrganizationPhoto", photo.id, { size: bytes.byteLength });
   refresh(orgId);
-  return { ok: t("Photo ajoutée.") };
+  return { ok: t("Réalisation ajoutée.") };
+}
+
+/** Bannière de la page du prestataire : une image large, remplacée à chaque envoi. */
+export async function setSupplierBanner(_: FormState, form: FormData): Promise<FormState> {
+  const { t } = await getT();
+  const orgId = str(form, "orgId");
+  const { user } = await requireSupplierAdmin(orgId);
+  const file = form.get("banner");
+  if (!(file instanceof File) || file.size === 0) return { error: t("Choisissez une image.") };
+  if (file.size > BANNER_MAX_BYTES) return { error: t("Bannière trop lourde : 1,5 Mo au maximum.") };
+  const bytes = new Uint8Array(await file.arrayBuffer());
+  const type = sniffLogo(bytes);
+  if (!type) return { error: t("Format non reconnu : PNG, JPEG ou WebP uniquement.") };
+  const now = new Date();
+  await db.$transaction([
+    db.organizationBanner.upsert({ where: { organizationId: orgId }, update: { data: bytes, contentType: type }, create: { organizationId: orgId, data: bytes, contentType: type } }),
+    db.organization.update({ where: { id: orgId }, data: { bannerUpdatedAt: now } }),
+  ]);
+  await audit(user.id, "supplier.banner", "Organization", orgId, { size: bytes.byteLength });
+  refresh(orgId);
+  return { ok: t("Bannière enregistrée.") };
+}
+
+export async function removeSupplierBanner(form: FormData) {
+  const orgId = str(form, "orgId");
+  const { user } = await requireSupplierAdmin(orgId);
+  await db.$transaction([
+    db.organizationBanner.deleteMany({ where: { organizationId: orgId } }),
+    db.organization.update({ where: { id: orgId }, data: { bannerUpdatedAt: null } }),
+  ]);
+  await audit(user.id, "supplier.banner_remove", "Organization", orgId);
+  refresh(orgId);
 }
 
 export async function removeSupplierPhoto(form: FormData) {

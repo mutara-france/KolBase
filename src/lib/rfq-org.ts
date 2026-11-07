@@ -88,7 +88,7 @@ export async function supplierDirectory(excludeOrgIds: string[]) {
     return {
       id: s.id, name: s.name, categories: s.supplierCategories, city: s.headquarters, coverage: s.coverage, about: s.about, since: s.createdAt.getFullYear(),
       rating: r?._avg.rating ?? null, reviews: r?._count._all ?? 0, logoUpdatedAt: s.logoUpdatedAt, priceHint: s.priceHint, capacities: s.capacities,
-      accessible: s.accessible, cover: s.photos[0] ?? null, from: s.offers[0] ?? null,
+      accessible: s.accessible, banner: s.bannerUpdatedAt ? { id: s.id, bannerUpdatedAt: s.bannerUpdatedAt } : null, cover: s.photos[0] ?? null, from: s.offers[0] ?? null,
     };
   });
 }

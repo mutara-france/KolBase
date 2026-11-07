@@ -197,6 +197,8 @@ model ExpertProposal {
   description     String              // objectif et contenu
   audience        String?             // public visé et format
   schedule        String?             // calendrier envisagé
+  // Besoins logistiques (lieu, matériel, restauration…) : l'organisation qui accepte les organise et les prend en charge.
+  logistics       String?
   feeCents        Int?                // honoraires souhaités (total HT)
   units           Float?
   createdAt       DateTime            @default(now())
@@ -313,6 +315,8 @@ model Organization {
   verificationNote   String?
   // Logo (image stockée à part, servie par /logos/[id]) : date de mise à jour, null si aucun logo.
   logoUpdatedAt      DateTime?
+  // Bannière de la vitrine (prestataire) : date de mise à jour, null sans bannière.
+  bannerUpdatedAt    DateTime?
   // Contrat de sous-traitance (RGPD, art. 28) accepté au nom de l'organisation : version, date, administrateur.
   dpaVersion         String?
   dpaAcceptedAt      DateTime?
@@ -321,6 +325,7 @@ model Organization {
   updatedAt    DateTime @updatedAt
 
   logo          OrganizationLogo?
+  banner        OrganizationBanner?
   feeNotes      FeeNote[]
   subscription  Subscription?
   serviceOrders ServiceOrder[]
@@ -1008,6 +1013,14 @@ model SupplierReview {
 }
 
 /** Logo d'une organisation (PNG, JPEG ou WebP, 500 Ko au plus), conservé en base pour ne pas dépendre du stockage S3. */
+model OrganizationBanner {
+  organizationId String       @id
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  data           Bytes
+  contentType    String
+  updatedAt      DateTime     @updatedAt
+}
+
 model OrganizationLogo {
   organizationId String       @id
   organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
