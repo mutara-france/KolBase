@@ -1,4 +1,7 @@
-import { AlertTriangle, ExternalLink, FileSignature, FileText, Info, ShieldAlert, Wallet } from "lucide-react";
+import { AlertTriangle, ExternalLink, FileCheck, FileSignature, FileText, Info, Receipt, ShieldAlert, Users, Wallet } from "lucide-react";
+import { SectionHead } from "@/components/DossierUI";
+import { markExpertPaid } from "@/lib/revenue-actions";
+import { parisToday } from "@/lib/events";
 import { db } from "@/lib/db";
 import { detectConflicts } from "@/lib/conflicts";
 import { MATERIAL_KINDS, MATERIAL_STATUS, recruitmentOpen, REVIEW_ROLES } from "@/lib/projects";
@@ -21,8 +24,8 @@ export async function ConflictsPanel({ projectId }: { projectId: string }) {
   const { t, locale } = await getT();
   const conflicts = await detectConflicts(projectId, t, locale);
   return (
-    <section className="card">
-      <h2 className="section-title"><ShieldAlert size={15} />{" "}{t("Points d'attention (conflits d'intérêts possibles)")}</h2>
+    <section className="card" aria-labelledby="conflits-titre">
+      <SectionHead icon={ShieldAlert} id="conflits-titre" tone={conflicts.some((c) => c.severity === "danger") ? "danger" : conflicts.some((c) => c.severity === "warn") ? "warn" : "brand"} title={t("Points d'attention")} desc={t("Conflits d'intérêts possibles, d'après les données KolBase.")} />
       {conflicts.length === 0 ? <p className="todo-empty">{t("Aucun point d'attention dans les données KolBase. Les liens d'intérêts noués en dehors de KolBase ne sont pas connus : l'expert les déclare lui-même.")}</p> : (
         <ul className="conflict-list">
           {conflicts.map((c, i) => (
@@ -37,9 +40,27 @@ export async function ConflictsPanel({ projectId }: { projectId: string }) {
   );
 }
 
-export async function BudgetPanel({ orgId, projectId, canEdit }: { orgId: string; projectId: string; canEdit: boolean }) {
+/**
+ * Onglet Budget d'un dossier : tout l'argent au même endroit. Le budget prévu et ce qui est engagé (honoraires,
+ * devis retenus pour l'événement, autres dépenses), puis le suivi : paiement des experts et notes d'honoraires,
+ * dépenses engagées ou payées.
+ */
+export async function BudgetTab({ orgId, projectId, canEdit }: { orgId: string; projectId: string; canEdit: boolean }) {
   const { t, locale } = await getT();
-  const project = await db.project.findUnique({ where: { id: projectId }, include: { experts: { where: { status: { notIn: ["DECLINE"] } } }, expenses: { orderBy: { date: "asc" } } } });
+  const project = await db.project.findUnique({
+    where: { id: projectId },
+    include: {
+      experts: {
+        where: { status: { notIn: ["DECLINE"] } },
+        include: {
+          practitioner: { select: { profession: true, user: { select: { firstName: true, lastName: true } } } },
+          feeNote: { select: { id: true, number: true, totalCents: true, vatBp: true } },
+        },
+        orderBy: { createdAt: "asc" },
+      },
+      expenses: { orderBy: { date: "asc" } },
+    },
+  });
   if (!project) return null;
   // Devis retenus pour les événements rattachés au dossier : ils comptent dans le budget (HT).
   const quotes = await db.quote.findMany({
@@ -47,8 +68,9 @@ export async function BudgetPanel({ orgId, projectId, canEdit }: { orgId: string
     include: { supplier: { select: { name: true } }, rfq: { select: { category: true } } },
     orderBy: { updatedAt: "asc" },
   });
-  // Même définition que l'en-tête du dossier : honoraires engagés (acceptés par l'expert), proposés à part.
-  const { engagedCents: fees, proposedCents: proposed } = expertSplit(project.experts, recruitmentOpen(project.status));
+  // Même définition que la vue d'ensemble : honoraires engagés (acceptés par l'expert), proposés à part.
+  const open = recruitmentOpen(project.status);
+  const { engagedCents: fees, proposedCents: proposed } = expertSplit(project.experts, open);
   const exp = project.expenses.reduce((s, e) => s + e.amountCents, 0);
   const sup = quotes.reduce((s, q) => s + q.amountCents, 0);
   const total = fees + exp + sup;
@@ -56,63 +78,148 @@ export async function BudgetPanel({ orgId, projectId, canEdit }: { orgId: string
   const realPct = budget ? Math.round((total / budget) * 100) : null;
   const pct = realPct != null ? Math.min(100, realPct) : null;
   const over = budget != null && total > budget;
+  const share = (n: number) => (total > 0 ? `${Math.round((n / total) * 100)} %` : "");
+  const name = (e: (typeof project.experts)[number]) => `${drPrefix(e.practitioner.profession)}${e.practitioner.user.firstName} ${e.practitioner.user.lastName}`;
+  const engaged = project.experts.filter((e) => e.status !== "ATT_EXPERTS");
+  const pending = open ? project.experts.filter((e) => e.status === "ATT_EXPERTS") : [];
+  const today = parisToday();
   return (
-    <section className="card">
-      <div className="flex-between mb-2">
-        <h2 className="section-title" style={{ margin: 0 }}><Wallet size={15} />{" "}{t("Budget et dépenses")}</h2>
-        {canEdit && <BudgetForm orgId={orgId} projectId={projectId} budgetCents={budget} />}
+    <div className="page-grid">
+      <div className="page-main">
+        <section className="card stack-sm" aria-labelledby="honoraires-titre">
+          <SectionHead icon={Users} id="honoraires-titre" title={t("Honoraires des experts")} desc={t("Montants HT engagés par convention ; le paiement se note une fois la convention signée.")}>
+            <span className="amount-chip">{fmtEur(locale, fees)}{" "}{t("HT")}</span>
+          </SectionHead>
+          {engaged.length === 0 && pending.length === 0 ? <p className="muted">{t("Aucun expert engagé pour l'instant.")}</p> : (
+            <TableWrap label={t("Honoraires des experts")}>
+              <table className="table">
+                <thead><tr><th>{t("Expert")}</th><th className="num">{t("Honoraires HT")}</th><th>{t("Note d'honoraires")}</th><th>{t("Paiement")}</th></tr></thead>
+                <tbody>
+                  {engaged.map((e) => {
+                    const payable = ["SIGNE", "TERMINE"].includes(e.status);
+                    return (
+                      <tr key={e.id}>
+                        <td data-label="Expert"><strong>{name(e)}</strong></td>
+                        <td data-label="Honoraires HT" className="num">{e.feeCents != null ? fmtEur(locale, e.feeCents) : "—"}</td>
+                        <td data-label="Note d'honoraires">
+                          {e.feeNote
+                            ? <a href={`/notes-honoraires/${e.feeNote.id}`}>{t("N° {number} · {montant}", { number: e.feeNote.number, montant: fmtEur(locale, e.feeNote.totalCents) })}{" "}{e.feeNote.vatBp ? "TTC" : t("(TVA non applicable)")}</a>
+                            : <span className="muted text-xs">{payable ? t("Pas encore établie par l'expert") : "—"}</span>}
+                        </td>
+                        <td data-label="Paiement">
+                          {e.paidAt ? (
+                            <span className="inline wrap">
+                              <span className="pill ok">{t("Payés le {date} · {montant}", { date: fmtDate(locale, e.paidAt), montant: fmtEur(locale, e.paidCents ?? 0) })}</span>
+                              {canEdit && (
+                                <form action={markExpertPaid}>
+                                  <input type="hidden" name="orgId" value={orgId} /><input type="hidden" name="linkId" value={e.id} /><input type="hidden" name="undo" value="1" />
+                                  <button className="link text-xs">{t("Annuler")}</button>
+                                </form>
+                              )}
+                            </span>
+                          ) : !payable ? (
+                            <span className="muted text-xs">{t("Après signature de la convention")}</span>
+                          ) : canEdit ? (
+                            <details className="pay-edit">
+                              <summary className="pill wait">{t("À payer")}{" · "}{t("Marquer payé")}</summary>
+                              <form action={markExpertPaid} className="inline wrap mt-2">
+                                <input type="hidden" name="orgId" value={orgId} /><input type="hidden" name="linkId" value={e.id} />
+                                <input name="amount" inputMode="decimal" defaultValue={e.feeCents != null ? String(e.feeCents / 100) : ""} aria-label={t("Montant payé (€ HT)")} />
+                                <input name="date" type="date" defaultValue={today} max={today} aria-label={t("Date du paiement")} />
+                                <button className="btn ghost small">{t("Marquer payé")}</button>
+                              </form>
+                            </details>
+                          ) : (
+                            <span className="pill wait">{t("Honoraires à payer")}</span>
+                          )}
+                        </td>
+                      </tr>
+                    );
+                  })}
+                  {pending.map((e) => (
+                    <tr key={e.id} className="muted-row">
+                      <td data-label="Expert">{name(e)}</td>
+                      <td data-label="Honoraires HT" className="num">{e.feeCents != null ? fmtEur(locale, e.feeCents) : "—"}</td>
+                      <td data-label="Note d'honoraires">—</td>
+                      <td data-label="Paiement"><span className="pill wait">{t("Proposés, sans réponse")}</span></td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </TableWrap>
+          )}
+        </section>
+        <section className="card stack-sm" aria-labelledby="depenses-titre">
+          <SectionHead icon={Receipt} id="depenses-titre" title={t("Prestataires et autres dépenses")} desc={t("Devis retenus pour l'événement du dossier et dépenses saisies par l'équipe.")}>
+            <span className="amount-chip">{fmtEur(locale, sup + exp)}{" "}{t("HT")}</span>
+          </SectionHead>
+          {project.expenses.length === 0 && quotes.length === 0 ? <p className="muted">{t("Aucune dépense pour l'instant.")}</p> : (
+            <TableWrap label={t("Dépenses et devis retenus")}>
+              <table className="table">
+                <thead><tr><th>{t("Date")}</th><th>{t("Poste")}</th><th className="num">{t("Montant HT")}</th><th>{t("Statut")}</th>{canEdit && <th />}</tr></thead>
+                <tbody>
+                  {quotes.map((q) => (
+                    <tr key={q.id}>
+                      <td data-label="Date">{fmtDate(locale, q.updatedAt)}</td>
+                      <td data-label="Poste">{t(supplierCategoryLabel(q.rfq.category))} : {q.supplier.name}</td>
+                      <td data-label="Montant HT" className="num">{fmtEur(locale, q.amountCents)}</td>
+                      <td data-label="Statut"><span className="pill ok">{t("Devis retenu")}</span></td>
+                      {canEdit && <td><a className="link" href={`/organisations/${orgId}/prestataires#rfq-${q.rfqId}`}>{t("Voir le devis")}</a></td>}
+                    </tr>
+                  ))}
+                  {project.expenses.map((e) => (
+                    <tr key={e.id}>
+                      <td data-label="Date">{fmtDate(locale, e.date)}</td><td data-label="Poste">{e.label}</td><td data-label="Montant HT" className="num">{fmtEur(locale, e.amountCents)}</td>
+                      <td data-label="Statut"><span className={`pill ${e.status === "payee" ? "ok" : "wait"}`}>{e.status === "payee" ? t("Payée") : t("Engagée")}</span></td>
+                      {canEdit && (
+                        <td>
+                          <form action={updateExpense} className="inline">
+                            <input type="hidden" name="orgId" value={orgId} /><input type="hidden" name="projectId" value={projectId} /><input type="hidden" name="expenseId" value={e.id} />
+                            {e.status !== "payee" && <button className="link" name="status" value="payee">{t("Marquer payée")}</button>}
+                            <button className="link danger" name="remove" value="1">{t("Retirer")}</button>
+                          </form>
+                        </td>
+                      )}
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </TableWrap>
+          )}
+          {canEdit && (
+            <details className="disclosure">
+              <summary>{t("Ajouter une dépense")}</summary>
+              <ExpenseForm orgId={orgId} projectId={projectId} />
+            </details>
+          )}
+        </section>
       </div>
-      {/* Une ligne par poste, montants alignés à droite : lisible d'un coup d'œil, sans répéter l'en-tête. */}
-      <dl className="budget-lines">
-        <div><dt>{t("Budget prévu (HT)")}</dt><dd>{budget != null ? fmtEur(locale, budget) : "—"}</dd></div>
-        <div><dt>{t("Honoraires engagés (HT)")}</dt><dd>{fmtEur(locale, fees)}</dd></div>
-        {proposed > 0 && <div className="muted"><dt>{t("Honoraires proposés, sans réponse (HT)")}</dt><dd>{fmtEur(locale, proposed)}</dd></div>}
-        {sup > 0 && <div><dt>{t("Prestataires (devis retenus)")}</dt><dd>{fmtEur(locale, sup)}{" "}{t("HT")}</dd></div>}
-        <div><dt>{t("Autres dépenses (HT)")}</dt><dd>{fmtEur(locale, exp)}</dd></div>
-        <div className={`total${over ? " over" : ""}`}><dt>{t("Total engagé (HT)")}{realPct != null ? ` ${t("· {realPct} % du budget", { realPct })}` : ""}</dt><dd>{fmtEur(locale, total)}</dd></div>
-      </dl>
-      {pct != null && <div className="gauge-track"><div className={`gauge-fill${over ? " over" : ""}`} style={{ width: `${pct}%` }} /></div>}
-      {over && <p className="notice error mt-2">{t("Le total engagé dépasse le budget prévu de {montant}.", { montant: fmtEur(locale, total - budget!) })}</p>}
-      {(project.expenses.length > 0 || quotes.length > 0) && (
-        <TableWrap label={t("Dépenses et devis retenus")}>
-          <table className="table mt-3">
-            <thead><tr><th>{t("Date")}</th><th>{t("Poste")}</th><th>{t("Montant HT")}</th><th>{t("Statut")}</th>{canEdit && <th />}</tr></thead>
-            <tbody>
-              {quotes.map((q) => (
-                <tr key={q.id}>
-                  <td data-label="Date">{fmtDate(locale, q.updatedAt)}</td>
-                  <td data-label="Poste">{t(supplierCategoryLabel(q.rfq.category))} : {q.supplier.name}</td>
-                  <td data-label="Montant HT">{fmtEur(locale, q.amountCents)}</td>
-                  <td data-label="Statut"><span className="pill ok">{t("Devis retenu")}</span></td>
-                  {canEdit && <td><a className="link" href={`/organisations/${orgId}/prestataires#rfq-${q.rfqId}`}>{t("Voir le devis")}</a></td>}
-                </tr>
-              ))}
-              {project.expenses.map((e) => (
-                <tr key={e.id}>
-                  <td data-label="Date">{fmtDate(locale, e.date)}</td><td data-label="Poste">{e.label}</td><td data-label="Montant HT">{fmtEur(locale, e.amountCents)}</td>
-                  <td data-label="Statut"><span className={`pill ${e.status === "payee" ? "ok" : "wait"}`}>{e.status === "payee" ? t("Payée") : t("Engagée")}</span></td>
-                  {canEdit && (
-                    <td>
-                      <form action={updateExpense} className="inline">
-                        <input type="hidden" name="orgId" value={orgId} /><input type="hidden" name="projectId" value={projectId} /><input type="hidden" name="expenseId" value={e.id} />
-                        {e.status !== "payee" && <button className="link" name="status" value="payee">{t("Marquer payée")}</button>}
-                        <button className="link danger" name="remove" value="1">{t("Retirer")}</button>
-                      </form>
-                    </td>
-                  )}
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </TableWrap>
-      )}
-      {canEdit && (
-        <details className="disclosure mt-3">
-          <summary>{t("Ajouter une dépense")}</summary>
-          <ExpenseForm orgId={orgId} projectId={projectId} />
-        </details>
-      )}
-    </section>
+      <aside className="page-aside">
+        <section className={`card stack-sm budget-card${over ? " over" : ""}`} aria-labelledby="budget-titre">
+          <SectionHead icon={Wallet} id="budget-titre" title={t("Budget")} tone={over ? "danger" : "brand"} desc={budget != null ? t("{montant} HT prévus", { montant: fmtEur(locale, budget) }) : t("Budget à renseigner")} />
+          <div className="budget-figure">
+            <span className="big">{fmtEur(locale, total)}</span>
+            <span className="muted text-sm">{t("engagés (HT)")}{realPct != null ? ` · ${t("{realPct} % du budget", { realPct })}` : ""}</span>
+          </div>
+          {pct != null && <div className="gauge-track" role="img" aria-label={t("{realPct} % du budget", { realPct: realPct ?? 0 })}><div className={`gauge-fill${over ? " over" : ""}`} style={{ width: `${pct}%` }} /></div>}
+          {over && <p className="notice error">{t("Le total engagé dépasse le budget prévu de {montant}.", { montant: fmtEur(locale, total - budget!) })}</p>}
+          {/* Une ligne par poste, montants alignés à droite, part de chacun dans le total. */}
+          <dl className="budget-lines">
+            <div><dt>{t("Honoraires engagés")}</dt><dd>{fmtEur(locale, fees)}<small>{share(fees)}</small></dd></div>
+            <div><dt>{t("Prestataires (devis retenus)")}</dt><dd>{fmtEur(locale, sup)}<small>{share(sup)}</small></dd></div>
+            <div><dt>{t("Autres dépenses")}</dt><dd>{fmtEur(locale, exp)}<small>{share(exp)}</small></dd></div>
+            {proposed > 0 && <div className="muted"><dt>{t("Honoraires proposés, sans réponse")}</dt><dd>{fmtEur(locale, proposed)}</dd></div>}
+            {budget != null && <div className={`total${over ? " over" : ""}`}><dt>{over ? t("Dépassement") : t("Reste disponible")}</dt><dd>{fmtEur(locale, Math.abs(budget - total))}</dd></div>}
+          </dl>
+          {canEdit && (
+            <details className="inline-edit" open={budget == null}>
+              <summary>{budget != null ? t("Modifier le budget") : t("Renseigner le budget")}</summary>
+              <BudgetForm orgId={orgId} projectId={projectId} budgetCents={budget} />
+            </details>
+          )}
+        </section>
+      </aside>
+    </div>
   );
 }
 
@@ -125,11 +232,10 @@ export async function MaterialsPanel({ orgId, projectId, canSubmit, canReview }:
   const me = (await getCurrentUser())?.id ?? "";
   const ownRule = canReview && me ? await fourEyes(new Set([me]), orgId, me, REVIEW_ROLES) : "ok";
   return (
-    <section className="card">
-      <div className="flex-between mb-2">
-        <h2 className="section-title" style={{ margin: 0 }}>{t("Supports et relecture")}</h2>
+    <section className="card" aria-labelledby={`supports-${projectId}`}>
+      <SectionHead icon={FileCheck} id={`supports-${projectId}`} title={t("Supports et relecture")} desc={t("Présentations et documents des experts, relus avant diffusion.")}>
         {canSubmit && <MaterialForm projectId={projectId} kinds={MATERIAL_KINDS} />}
-      </div>
+      </SectionHead>
       {materials.length === 0 && <p className="muted">{t("Aucun support soumis. Les supports présentés par les experts doivent être relus avant diffusion.")}</p>}
       <div className="stack">
         {materials.map((m) => {
@@ -205,8 +311,8 @@ export async function DocumentsPanel({ projectId, linkId, canUpload, openUpload 
   const expertName = new Map(project.experts.map((e) => [e.id, `${drPrefix(e.practitioner.profession)}${e.practitioner.user.firstName} ${e.practitioner.user.lastName}`]));
   const locked = ["SIGNE", "TERMINE"].includes(project.status);
   return (
-    <section className="card stack-sm">
-      <h2 className="section-title"><FileText size={15} />{" "}{t("Documents")}</h2>
+    <section className="card stack-sm" aria-labelledby={`documents-${projectId}`}>
+      <SectionHead icon={FileText} id={`documents-${projectId}`} title={t("Documents")} desc={linkId ? t("Votre convention signée et les pièces de la collaboration.") : t("Conventions signées déposées et pièces du dossier.")} />
       {project.documents.length === 0 ? <p className="muted">{t("Aucun document déposé.")}</p> : (
         <ul className="pub-list">
           {project.documents.map((d) => (

@@ -1267,10 +1267,11 @@ async function submitNewOrg(page, siren) {
   // L'organisation indique le paiement : l'expert est prévenu.
   const org = await session();
   await login(org.page, "thomas.garnier@demo.kolbase.local");
-  await org.page.goto(`${BASE}/organisations/demo-org-orthonova/dossiers/demo-prj-aligneurs?onglet=experts`);
-  await org.page.click('button:has-text("Marquer payé")');
+  await org.page.goto(`${BASE}/organisations/demo-org-orthonova/dossiers/demo-prj-aligneurs?onglet=budget`);
+  await org.page.click("details.pay-edit summary");
+  await org.page.click('details.pay-edit[open] button:has-text("Marquer payé")');
   await org.page.waitForTimeout(1200);
-  check("Dossier : honoraires marqués payés", (await text(org.page)).includes("Honoraires payés le"));
+  check("Dossier : honoraires marqués payés (onglet Budget)", (await text(org.page)).includes("Payés le"));
   check("E-mail à l'expert : honoraires payés", !!(await waitMail("camille.petit@demo.kolbase.local", "Honoraires payés par OrthoNova")));
   await org.ctx.close();
   await ctx.close();
@@ -2397,7 +2398,7 @@ async function submitNewOrg(page, siren) {
     await org.page.goto(`${dossierUrl}?onglet=experts`);
     check("Fiche du dossier : honoraires souhaités par l'expert", /Souhaités par l'expert : 1\s800\s€ HT/.test(await text(org.page)));
     // Nouvelle proposition : les honoraires changent, la réponse de l'expert est de nouveau attendue.
-    await org.page.click("#modifier summary");
+    await org.page.goto(`${dossierUrl}?onglet=experts&modifier=1`);
     await org.page.locator('#modifier form.terms-form:has-text("Isabelle Fontaine") input[name="fee"]').fill("1800");
     await org.page.locator('#modifier form.terms-form:has-text("Isabelle Fontaine") button:has-text("Proposer ces conditions")').click();
     await org.page.waitForTimeout(1500);
@@ -2415,10 +2416,12 @@ async function submitNewOrg(page, siren) {
     check("Lien d'e-mail : retour à la sollicitation après connexion", viaMail.page.url() === `${BASE}/sollicitations/${link.id}` && (await text(viaMail.page)).includes("Votre réponse"), viaMail.page.url());
     await viaMail.ctx.close();
     // Objet modifié, expert ajouté.
-    await org.page.goto(`${dossierUrl}?modifier=1`);
-    await org.page.fill('#modifier textarea[name="description"]', "Board de quatre heures sur la péri-implantite, synthèse écrite attendue.");
+    await org.page.goto(dossierUrl);
+    await org.page.click("#objet details.inline-edit summary");
+    await org.page.fill('#objet textarea[name="description"]', "Board de quatre heures sur la péri-implantite, synthèse écrite attendue.");
     await org.page.click('button:has-text("Mettre à jour l\'objet")');
     await org.page.waitForTimeout(1200);
+    await org.page.goto(`${dossierUrl}?modifier=1`);
     check("Objet du dossier modifié", (await q1(`select description from "Project" where id = $1`, [projectId])).description.startsWith("Board de quatre heures"));
     await org.page.selectOption('#modifier select[name="expertId"]', "demo-p-roux");
     await org.page.fill('#modifier form:has(select[name="expertId"]) input[name="fee"]', "1200");
@@ -2430,7 +2433,7 @@ async function submitNewOrg(page, siren) {
     await org.page.goto(dossierUrl);
     check("Bloqué : pas de modification directe", (await org.page.locator("#modifier").count()) === 0);
     await Promise.all([org.page.waitForURL(/modifier=1/), org.page.click('button:has-text("Reprendre le dossier")')]);
-    check("« Reprendre le dossier » mène à la modification (onglet Experts)", (await org.page.locator("#modifier[open]").count()) === 1 && ["ACCORD", "ATT_EXPERTS"].includes((await q1(`select status from "Project" where id = $1`, [projectId])).status));
+    check("« Reprendre le dossier » mène à la modification (onglet Experts)", (await org.page.locator("#modifier details.terms-edit[open]").count()) > 0 && ["ACCORD", "ATT_EXPERTS"].includes((await q1(`select status from "Project" where id = $1`, [projectId])).status));
     await org.page.goto(dossierUrl);
     check("Abandon : motif obligatoire", (await org.page.locator('form:has(button:has-text("Abandonner le dossier")) input[name="note"][required]').count()) === 1);
     // En signature : retour en accord de principe ou abandon ; plus de retour une fois une signature lancée.
@@ -2439,7 +2442,7 @@ async function submitNewOrg(page, siren) {
     check("En signature : « Retour en accord de principe » et abandon proposés", (await org.page.locator('button:has-text("Retour en accord de principe")').count()) === 1 && (await org.page.locator('button:has-text("Abandonner le dossier")').count()) === 1);
     await openMore(org.page);
     await Promise.all([org.page.waitForURL(/modifier=1/), org.page.click('button:has-text("Retour en accord de principe")')]);
-    check("Retour en accord de principe : dossier de nouveau modifiable", (await org.page.locator("#modifier[open]").count()) === 1);
+    check("Retour en accord de principe : dossier de nouveau modifiable", (await org.page.locator("#modifier details.terms-edit[open]").count()) > 0);
     await pgc.query(`update "Project" set status = 'SIGNATURE' where id = $1`, [projectId]);
     await pgc.query(`insert into "ConventionSignature" (id, "projectExpertId", "requestId", status, "updatedAt") values ('e2e-lot1-sig', $1, 'e2e-lot1-req', 'ongoing', now())`, [link.id]);
     await org.page.goto(dossierUrl);
@@ -2707,9 +2710,11 @@ async function submitNewOrg(page, siren) {
     await pgc.query(`insert into "ProjectExpert" (id, "projectId", "practitionerId", status, "feeCents", days) values ('e2e-lot2-pb-1', 'e2e-lot2-prj-budget', 'demo-p-durand', 'ACCORD', 200000, 1), ('e2e-lot2-pb-2', 'e2e-lot2-prj-budget', 'demo-p-moreau', 'ATT_EXPERTS', 150000, 1), ('e2e-lot2-pb-3', 'e2e-lot2-prj-budget', 'demo-p-blanc', 'DECLINE', 90000, 1)`);
     await c.page.goto(`${BASE}/organisations/demo-org-dentalys/dossiers/e2e-lot2-prj-budget`);
     const head = n(await c.page.locator("header.page-hero").innerText());
-    const budget = n(await c.page.locator('section.card:has(h2:has-text("Budget et dépenses"))').innerText());
-    check("Dossier : en-tête, engagé = accepté, proposé à part", head.includes("2 000 € HT") && head.includes("1 500 € HT proposés, sans réponse") && head.includes("20 % engagé ; 1 500 € HT proposés en plus"), head);
-    check("Dossier : budget, même définition", /Honoraires engagés \(HT\)\s*2 000 €/.test(budget) && /Honoraires proposés, sans réponse \(HT\)\s*1 500 €/.test(budget) && /Total engagé \(HT\) · 20 % du budget\s*2 000 €/.test(budget), budget);
+    const tiles = n(await c.page.locator(".state-grid").innerText());
+    check("Dossier : repères, engagé = accepté, proposé à part", /1 engagé sur 3/i.test(tiles) && /1 réponse attendue/i.test(tiles) && /20 % engagé/i.test(tiles), tiles);
+    await tab(c.page, "budget");
+    const budget = n(await c.page.locator("section.budget-card").innerText());
+    check("Dossier : budget, même définition", /2 000 €\s*engagés \(HT\) · 20 % du budget/.test(budget) && /Honoraires engagés\s*2 000 €/.test(budget) && /Honoraires proposés, sans réponse\s*1 500 €/.test(budget) && /Reste disponible\s*8 000 €/.test(budget), budget);
     check("Dossier : en-tête resserré (étape en cours, objet dans la vue d'ensemble)", /étape 2 sur 7/i.test(head) && head.includes("ensuite :"), head);
     // HT / TTC toujours indiqué ; coût par participant d'un devis rapporté aux présents après l'événement.
     await c.page.goto(`${BASE}/organisations/demo-org-dentalys/prestataires`);
@@ -2785,8 +2790,8 @@ async function submitNewOrg(page, siren) {
     await pgc.query(`insert into "ProjectExpert" (id, "projectId", "practitionerId", status, "feeCents", days) values ('e2e-lot2-sig-roux', 'e2e-lot2-prj-sig', 'demo-p-roux', 'SIGNATURE', 150000, 1), ('e2e-lot2-sig-fontaine', 'e2e-lot2-prj-sig', 'demo-p-fontaine', 'SIGNATURE', 120000, 1)`);
     const { ctx, page } = await session();
     await login(page, "anne.chevalier@demo.kolbase.local");
-    const url = `${BASE}/organisations/demo-org-academie/dossiers/e2e-lot2-prj-sig?onglet=experts`;
-    const card = (name) => page.locator(`section.expert-card:has-text("${name}")`);
+    const url = `${BASE}/organisations/demo-org-academie/dossiers/e2e-lot2-prj-sig?onglet=documents`;
+    const card = (name) => page.locator(`#conventions li:has-text("${name}")`);
     for (const name of ["Mathieu Roux", "Isabelle Fontaine"]) {
       await page.goto(url);
       await card(name).locator('button:has-text("Envoyer en signature électronique")').click();
@@ -3885,7 +3890,7 @@ async function submitNewOrg(page, siren) {
     await org.page.goto(`${BASE}/organisations/demo-org-dentalys`);
     check("Accueil de l'organisation : honoraires proposés par un expert à traiter", (await text(org.page)).includes("Honoraires proposés par un expert : Board 5a négociation"));
     await org.page.goto(`${dossier}?onglet=experts`);
-    const card = org.page.locator('section.expert-card:has-text("Vincent Moreau")');
+    const card = org.page.locator('article.expert-card:has-text("Vincent Moreau")');
     const ct = await card.innerText();
     check("Dossier : contre-proposition visible avec les deux montants", ct.includes("Contre-proposition") && /1\s500\s€ → 1\s800\s€ HT/.test(ct), ct.slice(0, 300));
     await confirmClick(card, "Accepter ces honoraires");
@@ -4575,9 +4580,10 @@ async function submitNewOrg(page, siren) {
   // Date d'intervention dans dix jours : la soumission (30 jours avant) est en retard ; abandon rangé sous « Autres actions ».
   const jul = await session();
   await login(jul.page, "julien.faure@demo.kolbase.local");
-  await jul.page.goto(`${BASE}/organisations/demo-org-dentalys/dossiers/demo-prj-board?onglet=experts&modifier=1`);
+  await jul.page.goto(`${BASE}/organisations/demo-org-dentalys/dossiers/demo-prj-board`);
   const inTen = new Date(Date.now() + 10 * 86400e3).toISOString().slice(0, 10);
-  await jul.page.fill('input[name="plannedAt"]', inTen);
+  await jul.page.click("#objet details.inline-edit summary");
+  await jul.page.fill('#objet input[name="plannedAt"]', inTen);
   await jul.page.click('button:has-text("Mettre à jour l\'objet")');
   await jul.page.locator('.notice.ok:has-text("Objet du dossier enregistré")').waitFor({ timeout: 10000 }).catch(() => {});
   await jul.page.goto(`${BASE}/organisations/demo-org-dentalys/dossiers/demo-prj-board`);
@@ -4763,9 +4769,8 @@ async function submitNewOrg(page, siren) {
   check("Proposition acceptée : qui l'accepte en devient responsable", (await pgc.query(`select "userId" from "ProjectLead" where "projectId" = $1`, [copyOf("demo-org-dentalys").id])).rows.map((r) => r.userId).join() === "demo-u-julien");
   check("E-mail à l'expert : proposition acceptée", !!(await waitMail(ROUX, "Proposition acceptée")));
   await jul.page.goto(`${BASE}/organisations/demo-org-dentalys/dossiers/${copyOf("demo-org-dentalys").id}`);
-  await tab(jul.page, "marketing");
-  check("Expert engagé, accord donné : photo grand format dans l'onglet Marketing", (await jul.page.locator('a[download]:has-text("Télécharger la photo")').count()) === 1);
   await tab(jul.page, "experts");
+  check("Expert engagé, accord donné : photo pour vos supports dans sa carte", (await jul.page.locator('.expert-card a[download]:has-text("Photo pour vos supports")').count()) === 1);
   check("Fiche de l'expert : sa photo", (await jul.page.locator(".expert-card .avatar.photo img").count()) === 1);
   // Collège : abonnement non actif, « Accepter » remplacé par la consigne ; puis il décline, avec un motif transmis à l'expert.
   await pgc.query(`update "Subscription" set "exemptUntil" = null where "organizationId" = 'demo-org-cdra'`);
@@ -4880,10 +4885,13 @@ async function submitNewOrg(page, siren) {
   await page.click(".side-toggle");
   await page.waitForTimeout(300);
 
-  // Fiche dossier : sept onglets ; la messagerie réunit experts et prestataires de l'événement.
+  // Fiche dossier : sept onglets, dans l'ordre du circuit ; la messagerie réunit experts et prestataires de l'événement.
   await page.goto(`${BASE}/organisations/demo-org-dentalys/dossiers/demo-prj-board`);
-  const tabsText = await page.locator("nav.dossier-tabs").innerText();
-  check("Dossier : sept onglets", ["Vue d'ensemble", "Experts", "Messagerie", "Conformité", "Documents", "Marketing", "Événement"].every((k) => tabsText.includes(k)), tabsText.replace(/\s+/g, " "));
+  const tabsText = (await page.locator("nav.dossier-tabs .dossier-tab").allInnerTexts()).map((x) => x.replace(/\d+/g, "").trim());
+  check("Dossier : sept onglets, dans l'ordre du circuit", JSON.stringify(tabsText) === JSON.stringify(["Vue d'ensemble", "Experts", "Événement", "Conformité", "Documents", "Budget", "Messagerie"]), JSON.stringify(tabsText));
+  check("Vue d'ensemble : un repère par rubrique, chacun mène à son onglet", (await page.locator(".state-grid a.state-tile").count()) === 6 && (await page.locator('.state-grid a.state-tile[href*="onglet=budget"]').count()) === 1);
+  await page.goto(`${BASE}/organisations/demo-org-dentalys/dossiers/demo-prj-board?onglet=marketing`);
+  check("Ancien onglet Marketing : l'onglet Événement s'ouvre", (await page.locator('.dossier-tab.active:has-text("Événement")').count()) === 1);
   await tab(page, "messagerie");
   const fils = await page.locator(".messenger-list").innerText();
   check("Messagerie : fils des experts et des prestataires consultés pour l'événement", fils.includes("Hélène Durand") && fils.includes("Prestataires"), fils.replace(/\s+/g, " ").slice(0, 200));
