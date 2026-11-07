@@ -97,7 +97,7 @@ const linkIn = (mail) => mail?.text.match(/https?:\/\/\S+/g)?.find((u) => !u.end
   const { ctx, page } = await session();
   await login(page, "claire.morel@demo.kolbase.local");
   await page.goto(`${BASE}/experts/demo-p-martin`);
-  check("Membre d'organisation : tarif visible", (await text(page)).includes("Tarif journalier indicatif"));
+  check("Membre d'organisation : tarif visible", /tarif journalier indicatif/i.test(await text(page)));
   await page.goto(`${BASE}/experts/demo-p-durand`);
   const d = await text(page);
   check("Membre d'organisation : coordonnées masquées restent masquées", !d.includes("Hospices"));
@@ -519,7 +519,7 @@ async function submitNewOrg(page, siren) {
   await page.goto(`${BASE}/annuaire`);
   check("Organisation validée : annuaire accessible", page.url().endsWith("/annuaire"), page.url());
   await page.goto(`${BASE}/experts/demo-p-martin`);
-  check("Organisation validée : tarif des experts visible", (await text(page)).includes("Tarif journalier indicatif"));
+  check("Organisation validée : tarif des experts visible", /tarif journalier indicatif/i.test(await text(page)));
   await page.goto(`${orgUrl}/membres?onglet=organisation`);
   await page.fill('form:has(h2:has-text("Fiche de l")) input[name="name"]', "Straumann France");
   await page.click('form:has(h2:has-text("Fiche de l")) button:has-text("Enregistrer")');
@@ -1285,7 +1285,8 @@ async function submitNewOrg(page, siren) {
   const anon = await session();
   await anon.page.goto(`${BASE}/structures/demo-sup-belleville`);
   let t = await text(anon.page);
-  check("Book public : indicateurs, capacités et tarifs", t.includes("Délai de réponse médian") && t.includes("300 personnes en cocktail") && t.includes("Tarifs indicatifs") && /Cocktail dînatoire 12 pièces[\s\S]*32,00\s€ HT/.test(t));
+  // Libellés des tuiles chiffrées en capitales (CSS) : comparaison insensible à la casse.
+  check("Book public : indicateurs, capacités et tarifs", /délai de réponse médian/i.test(t) && /300 personnes en cocktail/i.test(t) && /tarifs indicatifs/i.test(t) && /Cocktail dînatoire 12 pièces[\s\S]*32,00\s€ HT/i.test(t), t.slice(0, 600));
   check("Book public : avis vérifié et référence", t.includes("Service ponctuel et discret") && t.includes("Références") && t.includes("Restauration"));
   await anon.ctx.close();
 
@@ -2722,7 +2723,7 @@ async function submitNewOrg(page, siren) {
     // HT / TTC toujours indiqué ; coût par participant d'un devis rapporté aux présents après l'événement.
     await c.page.goto(`${BASE}/organisations/demo-org-dentalys/prestataires`);
     const presta = n(await text(c.page));
-    check("Prestataires : HT / TTC indiqués (budget engagé, prestation attribuée)", /Budget prestataires engagé\s*[\d ]+(,\d+)? € HT/.test(presta) && /Attribué à [^—]+— [\d ]+(,\d+)? € HT · [\d ]+(,\d+)? € TTC/.test(presta));
+    check("Prestataires : HT / TTC indiqués (budget engagé, prestation attribuée)", /Budget prestataires engagé\s*[\d ]+(,\d+)? € HT/i.test(presta) && /Attribué à [^—]+— [\d ]+(,\d+)? € HT · [\d ]+(,\d+)? € TTC/.test(presta));
     await c.page.goto(`${BASE}/organisations/demo-org-dentalys/evenements/demo-ev-passe`);
     const past = n(await text(c.page));
     check("Événement passé : coût d'un devis par présent, montants en TTC", past.includes("€ TTC par présent") && /Coût réel\s*[\d ]+(,\d+)? € TTC/i.test(past) && past.includes("non consommées, elles ne sont pas déclarées"));
@@ -3707,7 +3708,7 @@ async function submitNewOrg(page, siren) {
     const lem = await session();
     await login(lem.page, LEMOINE);
     await lem.page.goto(`${BASE}/sollicitations`);
-    const tile = await lem.page.locator('a.tile:has-text("Board 5a maintenance implantaire")').innerText();
+    const tile = await lem.page.locator('a.row-item:has-text("Board 5a maintenance implantaire")').innerText();
     check("Recrutement clos : « Recrutement clos » dans la liste, pas « Décliné / abandonné »", tile.includes("Recrutement clos") && !tile.includes("Décliné"), tile);
     const expected = Number((await q1(`select count(*) as n from "ProjectExpert" pe join "Project" p on p.id = pe."projectId" where pe."practitionerId" = 'demo-p-lemoine' and pe.status = 'ATT_EXPERTS' and pe."desiredFeeCents" is null and p.status in ('ATT_EXPERTS', 'ACCORD')`)).n);
     const badge = await lem.page.locator('a.side-link[href="/sollicitations"] .side-badge').innerText().catch(() => "0");
@@ -3890,7 +3891,7 @@ async function submitNewOrg(page, siren) {
     const cpm = await waitMail(CLAIRE, "Dr Vincent Moreau propose d'autres honoraires — Board 5a négociation");
     check("Contre-proposition : e-mail à l'équipe Projets (ancien et nouveau montant, message)", !!cpm && /1\s500\s€ → 1\s800\s€ HT/.test(cpm.text) && cpm.text.includes("Deux demi-journées"), cpm?.text);
     await mor.page.goto(`${BASE}/sollicitations`);
-    check("Contre-proposition : « Contre-proposition envoyée » dans la liste de l'expert", (await mor.page.locator('a.tile:has-text("Board 5a négociation")').innerText()).includes("Contre-proposition envoyée"));
+    check("Contre-proposition : « Contre-proposition envoyée » dans la liste de l'expert", (await mor.page.locator('a.row-item:has-text("Board 5a négociation")').innerText()).includes("Contre-proposition envoyée"));
 
     // L'organisation : tâche, carte, « Accepter ces honoraires » ; l'expert est engagé et prévenu.
     await org.page.goto(`${BASE}/organisations/demo-org-dentalys`);
@@ -4155,7 +4156,7 @@ async function submitNewOrg(page, siren) {
     const past = (await q1(`select count(*)::int n from "Quote" q join "Rfq" r on r.id = q."rfqId" left join "Event" e on e.id = r."eventId" where q."supplierId" = 'demo-sup-belleville' and q.status = 'retained' and coalesce(e."startsAt", r."sentAt", q."createdAt") < now()`)).n;
     await anon.page.goto(`${BASE}/structures/demo-sup-belleville`);
     const book = n(await text(anon.page));
-    const done = book.match(/(\d+) Prestations réalisées via KolBase/)?.[1];
+    const done = book.match(/(\d+) Prestations réalisées via KolBase/i)?.[1];
     const reviews = n(await anon.page.locator('section:has(h2:has-text("Avis vérifiés"))').innerText());
     check("Book public : prestations passées seulement", done === String(past), `${done} / ${past}`);
     check("Book public : avis sans le nom du client", !reviews.includes("Dentalys") && reviews.includes("Organisation cliente") && reviews.includes("le nom des clients n'est pas affiché"), reviews.slice(0, 200));
@@ -4298,7 +4299,7 @@ async function submitNewOrg(page, siren) {
     const live = cl.page.locator('section[aria-label="Événements en cours"] a.row-item:has-text("Atelier 5b en cours")');
     check("Événement en cours : rangé « En cours », inscriptions closes", (await live.count()) === 1 && (await live.innerText()).includes("En cours · inscriptions closes"));
     await cl.page.goto(`${BASE}/organisations/demo-org-dentalys`);
-    check("Accueil de l'organisation : l'événement du jour reste visible", n(await cl.page.locator("#a-venir").locator("xpath=..").innerText()).includes("Atelier 5b en cours"));
+    check("Accueil de l'organisation : l'événement du jour reste visible", n(await cl.page.locator('section[aria-labelledby="a-venir"]').innerText()).includes("Atelier 5b en cours"));
     await cl.page.goto(`${BASE}/organisations/demo-org-dentalys/evenements/e2e-5b-ev-draft`);
     const draft = await text(cl.page);
     check("Brouillon : pas de « Fermer les inscriptions », durée « 15 min »", !draft.includes("Fermer les inscriptions") && draft.includes("15 min") && !draft.includes("0 h 15"));
