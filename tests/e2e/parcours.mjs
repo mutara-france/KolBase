@@ -175,7 +175,7 @@ const linkIn = (mail) => mail?.text.match(/https?:\/\/\S+/g)?.find((u) => !u.end
   await page.fill('input[name="fee"]', "4000");
   await Promise.all([page.waitForURL(/\/dossiers\//), page.click('button:has-text("Proposer ces honoraires")')]);
   const dossier = await text(page);
-  check("Candidature retenue : dossier en attente de l'expert", dossier.includes("En attente des experts") && dossier.includes("Réponse attendue"));
+  check("Candidature retenue : dossier en attente de l'expert", dossier.includes("En attente des experts") && /1 réponse attendue/i.test(dossier));
   check("Candidature retenue : pas de convention avant accord", (await page.locator('a:has-text("Convention (PDF)")').count()) === 0);
   const feeMail = await waitMail("olivier.girard@demo.kolbase.local", "vous propose des honoraires");
   check("E-mail à l'expert : proposition d'honoraires", !!feeMail && /4\s000\s€/.test(feeMail.text), feeMail?.subject ?? "aucun e-mail");
@@ -193,7 +193,7 @@ const linkIn = (mail) => mail?.text.match(/https?:\/\/\S+/g)?.find((u) => !u.end
   await page.click('button:has-text("Donner mon accord de principe")');
   await page.waitForTimeout(1200);
   await page.reload();
-  check("Expert : après accord, la convention devient disponible", (await page.locator('a:has-text("Projet de convention")').count()) === 1);
+  check("Expert : après accord, la convention devient disponible (onglet Documents et convention)", (await page.locator('a:has-text("Voir la convention")').count()) === 1 && (await page.locator('.dossier-tab.disabled:has-text("Documents et convention")').count()) === 0);
   check("E-mail à l'organisation : accord de principe", !!(await waitMail("anne.chevalier@demo.kolbase.local", "a donné son accord de principe")));
   // Message de l'expert → e-mail à l'organisation ; puis l'expert coupe les notifications.
   await tab(page, "messagerie");
@@ -229,7 +229,7 @@ const linkIn = (mail) => mail?.text.match(/https?:\/\/\S+/g)?.find((u) => !u.end
   const dossier = `${BASE}/organisations/demo-org-academie/dossiers/demo-prj-formation`;
   await page.goto(dossier);
   let t = await text(page);
-  check("Signature : « Convention signée » attend la convention de l'expert", (await page.locator('button:has-text("Convention signée")').count()) === 0 && t.includes("Déposez la convention signée de Dr Mathieu Roux"));
+  check("Signature : « Convention signée » attend la convention de l'expert", (await page.locator('button:has-text("Convention signée")').count()) === 0 && /(Faites signer|Déposez) la convention( signée)? de Dr Mathieu Roux/.test(t));
   await tab(page, "documents");
   const upload = 'form:has(input[name="file"])';
   await page.selectOption(`${upload} select[name="kind"]`, "CONVENTION_SIGNEE");
@@ -300,8 +300,8 @@ const linkIn = (mail) => mail?.text.match(/https?:\/\/\S+/g)?.find((u) => !u.end
   const { ctx, page } = await session();
   await login(page, "anne.chevalier@demo.kolbase.local");
   const dossier = `${BASE}/organisations/demo-org-academie/dossiers/e2e-prj-esign`;
-  await page.goto(`${dossier}?onglet=experts`);
-  const send = page.locator('button:has-text("signature électronique")');
+  await page.goto(`${dossier}?onglet=documents`);
+  const send = page.locator('#conventions button:has-text("signature électronique")');
   check("Signature électronique : envoi proposé (YOUSIGN_* et faux Yousign du port 3995)", (await send.count()) === 1);
   if ((await send.count()) === 1) {
     await send.click();
@@ -376,8 +376,9 @@ const linkIn = (mail) => mail?.text.match(/https?:\/\/\S+/g)?.find((u) => !u.end
 {
   const { ctx, page } = await session();
   await login(page, "sophie.bernard@demo.kolbase.local");
-  await page.goto(`${BASE}/organisations/demo-org-dentalys/dossiers/demo-prj-symposium`);
-  await page.click('button:has-text("Valider")');
+  // La décision de la conformité se prend dans son onglet, à côté des supports et des points d'attention.
+  await page.goto(`${BASE}/organisations/demo-org-dentalys/dossiers/demo-prj-symposium?onglet=conformite`);
+  await page.click('.next-step button:has-text("Valider")');
   await page.waitForTimeout(1200);
   await ctx.close();
   const s2 = await session();
@@ -954,7 +955,7 @@ async function submitNewOrg(page, siren) {
   await db.query(`update "Project" set status='EN_VALID' where id='demo-prj-symposium'`);
   const j = await session();
   await login(j.page, "julien.faure@demo.kolbase.local");
-  await j.page.goto(`${BASE}/organisations/demo-org-dentalys/dossiers/demo-prj-symposium`);
+  await j.page.goto(`${BASE}/organisations/demo-org-dentalys/dossiers/demo-prj-symposium?onglet=conformite`);
   const jt = await text(j.page);
   check("Quatre yeux : l'auteur du dossier ne peut pas le valider", (await j.page.locator('button:has-text("Valider")').count()) === 0 && jt.includes("Contrôle à quatre yeux"));
   check("Quatre yeux : il peut encore le bloquer avec un motif", (await j.page.locator('button:has-text("Bloquer")').count()) === 1);
@@ -4565,7 +4566,9 @@ async function submitNewOrg(page, siren) {
   await login(so.page, "sophie.bernard@demo.kolbase.local");
   await so.page.goto(`${BASE}/organisations/demo-org-dentalys/dossiers/demo-prj-symposium`);
   check("Dossier en examen : retard du délai interne signalé", (await text(so.page)).includes("Examen par la conformité en retard de"));
-  check("Fiche dossier : une décision de la conformité reste visible (Bloquer)", (await so.page.locator('.next-step button:has-text("Bloquer")').count()) === 1);
+  check("Vue d'ensemble de la conformité : « Examiner le dossier » mène à son onglet", (await so.page.locator('.next-step a[href*="onglet=conformite"]:has-text("Examiner le dossier")').count()) === 1);
+  await so.page.goto(`${BASE}/organisations/demo-org-dentalys/dossiers/demo-prj-symposium?onglet=conformite`);
+  check("Onglet Conformité : décision visible (Bloquer), retard rappelé", (await so.page.locator('.next-step button:has-text("Bloquer")').count()) === 1 && /examen en retard de/i.test(await so.page.locator(".next-step").innerText()));
   await so.page.goto(`${BASE}/organisations/demo-org-dentalys/conformite`);
   // Cellule « Échéance » de la ligne (la colonne Conflits peut aussi porter une pastille rouge).
   const dueCell = await so.page.locator('section:has(h2:has-text("Dossiers à valider")) tr:has-text("Symposium ADF") td[data-label="Échéance"]').first().innerText().catch(() => "");
