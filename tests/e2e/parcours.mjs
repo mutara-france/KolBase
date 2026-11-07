@@ -4552,8 +4552,10 @@ async function submitNewOrg(page, siren) {
 {
   const pgc = new pg.Client({ connectionString: process.env.DATABASE_URL });
   await pgc.connect();
-  // Symposium soumis il y a vingt jours : examen en retard (5 jours ouvrés par défaut).
-  await pgc.query(`update "Project" set "submittedAt" = now() - interval '20 days', "reviewReminderAt" = null where id = 'demo-prj-symposium'`);
+  // Symposium en examen, soumis il y a vingt jours : examen en retard (5 jours ouvrés par défaut). Les parcours
+  // précédents l'ont validé : il est remis « En validation », puis rétabli.
+  const symBefore = (await pgc.query(`select status from "Project" where id = 'demo-prj-symposium'`)).rows[0].status;
+  await pgc.query(`update "Project" set status = 'EN_VALID', "submittedAt" = now() - interval '20 days', "reviewReminderAt" = null where id = 'demo-prj-symposium'`);
   const so = await session();
   await login(so.page, "sophie.bernard@demo.kolbase.local");
   await so.page.goto(`${BASE}/organisations/demo-org-dentalys/dossiers/demo-prj-symposium`);
@@ -4566,7 +4568,7 @@ async function submitNewOrg(page, siren) {
   check("Tâches planifiées : examen en retard relancé", r1.reviewReminders >= 1 && !!(await waitMail("sophie.bernard@demo.kolbase.local", "Examen en retard : Symposium ADF")), JSON.stringify(r1));
   const r2 = await cron();
   check("Relance d'un examen : une fois par jour", r2.reviewReminders === 0, JSON.stringify(r2));
-  await pgc.query(`update "Project" set "submittedAt" = now() - interval '2 days', "reviewReminderAt" = null where id = 'demo-prj-symposium'`);
+  await pgc.query(`update "Project" set status = $1, "submittedAt" = now() - interval '2 days', "reviewReminderAt" = null where id = 'demo-prj-symposium'`, [symBefore]);
   await so.ctx.close();
   // Date d'intervention dans dix jours : la soumission (30 jours avant) est en retard ; abandon rangé sous « Autres actions ».
   const jul = await session();
@@ -4578,7 +4580,7 @@ async function submitNewOrg(page, siren) {
   await jul.page.locator('.notice.ok:has-text("Objet du dossier enregistré")').waitFor({ timeout: 10000 }).catch(() => {});
   await jul.page.goto(`${BASE}/organisations/demo-org-dentalys/dossiers/demo-prj-board`);
   const t = await text(jul.page);
-  check("Intervention prévue : soumission en retard signalée", t.includes("Soumission à la conformité en retard de") && t.includes("Intervention prévue"));
+  check("Intervention prévue : soumission en retard signalée", t.includes("Soumission à la conformité en retard de") && /intervention prévue/i.test(t));
   check("Fiche dossier : abandon rangé sous « Autres actions »", (await jul.page.locator('.next-step details.more-actions:has-text("Abandonner")').count()) === 1 && !(await jul.page.locator('.next-step details.more-actions').evaluate((d) => d.open)));
   check("Fiche dossier : objet dans la vue d'ensemble, frise compacte", (await jul.page.locator('section:has(h2:has-text("Objet du dossier"))').count()) === 1 && (await jul.page.locator("header.page-hero .pipeline-compact").count()) === 1);
   await pgc.query(`update "Project" set "plannedAt" = null where id = 'demo-prj-board'`);
