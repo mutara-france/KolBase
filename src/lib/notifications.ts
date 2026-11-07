@@ -74,11 +74,34 @@ async function members(orgId: string, roles: OrgRole[]) {
   return ms.map((m) => m.user);
 }
 
-/** Interlocuteur d'un dossier côté organisation : son créateur s'il est toujours membre, sinon l'équipe projets. */
-async function projectTeam(project: { organizationId: string; createdById: string | null }) {
-  const team = await members(project.organizationId, PROJECT_ROLES);
-  const creator = team.find((u) => u.id === project.createdById);
-  return creator ? [creator] : team;
+/** Interlocuteurs d'un dossier côté organisation : ses responsables encore membres, sinon toute l'équipe Projets. */
+async function projectTeam(project: { id: string; organizationId: string }) {
+  const [team, leads] = await Promise.all([
+    members(project.organizationId, PROJECT_ROLES),
+    db.projectLead.findMany({ where: { projectId: project.id }, select: { userId: true } }),
+  ]);
+  const ids = new Set(leads.map((l) => l.userId));
+  const mine = team.filter((u) => ids.has(u.id));
+  return mine.length ? mine : team;
+}
+
+/** Nouveau responsable d'un dossier, désigné par un collègue : il est prévenu (pas s'il s'est désigné lui-même). */
+export function notifyProjectLead(projectId: string, userId: string, byId: string) {
+  if (userId === byId) return;
+  later(async () => {
+    const [p, u, by] = await Promise.all([
+      db.project.findUnique({ where: { id: projectId }, select: { id: true, title: true, organizationId: true } }),
+      db.user.findUnique({ where: { id: userId }, select: userSelect }),
+      db.user.findUnique({ where: { id: byId }, select: { firstName: true, lastName: true } }),
+    ]);
+    if (!p || !u) return;
+    const who = by ? `${by.firstName} ${by.lastName}` : "";
+    await send([u], (t) => ({
+      subject: t("Vous êtes responsable du dossier « {title} »", { title: p.title }),
+      text: t("Bonjour,\n\n{who} vous a désigné responsable du dossier « {title} ». Il figure désormais dans « Mes dossiers », et les e-mails du dossier vous sont adressés.", { who, title: p.title }),
+      cta: { label: t("Ouvrir le dossier"), href: `/organisations/${p.organizationId}/dossiers/${p.id}` },
+    }));
+  });
 }
 
 /** Unité de prestation du type de collaboration (« journée », « séances »…), au pluriel au-delà de 1. */

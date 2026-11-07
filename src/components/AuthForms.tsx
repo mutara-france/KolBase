@@ -41,16 +41,21 @@ export function SignInForm({ next, organisation = false }: { next?: string; orga
  * Création de compte ; `organisation` : profil « Je représente une organisation » présélectionné (sans pays d'exercice).
  * `email` : adresse invitée, préremplie.
  */
-export function SignUpForm({ next, organisation = false, email }: { next?: string; organisation?: boolean; email?: string }) {
+export function SignUpForm({ next, organisation = false, email, kinds = [] }: { next?: string; organisation?: boolean; email?: string; kinds?: { value: string; label: string }[] }) {
   const [state, action, pending] = useActionState(signUp, undefined);
   const [profession, setProfession] = useState(organisation ? "" : "Chirurgien-dentiste");
   const t = useT();
+  // Invitation à rejoindre une organisation existante : pas de nouvelle structure à nommer.
+  const joining = (next ?? "").startsWith("/invitation/");
   return (
     <ActionForm action={action} className="card form">
+      {profession === "" && !joining && <div className="eyebrow-sm">{t("Étape 1 sur 2")}</div>}
       <h1>{organisation ? t("Créer le compte de votre organisation") : t("Créer un compte")}</h1>
       <p className="muted">
         {organisation
-          ? t("Commencez par votre compte personnel : vous créerez ensuite l'espace de votre organisation, ou rejoindrez celle qui vous invite. Gratuit jusqu'à votre première action qui engage un tiers (prestataire : jusqu'à votre premier devis retenu).")
+          ? joining
+            ? t("Créez votre compte personnel pour rejoindre l'organisation qui vous invite.")
+            : t("Votre compte personnel et le nom de votre structure ; l'étape suivante complète sa fiche (SIREN, coordonnées). Gratuit jusqu'à votre première action qui engage un tiers (prestataire : jusqu'à votre premier devis retenu).")
           : t("Un seul compte pour vous inscrire aux événements et, si vous le souhaitez, vous référencer comme expert.")}
       </p>
       <Notice state={state} />
@@ -66,6 +71,16 @@ export function SignUpForm({ next, organisation = false, email }: { next?: strin
           <option value="">{t("Je représente une organisation")}</option>
         </select>
       </label>
+      {profession === "" && !joining && (
+        <div className="row">
+          <label>{t("Nom de votre structure")}<input name="orgName" maxLength={120} autoComplete="organization" required /></label>
+          {kinds.length > 0 && (
+            <label>{t("Type de structure")}
+              <select name="orgKind" defaultValue="INDUSTRIEL">{kinds.map((k) => <option key={k.value} value={k.value}>{k.label}</option>)}</select>
+            </label>
+          )}
+        </div>
+      )}
       {profession !== "" && (
         <label>{t("Pays d'exercice")}
           <select name="country" defaultValue="FR">

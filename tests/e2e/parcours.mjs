@@ -806,16 +806,23 @@ async function submitNewOrg(page, siren) {
   check("Pied de page : mention de la version française faisant foi", (await page.locator("footer").innerText()).includes("binding in their French version"));
   await page.goto(`${BASE}/experts`);
   check("Experts : libellés traduits (glossaire)", (await page.locator("main").innerText()).includes("Implantology"));
-  // Le sélecteur repasse en français, et le choix est retenu.
-  await Promise.all([page.waitForResponse((r) => r.request().method() === "POST"), page.locator('footer .locale-switch button:has-text("FR")').click()]);
+  check("Pied de page : pas de sélecteur de langue", (await page.locator("footer .locale-switch").count()) === 0);
+  // Le sélecteur de l'en-tête repasse en français, et le choix est retenu.
+  await Promise.all([page.waitForResponse((r) => r.request().method() === "POST"), page.locator('header .locale-switch button:has-text("FR")').click()]);
   await page.waitForTimeout(800);
   await page.goto(`${BASE}/`);
   check("Sélecteur de langue : retour au français mémorisé", (await page.getAttribute("html", "lang")) === "fr" && (await page.locator("header").innerText()).includes("Se connecter"));
   await ctx.close();
 
-  // Praticienne : langue choisie dans son compte, appliquée à l'interface.
+  // Praticienne : langue choisie dans son compte, appliquée à l'interface ; pas de sélecteur une fois connectée.
   const camille = await session();
   await login(camille.page, "camille.petit@demo.kolbase.local");
+  await camille.page.goto(`${BASE}/experts`);
+  check("Connectée : pas de sélecteur de langue dans l'en-tête public", (await camille.page.locator(".locale-switch").count()) === 0);
+  // Un cookie de langue posé en visiteur ne l'emporte pas sur la langue du compte.
+  await camille.ctx.addCookies([{ name: "kb_lang", value: "en", url: BASE }]);
+  await camille.page.goto(`${BASE}/tableau-de-bord`);
+  check("Connectée : la langue du compte prime sur le choix fait en visiteur", (await camille.page.getAttribute("html", "lang")) === "fr");
   await camille.page.goto(`${BASE}/compte`);
   const infos = 'form:has(select[name="locale"])';
   await camille.page.selectOption(`${infos} select[name="locale"]`, "en");
@@ -3415,11 +3422,11 @@ async function submitNewOrg(page, siren) {
     await anon.page.goto(`${BASE}/experts?type=${encodeURIComponent("Conférence")}&ville=Lyon`);
     const chips = await anon.page.locator(".active-filters").innerText().catch(() => "");
     check("Recherche de l'accueil : filtres visibles sur la page de résultats", chips.includes("Type : Conférence") && chips.includes("Ville : Lyon"), chips);
-    // 4. Menu public mobile : « Se référencer » visible.
+    // 4. Menu public mobile : bouton « Se connecter », « Se référencer » en tête de la rangée de liens.
     const mob = await browser.newContext({ locale: "fr-FR", viewport: { width: 390, height: 844 } });
     const mp = await mob.newPage();
     await mp.goto(`${BASE}/`);
-    check("Menu public mobile : « Se référencer » accessible", await mp.locator('header a:has-text("Se référencer")').isVisible());
+    check("Menu public mobile : bouton « Se connecter », « Se référencer » accessible", (await mp.locator('header .nav-actions a.btn:visible').innerText()) === "Se connecter" && (await mp.locator('header nav a:has-text("Se référencer")').isVisible()));
     await login(mp, EMMA);
     await mp.goto(`${BASE}/tableau-de-bord`);
     check("Barre mobile : cinq entrées au plus", (await mp.locator(".bottom-nav a").count()) <= 5 && (await mp.locator(".bottom-nav a").count()) >= 3, String(await mp.locator(".bottom-nav a").count()));
@@ -3493,13 +3500,15 @@ async function submitNewOrg(page, siren) {
   // 8. Anglais : navigation de l'espace organisation et création d'organisation.
   {
     const en = await session();
+    // Langue réglée dans le compte (le sélecteur n'existe que pour les visiteurs).
+    await pgc.query(`update "User" set locale = 'en' where id = 'demo-u-julien'`);
     await login(en.page, "julien.faure@demo.kolbase.local");
-    await en.ctx.addCookies([{ name: "kb_lang", value: "en", url: BASE }]);
     await en.page.goto(`${BASE}/organisations/demo-org-dentalys`);
     const side = await en.page.locator("aside").first().innerText().catch(() => "");
     check("Anglais : navigation de l'espace organisation traduite", side.includes("Files") && side.includes("Events") && !side.includes("Dossiers"), side.replace(/\s+/g, " ").slice(0, 120));
     await en.page.goto(`${BASE}/organisations/nouvelle`);
     check("Anglais : création d'organisation traduite", (await text(en.page)).includes("Organisation name") && !(await text(en.page)).includes("Nom de l'organisation"));
+    await pgc.query(`update "User" set locale = 'fr' where id = 'demo-u-julien'`);
     await en.ctx.close();
   }
   await pgc.end();
@@ -3940,10 +3949,10 @@ async function submitNewOrg(page, siren) {
     const a = await session();
     await a.page.goto(`${BASE}/evenements`);
     check("En-tête public : « Se connecter » et « Se référencer » gardent la page courante",
-      (await a.page.locator('header.public-nav .nav-actions a:has-text("Se connecter")').getAttribute("href")) === "/connexion?next=%2Fevenements" &&
-      (await a.page.locator('header.public-nav .nav-actions a:has-text("Se référencer")').getAttribute("href")) === "/inscription?next=%2Fevenements");
+      (await a.page.locator('header.public-nav .nav-actions a:has-text("Se connecter")').first().getAttribute("href")) === "/connexion?next=%2Fevenements" &&
+      (await a.page.locator('header.public-nav .nav-actions a:has-text("Se référencer")').first().getAttribute("href")) === "/inscription?next=%2Fevenements");
     await a.page.goto(`${BASE}/connexion?next=%2Fevenements`);
-    check("En-tête public sur la connexion : pas de retour vers une page d'authentification", (await a.page.locator('header.public-nav .nav-actions a:has-text("Se connecter")').getAttribute("href")) === "/connexion");
+    check("En-tête public sur la connexion : pas de retour vers une page d'authentification", (await a.page.locator('header.public-nav .nav-actions a:has-text("Se connecter")').first().getAttribute("href")) === "/connexion");
     // Mot de passe oublié → retour à la connexion → page d'origine après le nouveau mot de passe.
     const forgot = await a.page.locator('main a:has-text("Mot de passe oublié")').getAttribute("href");
     check("Connexion : « Mot de passe oublié » garde next", forgot === "/mot-de-passe-oublie?next=%2Fevenements", forgot);
@@ -3971,10 +3980,19 @@ async function submitNewOrg(page, siren) {
     check("Connexion refusée : l'adresse saisie reste", (await w.page.inputValue('input[name="email"]')) === "romane.lot5b@exemple.fr" && (await text(w.page)).includes("E-mail ou mot de passe incorrect"));
     // Lettre d'information : réservée aux praticiens (inscription organisation, Mon compte d'un compte organisation).
     await w.page.goto(`${BASE}/inscription?profil=organisation`);
+    check("Inscription organisation : nom et type de la structure demandés", (await w.page.locator('input[name="orgName"]').count()) === 1 && (await w.page.locator('select[name="orgKind"]').count()) === 1);
     const orgNews = await w.page.locator('input[name="newsletter"]').count();
     await w.page.selectOption('select[name="profession"]', "Chirurgien-dentiste");
     check("Inscription : lettre d'information proposée au praticien seulement", orgNews === 0 && (await w.page.locator('input[name="newsletter"]').count()) === 1);
     await w.ctx.close();
+    // « Se référencer » pour une structure : son nom et son type sont repris à l'étape suivante (sa fiche).
+    const st = await session();
+    await st.page.goto(`${BASE}/inscription?profil=organisation`);
+    await st.page.fill('input[name="orgName"]', "Traiteur Lot5b");
+    await st.page.selectOption('select[name="orgKind"]', "PRESTATAIRE");
+    await signUpHere(st.page, "Paul", "Lot5b", "paul.lot5b@exemple.fr");
+    check("Inscription d'une structure : étape 2 préremplie (nom, type)", st.page.url().includes("/organisations/nouvelle?") && (await st.page.inputValue('input[name="name"]')) === "Traiteur Lot5b" && (await st.page.inputValue('select[name="kind"]')) === "PRESTATAIRE" && (await st.page.locator('.eyebrow-sm:has-text("Étape 2 sur 2")').count()) === 1, st.page.url());
+    await st.ctx.close();
     const cl = await session();
     await login(cl.page, CLAIRE);
     await cl.page.goto(`${BASE}/compte`);
@@ -4027,12 +4045,15 @@ async function submitNewOrg(page, siren) {
     }
     check("Création de comptes : essais répétés sur une même adresse limités", last.includes("Trop de tentatives"), last.match(/Trop de tentatives[^.]*\.|Un compte existe[^.]*\./)?.[0]);
     await s.ctx.close();
-    // Mobile : « Se connecter » visible sans défilement.
+    // Mobile : bouton « Se connecter » visible sans défilement, « Se référencer » en tête de la rangée de liens.
     const mob = await browser.newContext({ locale: "fr-FR", viewport: { width: 390, height: 844 } });
     const mp = await mob.newPage();
     await mp.goto(`${BASE}/experts`);
-    const box = await mp.locator('header.public-nav nav a:has-text("Se connecter")').boundingBox();
-    check("Mobile : « Se connecter » visible sans défiler, avec la page d'origine", !!box && box.x >= 0 && box.x + box.width <= 390 && (await mp.locator('header.public-nav nav a:has-text("Se connecter")').getAttribute("href")) === "/connexion?next=%2Fexperts", JSON.stringify(box));
+    const signInBtn = mp.locator('header.public-nav .nav-actions a.btn.mobile-only');
+    const box = await signInBtn.boundingBox();
+    const signUpBox = await mp.locator('header.public-nav nav a:has-text("Se référencer")').boundingBox();
+    check("Mobile : bouton « Se connecter » visible sans défiler, avec la page d'origine", !!box && box.x >= 0 && box.x + box.width <= 390 && (await signInBtn.innerText()) === "Se connecter" && (await signInBtn.getAttribute("href")) === "/connexion?next=%2Fexperts", JSON.stringify(box));
+    check("Mobile : « Se référencer » visible sans défiler", !!signUpBox && signUpBox.x >= 0 && signUpBox.x + signUpBox.width <= 390, JSON.stringify(signUpBox));
     await mob.close();
   }
 
@@ -4373,6 +4394,56 @@ async function submitNewOrg(page, siren) {
   await pgc.end();
 }
 
+// ── Responsables des dossiers : « Mes dossiers », co-responsables, e-mails ──
+{
+  const pgc = new pg.Client({ connectionString: process.env.DATABASE_URL });
+  await pgc.connect();
+  // Rejouable : le symposium n'a que Julien Faure pour responsable ; Claire Morel (administratrice) n'est responsable
+  // d'aucun dossier de Dentalys (les parcours précédents lui en ont fait créer).
+  await pgc.query(`delete from "ProjectLead" where "projectId" = 'demo-prj-symposium' and "userId" <> 'demo-u-julien'`);
+  await pgc.query(`delete from "ProjectLead" where "userId" = 'demo-u-claire' and "projectId" in (select id from "Project" where "organizationId" = 'demo-org-dentalys')`);
+  const leadsOf = async (id) => (await pgc.query(`select "userId" from "ProjectLead" where "projectId" = $1 order by "userId"`, [id])).rows.map((r) => r.userId).join();
+  const jul = await session();
+  await login(jul.page, "julien.faure@demo.kolbase.local");
+  await jul.page.goto(`${BASE}/organisations/demo-org-dentalys/dossiers`);
+  let t = await text(jul.page);
+  check("Liste des dossiers : « Mes dossiers » par défaut pour un responsable", (await jul.page.locator('nav.tabs a.active:has-text("Mes dossiers")').count()) === 1 && t.includes("Board implantologie"));
+  check("Liste des dossiers : responsables affichés (co-responsable compris)", t.includes("Responsable : Julien Faure, Marc Lefèvre"));
+  const claire = await session();
+  await login(claire.page, "claire.morel@demo.kolbase.local");
+  await claire.page.goto(`${BASE}/organisations/demo-org-dentalys/dossiers`);
+  check("Liste des dossiers : « Tous les dossiers » par défaut pour qui n'est responsable d'aucun", (await claire.page.locator('nav.tabs a.active:has-text("Tous les dossiers")').count()) === 1 && (await text(claire.page)).includes("Symposium ADF"));
+  await claire.page.goto(`${BASE}/organisations/demo-org-dentalys/dossiers?vue=mes`);
+  check("« Mes dossiers » sans dossier : message et lien vers tous les dossiers", (await text(claire.page)).includes("Aucun dossier en cours dont vous êtes responsable.") && (await claire.page.locator('a:has-text("Voir tous les dossiers")').count()) === 1);
+  // Julien ajoute Marc Lefèvre comme co-responsable du symposium : Marc est prévenu et le retrouve dans « Mes dossiers ».
+  await jul.page.goto(`${BASE}/organisations/demo-org-dentalys/dossiers/demo-prj-symposium`);
+  check("Fiche du dossier : bloc Responsables", (await jul.page.locator("#responsables").innerText()).includes("Julien Faure"));
+  await jul.page.selectOption("#lead-add", "demo-u-marc");
+  await jul.page.click('#responsables button:has-text("Ajouter")');
+  await jul.page.locator('#responsables li:has-text("Marc Lefèvre")').waitFor({ timeout: 10000 }).catch(() => {});
+  check("Co-responsable ajouté", (await leadsOf("demo-prj-symposium")) === "demo-u-julien,demo-u-marc");
+  check("E-mail au co-responsable désigné", !!(await waitMail("marc.lefevre@demo.kolbase.local", "Vous êtes responsable du dossier")));
+  check("Historique : responsable ajouté, avec son nom", (await text(jul.page)).includes("Responsable ajouté : Marc Lefèvre"));
+  const marc = await session();
+  await login(marc.page, "marc.lefevre@demo.kolbase.local");
+  await marc.page.goto(`${BASE}/organisations/demo-org-dentalys/dossiers`);
+  t = await text(marc.page);
+  check("Co-responsable : le dossier dans « Mes dossiers »", t.includes("Symposium ADF") && t.includes("Board implantologie") && !t.includes("Rédaction d'un guide"));
+  // Retrait : Marc n'est plus responsable ; le retirer de l'équipe Projets lui retire aussi ses dossiers.
+  await jul.page.click('#responsables li:has-text("Marc Lefèvre") button:has-text("Retirer")');
+  await jul.page.locator('#responsables li:has-text("Marc Lefèvre")').waitFor({ state: "detached", timeout: 10000 }).catch(() => {});
+  check("Responsable retiré", (await leadsOf("demo-prj-symposium")) === "demo-u-julien");
+  // Un membre Conformité seul ne voit pas « Mes dossiers » et ne peut pas se désigner responsable.
+  const sophie = await session();
+  await login(sophie.page, "sophie.bernard@demo.kolbase.local");
+  await sophie.page.goto(`${BASE}/organisations/demo-org-dentalys/dossiers`);
+  check("Conformité : pas d'onglet « Mes dossiers »", (await sophie.page.locator('nav.tabs a:has-text("Mes dossiers")').count()) === 0);
+  await sophie.page.goto(`${BASE}/organisations/demo-org-dentalys/dossiers/demo-prj-symposium`);
+  check("Conformité : responsables affichés, sans gestion", (await sophie.page.locator('#responsables button').count()) === 0);
+  for (const s of [jul, claire, marc, sophie]) await s.ctx.close();
+  await pgc.end();
+}
+
 // ── Photo des experts et projets proposés aux organisations ────────────────
 {
   const pgc = new pg.Client({ connectionString: process.env.DATABASE_URL });
@@ -4486,12 +4557,14 @@ async function submitNewOrg(page, siren) {
   // Dentalys accepte : l'expert est prévenu, la photo grand format est proposée (accord donné).
   await jul.page.goto(`${BASE}/organisations/demo-org-dentalys/dossiers`);
   check("Dossiers de l'organisation : « Projet proposé par l'expert »", (await text(jul.page)).includes("Projet proposé par l'expert"));
+  check("Mes dossiers : la proposition reçue, sans responsable, dans « À attribuer »", (await jul.page.locator('section[aria-labelledby="a-attribuer"]:has-text("Étude e2e : retraitement")').count()) === 1);
   await jul.page.goto(`${BASE}/organisations/demo-org-dentalys/dossiers/${copyOf("demo-org-dentalys").id}`);
   const dj = await text(jul.page);
   check("Dossier reçu : aucun autre destinataire nommé", !dj.includes("OrthoNova") && !dj.includes("Collège Dentaire"));
   await jul.page.click('button:has-text("Accepter la proposition")');
   await jul.page.waitForTimeout(800);
   check("Proposition acceptée : dossier en accord de principe", (await q1(`select status from "Project" where id = $1`, [copyOf("demo-org-dentalys").id]))?.status === "ACCORD");
+  check("Proposition acceptée : qui l'accepte en devient responsable", (await pgc.query(`select "userId" from "ProjectLead" where "projectId" = $1`, [copyOf("demo-org-dentalys").id])).rows.map((r) => r.userId).join() === "demo-u-julien");
   check("E-mail à l'expert : proposition acceptée", !!(await waitMail(ROUX, "Proposition acceptée")));
   await jul.page.goto(`${BASE}/organisations/demo-org-dentalys/dossiers/${copyOf("demo-org-dentalys").id}`);
   await tab(jul.page, "marketing");

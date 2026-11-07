@@ -1,7 +1,6 @@
 import Link from "next/link";
 import { Logo } from "@/components/Logo";
 import { CookieSettingsButton } from "@/components/CookieConsent";
-import { LocaleSwitch } from "@/components/LocaleSwitch";
 import { getT } from "@/lib/i18n/server";
 
 export async function SiteFooter() {
@@ -19,7 +18,6 @@ export async function SiteFooter() {
         <nav className="footer-links" aria-label={t("Pied de page")}>
           <Link href="/actualites" className="footer-link">{t("Actualités")}</Link>
           <Link href="/aide" className="footer-link">{t("Aide")}</Link>
-          <LocaleSwitch className="on-dark" />
         </nav>
       </div>
       <div className="footer-bottom">

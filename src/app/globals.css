@@ -368,7 +368,7 @@ body:has(.sidebar) .site-footer { padding: 24px 32px; }
   .public-nav nav { order: 3; flex: 1 1 100%; overflow-x: auto; flex-wrap: nowrap; }
   .public-nav .nav-actions { margin-left: auto; }
   .public-nav .nav-actions .btn { min-height: 38px; padding: 7px 14px; font-size: 13.5px; }
-  /* Rangée de liens défilante : un dégradé à droite signale la suite ; « Se référencer » reste visible. */
+  /* Rangée de liens défilante : un dégradé à droite signale la suite ; « Se connecter » reste visible en bouton. */
   .public-nav nav { -webkit-mask-image: linear-gradient(to right, #000 82%, transparent); mask-image: linear-gradient(to right, #000 82%, transparent); padding-right: 32px; scrollbar-width: none; }
   .public-nav nav::-webkit-scrollbar { display: none; }
   .public-nav .desktop-only { display: none; }
@@ -448,6 +448,39 @@ body:has(.sidebar) .site-footer { padding: 24px 32px; }
 .tag-sm { font-size: 12px; padding: 3px 10px; }
 .pill.st-neutral { background: var(--bg-subtle); color: var(--ink-soft); }
 .faq summary { cursor: pointer; font-weight: 600; font-size: 14.5px; color: var(--ink); }
+/* ─── Aide : premiers pas par profil, questions par thème, contact ─── */
+.help-hero { padding-bottom: 28px; }
+.help-eyebrow { display: inline-flex; align-items: center; gap: 12px; font-size: 12px; letter-spacing: 0.14em; margin-bottom: 12px; }
+.help-eyebrow::before { content: ""; width: 28px; height: 2px; background: var(--corail); }
+.help-lead { margin: 12px 0 20px; max-width: 640px; font-size: 16px; line-height: 1.5; color: var(--ink-soft); }
+.help-start { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(300px, 100%), 1fr)); gap: 20px; }
+.help-card { display: flex; flex-direction: column; gap: 14px; padding: 26px; border: 1px solid var(--line); border-radius: 22px; background: var(--card); }
+.help-card h3 { margin: 0; font-family: var(--font-display); font-size: 19px; font-weight: 700; letter-spacing: -0.02em; color: var(--ink); }
+.help-icon { display: inline-flex; align-items: center; justify-content: center; width: 44px; height: 44px; border-radius: 14px; background: var(--tint); color: var(--outremer); }
+.help-steps { list-style: none; margin: 0; padding: 0; display: grid; gap: 12px; counter-reset: etape; }
+.help-steps li { counter-increment: etape; display: grid; grid-template-columns: 26px 1fr; gap: 10px; align-items: start; font-size: 14.5px; line-height: 1.5; color: var(--ink); }
+.help-steps li::before { content: counter(etape); display: inline-flex; align-items: center; justify-content: center; width: 26px; height: 26px; border-radius: 50%; background: var(--outremer); color: #fff; font-family: var(--font-mono); font-size: 12px; font-weight: 500; }
+.help-card-foot { margin-top: auto; display: flex; flex-direction: column; align-items: flex-start; gap: 8px; padding-top: 6px; }
+.help-card-foot .hint { margin: 0; }
+.help-faq { display: grid; gap: 28px; }
+.help-group, .help-items .faq { scroll-margin-top: 90px; }
+.help-group-title { margin: 0 0 10px; font-family: var(--font-mono); font-size: 12px; font-weight: 500; letter-spacing: 0.1em; text-transform: uppercase; color: var(--ink-soft); }
+.help-items { border: 1px solid var(--line); border-radius: 18px; background: var(--card); overflow: hidden; }
+.help-items .faq + .faq { border-top: 1px solid var(--line); }
+.help-items .faq summary { list-style: none; display: flex; align-items: center; justify-content: space-between; gap: 16px; min-height: 56px; padding: 14px 20px; font-size: 15px; }
+.help-items .faq summary::-webkit-details-marker { display: none; }
+.help-items .faq summary:hover { background: var(--bg-subtle); }
+.help-items .faq summary:focus-visible { outline: 2px solid var(--indigo); outline-offset: -2px; }
+.faq-chevron { flex: none; color: var(--outremer); transition: transform 0.2s; }
+.faq[open] .faq-chevron { transform: rotate(180deg); }
+.help-items .faq p { margin: 0; padding: 0 20px 18px; max-width: 760px; font-size: 14.5px; line-height: 1.6; color: var(--ink-soft); }
+.help-contact { display: flex; align-items: center; justify-content: space-between; gap: 20px 32px; flex-wrap: wrap; padding: 32px; border-radius: 28px; background: var(--outremer) url("/visuels/fond-carte.webp") center / cover; color: #fff; }
+.help-contact h2 { margin: 0 0 6px; font-family: var(--font-display); font-size: 24px; letter-spacing: -0.02em; color: #fff; }
+.help-contact p { margin: 0; color: rgba(255, 255, 255, 0.86); }
+.help-contact-links { display: flex; gap: 10px; flex-wrap: wrap; }
+.help-contact .btn { background: #fff; color: var(--outremer); }
+.help-contact .btn.secondary { background: transparent; color: #fff; border-color: rgba(255, 255, 255, 0.6); }
+@media (prefers-reduced-motion: reduce) { .faq-chevron { transition: none; } }
 /* utilitaires */
 /* Part extensible d'une rangée : passe à la ligne sous 240 px, sans jamais dépasser de son conteneur. */
 .grow { flex: 1 1 240px; min-width: 0; }
@@ -461,6 +494,13 @@ body:has(.sidebar) .site-footer { padding: 24px 32px; }
 .mb-1 { margin-bottom: 4px; } .mb-2 { margin-bottom: 8px; } .mb-3 { margin-bottom: 12px; } .mb-4 { margin-bottom: 16px; }
 .mt-1 { margin-top: 4px; } .mt-2 { margin-top: 8px; } .mt-3 { margin-top: 12px; } .mt-4 { margin-top: 16px; }
 .pt-0 { padding-top: 0 !important; }
+/* Responsables d'un dossier (fiche, vue d'ensemble). */
+.lead-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; }
+.lead-list li { display: flex; align-items: center; gap: 10px; font-size: 14px; }
+.lead-list .grow { flex: 1 1 auto; }
+.inline-form { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+.inline-form select { flex: 1 1 140px; min-width: 0; min-height: 34px; font: inherit; font-size: 13.5px; padding: 6px 12px; border: 1px solid var(--line-strong); border-radius: 10px; background: #fff; color: var(--ink); }
+.inline-form select:focus { outline: none; border-color: var(--outremer); box-shadow: 0 0 0 3px rgba(86, 56, 240, 0.18); }
 .sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
 
 /* ─── Profils et visibilité ─────────────────────────────────── */

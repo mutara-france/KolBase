@@ -8,6 +8,7 @@
  */
 import { mkdirSync } from "node:fs";
 import { chromium } from "playwright";
+import pg from "pg";
 import { withConsent } from "./consentement.mjs";
 
 const BASE = process.env.BASE ?? "http://localhost:3000";
@@ -168,12 +169,17 @@ function inspect() {
 
 const browser = withConsent(await chromium.launch(), BASE);
 const all = [];
+const db = process.env.DATABASE_URL ? new pg.Client({ connectionString: process.env.DATABASE_URL }) : null;
+await db?.connect();
+const setAccountLocale = async (email, locale) => db?.query(`UPDATE "User" SET locale = $1 WHERE email = $2`, [locale, email]);
 for (const [who, paths] of Object.entries(PROFILES)) {
   for (const vp of VIEWPORTS) {
     for (const locale of vp.locales) {
       const ctx = await browser.newContext({ viewport: { width: vp.width, height: vp.height }, locale: locale === "en" ? "en-GB" : "fr-FR" });
       await ctx.addCookies([{ name: "kb_lang", value: locale, url: BASE }]);
       const page = await ctx.newPage();
+      // Compte connecté : la langue est celle de son profil (le cookie ne vaut que pour les visiteurs).
+      if (who !== "public") await setAccountLocale(who, locale);
       if (who !== "public") {
         await page.goto(`${BASE}/connexion`);
         await page.fill('input[name="email"]', who);
@@ -219,6 +225,9 @@ for (const vp of VIEWPORTS) {
   }
 }
 await browser.close();
+// Comptes de démo rendus à leur langue d'origine (français).
+for (const email of Object.keys(PROFILES)) if (email !== "public") await setAccountLocale(email, "fr");
+await db?.end();
 
 // Une anomalie répétée sur plusieurs tailles ou profils n'est listée qu'une fois par page et par endroit.
 const seen = new Map();

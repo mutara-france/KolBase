@@ -11,17 +11,18 @@ import { useT } from "@/components/I18nProvider";
 type Opt = { value: string; label: string };
 
 /** Création d'une organisation : traduite (le reste de l'espace organisation est en français). */
-export function NewOrgForm({ kinds }: { kinds: Opt[] }) {
+export function NewOrgForm({ kinds, name, kind }: { kinds: Opt[]; name?: string; kind?: string }) {
   const [state, action, pending] = useActionState(createOrganization, undefined);
   const t = useT();
   return (
     <ActionForm action={action} className="card form">
+      {name && <div className="eyebrow-sm">{t("Étape 2 sur 2")}</div>}
       <h1>{t("Créer une organisation")}</h1>
-      <p className="muted">{t("Vous en serez l'administrateur et pourrez ensuite inviter vos collègues.")}</p>
+      <p className="muted">{name ? t("Complétez la fiche de votre structure : KolBase contrôle le SIREN, puis la valide. Vous en serez l'administrateur et pourrez inviter vos collègues.") : t("Vous en serez l'administrateur et pourrez ensuite inviter vos collègues.")}</p>
       <Notice state={state} />
-      <label>{t("Nom de l'organisation")}<input name="name" maxLength={120} required /></label>
+      <label>{t("Nom de l'organisation")}<input name="name" maxLength={120} defaultValue={name} required /></label>
       <label>{t("Type")}
-        <select name="kind" defaultValue="INDUSTRIEL">{kinds.map((k) => <option key={k.value} value={k.value}>{k.label}</option>)}</select>
+        <select name="kind" defaultValue={kind ?? "INDUSTRIEL"}>{kinds.map((k) => <option key={k.value} value={k.value}>{k.label}</option>)}</select>
       </label>
       <div className="row">
         <label>{t("Secteur")}<input name="sector" placeholder={t("Dispositifs médicaux…")} /></label>

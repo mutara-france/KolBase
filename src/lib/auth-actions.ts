@@ -19,6 +19,7 @@ import { startSecondFactor } from "@/lib/two-factor";
 import { MAX_NAME, str } from "@/lib/form";
 import { normalize } from "@/lib/search";
 import { getLocale, getT, LOCALE_COOKIE } from "@/lib/i18n/server";
+import { ORG_KIND_LABEL } from "@/lib/org-roles";
 import { makeT, type T } from "@/lib/i18n";
 
 export type FormState = { error?: string; ok?: string } | undefined;
@@ -105,6 +106,10 @@ export async function signUp(_: FormState, form: FormData): Promise<FormState> {
   const next = safeNext(str(form, "next"), "");
   await sendVerification(user, !!profession, next);
   await createSession(user.id);
+  // Structure nommée à l'inscription : l'étape suivante (sa fiche) est préremplie.
+  const orgName = profession ? "" : str(form, "orgName", 120);
+  const orgKind = str(form, "orgKind");
+  if (orgName) redirect(`/organisations/nouvelle?${new URLSearchParams({ nom: orgName, ...(Object.hasOwn(ORG_KIND_LABEL, orgKind) ? { type: orgKind } : {}) })}`);
   redirect(next || (profession ? "/tableau-de-bord" : "/organisations/nouvelle"));
 }
 

@@ -165,6 +165,8 @@ export async function retainApplication(_: ActionState, form: FormData): Promise
         origin: ev ? `Opportunité : ${ev.title}` : "Opportunité",
         status: "ATT_EXPERTS",
         createdById: user.id,
+        // Qui retient le candidat devient responsable du dossier.
+        leads: { create: { userId: user.id } },
         experts: { create: { practitionerId: app.practitionerId, status: "ATT_EXPERTS", feeCents: fee, days: units } },
       },
       include: { experts: true },

@@ -42,4 +42,6 @@ export const EMAILS: Record<string, string> = {
   "L'équipe KolBase a retiré la photo de votre profil : elle ne correspond pas à ce qu'attendent les organisations (un portrait de vous, net et de face).": "The KolBase team has removed the photo from your profile: it does not match what organisations expect (a sharp, front-facing portrait of you).",
   "Vous pouvez en ajouter une autre depuis « Mon compte › Photo ».": "You can add another one from “My account › Photo”.",
   "Ajouter une photo": "Add a photo",
+  "Vous êtes responsable du dossier « {title} »": "You are now the lead of “{title}”",
+  "Bonjour,\n\n{who} vous a désigné responsable du dossier « {title} ». Il figure désormais dans « Mes dossiers », et les e-mails du dossier vous sont adressés.": "Hello,\n\n{who} has made you the lead of the collaboration “{title}”. It now appears under “My collaborations”, and its e-mails are sent to you.",
 };

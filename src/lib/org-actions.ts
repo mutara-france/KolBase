@@ -291,6 +291,8 @@ export async function setMemberRoles(_: FormState, form: FormData): Promise<Form
     await tx.membership.deleteMany({ where: { organizationId: orgId, userId: memberId, role: { notIn: wanted } } });
     for (const role of wanted)
       await tx.membership.upsert({ where: { userId_organizationId_role: { userId: memberId, organizationId: orgId, role } }, update: {}, create: { userId: memberId, organizationId: orgId, role } });
+    // Plus Administrateur ni Projets (ou retiré) : n'est plus responsable des dossiers de l'organisation.
+    if (!wanted.some((r) => r === "ADMIN" || r === "PROJETS")) await tx.projectLead.deleteMany({ where: { userId: memberId, project: { organizationId: orgId } } });
     return "ok" as const;
   });
   if (result === "last-admin") return { error: t("L'organisation doit garder au moins un administrateur.") };

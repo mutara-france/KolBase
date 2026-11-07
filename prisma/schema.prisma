@@ -37,6 +37,7 @@ model User {
   updatedAt    DateTime  @updatedAt
 
   photo         UserPhoto?
+  projectLeads  ProjectLead[]
   practitioner  PractitionerProfile?
   memberships   Membership[]
   registrations Registration[]
@@ -411,6 +412,19 @@ enum ProjectStatus {
   DECLINE       // Décliné
 }
 
+/// Responsable d'un dossier (un ou plusieurs par dossier) : membre Administrateur ou Projets de l'organisation.
+/// Le créateur l'est d'office ; un dossier sans responsable (projet proposé par un expert) revient à qui le fait avancer.
+model ProjectLead {
+  projectId String
+  project   Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  createdAt DateTime @default(now())
+
+  @@id([projectId, userId])
+  @@index([userId])
+}
+
 model Project {
   id              String        @id @default(cuid())
   organizationId  String
@@ -439,6 +453,8 @@ model Project {
   createdAt       DateTime      @default(now())
   updatedAt       DateTime      @updatedAt
 
+  // Responsables côté organisation (Administrateur ou Projets) : vue « Mes dossiers », e-mails du dossier.
+  leads     ProjectLead[]
   experts   ProjectExpert[]
   documents Document[]
   messages  Message[]
