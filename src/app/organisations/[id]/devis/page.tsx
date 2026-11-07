@@ -6,7 +6,7 @@ import { SiteHeader } from "@/components/SiteHeader";
 import { CategoryIcon } from "@/components/SupplierBits";
 import { db } from "@/lib/db";
 import { requireMembership } from "@/lib/orgs";
-import { QUOTE_STATUS, supplierCategoryLabel, supplierGroup, type SupplierGroup } from "@/lib/suppliers";
+import { QUOTE_STATUS, supplierCategoryLabel, supplierGroup, type SupplierGroup, rfqTitle } from "@/lib/suppliers";
 import { quoteTtc } from "@/lib/quotes";
 import { BillingNotice } from "@/components/BillingNotice";
 import { getT } from "@/lib/i18n/server";
@@ -125,7 +125,7 @@ function InviteRow({ i, orgId, t, locale, now }: { i: Invite; orgId: string; t: 
     <Link href={`/organisations/${orgId}/devis/${r.id}`} className="row-item rfq-row">
       <CategoryIcon category={r.category} />
       <span className="row-main">
-        <strong>{r.event?.title ?? t("Demande de devis")}</strong>
+        <strong>{rfqTitle(r)}</strong>
         <span className="muted text-sm">{[r.organization.name, t(supplierCategoryLabel(r.category)), r.event ? fmtDate(locale, r.event.startsAt) : null, r.event?.city ?? r.city, r.headcount ? t("{n} participants", { n: r.headcount }) : null].filter(Boolean).join(" · ")}</span>
       </span>
       <span className="row-status">

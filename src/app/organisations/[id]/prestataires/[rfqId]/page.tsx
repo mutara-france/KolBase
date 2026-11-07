@@ -13,7 +13,7 @@ import { ConfirmButton } from "@/components/ConfirmButton";
 import { orgTabs } from "@/lib/org-overview";
 import { requireMembership } from "@/lib/orgs";
 import { EVENT_MANAGER_ROLES, eventEnded } from "@/lib/events";
-import { canCancelRfq, QUOTE_STATUS, RFQ_STATUS, rfqDisplayStatus, remindable, supplierCategoryLabel } from "@/lib/suppliers";
+import { canCancelRfq, QUOTE_STATUS, RFQ_STATUS, rfqDisplayStatus, remindable, supplierCategoryLabel, rfqTitle } from "@/lib/suppliers";
 import { addRfqSuppliers, awardQuote, cancelRfq, proposeQuote, remindRfqSuppliers, requestQuoteUpdate, sendRfq } from "@/lib/rfq-actions";
 import { lineTotal, lineVat, perHeadLabel, perParticipant, quoteTtc, quoteVatLabel, readLines, vatLabel } from "@/lib/quotes";
 import { costPerHead } from "@/lib/indicators";
@@ -85,13 +85,13 @@ export default async function Page({ params }: { params: Promise<{ id: string; r
       <main className="stack">
         <SectionNav tabs={sectionTabs} active="prestataires" label={t("Rubrique Événements")} />
         <Link href={`${base}/prestataires`} className="back-link"><ArrowLeft size={14} /> {t("Prestataires et devis")}</Link>
-        <section id={`rfq-${r.id}`} className="stack rfq-page" aria-label={r.event?.title ?? t("Demande de devis")}>
+        <section id={`rfq-${r.id}`} className="stack rfq-page" aria-label={rfqTitle(r)}>
           <header className="card rfq-hero">
             <div className="rfq-hero-top">
               <CategoryIcon category={r.category} size={24} className="lg" />
               <div className="grow">
                 <div className="eyebrow-sm">{t(supplierCategoryLabel(r.category))}{r.city ? ` · ${r.city}` : ""}</div>
-                <h1>{r.event?.title ?? t("Demande de devis")}</h1>
+                <h1>{rfqTitle(r)}</h1>
                 <p className="muted">
                   {[r.event ? fmtDate(locale, r.event.startsAt) : null, r.event?.venue, r.headcount ? t("{headcount} participants attendus", { headcount: r.headcount }) : null].filter(Boolean).join(" · ")}
                   {r.event && <>{" · "}<Link href={`${base}/evenements/${r.event.id}`}>{t("Voir l'événement")}</Link></>}

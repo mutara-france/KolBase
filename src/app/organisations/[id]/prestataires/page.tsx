@@ -11,7 +11,7 @@ import { NewRfqForm } from "@/components/RfqForms";
 import { db } from "@/lib/db";
 import { requireMembership } from "@/lib/orgs";
 import { EVENT_MANAGER_ROLES, eventEnded, eventScope } from "@/lib/events";
-import { RFQ_STATUS, rfqDisplayStatus, rfqGroup, SUPPLIER_CATEGORIES, supplierCategoryLabel, type RfqGroup } from "@/lib/suppliers";
+import { RFQ_STATUS, rfqDisplayStatus, rfqGroup, SUPPLIER_CATEGORIES, supplierCategoryLabel, type RfqGroup, rfqTitle } from "@/lib/suppliers";
 import { endMandate, setMandateAward } from "@/lib/event-actions";
 import { quoteTtc } from "@/lib/quotes";
 import { orgRfqs, supplierDirectory, type DirectorySupplier, type OrgRfq } from "@/lib/rfq-org";
@@ -237,7 +237,7 @@ function RfqRow({ r, base, t, locale, isOrganizer, now, creatorName }: { r: OrgR
     <Link href={`${base}/prestataires/${r.id}`} className="row-item rfq-row" id={`ligne-${r.id}`}>
       <CategoryIcon category={r.category} />
       <span className="row-main">
-        <strong>{r.event?.title ?? t("Demande de devis")}</strong>
+        <strong>{rfqTitle(r)}</strong>
         <span className="muted text-sm">{[t(supplierCategoryLabel(r.category)), r.event ? fmtDate(locale, r.event.startsAt) : null, city, r.headcount ? t("{n} participants", { n: r.headcount }) : null].filter(Boolean).join(" · ")}</span>
         {author && r.status === "draft" && <span className="text-xs muted">{t("Créée par {v}", { v: author })}</span>}
       </span>

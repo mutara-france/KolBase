@@ -14,7 +14,7 @@ import { aiEnabled } from "@/lib/ai";
 import { storageEnabled } from "@/lib/storage";
 import { billingBlocked } from "@/lib/billing";
 import { declineRfq } from "@/lib/rfq-actions";
-import { QUOTE_STATUS, supplierCategoryLabel } from "@/lib/suppliers";
+import { QUOTE_STATUS, supplierCategoryLabel, rfqTitle } from "@/lib/suppliers";
 import { lineTotal, lineVat, quoteTtc, quoteVatLabel, readLines, vatLabel } from "@/lib/quotes";
 import { getT } from "@/lib/i18n/server";
 import { fmtDate, fmtEur, intlLocale } from "@/lib/i18n";
@@ -88,7 +88,7 @@ export default async function Page({ params }: { params: Promise<{ id: string; r
             <CategoryIcon category={r.category} size={24} className="lg" />
             <div className="grow">
               <div className="eyebrow-sm">{t(supplierCategoryLabel(r.category))} · {r.organization.name}</div>
-              <h1>{r.event?.title ?? t("Demande de devis")}</h1>
+              <h1>{rfqTitle(r)}</h1>
               <p className="muted">{[r.event ? fmtDate(locale, r.event.startsAt) : null, r.event?.venue, r.event?.city ?? r.city, r.headcount ? t("{headcount} participants", { headcount: r.headcount }) : null].filter(Boolean).join(" · ")}</p>
             </div>
             <span className={`pill ${status.tone}`}>{status.text}</span>

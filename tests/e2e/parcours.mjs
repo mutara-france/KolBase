@@ -1347,7 +1347,8 @@ async function submitNewOrg(page, siren) {
   check("E-mail au prestataire : nouvel avis", !!(await waitMail("ludovic.perrin@demo.kolbase.local", "Nouvel avis de Dentalys Implants : 4/5")));
   await page.goto(`${BASE}/organisations/demo-org-dentalys/prestataires?onglet=annuaire`);
   t = await text(page);
-  check("Annuaire : note moyenne et lien vers le book", /Traiteur Belleville[\s\S]{0,40}★ 4,5/.test(t) && (await page.locator('a[href="/structures/demo-sup-belleville"]').count()) > 0);
+  const note = await page.locator('article.supplier-card:has-text("Traiteur Belleville") .rating-badge').innerText().catch(() => "");
+  check("Annuaire : note moyenne et lien vers le book", note.includes("4,5") && (await page.locator('a[href="/structures/demo-sup-belleville"]').count()) > 0, note);
   await ctx.close();
 }
 

@@ -75,5 +75,12 @@ export function supplierGroup(r: { status: string }, quote: { status: string } |
   return declined ? "closed" : "todo";
 }
 
+/** Titre d'une demande : l'événement, ou à défaut le début du besoin (une demande sans événement reste reconnaissable). */
+export function rfqTitle(r: { event?: { title: string } | null; needs: string }) {
+  if (r.event) return r.event.title;
+  const first = r.needs.trim().split(/(?<=[.!?])\s/)[0].replace(/[.\s]+$/, "");
+  return first.length > 70 ? `${first.slice(0, 67).replace(/\s+\S*$/, "")}…` : first;
+}
+
 /** Annuler une demande : l'organisation cliente (organisateurs) ou l'auteur de la demande, jamais en conflit d'intérêts. */
 export const canCancelRfq = (p: { organizer: boolean; author: boolean; conflicted: boolean }) => !p.conflicted && (p.organizer || p.author);

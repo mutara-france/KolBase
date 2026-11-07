@@ -1678,4 +1678,12 @@ details.fold[open] > summary h2::after { content: " ▾"; }
   .book-banner.n3 { grid-template-columns: 1fr; grid-template-rows: 1fr; }
   .book-banner.n3 img:not(:first-child), .book-banner.n2 img:not(:first-child) { display: none; }
   .book-banner.n2 { grid-template-columns: 1fr; }
+  /* Devis envoyé : une ligne = la désignation, puis quantité, TVA et total. */
+  .quote-table, .quote-table tbody { display: block; }
+  .quote-table tr { display: grid; grid-template-columns: minmax(0, 1fr) auto auto; gap: 2px 10px; padding: 7px 0; border-bottom: 1px dashed var(--line); }
+  .quote-table td { border: 0; padding: 0 !important; }
+  .quote-table td:first-child { grid-column: 1 / -1; color: var(--ink); }
+  /* Catalogue de forfaits : prix et « Retirer » passent à la ligne. */
+  .offer-list li { flex-wrap: wrap; }
+  .offer-list li .actions { flex-wrap: wrap; white-space: normal; gap: 4px 10px; }
 }
