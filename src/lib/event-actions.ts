@@ -427,11 +427,11 @@ export async function saveEventProgram(_: ActionState, form: FormData): Promise<
 
 // ─── Validation par la conformité ──────────────────────────────────────────
 
-/** Soumettre un événement à la conformité (organisateurs) : lieu, date, programme et hospitalités. */
+/** Soumettre un événement à la conformité (organisateurs, agence mandatée) : lieu, date, programme et hospitalités. */
 export async function submitEventReview(form: FormData) {
   const orgId = str(form, "orgId");
   const eventId = str(form, "eventId");
-  const { user, roles, org } = await requireMembership(orgId, EVENT_ORGANIZER_ROLES);
+  const { user, roles, org } = await requireMembership(orgId, EVENT_MANAGER_ROLES);
   const ev = await db.event.findFirst({ where: { id: eventId, organizationId: orgId, cancelledAt: null, ...eventScope(user, roles) }, select: { internal: true, reviewStatus: true } });
   if (!ev || !needsReview(org, ev) || ev.reviewStatus === "submitted" || ev.reviewStatus === "approved") return;
   await db.event.update({ where: { id: eventId }, data: { reviewStatus: "submitted", reviewSubmittedAt: new Date(), reviewSubmittedById: user.id, reviewNote: null, reviewChanges: [] } });

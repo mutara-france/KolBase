@@ -341,12 +341,12 @@ export default async function Page({ params, searchParams }: { params: Promise<{
                 );
                 const main = available.filter((k) => !DANGER.includes(k));
                 const others = available.filter((k) => DANGER.includes(k));
-                // Décision de la conformité ou de l'Ordre (bloquer, refus) : affichée telle quelle ; les autres actions
+                // Décision à prendre (bloquer, refus de l'Ordre, décliner une proposition) : affichée telle quelle ; les autres actions
                 // secondaires ou destructives (abandonner, revenir en arrière) sont rangées sous « Autres actions ».
                 return (
                   <>
                     {main.length > 0 && <div className="transitions-stack">{main.map(transition)}</div>}
-                    {others.length > 0 && (others.some((k) => k === "block" || k === "ordre_ko") ? (
+                    {others.length > 0 && (others.some((k) => k === "block" || k === "ordre_ko" || k === "decline_proposal") ? (
                       <div className="transitions-stack">{others.map(transition)}</div>
                     ) : (
                       <details className="more-actions">

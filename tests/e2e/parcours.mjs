@@ -29,6 +29,8 @@ async function session() {
 }
 /** Ouvre un onglet de la fiche affichée (dossier, collaboration du praticien). */
 const tab = (page, key) => page.goto(`${page.url().split(/[?#]/)[0]}?onglet=${key}`);
+/** Fiche dossier : déplie « Autres actions » (abandonner, revenir en accord de principe). */
+const openMore = (page) => page.evaluate(() => document.querySelectorAll("details.more-actions").forEach((d) => { d.open = true; }));
 
 async function login(page, email, password = PW, next = "") {
   await page.goto(`${BASE}/connexion${next ? `?next=${encodeURIComponent(next)}` : ""}`);
@@ -2435,12 +2437,14 @@ async function submitNewOrg(page, siren) {
     await pgc.query(`update "Project" set status = 'SIGNATURE' where id = $1`, [projectId]);
     await org.page.goto(dossierUrl);
     check("En signature : « Retour en accord de principe » et abandon proposés", (await org.page.locator('button:has-text("Retour en accord de principe")').count()) === 1 && (await org.page.locator('button:has-text("Abandonner le dossier")').count()) === 1);
+    await openMore(org.page);
     await Promise.all([org.page.waitForURL(/modifier=1/), org.page.click('button:has-text("Retour en accord de principe")')]);
     check("Retour en accord de principe : dossier de nouveau modifiable", (await org.page.locator("#modifier[open]").count()) === 1);
     await pgc.query(`update "Project" set status = 'SIGNATURE' where id = $1`, [projectId]);
     await pgc.query(`insert into "ConventionSignature" (id, "projectExpertId", "requestId", status, "updatedAt") values ('e2e-lot1-sig', $1, 'e2e-lot1-req', 'ongoing', now())`, [link.id]);
     await org.page.goto(dossierUrl);
     check("Signature en cours : plus de retour en accord de principe", (await org.page.locator('button:has-text("Retour en accord de principe")').count()) === 0 && (await text(org.page)).includes("le retour en accord de principe n'est plus possible"));
+    await openMore(org.page);
     await org.page.fill('form:has(button:has-text("Abandonner le dossier")) input[name="note"]', "Budget de l'année annulé");
     await org.page.click('button:has-text("Abandonner le dossier")');
     await org.page.waitForTimeout(1200);
@@ -3727,9 +3731,11 @@ async function submitNewOrg(page, siren) {
     await pgc.query(`insert into "Project" (id, "organizationId", title, "typeId", status, "createdById", "updatedAt") values ('e2e-5a-prj2', 'demo-org-dentalys', 'Comité 5a occlusion', 'advisory', 'VALIDE', $1, now())`, [claireId]);
     await pgc.query(`insert into "ProjectExpert" (id, "projectId", "practitionerId", status, "feeCents", days, "respondedAt") values ('e2e-5a-l2-moreau', 'e2e-5a-prj2', 'demo-p-moreau', 'VALIDE', 120000, 1, now())`);
     await org.page.goto(`${BASE}/organisations/demo-org-dentalys/dossiers/e2e-5a-prj2`);
+    await openMore(org.page);
     await Promise.all([org.page.waitForURL(/modifier=1/), org.page.locator('form:has(input[value="back_to_accord"]) button').click()]);
     check("Retour en accord de principe : e-mail à l'expert engagé", !!(await waitMail(MOREAU, "Conditions à revoir : Comité 5a occlusion")));
     await org.page.goto(`${BASE}/organisations/demo-org-dentalys/dossiers/e2e-5a-prj2`);
+    await openMore(org.page);
     const ab = org.page.locator('form:has(input[value="abandon"])');
     await ab.locator('input[name="note"]').fill("Budget reporté à l'an prochain");
     await ab.locator("button").click();
