@@ -842,4 +842,5 @@ export const PRATICIEN: Record<string, string> = {
   "Rubriques de la collaboration": "Collaboration sections",
   "Voir la page publique de l'événement": "See the event's public page",
   "{org} vous a écrit : répondre dans la messagerie": "{org} has written to you: reply in Messages",
+  "Ce compte a été désactivé par l'équipe KolBase. Pour en savoir plus, écrivez à {email}.": "This account has been disabled by the KolBase team. To find out more, write to {email}.",
 };

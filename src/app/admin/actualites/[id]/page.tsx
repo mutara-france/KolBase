@@ -22,7 +22,7 @@ export default async function Page({ params, searchParams }: { params: Promise<{
     <>
       <SiteHeader />
       <main className="narrow stack">
-        <p className="muted"><Link href="/admin?onglet=actualites">Administration › Actualités</Link></p>
+        <p className="muted"><Link href="/admin">Administration</Link> › <Link href="/admin/actualites">Actualités</Link></p>
         <div className="actions spread">
           <h1>{a.title}</h1>
           <span className={`pill ${a.publishedAt ? "ok" : "wait"}`}>{a.publishedAt ? `Publiée le ${formatDate(a.publishedAt)}` : "Brouillon"}</span>

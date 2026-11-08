@@ -95,8 +95,10 @@ Variables Render : `SEED_DEMO` (1 = actif, 0 = désactivé), `DEMO_PASSWORD` (mo
   rappellent les règles du pays (Sunshine Act belge et visa Mdeon, Open Payments, code MedTech Europe).
 - **ORCID** : avec `ORCID_CLIENT_ID` / `ORCID_CLIENT_SECRET`, le praticien prouve son iD en se connectant à
   son compte ORCID avant d'importer ses publications.
-- **Administration** : page `/admin`, réservée aux comptes listés dans `PLATFORM_ADMIN_EMAILS` (adresse confirmée
-  exigée dès que l'envoi d'e-mails est configuré).
+- **Administration** : espace `/admin`, réservé aux comptes listés dans `PLATFORM_ADMIN_EMAILS` (adresse confirmée
+  exigée dès que l'envoi d'e-mails est configuré) : tableau de bord (à traiter, activité sur 30 jours hors démonstration),
+  organisations et leur fiche, comptes (renvoi du lien de confirmation, réinitialisation de la double authentification,
+  désactivation), identités, services, abonnements, actualités, journal d'activité et exploitation.
 
 ## Photos des praticiens
 
@@ -107,7 +109,7 @@ probable et la réencode sans métadonnées (position GPS, appareil, date), en d
 selon le réglage « Photo » de la visibilité du profil (public par défaut, organisations, masquée), servie par
 `/experts/<id>/photo`. Une case d'accord, révocable, autorise les organisations avec qui il collabore et KolBase à
 l'utiliser pour annoncer ses interventions : le dossier propose alors la photo grand format. L'équipe KolBase contrôle
-les dernières photos dans `/admin › Identités` et retire une photo inadaptée (le praticien est prévenu). La photo est
+les dernières photos dans `/admin/identites` et retire une photo inadaptée (le praticien est prévenu). La photo est
 incluse dans l'export des données et effacée à la suppression du compte.
 
 ## Projets proposés par les experts
@@ -204,7 +206,7 @@ Abonnements mensuels sans engagement, payés par carte ou prélèvement SEPA via
   devis retenu (le prestataire est prévenu à ce moment-là).
 
 Formule annuelle au choix : dix mois facturés pour douze (5 990 € HT et 2 490 € HT par an). Premier mois offert (une fois), dossiers et déclarations toujours accessibles, gratuités accordées depuis
-`/admin › Abonnements`. Variables : `STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET` (notification déclarée chez Stripe
+`/admin/abonnements`. Variables : `STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET` (notification déclarée chez Stripe
 vers `<APP_URL>/api/stripe/webhook`), `STRIPE_TAX_RATE` (taux de TVA `txr_…`). Sans clé, rien n'est facturé.
 Activer le portail client dans le tableau de bord Stripe (moyen de paiement, factures, résiliation).
 
@@ -212,7 +214,7 @@ Activer le portail client dans le tableau de bord Stripe (moyen de paiement, fac
 
 Sur chaque événement publié, les organisateurs commandent des services réalisés par l'équipe KolBase
 (`src/lib/services.ts`) : e-mailing dédié, publication sur les réseaux sociaux, mise à la une de la page d'accueil
-(7 jours). Catalogue et prix modifiables dans `/admin › Services`, où l'équipe planifie, réalise ou refuse les
+(7 jours). Catalogue et prix modifiables dans `/admin/services`, où l'équipe planifie, réalise ou refuse les
 commandes. Une commande réalisée est ajoutée à la prochaine facture Stripe de l'organisation (ou signalée « à
 facturer hors Stripe » si elle n'a pas de client Stripe).
 
@@ -252,7 +254,7 @@ quand le texte change pour qu'il soit accepté à nouveau. Le registre des trait
 
 ## Avant l'ouverture au public
 
-L'onglet **Lancement** de `/admin` indique ce qui reste à faire sur l'environnement en ligne.
+La page **Exploitation** de l'administration (`/admin/exploitation`) indique ce qui reste à faire sur l'environnement en ligne.
 
 1. **Textes légaux** : renseigner `src/lib/legal.ts` (éditeur, forme sociale, siège, immatriculation, directeur
    de la publication, contacts, juridiction, prestataires), repris par les mentions légales, les CGU et la

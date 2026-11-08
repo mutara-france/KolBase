@@ -510,7 +510,7 @@ async function submitNewOrg(page, siren) {
 
   const admin = await session();
   await login(admin.page, "anne.chevalier@demo.kolbase.local");
-  await admin.page.goto(`${BASE}/admin`);
+  await admin.page.goto(`${BASE}/admin/organisations?statut=a-valider`);
   const card = admin.page.locator('section.card:has-text("Implants Express")').first();
   check("Administration : SIREN contrôlé dans le répertoire", (await card.innerText()).includes("IMPLANTS EXPRESS SAS — active"));
   await card.locator('button:has-text("Valider")').click();
@@ -2230,7 +2230,7 @@ async function submitNewOrg(page, siren) {
     await a.page.goto(`${BASE}/admin?onglet=lancement`);
     check("Retour après connexion : /admin renvoie vers la connexion avec next", a.page.url().includes("/connexion?next=%2Fadmin%3Fonglet%3Dlancement"), a.page.url());
     await loginHere(a.page, "anne.chevalier@demo.kolbase.local");
-    check("Retour après connexion : /admin atteint après la connexion", a.page.url() === `${BASE}/admin?onglet=lancement`, a.page.url());
+    check("Retour après connexion : /admin atteint après la connexion (ancien onglet redirigé)", a.page.url().startsWith(`${BASE}/admin/exploitation`), a.page.url());
     await a.ctx.close();
     const reg = await q1(`select r.id from "Registration" r join "User" u on u.id = r."userId" where u.email = 'ines.lambert@demo.kolbase.local' and r."eventId" = 'demo-ev-soiree-implanto'`);
     const b = await session();
@@ -2513,7 +2513,7 @@ async function submitNewOrg(page, siren) {
     await pgc.query(`insert into "Membership" (id, "userId", "organizationId", role) select 'e2e-lot1-m2', id, 'e2e-lot1-refus', 'ADMIN' from "User" where email = 'hugo.robert@demo.kolbase.local'`);
     const adm = await session();
     await login(adm.page, "anne.chevalier@demo.kolbase.local");
-    await adm.page.goto(`${BASE}/admin`);
+    await adm.page.goto(`${BASE}/admin/organisations`);
     const labo = adm.page.locator('section.card:has-text("Laboratoire Lot Un")').first();
     check("Admin : « Page publique : non » avant validation", /Page publique\s*non/.test(await labo.innerText()));
     check("Admin : motif du refus obligatoire", (await labo.locator('form:has(button:has-text("Refuser")) input[name="note"][required]').count()) === 1);
@@ -2522,19 +2522,20 @@ async function submitNewOrg(page, siren) {
     const lab = await q1(`select verification, listed from "Organization" where id = 'e2e-lot1-labo'`);
     check("Validation : page publique activée", lab.verification === "VERIFIED" && lab.listed === true && (await fetch(`${BASE}/structures/e2e-lot1-labo`)).status === 200, JSON.stringify(lab));
     check("E-mail aux administrateurs : organisation validée", !!(await waitMail("julie.lemoine@demo.kolbase.local", "Laboratoire Lot Un est validée sur KolBase")));
-    await adm.page.goto(`${BASE}/admin`);
+    await adm.page.goto(`${BASE}/admin/organisations/e2e-lot1-labo`);
     check("Admin : « Page publique : oui » après validation", /Page publique\s*oui/.test(await adm.page.locator('section.card:has-text("Laboratoire Lot Un")').first().innerText()));
     const refus = () => adm.page.locator('section.card:has-text("Société Lot Refus")').first();
+    await adm.page.goto(`${BASE}/admin/organisations?statut=a-valider`);
     // Lot 5b : une organisation suspendue ne peut plus être refusée ; le refus se fait avant la validation.
     await refus().locator('form:has(button:has-text("Refuser")) input[name="note"]').fill("SIREN déjà utilisé par une autre organisation");
     await refus().locator('button:has-text("Refuser")').click();
     await adm.page.waitForTimeout(1200);
     const rej = await waitMail("hugo.robert@demo.kolbase.local", "Société Lot Refus n'a pas été validée sur KolBase");
     check("E-mail : refus, avec le motif", !!rej && rej.text.includes("Motif : SIREN déjà utilisé"));
-    await adm.page.goto(`${BASE}/admin`);
+    await adm.page.goto(`${BASE}/admin/organisations/e2e-lot1-refus`);
     await refus().locator('button:has-text("Valider")').click();
     await adm.page.waitForTimeout(1200);
-    await adm.page.goto(`${BASE}/admin`);
+    await adm.page.goto(`${BASE}/admin/organisations/e2e-lot1-refus`);
     check("Admin : motif de la suspension obligatoire", (await refus().locator('form:has(button:has-text("Suspendre")) input[name="note"][required]').count()) === 1);
     await refus().locator('form:has(button:has-text("Suspendre")) input[name="note"]').fill("Activité sans lien avec le secteur dentaire");
     await refus().locator('button:has-text("Suspendre")').click();
@@ -3098,14 +3099,14 @@ async function submitNewOrg(page, siren) {
     await adm.page.goto(`${BASE}/admin/actualites/${artId}`);
     await adm.page.click('button:has-text("Supprimer")');
     check("Suppression d'une actualité : confirmation d'abord", (await adm.page.locator('button:has-text("Confirmer : supprimer définitivement")').count()) === 1 && !!(await q1(`select id from "Article" where id = $1`, [artId])));
-    await Promise.all([adm.page.waitForURL(/onglet=actualites/), adm.page.click('button:has-text("Confirmer : supprimer définitivement")')]);
+    await Promise.all([adm.page.waitForURL(/\/admin\/actualites$/), adm.page.click('button:has-text("Confirmer : supprimer définitivement")')]);
     check("Suppression d'une actualité : confirmée", !(await q1(`select id from "Article" where id = $1`, [artId])));
   }
 
   // 4. Suspension réversible : statut distinct, motif, confirmation, e-mail ; tout est masqué puis rendu.
   {
     const before = await q1(`select listed, (select count(*)::int from "OpenCall" where "organizationId" = 'demo-org-cdra' and status = 'open') calls from "Organization" where id = 'demo-org-cdra'`);
-    await adm.page.goto(`${BASE}/admin`);
+    await adm.page.goto(`${BASE}/admin/organisations/demo-org-cdra`);
     const card = () => adm.page.locator('section.card:has-text("Collège Dentaire Rhône-Alpes")').first();
     await card().locator('form:has(button:has-text("Suspendre")) input[name="note"]').fill("Contrôle de conformité en cours");
     await card().locator('button:has-text("Suspendre")').click();
@@ -3125,7 +3126,7 @@ async function submitNewOrg(page, siren) {
     await own.page.goto(`${BASE}/organisations/demo-org-cdra/membres?onglet=organisation`);
     check("Organisation suspendue : pas de nouvelle demande de validation", (await own.page.locator('input[name="siren"]').count()) === 0 && (await text(own.page)).includes("Suspendue par KolBase"));
     // Réactiver : tout réapparaît tel quel.
-    await adm.page.goto(`${BASE}/admin`);
+    await adm.page.goto(`${BASE}/admin/organisations/demo-org-cdra`);
     await card().locator('button:has-text("Réactiver")').click();
     await until(async () => (await q1(`select verification from "Organization" where id = 'demo-org-cdra'`)).verification === "VERIFIED");
     check("Réactivation : organisation validée", (await q1(`select verification from "Organization" where id = 'demo-org-cdra'`)).verification === "VERIFIED");
@@ -4198,7 +4199,7 @@ async function submitNewOrg(page, siren) {
     stripeState.subscriptions.set(subId, { id: subId, object: "subscription", customer: "cus_e2e5b", status: "active", trial_end: null, current_period_end: Math.floor(Date.now() / 1000) + 20 * 86400, cancel_at_period_end: false, metadata: { orgId: "demo-org-cdra" }, pause_collection: null });
     await pgc.query(`insert into "Subscription" ("organizationId", plan, status, "stripeCustomerId", "stripeSubscriptionId", "updatedAt") values ('demo-org-cdra', 'organisation', 'active', 'cus_e2e5b', $1, now())
       on conflict ("organizationId") do update set status = 'active', "stripeCustomerId" = 'cus_e2e5b', "stripeSubscriptionId" = $1, "exemptUntil" = null, "exemptNote" = null`, [subId]);
-    await adm.page.goto(`${BASE}/admin`);
+    await adm.page.goto(`${BASE}/admin/organisations/demo-org-cdra`);
     const mark = mails.length;
     const card = () => adm.page.locator('section.card:has-text("Collège Dentaire Rhône-Alpes")').first();
     await card().locator('form:has(button:has-text("Suspendre")) input[name="note"]').fill("Vérification de l'identité.");
@@ -4211,7 +4212,7 @@ async function submitNewOrg(page, siren) {
     check("Suspension : facturation Stripe en pause, sans date de reprise", paused?.behavior === "void" && !paused.resumes_at, JSON.stringify(paused));
     const smail = await mailSince(mark, "pierre.vidal@demo.kolbase.local", "Collège Dentaire Rhône-Alpes est suspendue");
     check("E-mail de suspension : facturation en pause", !!smail && smail.text.includes("La facturation de votre abonnement est mise en pause"), smail?.text.slice(0, 300));
-    await adm.page.goto(`${BASE}/admin`);
+    await adm.page.goto(`${BASE}/admin/organisations/demo-org-cdra`);
     check("Organisation suspendue : pas de « Refuser »", (await card().locator('button:has-text("Refuser")').count()) === 0 && (await card().locator('button:has-text("Réactiver")').count()) === 1);
     const jl = await session();
     await login(jl.page, "julie.lemoine@demo.kolbase.local");
@@ -4226,7 +4227,7 @@ async function submitNewOrg(page, siren) {
     await pv.page.goto(`${BASE}/organisations/demo-org-cdra`);
     const home = await text(pv.page);
     check("Motif de suspension : pas de double point", home.includes("Organisation suspendue : Vérification de l'identité. Votre page") && !home.includes(".."), home.match(/Organisation suspendue[^\n]{0,60}/)?.[0]);
-    await adm.page.goto(`${BASE}/admin`);
+    await adm.page.goto(`${BASE}/admin/organisations/demo-org-cdra`);
     await card().locator('button:has-text("Réactiver")').click();
     await until(async () => (await q1(`select verification from "Organization" where id = 'demo-org-cdra'`)).verification === "VERIFIED");
     await until(async () => stripeState.subscriptions.get(subId).pause_collection === null);
@@ -4282,7 +4283,7 @@ async function submitNewOrg(page, siren) {
     // Société savante sans SIREN : refus avec « SIREN ou RNA », pas de double point ; validation annonçant contrat et abonnement.
     await pgc.query(`insert into "Organization" (id, name, kind, rna, verification, listed, areas, "updatedAt") values ('e2e-5b-ss', 'Société Savante Cinq B', 'SOCIETE_SAVANTE', 'W123456789', 'PENDING', false, '{}', now())`);
     await pgc.query(`insert into "Membership" (id, "userId", "organizationId", role) select 'e2e-5b-ss-m', id, 'e2e-5b-ss', 'ADMIN' from "User" where email = 'claire.morel@demo.kolbase.local'`);
-    await adm.page.goto(`${BASE}/admin`);
+    await adm.page.goto(`${BASE}/admin/organisations/e2e-5b-ss`);
     const ss = () => adm.page.locator('section.card:has-text("Société Savante Cinq B")').first();
     check("Validation : l'admin sait que la note est envoyée à l'organisation", (await ss().innerText()).includes("La note figure telle quelle dans l'e-mail de validation"));
     await ss().locator('input[name="note"][placeholder^="Motif du refus"]').fill("Numéro RNA introuvable au Journal officiel.");
@@ -4293,7 +4294,7 @@ async function submitNewOrg(page, siren) {
     await cl.page.goto(`${BASE}/organisations/e2e-5b-ss`);
     const ssh = await text(cl.page);
     check("Société savante refusée : « Corriger l'identité (SIREN ou RNA) », motif sans double point", ssh.includes("Corriger l'identité (SIREN ou RNA)") && ssh.includes("Journal officiel.") && !ssh.includes("officiel.."), ssh.match(/KolBase n'a pas validé[^\n]*/)?.[0]);
-    await adm.page.goto(`${BASE}/admin`);
+    await adm.page.goto(`${BASE}/admin/organisations/e2e-5b-ss`);
     await ss().locator('input[name="note"][placeholder^="Note"]').fill("RNA vérifié");
     await ss().locator('button:has-text("Valider")').click();
     await until(async () => (await q1(`select verification from "Organization" where id = 'e2e-5b-ss'`)).verification === "VERIFIED");
@@ -5147,6 +5148,96 @@ async function submitNewOrg(page, siren) {
   const rows = await org.page.locator("section.row-list a.row-item").allInnerTexts();
   check("Opportunités (organisation) : « Candidatures à examiner » ne garde que celles qui en ont", rows.length > 0 && rows.every((r) => /à examiner/.test(r)), rows.join(" | ").slice(0, 300));
   await org.ctx.close();
+}
+
+// ── Administration KolBase : tableau de bord, navigation, comptes (actions sensibles), journal, exploitation ──
+{
+  const pgc = new pg.Client({ connectionString: process.env.DATABASE_URL });
+  await pgc.connect();
+  const q1 = async (sql, args = []) => (await pgc.query(sql, args)).rows[0];
+  const adm = await session();
+  await login(adm.page, "anne.chevalier@demo.kolbase.local");
+  await adm.page.goto(`${BASE}/admin`);
+  let t = await text(adm.page);
+  check("Admin : tableau de bord (à traiter, activité hors démonstration, journal récent)", t.includes("À traiter") && t.includes("hors données de démonstration") && t.includes("Journal récent"));
+  const nav = await adm.page.locator("nav.side-nav a").allInnerTexts();
+  check("Admin : navigation latérale de l'administration", ["Tableau de bord", "Organisations", "Comptes", "Identités", "Journal d'activité", "Exploitation"].every((x) => nav.some((n) => n.includes(x))), nav.join(" | "));
+  await adm.page.goto(`${BASE}/admin?onglet=praticiens`);
+  check("Admin : anciens onglets redirigés vers leur page", adm.page.url().endsWith("/admin/identites"), adm.page.url());
+
+  await adm.page.goto(`${BASE}/admin/comptes?q=nadia+haddad`);
+  const rows = await adm.page.locator("section.row-list a.row-item").allInnerTexts();
+  check("Comptes : recherche par nom", rows.length === 1 && rows[0].includes("nadia.haddad@demo.kolbase.local"), rows.join(" | "));
+  const { id: uid } = await q1(`select id from "User" where email = 'nadia.haddad@demo.kolbase.local'`);
+  // Une session ouverte, puis une double authentification (téléphone perdu) à réinitialiser.
+  const nadia = await session();
+  await login(nadia.page, "nadia.haddad@demo.kolbase.local");
+  await pgc.query(`update "User" set "totpSecret" = 'JBSWY3DPEHPK3PXP', "totpEnabledAt" = now(), "recoveryCodes" = '{a,b}' where id = $1`, [uid]);
+  await adm.page.goto(`${BASE}/admin/comptes/${uid}`);
+  t = await text(adm.page);
+  check("Fiche compte : identité, organisations, actions", t.includes("Identité et sécurité") && t.includes("Dentalys Implants") && t.includes("Actions de l'équipe KolBase"));
+  const reset = adm.page.locator('form:has(input[aria-label="Motif de la réinitialisation"])');
+  await reset.locator('input[name="note"]').fill("Téléphone perdu, identité vérifiée par téléphone");
+  await reset.locator('button:has-text("Réinitialiser la double authentification")').click();
+  await Promise.all([adm.page.waitForURL(/fait=2fa/), reset.locator('button:has-text("Confirmer : réinitialiser")').click()]);
+  const after2fa = await q1(`select "totpEnabledAt", array_length("recoveryCodes", 1) n, (select count(*)::int from "Session" where "userId" = $1) s from "User" where id = $1`, [uid]);
+  check("Double authentification réinitialisée : secret, codes et sessions effacés", after2fa.totpEnabledAt === null && !after2fa.n && after2fa.s === 0, JSON.stringify(after2fa));
+  const m2fa = await waitMail("nadia.haddad@demo.kolbase.local", "Sécurité de votre compte KolBase");
+  check("E-mail : réinitialisation annoncée, avec le motif", !!m2fa && m2fa.text.includes("Téléphone perdu"));
+  await nadia.page.goto(`${BASE}/compte`);
+  check("Session fermée : reconnexion demandée", nadia.page.url().includes("/connexion"), nadia.page.url());
+
+  const off = adm.page.locator('form:has(input[aria-label="Motif de la désactivation"])');
+  check("Désactivation : motif obligatoire", (await off.locator('input[name="note"][required]').count()) === 1);
+  await off.locator('input[name="note"]').fill("Usage contraire aux conditions d'utilisation");
+  await off.locator('button:has-text("Désactiver le compte")').click();
+  await Promise.all([adm.page.waitForURL(/fait=desactive/), off.locator('button:has-text("Confirmer : désactiver")').click()]);
+  check("Compte désactivé : état affiché", (await text(adm.page)).includes("Compte désactivé le"));
+  check("E-mail : désactivation annoncée, avec le motif", !!(await waitMail("nadia.haddad@demo.kolbase.local", "Votre compte KolBase est désactivé")));
+  await login(nadia.page, "nadia.haddad@demo.kolbase.local");
+  check("Compte désactivé : connexion refusée", nadia.page.url().includes("/connexion") && (await text(nadia.page)).includes("Ce compte a été désactivé par l'équipe KolBase"));
+  const sent = mails.length;
+  await nadia.page.goto(`${BASE}/mot-de-passe-oublie`);
+  await nadia.page.fill('input[name="email"]', "nadia.haddad@demo.kolbase.local");
+  await nadia.page.click('button:has-text("Recevoir le lien")');
+  await nadia.page.waitForTimeout(1200);
+  check("Compte désactivé : aucun lien de réinitialisation", !mails.slice(sent).some((m) => m.to === "nadia.haddad@demo.kolbase.local"));
+  await adm.page.goto(`${BASE}/admin/comptes?etat=desactives`);
+  check("Comptes : filtre « Désactivés »", (await adm.page.locator("section.row-list a.row-item").allInnerTexts()).some((r) => r.includes("nadia.haddad")));
+
+  await adm.page.goto(`${BASE}/admin/comptes/${uid}`);
+  await Promise.all([adm.page.waitForURL(/fait=reactive/), adm.page.click('button:has-text("Réactiver le compte")')]);
+  await login(nadia.page, "nadia.haddad@demo.kolbase.local");
+  check("Compte réactivé : connexion de nouveau possible", !nadia.page.url().includes("/connexion"), nadia.page.url());
+  await nadia.ctx.close();
+
+  await adm.page.goto(`${BASE}/admin/journal?periode=24h&objet=${uid}`);
+  t = await text(adm.page);
+  check("Journal : décisions de KolBase sur le compte", ["Double authentification réinitialisée par KolBase", "Compte désactivé par KolBase", "Compte réactivé par KolBase", "Connexion refusée (compte désactivé)"].every((x) => t.includes(x)));
+  await adm.page.goto(`${BASE}/admin/journal?domaine=securite&periode=24h`);
+  check("Journal : filtre « Sécurité »", (await text(adm.page)).includes("Connexion refusée (compte désactivé)"));
+  const { id: anneId } = await q1(`select id from "User" where email = 'anne.chevalier@demo.kolbase.local'`);
+  await adm.page.goto(`${BASE}/admin/comptes/${anneId}`);
+  t = await text(adm.page);
+  check("Fiche de son propre compte : aucune action sensible", t.includes("Votre propre compte se gère depuis") && !t.includes("Désactiver le compte"));
+
+  await adm.page.goto(`${BASE}/admin/organisations/demo-org-dentalys`);
+  t = await text(adm.page);
+  check("Fiche organisation : décision, activité, membres, journal", t.includes("Activité et abonnement") && t.includes("Membres (") && t.includes("Nadia Haddad") && t.includes("Journal de l'organisation"));
+  await adm.page.goto(`${BASE}/admin/organisations?famille=prestataires`);
+  const sup = await adm.page.locator("section.row-list a.row-item").allInnerTexts();
+  check("Organisations : filtre par famille", sup.length > 0 && sup.some((r) => r.includes("Traiteur Belleville")) && !sup.some((r) => r.includes("Dentalys")), String(sup.length));
+  await adm.page.goto(`${BASE}/admin/exploitation`);
+  t = await text(adm.page);
+  check("Exploitation : lancement, tâches, sécurité, Stripe", t.includes("Avant l'ouverture au public") && t.includes("Tâches planifiées") && t.includes("Sécurité et comptes") && t.includes("Notifications Stripe"));
+  await adm.ctx.close();
+
+  const claire = await session();
+  await login(claire.page, "claire.morel@demo.kolbase.local");
+  const denied = await claire.page.goto(`${BASE}/admin/comptes/${uid}`);
+  check("Administration : fiche d'un compte inaccessible sans droit", denied?.status() === 404, String(denied?.status()));
+  await claire.ctx.close();
+  await pgc.end();
 }
 
 // ── 4. Limitation des tentatives ───────────────────────────────────────────

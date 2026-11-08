@@ -12,7 +12,7 @@ export default async function Page() {
     <>
       <SiteHeader />
       <main className="narrow stack">
-        <p className="muted"><Link href="/admin?onglet=actualites">Administration › Actualités</Link></p>
+        <p className="muted"><Link href="/admin">Administration</Link> › <Link href="/admin/actualites">Actualités</Link></p>
         <h1>Nouvelle actualité</h1>
         <ArticleForm a={{ title: "", slug: "", category: "Plateforme", excerpt: "", body: "", cover: null }} categories={ARTICLE_CATEGORIES} />
       </main>

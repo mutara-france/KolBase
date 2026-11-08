@@ -6,7 +6,8 @@ import { accountPhoto, photoPath } from "@/lib/expert-photo";
 import { AppShell } from "@/components/AppShell";
 import { PublicNav } from "@/components/PublicNav";
 import { ORG_KIND_LABEL, roleLabel } from "@/lib/orgs";
-import { countFor, NAV_COOKIE, orgMenuLinks, orgNavItems, type ShellItem, type ShellSpace } from "@/lib/nav";
+import { adminNavItems, countFor, NAV_COOKIE, orgMenuLinks, orgNavItems, type ShellItem, type ShellSpace } from "@/lib/nav";
+import { adminCounts } from "@/lib/admin-data";
 import { orgOverview } from "@/lib/org-overview";
 import { RECRUITING_STATUSES, SOURCING_ROLES } from "@/lib/projects";
 import { unseenFollowCount } from "@/lib/follows";
@@ -95,6 +96,23 @@ export async function SiteHeader({ variant = "app", section }: { variant?: "app"
     });
   }
 
+  // Équipe KolBase : un espace de plus, « Administration KolBase », avec les décisions en attente en pastilles.
+  const admin = isPlatformAdmin(user);
+  if (admin) {
+    spaces.push({
+      key: "kolbase-admin",
+      title: "Administration KolBase",
+      subtitle: "Équipe KolBase",
+      chip: "Admin KolBase",
+      initials: "KB",
+      color: avatarColor("KolBase"),
+      square: true,
+      home: "/admin",
+      items: adminNavItems(await adminCounts()),
+      links: [],
+    });
+  }
+
   const sourcing = user.memberships.some((m) => SOURCING_ROLES.includes(m.role) && m.organization.kind !== "PRESTATAIRE");
   // Cloche des suivis : dès qu'on suit un profil (« Suivre »), quel que soit le compte.
   const showBell = sourcing || !!p?.listed || follows > 0;
@@ -109,7 +127,7 @@ export async function SiteHeader({ variant = "app", section }: { variant?: "app"
       initialSpace={initialSpace ? decodeURIComponent(initialSpace) : undefined}
       activeKey={section}
       bell={showBell ? { count: followCount } : null}
-      admin={isPlatformAdmin(user)}
+      admin={admin}
       navOpen={jar.get(NAV_COOKIE)?.value === "1"}
     />
   );
