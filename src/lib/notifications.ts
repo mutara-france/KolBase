@@ -12,6 +12,7 @@ import { PLANS } from "@/lib/billing-plans";
 import { rnaAccepted } from "@/lib/org-roles";
 import { supplierCategoryLabel } from "@/lib/suppliers";
 import { fmtDate, fmtEur, intlLocale, isLocale, makeT, type Locale, type T } from "@/lib/i18n";
+import { roomTypeLabel } from "@/lib/travel";
 import { collabType, PROJECT_ROLES, SOURCING_ROLES, STATUS_LABEL, type ExpertNotice } from "@/lib/projects";
 import { featuredUntil, orderStats } from "@/lib/services";
 import { conversion, reportParts } from "@/lib/service-report";
@@ -1129,5 +1130,60 @@ export function notifyEventMessage(messageId: string) {
       ].join("\n\n"),
       cta: { label: t("Voir l'événement"), href: `/evenements/${m.event.id}` },
     }));
+  });
+}
+
+/** Invitation nominative à un événement sur invitation (le lien personnel n'est connu que de cet e-mail). */
+export function notifyEventInvite(inviteId: string, token: string, reminder = false) {
+  later(async () => {
+    const inv = await db.eventInvite.findUnique({ where: { id: inviteId }, include: { event: { include: { organization: { select: { name: true } } } } } });
+    if (!inv) return;
+    const ev = inv.event;
+    const user = await db.user.findUnique({ where: { email: inv.email }, select: { ...userSelect, firstName: true } });
+    const to = user ?? { id: `invite-${inv.id}`, email: inv.email, notifyPrefs: {}, locale: "fr" };
+    await sendService([to], (t, locale) => ({
+      subject: reminder ? t("Rappel : invitation à « {title} »", { title: ev.title }) : t("Invitation : « {title} »", { title: ev.title }),
+      text: [
+        t("Bonjour {name},", { name: user?.firstName ?? inv.firstName ?? "" }).replace(" ,", ","),
+        ev.hostedBy
+          ? t("{org} vous invite à « {title} », organisé par {host}, le {when}.", { org: ev.organization.name, title: ev.title, host: ev.hostedBy, when: eventWhen(ev.startsAt, locale) })
+          : t("{org} vous invite à « {title} », le {when}.", { org: ev.organization.name, title: ev.title, when: eventWhen(ev.startsAt, locale) }),
+        ev.format === "DISTANCIEL" ? null : t("Lieu : {place}", { place: eventPlace(ev) || t("à préciser par l'organisateur") }),
+        t("Cette invitation vous est personnelle : le lien ci-dessous ouvre la page de l'événement, où vous vous inscrivez et choisissez ce que vous acceptez."),
+      ].filter(Boolean).join("\n\n"),
+      cta: { label: t("Voir l'invitation"), href: `/evenements/${ev.id}?invitation=${token}` },
+    }));
+  });
+}
+
+/** Carnet de voyage d'un participant : hôtel, dates, chambre, trajets et billets réservés par l'organisateur. */
+export function notifyTravelBook(registrationId: string) {
+  later(async () => {
+    const r = await db.registration.findUnique({ where: { id: registrationId }, include: { travel: true, user: { select: { ...userSelect, firstName: true } }, event: { include: { organization: { select: { name: true } } } } } });
+    const tr = r?.travel;
+    if (!r || !tr) return;
+    await sendService([r.user], (t, locale) => {
+      const day = (d: Date | null) => (d ? d.toLocaleDateString(intlLocale(locale), { timeZone: "Europe/Paris", weekday: "long", day: "numeric", month: "long" }) : null);
+      const lines = [
+        tr.hotel ? t("Hôtel : {hotel}{ref}", { hotel: tr.hotel, ref: tr.hotelRef ? ` (${t("réservation {ref}", { ref: tr.hotelRef })})` : "" }) : null,
+        tr.checkIn ? t("Arrivée : {date}", { date: day(tr.checkIn)! }) : null,
+        tr.checkOut ? t("Départ : {date}", { date: day(tr.checkOut)! }) : null,
+        tr.roomType ? t("Chambre : {type}", { type: t(roomTypeLabel(tr.roomType) ?? tr.roomType) }) : null,
+        tr.outbound ? t("Aller : {trip}", { trip: tr.outbound }) : null,
+        tr.returnTrip ? t("Retour : {trip}", { trip: tr.returnTrip }) : null,
+        tr.ticketRef ? t("Billets : {ref}", { ref: tr.ticketRef }) : null,
+        tr.notes ? tr.notes : null,
+      ].filter(Boolean).join("\n");
+      return {
+        subject: t("Votre voyage : « {title} »", { title: r.event.title }),
+        text: [
+          t("Bonjour {name},", { name: r.user.firstName }),
+          t("Voici votre voyage et votre hébergement pour « {title} » ({org}), le {when}.", { title: r.event.title, org: r.event.organization.name, when: eventWhen(r.event.startsAt, locale) }),
+          lines,
+          t("Une question ou un changement ? Écrivez à l'organisateur en répondant à son message, ou depuis la page de l'événement."),
+        ].join("\n\n"),
+        cta: { label: t("Mes inscriptions"), href: "/inscriptions" },
+      };
+    });
   });
 }

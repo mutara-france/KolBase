@@ -29,7 +29,7 @@ export async function followFeed(userId: string): Promise<FeedItem[]> {
       include: {
         user: { select: { firstName: true, lastName: true } },
         publications: { where: { createdAt: { gte: since } } },
-        applications: { where: { status: "retained", createdAt: { gte: since }, openCall: { event: { publishedAt: { not: null } } } }, include: { openCall: { include: { event: true } } } },
+        applications: { where: { status: "retained", createdAt: { gte: since }, openCall: { event: { publishedAt: { not: null }, inviteOnly: false } } }, include: { openCall: { include: { event: true } } } },
         // Dossiers ouverts par une candidature retenue : l'intervention n'est annoncée qu'une fois les honoraires acceptés.
         projectLinks: { where: { status: { notIn: ["ATT_EXPERTS", "DECLINE"] }, createdAt: { gte: since } }, select: { projectId: true, status: true } },
       },
@@ -54,7 +54,7 @@ export async function followFeed(userId: string): Promise<FeedItem[]> {
       where: { id: { in: oIds }, listed: true, verification: "VERIFIED" },
       include: {
         openCalls: { where: { status: "open", createdAt: { gte: since } } },
-        events: { where: { publishedAt: { gte: since, not: null } } },
+        events: { where: { publishedAt: { gte: since, not: null }, inviteOnly: false, internal: false } },
       },
     });
     for (const o of orgs) {

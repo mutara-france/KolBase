@@ -62,7 +62,7 @@ export default async function Page({ params }: { params: Promise<{ id: string }>
         <span className="date-block" aria-hidden><strong>{fmtDate(locale, e.startsAt, { day: "numeric" })}</strong><small>{fmtDate(locale, e.startsAt, { month: "short" })}</small></span>
         <span className="row-main">
           <strong>{e.title}</strong>
-          <span className="muted text-sm">{fmtDate(locale, e.startsAt)} · {t(eventTypeLabel(e.typeId))} · {e.format === "DISTANCIEL" ? t("en ligne") : e.city ?? t(FORMAT_LABEL[e.format])}{e.agency && isOrganizer ? ` ${t("· confié à {name}", { name: e.agency.name })}` : ""}</span>
+          <span className="muted text-sm">{fmtDate(locale, e.startsAt)} · {t(eventTypeLabel(e.typeId))} · {e.format === "DISTANCIEL" ? t("en ligne") : e.city ?? t(FORMAT_LABEL[e.format])}{e.agency && isOrganizer ? ` ${t("· confié à {name}", { name: e.agency.name })}` : ""}{e.inviteOnly ? ` · ${t("sur invitation")}` : ""}</span>
         </span>
         <span className="row-status">
           <span className={`pill ${status.tone}`}>{t(status.label)}</span>

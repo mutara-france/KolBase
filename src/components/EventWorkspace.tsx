@@ -1,5 +1,8 @@
 import { aiEnabled } from "@/lib/ai";
-import { EditEventForm, EventMessageForm, EventReviewForm, MdeonVisaForm, ProgramForm } from "@/components/EventForms";
+import { BudgetLineForm, EditEventForm, EventMessageForm, EventReviewForm, InviteForm, MdeonVisaForm, ProgramForm, TravelForm } from "@/components/EventForms";
+import { removeBudgetLine, remindEventInvites, sendTravelBooks } from "@/lib/event-actions";
+import { hasBooking, nights, TRAVEL_BENEFITS } from "@/lib/travel";
+import { budgetPostLabel, budgetRows } from "@/lib/event-budget";
 import { dietLabel, needsSummary } from "@/lib/registration-needs";
 import { mdeonDeadline, mdeonOverCaps, mdeonRequired } from "@/lib/belgium";
 import Link from "next/link";
@@ -38,6 +41,10 @@ import { TableWrap } from "@/components/TableWrap";
 import { getT } from "@/lib/i18n/server";
 import { fmtDate, fmtEur, fmtTime, intlLocale } from "@/lib/i18n";
 
+/** Réponse d'un invité : inscrit, a décliné, sans réponse. */
+const INVITE_LABEL = { inscrit: "Inscrit", decline: "Décliné", attente: "Sans réponse" } as const;
+const INVITE_TONE = { inscrit: "ok", decline: "done", attente: "wait" } as const;
+
 /** Prestations dont le coût par participant se rapproche d'une hospitalité déclarée (repas, nuitée). */
 const HOSPITALITY_CATS = ["restauration", "hebergement"];
 
@@ -64,7 +71,9 @@ export async function EventWorkspace({ orgId: id, eventId, publie, mode = "page"
         },
       },
       benefits: { include: { _count: { select: { accepted: true } } } },
-      registrations: { include: { user: { include: { practitioner: { select: { country: true } } } }, benefits: { include: { benefit: true } } }, orderBy: { createdAt: "asc" } },
+      registrations: { include: { user: { include: { practitioner: { select: { country: true } } } }, benefits: { include: { benefit: true } }, travel: true }, orderBy: { createdAt: "asc" } },
+      invites: { orderBy: { invitedAt: "asc" } },
+      budgetLines: { orderBy: { createdAt: "asc" } },
       _count: { select: { registrations: true, rfqs: true, calls: true, serviceOrders: true } },
       surveys: { orderBy: { createdAt: "desc" } },
       waitlist: { include: { user: { select: { firstName: true, lastName: true } } }, orderBy: { createdAt: "asc" } },
@@ -429,7 +438,7 @@ export async function EventWorkspace({ orgId: id, eventId, publie, mode = "page"
                 initial={{
                   title: event.title, typeId: event.typeId, therapeuticArea: event.therapeuticArea ?? "", description: event.description ?? "",
                   startsAt: toParisInput(event.startsAt), durationMinutes: event.durationMinutes != null ? String(event.durationMinutes) : "",
-                  format: event.format, capacity: event.capacity != null ? String(event.capacity) : "", city: event.city ?? "", postalCode: event.postalCode ?? "", venue: event.venue ?? "", address: event.address ?? "",
+                  format: event.format, capacity: event.capacity != null ? String(event.capacity) : "", city: event.city ?? "", postalCode: event.postalCode ?? "", venue: event.venue ?? "", address: event.address ?? "", inviteOnly: event.inviteOnly, hostedBy: event.hostedBy ?? "", hostedUrl: event.hostedUrl ?? "",
                   onlineUrl: event.onlineUrl ?? "", benefits: event.benefits.map((b) => ({ catalogId: b.catalogId, valueCents: b.valueCents })),
                 }}
               />
@@ -844,6 +853,131 @@ export async function EventWorkspace({ orgId: id, eventId, publie, mode = "page"
             </ol>
           </section>
         )}
+
+        {event.inviteOnly && !event.internal && (
+          <section className="card stack-sm" aria-labelledby="invites-titre" id="invitations">
+            <SectionHead icon={Megaphone} id="invites-titre" title={t("Invitations")} desc={t("Événement sur invitation : seules les personnes invitées voient la page et s'inscrivent. Chacune reçoit un lien personnel{draft}.", { draft: event.publishedAt ? "" : t(" à la publication") })} />
+            {!readOnly && !event.cancelledAt && !isPast && <InviteForm orgId={id} eventId={eventId} />}
+            {event.invites.length > 0 && (() => {
+              const registeredUsers = new Set(event.registrations.filter((r) => !r.cancelledAt).map((r) => r.userId));
+              const status = (i: (typeof event.invites)[number]) => (i.userId && registeredUsers.has(i.userId) ? "inscrit" : i.declinedAt ? "decline" : "attente");
+              const counts = { inscrit: 0, decline: 0, attente: 0 };
+              for (const i of event.invites) counts[status(i)]++;
+              return (
+                <>
+                  <p className="text-sm">{t("{n} invités · {a} inscrits · {d} ont décliné · {w} sans réponse", { n: event.invites.length, a: counts.inscrit, d: counts.decline, w: counts.attente })}</p>
+                  <TableWrap label={t("Invitations")}>
+                    <table className="table">
+                      <thead><tr><th>{t("Invité")}</th><th>{t("E-mail")}</th><th>{t("Invité le")}</th><th>{t("Réponse")}</th></tr></thead>
+                      <tbody>
+                        {event.invites.map((i) => (
+                          <tr key={i.id}>
+                            <td data-label="Invité">{[i.firstName, i.lastName].filter(Boolean).join(" ") || "—"}</td>
+                            <td data-label="E-mail">{i.email}</td>
+                            <td data-label="Invité le">{i.sentAt ? fmtDate(locale, i.sentAt) : t("à la publication")}{i.remindedAt ? ` · ${t("relancé le {date}", { date: fmtDate(locale, i.remindedAt) })}` : ""}</td>
+                            <td data-label="Réponse"><span className={`pill ${INVITE_TONE[status(i)]}`}>{t(INVITE_LABEL[status(i)])}</span></td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </TableWrap>
+                  {!readOnly && event.publishedAt && !isPast && counts.attente > 0 && (
+                    <form action={remindEventInvites}>
+                      <input type="hidden" name="orgId" value={id} />
+                      <input type="hidden" name="eventId" value={eventId} />
+                      <button className="btn small ghost">{t("Relancer les invités sans réponse")}</button>
+                      <p className="hint">{t("Une relance au plus toutes les 48 heures par invité, avec un nouveau lien.")}</p>
+                    </form>
+                  )}
+                </>
+              );
+            })()}
+          </section>
+        )}
+
+        {!event.internal && (() => {
+          // Voyages et hébergement : participants qui ont accepté une nuitée ou un transport.
+          const travellers = event.registrations.filter((r) => !r.cancelledAt && r.benefits.some((b) => TRAVEL_BENEFITS.includes(b.benefit.catalogId)));
+          if (travellers.length === 0) return null;
+          const day = (d: Date | null) => (d ? d.toISOString().slice(0, 10) : "");
+          const toSend = travellers.filter((r) => hasBooking(r.travel) && (!r.travel!.sentAt || r.travel!.updatedAt.getTime() > r.travel!.sentAt.getTime() + 1000)).length;
+          return (
+            <section className="card stack-sm" aria-labelledby="voyages-titre" id="voyages">
+              <SectionHead icon={Truck} id="voyages-titre" title={t("Voyages et hébergement")} desc={t("Participants qui ont accepté une nuitée ou un transport : réservez, puis envoyez à chacun son carnet de voyage. La liste des chambres part à l'hôtel.")}>
+                <a className="btn ghost small" href={`/organisations/${id}/evenements/${eventId}/chambres`}>{t("Liste des chambres (CSV)")}</a>
+              </SectionHead>
+              <ul className="plain stack-sm">
+                {travellers.map((r) => {
+                  const tr = r.travel;
+                  const n = tr ? nights(tr) : null;
+                  return (
+                    <li key={r.id} className="travel-row">
+                      <details className="disclosure">
+                        <summary>
+                          <strong>{r.user.firstName} {r.user.lastName}</strong>{" "}
+                          <span className="muted text-sm">
+                            · {r.benefits.filter((b) => TRAVEL_BENEFITS.includes(b.benefit.catalogId)).map((b) => t(b.benefit.label)).join(", ")}
+                            {tr?.departureCity ? ` · ${t("départ de {city}", { city: tr.departureCity })}` : ""}
+                            {tr?.hotel ? ` · ${tr.hotel}` : ""}{n ? ` · ${t(n > 1 ? "{n} nuits" : "{n} nuit", { n })}` : ""}
+                          </span>{" "}
+                          <span className={`pill ${tr?.sentAt ? "ok" : hasBooking(tr) ? "wait" : "done"}`}>{tr?.sentAt ? t("Carnet envoyé") : hasBooking(tr) ? t("À envoyer") : t("À réserver")}</span>
+                        </summary>
+                        {!readOnly && <TravelForm orgId={id} registrationId={r.id} initial={{ checkIn: day(tr?.checkIn ?? null), checkOut: day(tr?.checkOut ?? null), roomType: tr?.roomType ?? "", hotel: tr?.hotel ?? "", hotelRef: tr?.hotelRef ?? "", outbound: tr?.outbound ?? "", returnTrip: tr?.returnTrip ?? "", ticketRef: tr?.ticketRef ?? "", notes: tr?.notes ?? "" }} />}
+                      </details>
+                    </li>
+                  );
+                })}
+              </ul>
+              {!readOnly && toSend > 0 && (
+                <form action={sendTravelBooks}>
+                  <input type="hidden" name="orgId" value={id} />
+                  <input type="hidden" name="eventId" value={eventId} />
+                  <button className="btn small">{t(toSend > 1 ? "Envoyer les {n} carnets de voyage" : "Envoyer le carnet de voyage", { n: toSend })}</button>
+                </form>
+              )}
+            </section>
+          );
+        })()}
+
+        {!event.internal && (() => {
+          const engaged = rfqs.flatMap((r) => r.quotes.filter((q) => q.status === "retained").map((q) => ({ category: r.category, ttcCents: quoteTtc(q) })));
+          const b = budgetRows(event.budgetLines, engaged);
+          if (readOnly && b.rows.length === 0) return null;
+          return (
+            <section className="card stack-sm" aria-labelledby="budget-titre" id="budget">
+              <SectionHead icon={Euro} id="budget-titre" title={t("Budget")} desc={t("Le prévu par poste, face aux devis retenus (TTC).")} />
+              {b.rows.length > 0 && (
+                <TableWrap label={t("Budget")}>
+                  <table className="table">
+                    <thead><tr><th>{t("Poste")}</th><th>{t("Prévu")}</th><th>{t("Engagé")}</th><th>{t("Écart")}</th></tr></thead>
+                    <tbody>
+                      {b.rows.map((r) => (
+                        <tr key={r.category}>
+                          <td data-label="Poste">
+                            {t(budgetPostLabel(r.category))}
+                            {r.lines.map((l) => (
+                              <span key={l.id} className="block text-xs muted">
+                                {l.label || t("sans libellé")} · {fmtEur(locale, l.planned)}
+                                {!readOnly && (
+                                  <form action={removeBudgetLine} className="inline"><input type="hidden" name="orgId" value={id} /><input type="hidden" name="lineId" value={l.id} /> <button className="link danger">{t("retirer")}</button></form>
+                                )}
+                              </span>
+                            ))}
+                          </td>
+                          <td data-label="Prévu">{r.planned ? fmtEur(locale, r.planned) : "—"}</td>
+                          <td data-label="Engagé">{r.engaged ? fmtEur(locale, r.engaged) : "—"}</td>
+                          <td data-label="Écart" className={r.planned && r.engaged > r.planned ? "warn-text" : undefined}>{r.planned ? fmtEur(locale, r.planned - r.engaged) : "—"}</td>
+                        </tr>
+                      ))}
+                      <tr className="total-row"><td><strong>{t("Total")}</strong></td><td><strong>{fmtEur(locale, b.planned)}</strong></td><td><strong>{fmtEur(locale, b.engaged)}</strong></td><td className={b.engaged > b.planned ? "warn-text" : undefined}><strong>{fmtEur(locale, b.planned - b.engaged)}</strong></td></tr>
+                    </tbody>
+                  </table>
+                </TableWrap>
+              )}
+              {!readOnly && <BudgetLineForm orgId={id} eventId={eventId} />}
+            </section>
+          );
+        })()}
 
         {!event.internal && !readOnly && !event.cancelledAt && (
           <section className="card stack-sm" aria-labelledby="message-titre" id="message">

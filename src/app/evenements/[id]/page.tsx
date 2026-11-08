@@ -10,7 +10,8 @@ import { getCurrentUser } from "@/lib/auth";
 import { EVENT_STATE_LABEL, eventState, eventTypeLabel, formatDuration, FORMAT_LABEL, isHcp } from "@/lib/events";
 import { hospitalityGate } from "@/lib/belgium";
 import { waitlistRank } from "@/lib/waitlist";
-import { cancelRegistration, joinWaitlist, leaveWaitlist } from "@/lib/event-actions";
+import { canSeeInviteOnly, inviteFor } from "@/lib/event-invites";
+import { cancelRegistration, declineEventInvite, joinWaitlist, leaveWaitlist } from "@/lib/event-actions";
 import type { Metadata } from "next";
 import { fmtDate, fmtEur, intlLocale, type Locale } from "@/lib/i18n";
 import { getT } from "@/lib/i18n/server";
@@ -30,6 +31,8 @@ export async function generateMetadata({ params }: { params: Promise<{ id: strin
   const e = await db.event.findFirst({ where: { id, OR: [{ publishedAt: { not: null } }, { cancelledAt: { not: null } }], organization: { verification: "VERIFIED" } }, include: { organization: { select: { name: true } } } });
   if (!e) return { title: t("Événement — KolBase"), robots: { index: false } };
   if (e.cancelledAt) return { title: `${t("Événement annulé")} : ${e.title} — KolBase`, robots: { index: false } };
+  // Sur invitation : ni titre ni description dans les métadonnées, jamais indexé.
+  if (e.inviteOnly) return { title: t("Événement sur invitation — KolBase"), robots: { index: false } };
   const description = `${t(eventTypeLabel(e.typeId))} · ${dateTime(locale, e.startsAt)}${e.city ? ` · ${e.city}` : ""}. ${e.description ?? ""}`.trim().slice(0, 160);
   return {
     title: `${e.title} — ${e.organization.name} — KolBase`,
@@ -41,9 +44,9 @@ export async function generateMetadata({ params }: { params: Promise<{ id: strin
   };
 }
 
-export default async function Page({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: Promise<{ annulee?: string }> }) {
+export default async function Page({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: Promise<{ annulee?: string; invitation?: string }> }) {
   const { id } = await params;
-  const { annulee } = await searchParams;
+  const { annulee, invitation } = await searchParams;
   const [event, user] = await Promise.all([
     db.event.findFirst({
       // Un événement annulé reste lisible à son adresse (mention « Événement annulé »), hors de l'agenda.
@@ -58,6 +61,9 @@ export default async function Page({ params, searchParams }: { params: Promise<{
     getCurrentUser(),
   ]);
   if (!event) notFound();
+  // Sur invitation : page réservée aux invités (lien personnel ou adresse du compte), inscrits et membres.
+  const invite = event.inviteOnly ? await inviteFor(id, user, invitation) : null;
+  if (event.inviteOnly && !invite && !(await canSeeInviteOnly(event, user))) notFound();
   const { t, locale } = await getT();
   const reg = user
     ? await db.registration.findUnique({ where: { eventId_userId: { eventId: id, userId: user.id } }, include: { benefits: { include: { benefit: true } }, survey: { select: { id: true } } } })
@@ -74,7 +80,7 @@ export default async function Page({ params, searchParams }: { params: Promise<{
   // Commencé (inscriptions closes) puis terminé : le badge reste utile aux retardataires pendant l'événement.
   const past = st.moment !== "a_venir";
   const ended = st.moment === "passe";
-  const back = encodeURIComponent(`/evenements/${id}`);
+  const back = encodeURIComponent(`/evenements/${id}${invitation && invite ? `?invitation=${invitation}` : ""}`);
 
   // Places restantes et prix « par personne » : seulement tant que l'on peut s'inscrire (ni passé, ni en cours, ni annulé).
   const left = event.capacity != null && st.upcoming ? Math.max(0, event.capacity - event._count.registrations) : null;
@@ -116,7 +122,7 @@ export default async function Page({ params, searchParams }: { params: Promise<{
           eyebrow={`${t(eventTypeLabel(event.typeId))}${event.therapeuticArea ? ` · ${t(event.therapeuticArea)}` : ""} · ${t(FORMAT_LABEL[event.format])}`}
           status={<span className={`pill ${status.tone}`}>{status.label}</span>}
           title={event.title}
-          lead={t("Organisé par {name}", { name: event.organization.name })}
+          lead={event.hostedBy ? t("Organisé par {host} · prise en charge proposée par {name}", { host: event.hostedBy, name: event.organization.name }) : t("Organisé par {name}", { name: event.organization.name })}
           facts={[
             { icon: <CalendarDays size={13} />, label: t("Date"), value: fmtDate(locale, event.startsAt, { day: "numeric", month: "long", year: "numeric" }), sub: `${event.startsAt.toLocaleTimeString(intlLocale(locale), { timeZone: "Europe/Paris", hour: "2-digit", minute: "2-digit" })}${event.durationMinutes ? ` · ${formatDuration(event.durationMinutes, locale)}` : ""}` },
             { icon: <MapPin size={13} />, label: t("Lieu"), value: event.format === "DISTANCIEL" ? t("En ligne") : event.city ?? t("À préciser"), sub: [event.venue, event.address, event.postalCode].filter(Boolean).join(", ") || undefined },
@@ -124,6 +130,14 @@ export default async function Page({ params, searchParams }: { params: Promise<{
             ...(st.upcoming ? [{ icon: <Gift size={13} />, label: t("Prise en charge"), value: event.benefits.length ? t("{amount} par personne", { amount: fmtEur(locale, benefitsTotal) }) : t("Aucune"), sub: event.benefits.length ? t("au plus, selon vos choix") : t("à vos frais") }] : []),
           ]}
         />
+        {event.inviteOnly && (
+          <p className="notice" role="status">
+            {invite?.declinedAt
+              ? t("Vous avez décliné cette invitation. Vous pouvez encore vous inscrire si vous changez d'avis.")
+              : t("Événement sur invitation de {org} : il n'apparaît pas dans l'agenda public.", { org: event.organization.name })}
+            {event.hostedUrl && <> <a href={event.hostedUrl} target="_blank" rel="noopener noreferrer">{t("Page du congrès")}</a></>}
+          </p>
+        )}
         {cancelled && (
           <p className="notice error" role="status">
             {t("Événement annulé par {org}.", { org: event.organization.name })}{event.cancelReason ? ` ${t("Motif : {note}", { note: event.cancelReason })}` : ""}
@@ -233,8 +247,16 @@ export default async function Page({ params, searchParams }: { params: Promise<{
                   gate={gate}
                   visa={gate === "be" ? event.mdeonVisa : null}
                   defaultStructure={user.practitioner?.hospital ?? ""}
-                  benefits={event.benefits.map((b) => ({ id: b.id, label: t(b.label), valueCents: b.valueCents }))}
+                  benefits={event.benefits.map((b) => ({ id: b.id, label: t(b.label), valueCents: b.valueCents, catalogId: b.catalogId }))}
+                  invitation={invite && invitation ? invitation : undefined}
                 />
+              )}
+              {invite && !reg && user && !invite.declinedAt && !past && !cancelled && (
+                <form action={declineEventInvite}>
+                  <input type="hidden" name="eventId" value={id} />
+                  {invitation && <input type="hidden" name="invitation" value={invitation} />}
+                  <button className="btn ghost small">{t("Décliner l'invitation")}</button>
+                </form>
               )}
               {!past && !cancelled && <a className="link" href={`/evenements/${id}/calendrier`}><CalendarPlus size={14} /> {t("Ajouter à mon agenda")}</a>}
             </section>

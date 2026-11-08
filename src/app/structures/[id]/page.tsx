@@ -48,7 +48,7 @@ export default async function Page({ params }: { params: Promise<{ id: string }>
     where: { id, ...(isMember ? {} : { listed: true, verification: "VERIFIED" }) },
     include: {
       openCalls: { where: { status: "open", OR: [{ deadline: null }, { deadline: { gte: now } }] }, orderBy: { deadline: "asc" }, include: { _count: { select: { applications: { where: { status: "retained" } } } } } },
-      events: { where: { publishedAt: { not: null }, startsAt: { gte: now } }, orderBy: { startsAt: "asc" }, include: { _count: { select: { registrations: true } } } },
+      events: { where: { publishedAt: { not: null }, inviteOnly: false, startsAt: { gte: now } }, orderBy: { startsAt: "asc" }, include: { _count: { select: { registrations: true } } } },
       // Collaborations : les dossiers signés seulement, comme la fiche expert.
       _count: { select: { projects: { where: { status: { in: SIGNED_STATUSES } } } } },
     },
