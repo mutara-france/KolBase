@@ -3,7 +3,8 @@
  * Valeurs par défaut reprises de l'arrêté du 7 août 2020 fixant les seuils au-delà desquels une
  * convention est soumise à autorisation : rémunération 200 € par heure dans la limite de 800 € par
  * demi-journée et de 2 000 € par convention ; hospitalité 150 € par nuitée, 50 € par repas, 15 € par
- * collation et 2 000 € au total (transport compris). À valider par le service juridique de chaque
+ * collation et 2 000 € au total (transport compris), et, à part, 1 000 € de frais d'inscription. L'hospitalité est
+ * interdite aux étudiants (voir hospitalityGate). À valider par le service juridique de chaque
  * organisation (notamment HT / TTC). Le dépassement d'un seul seuil soumet toute la convention à autorisation.
  */
 import { country, practicesInFrance } from "@/lib/countries";
@@ -16,7 +17,8 @@ export type ComplianceSettings = {
   hospitalityNightMax: number; // € TTC par nuitée
   hospitalityMealMax: number; // € TTC par repas
   hospitalityCollationMax: number; // € TTC par collation
-  hospitalityTotalMax: number; // € TTC par événement
+  hospitalityTotalMax: number; // € TTC par événement (transport compris, frais d'inscription à part)
+  registrationFeeMax: number; // € TTC de frais d'inscription pris en charge
   cumulAlert: number; // € HT sur 12 mois, alerte de cumul
   declarationDays: number; // délai de déclaration avant exécution (jours ouvrables)
   authorizationDays: number; // délai de demande d'autorisation avant exécution
@@ -32,6 +34,7 @@ export const DEFAULT_COMPLIANCE: ComplianceSettings = {
   hospitalityMealMax: 50,
   hospitalityCollationMax: 15,
   hospitalityTotalMax: 2000,
+  registrationFeeMax: 1000,
   cumulAlert: 10000,
   declarationDays: 8,
   authorizationDays: 60,
@@ -47,6 +50,7 @@ export const SETTING_FIELDS: { key: keyof ComplianceSettings; label: string; uni
   { key: "hospitalityMealMax", label: "Hospitalité : repas", unit: "€ TTC", group: "Seuils d'autorisation" },
   { key: "hospitalityCollationMax", label: "Hospitalité : collation (pause café…)", unit: "€ TTC", group: "Seuils d'autorisation" },
   { key: "hospitalityTotalMax", label: "Hospitalité : total par événement", unit: "€ TTC", group: "Seuils d'autorisation" },
+  { key: "registrationFeeMax", label: "Frais d'inscription pris en charge", unit: "€ TTC", group: "Seuils d'autorisation" },
   { key: "cumulAlert", label: "Alerte de cumul par expert sur 12 mois", unit: "€ HT", group: "Alertes" },
   { key: "declarationDays", label: "Délai de déclaration avant exécution", unit: "jours ouvrables", group: "Délais" },
   { key: "authorizationDays", label: "Délai de demande d'autorisation avant exécution", unit: "jours", group: "Délais" },
@@ -60,7 +64,7 @@ export const SETTING_FIELDS: { key: keyof ComplianceSettings; label: string; uni
  */
 const LEGAL_CEILINGS: (keyof ComplianceSettings)[] = [
   "remunerationConventionMax", "remunerationHourlyMax", "remunerationHalfDayMax",
-  "hospitalityNightMax", "hospitalityMealMax", "hospitalityCollationMax", "hospitalityTotalMax",
+  "hospitalityNightMax", "hospitalityMealMax", "hospitalityCollationMax", "hospitalityTotalMax", "registrationFeeMax",
 ];
 const LEGAL_FLOORS: (keyof ComplianceSettings)[] = ["declarationDays", "authorizationDays"];
 
@@ -147,13 +151,14 @@ export function projectRegime(s: ComplianceSettings, unit: string, experts: ({ s
 }
 
 /** Seuils d'hospitalité d'une organisation (€ TTC par personne), transmis aussi au formulaire d'événement. */
-export type HospitalityLimits = Pick<ComplianceSettings, "hospitalityNightMax" | "hospitalityMealMax" | "hospitalityCollationMax" | "hospitalityTotalMax" | "authorizationDays" | "declarationDays">;
+export type HospitalityLimits = Pick<ComplianceSettings, "hospitalityNightMax" | "hospitalityMealMax" | "hospitalityCollationMax" | "hospitalityTotalMax" | "registrationFeeMax" | "authorizationDays" | "declarationDays">;
 
 /** Seuil propre à une prestation du catalogue (€ TTC) ; le transport ne compte que dans le total. */
 export function benefitLimit(s: HospitalityLimits, catalogId: string): { max: number; per: string } | null {
   if (catalogId === "nuitee") return { max: s.hospitalityNightMax, per: "par nuitée" };
   if (catalogId === "dejeuner" || catalogId === "cocktail") return { max: s.hospitalityMealMax, per: "par repas" };
   if (catalogId === "cafe") return { max: s.hospitalityCollationMax, per: "par collation" };
+  if (catalogId === "inscription") return { max: s.registrationFeeMax, per: "par inscription" };
   return null;
 }
 
@@ -161,7 +166,10 @@ export function benefitLimit(s: HospitalityLimits, catalogId: string): { max: nu
 
 /** Régime d'une hospitalité : autorisation si nuitée, repas ou total dépassent les seuils. Une prestation seule : son seuil et le total. */
 export function hospitalityRegime(s: HospitalityLimits, benefits: { catalogId: string; valueCents: number }[]): RegimeResult {
-  const total = benefits.reduce((x, b) => x + b.valueCents, 0) / 100;
+  // Les frais d'inscription ont leur propre seuil et ne comptent pas dans le total de l'hospitalité.
+  const fee = benefits.find((b) => b.catalogId === "inscription" && b.valueCents / 100 > (s.registrationFeeMax ?? DEFAULT_COMPLIANCE.registrationFeeMax));
+  if (fee) return result("autorisation", { key: "Frais d'inscription {value} € > {max} €", n: { value: fee.valueCents / 100, max: s.registrationFeeMax ?? DEFAULT_COMPLIANCE.registrationFeeMax } });
+  const total = benefits.filter((b) => b.catalogId !== "inscription").reduce((x, b) => x + b.valueCents, 0) / 100;
   const night = benefits.find((b) => b.catalogId === "nuitee" && b.valueCents / 100 > s.hospitalityNightMax);
   if (night) return result("autorisation", { key: "Nuitée {value} € > {max} €", n: { value: night.valueCents / 100, max: s.hospitalityNightMax } });
   const meal = benefits.find((b) => ["dejeuner", "cocktail"].includes(b.catalogId) && b.valueCents / 100 > s.hospitalityMealMax);

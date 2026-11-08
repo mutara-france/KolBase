@@ -24,7 +24,7 @@ import { acceptCounterOffer, addProjectLead, advanceProject, removeProjectLead }
 import { ConfirmButton } from "@/components/ConfirmButton";
 import { expertSplit } from "@/lib/indicators";
 import { BudgetTab, ConflictsPanel, ConventionSignatureBlock, DocumentsPanel, MaterialsPanel } from "@/components/DossierSections";
-import { missingSignedConventions } from "@/lib/project-documents";
+import { missingCumulAuthorizations, missingSignedConventions } from "@/lib/project-documents";
 import { FOUR_EYES_BLOCKED, FOUR_EYES_JUSTIFY, fourEyes, projectAuthors } from "@/lib/four-eyes";
 import { supplierCategoryLabel } from "@/lib/suppliers";
 import type { ProjectStatus } from "@/generated/prisma/client";
@@ -179,6 +179,9 @@ export default async function Page({ params, searchParams }: { params: Promise<{
   const unsigned = project.status === "SIGNATURE" ? await missingSignedConventions(projectId) : [];
   // Sans stockage de documents, la convention signée ne peut pas être déposée : une attestation explicite est demandée.
   const attestable = unsigned.length > 0 && !storageEnabled();
+  // Experts agents publics : autorisation de cumul à joindre avant la déclaration ou la demande à l'Ordre.
+  const noCumul = project.status === "VALIDE" ? await missingCumulAuthorizations(projectId) : [];
+  const cumulAttestable = noCumul.length > 0 && !storageEnabled();
   const attester = project.signatureAttestedById ? await db.user.findUnique({ where: { id: project.signatureAttestedById }, select: { firstName: true, lastName: true } }) : null;
   const closed = !recruitmentOpen(project.status);
   // Modification (objet, conditions, ajout d'un expert) pendant le recrutement ; le retour en accord de principe
@@ -210,6 +213,7 @@ export default async function Page({ params, searchParams }: { params: Promise<{
     // « Convention signée » attend la convention signée (ou la signature électronique) de chaque expert engagé ;
     // sans stockage configuré, l'étape reste proposée mais exige une attestation.
     if (k === "signed" && unsigned.length > 0 && !attestable) return false;
+    if ((k === "declaration" || k === "ordre") && noCumul.length > 0 && !cumulAttestable) return false;
     if (k === "validate" && fourEyesRule === "blocked") return false;
     if (k === "back_to_accord" && signStarted) return false;
     return (t.from as readonly string[]).includes(project.status) && (t.roles === "compliance" ? isCompliance : isProject);
@@ -349,6 +353,11 @@ export default async function Page({ params, searchParams }: { params: Promise<{
           <input type="checkbox" name="attest" value="1" required />{" "}{t("J'atteste que la convention de {join} est signée par les deux parties et conservée par l'organisation.", { join: unsigned.join(", ") })}
         </label>
       )}
+      {(k === "declaration" || k === "ordre") && cumulAttestable && (
+        <label className="check text-sm">
+          <input type="checkbox" name="attestCumul" value="1" required />{" "}{t("J'atteste que l'autorisation de cumul d'activités de {join} est jointe à la transmission à l'Ordre et conservée par l'organisation.", { join: noCumul.join(", ") })}
+        </label>
+      )}
       {k === "submit" && waiting.length > 0 ? (
         <ConfirmButton
           className="btn"
@@ -405,6 +414,12 @@ export default async function Page({ params, searchParams }: { params: Promise<{
                     ? t("Faites signer la convention de {join} depuis l'onglet Documents (signature électronique, ou dépôt de la convention signée) pour passer le dossier en « Signé ».", { join: unsigned.join(", ") })
                     : t("Déposez la convention signée de {join} dans l'onglet Documents pour passer le dossier en « Signé ».", { join: unsigned.join(", ") })}{" "}
                   <Link href={`${tabHref("documents")}#conventions`}>{t("Ouvrir les conventions")}</Link>
+                </p>
+              )}
+              {noCumul.length > 0 && !cumulAttestable && isProject && (
+                <p className="notice warn">
+                  {t("Expert agent public : déposez l'autorisation de cumul d'activités de {join} (ou l'accusé de sa déclaration à l'employeur) dans l'onglet Documents. La déclaration ou la demande d'autorisation à l'Ordre doit la comporter.", { join: noCumul.join(", ") })}{" "}
+                  <Link href={tabHref("documents")}>{t("Ouvrir les documents")}</Link>
                 </p>
               )}
               {attestable && (

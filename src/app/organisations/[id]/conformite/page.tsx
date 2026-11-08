@@ -152,6 +152,19 @@ export default async function Page({ params, searchParams }: { params: Promise<{
         )}
         {onglet === "registre" && <Register />}
         {onglet === "transparence" && <Declaration />}
+        {onglet === "transparence" && (() => {
+          // Belgique : publication annuelle sur betransparent.be des avantages accordés aux praticiens qui y exercent.
+          const y = new Date().getUTCFullYear();
+          return (
+            <section className="card stack-sm" id="betransparent">
+              <SectionHead icon={Send} title={t("Belgique : betransparent.be")} desc={t("Primes et avantages accordés dans l'année aux praticiens exerçant en Belgique (hospitalités consommées, honoraires versés), avec leur numéro INAMI et le visa Mdeon. Publication annuelle, y compris pour une entreprise établie hors de Belgique.")} />
+              <div className="actions">
+                {[y - 1, y].map((yy) => <a key={yy} className="btn ghost small" href={`/organisations/${id}/conformite/betransparent?annee=${yy}`}>{t("Préparer {year} (CSV)", { year: yy })}</a>)}
+              </div>
+              <p className="hint">{t("Fichier de préparation au format KolBase : reportez ses lignes dans le modèle de la plateforme.")}</p>
+            </section>
+          );
+        })()}
         {onglet === "transparence" && (
           <section className="card">
             <SectionHead icon={Send} title={t("Suivi des publications")} desc={t("Dossiers à publier sur la plateforme Transparence Santé, et ceux déjà publiés.")}>

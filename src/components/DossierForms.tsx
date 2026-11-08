@@ -84,7 +84,7 @@ export function VersionForm({ materialId }: { materialId: string }) {
 }
 
 /** Dépôt d'un document de dossier (pièce, ou convention signée d'un expert). En signature, « Convention signée » d'office. */
-export function DocumentUploadForm({ projectId, experts, ownLinkId, defaultKind = "PIECE" }: { projectId: string; experts: { id: string; name: string }[]; ownLinkId?: string; defaultKind?: "PIECE" | "CONVENTION_SIGNEE" }) {
+export function DocumentUploadForm({ projectId, experts, ownLinkId, defaultKind = "PIECE", cumul = false }: { projectId: string; experts: { id: string; name: string }[]; ownLinkId?: string; defaultKind?: "PIECE" | "CONVENTION_SIGNEE" | "AUTORISATION_CUMUL"; cumul?: boolean }) {
   const [state, action, pending] = useActionState(uploadDocument, undefined);
   const t = useT();
   return (
@@ -96,6 +96,7 @@ export function DocumentUploadForm({ projectId, experts, ownLinkId, defaultKind 
           <select name="kind" defaultValue={defaultKind}>
             <option value="PIECE">{t("Pièce du dossier")}</option>
             <option value="CONVENTION_SIGNEE">{t("Convention signée")}</option>
+            {cumul && <option value="AUTORISATION_CUMUL">{t("Autorisation de cumul (agent public)")}</option>}
           </select>
         </label>
         {ownLinkId ? <input type="hidden" name="linkId" value={ownLinkId} /> : (

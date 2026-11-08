@@ -121,6 +121,9 @@ model PractitionerProfile {
   // Code postal d'exercice (facultatif) : région dans les statistiques.
   postalCode    String?
   hospital      String?
+  // Agent public (praticien hospitalier, hospitalo-universitaire, autre agent d'un établissement public) : une
+  // collaboration rémunérée suppose l'autorisation de cumul de l'employeur, transmise avec la convention (R.1453-14 CSP).
+  publicAgent   Boolean  @default(false)
   specialty     String?
   subspecialty  String?
   languages     String[]
@@ -597,6 +600,8 @@ model ConventionSignature {
 enum DocumentKind {
   CONVENTION_SIGNEE
   PIECE
+  // Autorisation de cumul d'activités (ou accusé de la déclaration) d'un expert agent public.
+  AUTORISATION_CUMUL
 }
 
 model Document {
@@ -689,6 +694,10 @@ model Event {
   program          String?      // programme scientifique (déroulé horaire), affiché sur la page publique
   // Lien de connexion (visioconférence, https) des événements en ligne ou hybrides : communiqué aux seuls inscrits.
   onlineUrl        String?
+  // Belgique : visa Mdeon (manifestation de plusieurs jours ou avec nuitée, hospitalité offerte à des praticiens
+  // exerçant en Belgique). Sans numéro, ces praticiens s'inscrivent sans hospitalité.
+  mdeonVisa        String?
+  mdeonVisaAt      DateTime?
   // Agence prestataire mandatée : ses membres (rôle Prestataire) ne voient que les événements confiés.
   agencyId         String?
   agency           Organization? @relation("agencyEvents", fields: [agencyId], references: [id])

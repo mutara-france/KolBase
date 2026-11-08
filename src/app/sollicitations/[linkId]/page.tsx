@@ -88,10 +88,13 @@ export default async function Page({ params, searchParams }: { params: Promise<{
   const events = callEvent && !callEvent.cancelledAt && !p.events.some((x) => x.id === callEvent.id) ? [...p.events, callEvent] : p.events;
   const toAnswer = !!lastMsg && lastMsg.authorId !== user.id && !abandoned && !closed;
   const toSign = engaged && p.status === "SIGNATURE" && !signedHref;
+  // Agent public (France) : son autorisation de cumul est attendue avant la déclaration ou la demande à l'Ordre.
+  const cumulDue = engaged && ["ACCORD", "EN_VALID", "BLOQUE", "VALIDE"].includes(p.status) && (await db.practitionerProfile.count({ where: { userId: user.id, publicAgent: true, country: "FR" } })) > 0
+    && (await db.document.count({ where: { projectExpertId: link.id, kind: "AUTORISATION_CUMUL" } })) === 0;
   const tabs: DossierTab[] = [
     { key: "mission", label: t("Mission"), icon: Briefcase, alert: link.status === "ATT_EXPERTS" && !abandoned && !closed },
     { key: "evenement", label: t("Événement"), icon: CalendarDays, count: events.length > 1 ? events.length : undefined, disabled: events.length ? undefined : t("Aucun événement rattaché") },
-    { key: "documents", label: t("Documents et convention"), icon: FileText, alert: toSign, disabled: engaged ? undefined : t("Après votre accord de principe") },
+    { key: "documents", label: t("Documents et convention"), icon: FileText, alert: toSign || cumulDue, disabled: engaged ? undefined : t("Après votre accord de principe") },
     { key: "messagerie", label: t("Messagerie"), icon: MessagesSquare, count: link.messages.length || undefined, alert: toAnswer },
   ];
   const active = tabs.find((tb) => tb.key === onglet && !tb.disabled)?.key ?? "mission";

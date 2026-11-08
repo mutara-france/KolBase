@@ -98,7 +98,7 @@ export function InviteForm({ orgId, roles }: { orgId: string; roles: Opt[] }) {
   );
 }
 
-type Expert = { bio: string | null; hospital: string | null; subspecialty: string | null; orcid: string | null; languages: string[]; interventionTypes: string[]; dayRateCents: number | null };
+type Expert = { bio: string | null; hospital: string | null; subspecialty: string | null; orcid: string | null; languages: string[]; interventionTypes: string[]; dayRateCents: number | null; publicAgent?: boolean; country?: string };
 
 export function ExpertProfileForm({ p, types }: { p: Expert; types: string[] }) {
   const [state, action, pending] = useActionState(updateExpertProfile, undefined);
@@ -112,6 +112,16 @@ export function ExpertProfileForm({ p, types }: { p: Expert; types: string[] }) 
         <label>{t("Établissement / cabinet")}<input name="hospital" defaultValue={p.hospital ?? ""} /></label>
         <label>{t("Sur-spécialité")}<input name="subspecialty" defaultValue={p.subspecialty ?? ""} /></label>
       </div>
+      {/* Agent public en France : l'autorisation de cumul de l'employeur accompagne chaque convention rémunérée. */}
+      {(p.country ?? "FR") === "FR" && (
+        <div>
+          <label className="check">
+            <input type="checkbox" name="publicAgent" value="1" defaultChecked={!!p.publicAgent} />
+            {t("J'exerce comme agent public (praticien hospitalier, hospitalo-universitaire, autre agent d'un établissement public)")}
+          </label>
+          <p className="hint">{t("Une collaboration rémunérée suppose alors l'autorisation de cumul d'activités de votre employeur (ou l'accusé de votre déclaration), transmise avec la convention à l'Ordre. Vous la déposez dans le dossier.")}</p>
+        </div>
+      )}
       <div className="row">
         <label>{t("Langues")}<input name="languages" defaultValue={p.languages.join(", ")} placeholder={t("fr, en")} /></label>
         <label>ORCID<input name="orcid" defaultValue={p.orcid ?? ""} placeholder="0000-0000-0000-0000" /></label>

@@ -286,7 +286,7 @@ export async function MaterialsPanel({ orgId, projectId, canSubmit, canReview }:
   );
 }
 
-const KIND_LABEL = { CONVENTION_SIGNEE: "Convention signée", PIECE: "Pièce" } as const;
+const KIND_LABEL = { CONVENTION_SIGNEE: "Convention signée", PIECE: "Pièce", AUTORISATION_CUMUL: "Autorisation de cumul" } as const;
 const fileSize = (n: number, t: T, locale: Locale) => {
   if (n < 1024 * 1024) return t("{n} Ko", { n: Math.max(1, Math.round(n / 1024)) });
   const mb = (n / 1024 / 1024).toFixed(1);
@@ -310,9 +310,20 @@ export async function DocumentsPanel({ projectId, linkId, canUpload, openUpload 
   const { t, locale } = await getT();
   const expertName = new Map(project.experts.map((e) => [e.id, `${drPrefix(e.practitioner.profession)}${e.practitioner.user.firstName} ${e.practitioner.user.lastName}`]));
   const locked = ["SIGNE", "TERMINE"].includes(project.status);
+  // Agents publics (France) : leur autorisation de cumul se dépose ici, avant la déclaration ou la demande à l'Ordre.
+  const agents = project.experts.filter((e) => e.practitioner.publicAgent && e.practitioner.country === "FR" && (!linkId || e.id === linkId));
+  const cumulMissing = agents.filter((e) => !project.documents.some((d) => d.kind === "AUTORISATION_CUMUL" && d.projectExpertId === e.id));
+  const cumulPending = cumulMissing.length > 0 && ["ACCORD", "EN_VALID", "BLOQUE", "VALIDE"].includes(project.status);
   return (
     <section className="card stack-sm" aria-labelledby={`documents-${projectId}`}>
       <SectionHead icon={FileText} id={`documents-${projectId}`} title={t("Documents")} desc={linkId ? t("Votre convention signée et les pièces de la collaboration.") : t("Conventions signées déposées et pièces du dossier.")} />
+      {cumulPending && (
+        <p className="notice warn">
+          {linkId
+            ? t("Vous exercez comme agent public : déposez l'autorisation de cumul d'activités de votre employeur (ou l'accusé de votre déclaration). L'organisation la joint à la convention transmise à l'Ordre.")
+            : t("Autorisation de cumul à joindre avant la déclaration ou la demande à l'Ordre (expert agent public) : {names}.", { names: cumulMissing.map((e) => expertName.get(e.id)).join(", ") })}
+        </p>
+      )}
       {project.documents.length === 0 ? <p className="muted">{t("Aucun document déposé.")}</p> : (
         <ul className="pub-list">
           {project.documents.map((d) => (
@@ -332,15 +343,15 @@ export async function DocumentsPanel({ projectId, linkId, canUpload, openUpload 
       )}
       {canUpload && (enabled ? (
         linkId ? (
-          <details className="disclosure" open={openUpload}>
+          <details className="disclosure" open={openUpload || cumulPending}>
             <summary>{t("Déposer un document")}</summary>
-            <DocumentUploadForm projectId={projectId} ownLinkId={linkId} experts={[]} defaultKind={project.status === "SIGNATURE" ? "CONVENTION_SIGNEE" : "PIECE"} />
+            <DocumentUploadForm projectId={projectId} ownLinkId={linkId} experts={[]} cumul={agents.length > 0} defaultKind={project.status === "SIGNATURE" ? "CONVENTION_SIGNEE" : cumulPending ? "AUTORISATION_CUMUL" : "PIECE"} />
           </details>
         ) : (
           // Côté organisation, le formulaire reste replié sauf quand des conventions signées sont attendues.
           <details className="disclosure" open={openUpload}>
             <summary>{t("Déposer un document")}</summary>
-            <DocumentUploadForm projectId={projectId} experts={project.experts.map((e) => ({ id: e.id, name: expertName.get(e.id)! }))} defaultKind={project.status === "SIGNATURE" ? "CONVENTION_SIGNEE" : "PIECE"} />
+            <DocumentUploadForm projectId={projectId} experts={project.experts.map((e) => ({ id: e.id, name: expertName.get(e.id)! }))} cumul={agents.length > 0} defaultKind={project.status === "SIGNATURE" ? "CONVENTION_SIGNEE" : cumulPending ? "AUTORISATION_CUMUL" : "PIECE"} />
           </details>
         )
       ) : (
