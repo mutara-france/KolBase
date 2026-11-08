@@ -935,7 +935,7 @@ const linkIn = (mail) => mail?.text.match(/https?:\/\/\S+/g)?.find((u) => !u.end
   check("Fiche enregistrée : ce qui manque est signalé (accessibilité, déclaration d'activité)", !!(await q1(`select 1 from "TrainingSheet" where "eventId" = 'e2e-r6-ev' and 'dpc' = any(funding)`)) && t.includes("À compléter") && t.includes("Accessibilité") && t.includes("Numéro de déclaration d'activité"));
 
   // Mentions de l'organisme : déclaration d'activité, Qualiopi, référent handicap.
-  await anne.page.goto(`${BASE}/organisations/demo-org-academie/membres`);
+  await anne.page.goto(`${BASE}/organisations/demo-org-academie/membres?onglet=organisation`);
   const of = 'form:has(input[name="nda"])';
   await anne.page.fill(`${of} input[name="nda"]`, "11 75 99999 75");
   await anne.page.fill(`${of} input[name="qualiopi"]`, "Certificat Q-0000 (fictif)");
