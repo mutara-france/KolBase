@@ -10,12 +10,13 @@ import { CategoryIcon } from "@/components/SupplierBits";
 import { NewRfqForm } from "@/components/RfqForms";
 import { db } from "@/lib/db";
 import { requireMembership } from "@/lib/orgs";
-import { EVENT_MANAGER_ROLES, eventEnded, eventScope } from "@/lib/events";
+import { EVENT_MANAGER_ROLES, eventEnded, eventScope, toParisInput } from "@/lib/events";
 import { RFQ_STATUS, rfqDisplayStatus, rfqGroup, SUPPLIER_CATEGORIES, supplierCategoryLabel, type RfqGroup, rfqTitle } from "@/lib/suppliers";
 import { endMandate, setMandateAward } from "@/lib/event-actions";
 import { quoteTtc } from "@/lib/quotes";
 import { orgRfqs, supplierDirectory, type DirectorySupplier, type OrgRfq } from "@/lib/rfq-org";
-import { bannerSrc, CAPACITY_LABEL, OFFER_UNITS, photoSrc, readCapacities } from "@/lib/supplier-book";
+import { bannerSrc, OFFER_UNITS, photoSrc, readCapacities } from "@/lib/supplier-book";
+import { capacityUnit } from "@/lib/supplier-profiles";
 import { logoSrc } from "@/lib/logos";
 import { BillingNotice } from "@/components/BillingNotice";
 import { engagementBlock } from "@/lib/billing";
@@ -82,7 +83,10 @@ export default async function Page({ params, searchParams }: { params: Promise<{
                 logo: logoSrc(s), priceHint: s.priceHint,
                 from: s.from ? t("dès {amount} HT {unit}", { amount: fmtEur(locale, s.from.unitCents), unit: t(OFFER_UNITS[s.from.unit as keyof typeof OFFER_UNITS] ?? s.from.unit) }) : null,
               }))}
-              events={events.map((e) => ({ id: e.id, label: `${fmtDate(locale, e.startsAt)} — ${e.title}`, city: e.city, capacity: e.capacity, agencyId: e.agencyId }))}
+              events={events.map((e) => ({
+                id: e.id, label: `${fmtDate(locale, e.startsAt)} — ${e.title}`, city: e.city, capacity: e.capacity, agencyId: e.agencyId,
+                day: toParisInput(e.startsAt).slice(0, 10), endDay: toParisInput(new Date(e.startsAt.getTime() + (e.durationMinutes ?? 0) * 60e3)).slice(0, 10),
+              }))}
               defaultEventId={evenement}
               defaultCategory={cat}
               defaultSupplier={prestataire}
@@ -307,7 +311,7 @@ function SupplierCard({ s, t, locale, askHref }: { s: DirectorySupplier; t: T; l
         </div>
         {s.about && <p className="text-sm clamp-3">{s.about}</p>}
         <ul className="supplier-facts">
-          {capKeys.map((k) => <li key={k}><strong>{caps[k]!.toLocaleString(locale === "en" ? "en-GB" : "fr-FR")}</strong> {t(CAPACITY_LABEL[k])}</li>)}
+          {capKeys.map((k) => <li key={k}><strong>{caps[k]!.toLocaleString(locale === "en" ? "en-GB" : "fr-FR")}</strong> {t(capacityUnit(k))}</li>)}
           {s.from ? <li><strong>{t("dès {amount} HT", { amount: fmtEur(locale, s.from.unitCents) })}</strong> {t(OFFER_UNITS[s.from.unit as keyof typeof OFFER_UNITS] ?? s.from.unit)}</li> : s.priceHint ? <li>{s.priceHint}</li> : null}
         </ul>
         <div className="supplier-card-actions">

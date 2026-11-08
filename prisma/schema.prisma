@@ -736,6 +736,15 @@ model Rfq {
   city           String?
   headcount      Int?
   needs          String
+  // Questions propres à la catégorie (format, configuration, nuits, trajets…), voir supplier-profiles.
+  details        Json         @default("{}")
+  // Dates de la prestation (à défaut, celles de l'événement) : une demande sans événement en a besoin pour être chiffrée.
+  serviceStart   DateTime?
+  serviceEnd     DateTime?
+  // Nombre définitif confirmé au prestataire retenu (traiteur, hôtel, transport, lieu), avec la date et l'auteur.
+  finalHeadcount   Int?
+  finalHeadcountAt DateTime?
+  finalHeadcountById String?
   deadline       DateTime?
   status         RfqStatus    @default(draft)
   sentAt         DateTime?
@@ -807,6 +816,12 @@ model Quote {
   ttcCents    Int?
   validUntil  DateTime?
   conditions  String?
+  // Conditions structurées : acompte (% du TTC) et barème d'annulation (sans frais jusqu'à J-x, pourcentage dû
+  // entre J-x et J-y, totalité due à moins de J-y).
+  depositPct     Int?
+  cancelFreeDays Int?
+  cancelMidPct   Int?
+  cancelFullDays Int?
   fileKey     String?
   fileName    String?
   revision    Int          @default(1)

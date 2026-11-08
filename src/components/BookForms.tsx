@@ -7,27 +7,36 @@ import { addSupplierOffer, addSupplierPhoto, setSupplierBanner, reviewSupplier, 
 import { Notice } from "@/components/AuthForms";
 import { useT } from "@/components/I18nProvider";
 
-type Caps = { seats?: number; cocktail?: number; banquet?: number; rooms?: number };
+type Caps = Record<string, number>;
 
 /** Capacités, équipements, accessibilité et prix indicatif du book prestataire. */
-export function BookForm({ orgId, capacities, equipment, options, accessible, priceHint }: { orgId: string; capacities: Caps; equipment: string[]; options: readonly string[]; accessible: boolean; priceHint: string }) {
+export function BookForm({ orgId, capacities, equipment, groups, accessible, priceHint }: { orgId: string; capacities: Caps; equipment: string[]; groups: { category: string; label: string; fields: { key: string; label: string }[]; options: string[] }[]; accessible: boolean; priceHint: string }) {
   const t = useT();
   const [state, action, pending] = useActionState(updateSupplierBook, undefined);
   return (
     <form action={action} className="card form">
-      <SectionHead icon={Warehouse} title={t("Capacités et équipements")} desc={t("Ces informations apparaissent sur votre page publique et aident les organisations à vous consulter à bon escient.")} />
+      <SectionHead icon={Warehouse} title={t("Capacités et équipements")} desc={t("Ces informations apparaissent sur votre page publique et aident les organisations à vous consulter à bon escient. Les champs suivent vos catégories.")} />
       <Notice state={state} />
       <input type="hidden" name="orgId" value={orgId} />
-      <div className="row">
-        <label>{t("Places assises (conférence)")}<input name="seats" type="number" min={1} defaultValue={capacities.seats} /></label>
-        <label>{t("Personnes en cocktail")}<input name="cocktail" type="number" min={1} defaultValue={capacities.cocktail} /></label>
-        <label>{t("Couverts assis")}<input name="banquet" type="number" min={1} defaultValue={capacities.banquet} /></label>
-        <label>{t("Chambres")}<input name="rooms" type="number" min={1} defaultValue={capacities.rooms} /></label>
-      </div>
-      <span className="label">{t("Équipements et services")}</span>
-      <div className="checks">
-        {options.map((o) => <label key={o} className="check"><input type="checkbox" name="equipment" value={o} defaultChecked={equipment.includes(o)} /> {o}</label>)}
-      </div>
+      {groups.length === 0 && <p className="muted">{t("Choisissez d'abord vos catégories dans « Profil prestataire ».")}</p>}
+      {groups.map((g) => (
+        <fieldset key={g.category} className="book-group">
+          {groups.length > 1 && <legend>{t(g.label)}</legend>}
+          {g.fields.length > 0 && (
+            <div className="row">
+              {g.fields.map((f) => <label key={f.key}>{t(f.label)}<input name={`cap_${f.key}`} type="number" min={1} defaultValue={capacities[f.key]} /></label>)}
+            </div>
+          )}
+          {g.options.length > 0 && (
+            <>
+              <span className="label">{t("Équipements et services")}</span>
+              <div className="checks">
+                {g.options.map((o) => <label key={o} className="check"><input type="checkbox" name="equipment" value={o} defaultChecked={equipment.includes(o)} /> {t(o)}</label>)}
+              </div>
+            </>
+          )}
+        </fieldset>
+      ))}
       <label className="check"><input type="checkbox" name="accessible" defaultChecked={accessible} />{" "}{t("Accessible aux personnes à mobilité réduite")}</label>
       <label>{t("Prix indicatif")}<input name="priceHint" maxLength={120} defaultValue={priceHint} placeholder={t("Ex. : salle à partir de 450 € HT la journée")} /></label>
       <button className="btn" disabled={pending}>{pending ? t("Enregistrement…") : t("Enregistrer")}</button>
