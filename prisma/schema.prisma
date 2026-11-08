@@ -470,6 +470,10 @@ model Project {
   plannedAt        DateTime?
   submittedAt      DateTime?
   reviewReminderAt DateTime?
+  // Contrat-cadre : plusieurs prestations d'un même type sur une période (douze mois au plus), dans la limite des
+  // unités prévues à la convention ; chaque mission réalisée est consignée.
+  framework       Boolean       @default(false)
+  periodEnd       DateTime?
   // Copie d'un projet proposé par un expert (envoyé à plusieurs organisations, chacune a la sienne).
   proposalId      String?
   proposal        ExpertProposal? @relation(fields: [proposalId], references: [id], onDelete: SetNull)
@@ -487,6 +491,61 @@ model Project {
 
   @@index([organizationId])
   @@index([proposalId])
+}
+
+/**
+ * Note de frais d'un expert (frais réels sur justificatif : transport, hôtel, repas) : déposée par l'expert,
+ * acceptée ou refusée par l'organisation, puis remboursée. Les frais remboursés sont des avantages déclarés avec
+ * la convention (Transparence Santé ; betransparent.be pour un expert exerçant en Belgique).
+ */
+model ExpertExpense {
+  id              String        @id @default(cuid())
+  projectExpertId String
+  projectExpert   ProjectExpert @relation(fields: [projectExpertId], references: [id], onDelete: Cascade)
+  category        String        // transport, hebergement, repas, autre
+  label           String
+  date            DateTime
+  amountCents     Int           // TTC
+  documentId      String?       // justificatif (Document de nature JUSTIFICATIF)
+  status          String        @default("submitted") // submitted, approved, rejected, paid
+  decidedById     String?
+  decidedAt       DateTime?
+  decisionNote    String?
+  paidAt          DateTime?
+  createdAt       DateTime      @default(now())
+
+  @@index([projectExpertId])
+}
+
+/** Billets et hébergement d'un expert réservés par l'organisation (visible de l'expert, envoyé par e-mail). */
+model ExpertTravel {
+  projectExpertId String        @id
+  projectExpert   ProjectExpert @relation(fields: [projectExpertId], references: [id], onDelete: Cascade)
+  hotel           String?
+  hotelRef        String?
+  checkIn         DateTime?
+  checkOut        DateTime?
+  roomType        String?
+  outbound        String?
+  returnTrip      String?
+  ticketRef       String?
+  notes           String?
+  sentAt          DateTime?
+  updatedAt       DateTime      @updatedAt
+}
+
+/** Mission réalisée par un expert dans le cadre d'un contrat-cadre (date, objet, unités consommées). */
+model FrameworkMission {
+  id              String        @id @default(cuid())
+  projectExpertId String
+  projectExpert   ProjectExpert @relation(fields: [projectExpertId], references: [id], onDelete: Cascade)
+  date            DateTime
+  label           String
+  units           Float
+  createdById     String?
+  createdAt       DateTime      @default(now())
+
+  @@index([projectExpertId])
 }
 
 // Support (diaporama, article, vidéo…) soumis à relecture médico-réglementaire.
@@ -566,6 +625,9 @@ model ProjectExpert {
   documents Document[]
   signature ConventionSignature?
   feeNote   FeeNote?
+  expenses  ExpertExpense[]
+  travel    ExpertTravel?
+  missions  FrameworkMission[]
 
   @@unique([projectId, practitionerId])
   @@index([practitionerId])
@@ -603,6 +665,8 @@ enum DocumentKind {
   PIECE
   // Autorisation de cumul d'activités (ou accusé de la déclaration) d'un expert agent public.
   AUTORISATION_CUMUL
+  // Justificatif d'une note de frais d'expert (billet, facture d'hôtel, ticket de repas).
+  JUSTIFICATIF
 }
 
 model Document {

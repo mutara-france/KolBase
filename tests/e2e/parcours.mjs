@@ -766,6 +766,137 @@ const linkIn = (mail) => mail?.text.match(/https?:\/\/\S+/g)?.find((u) => !u.end
   await pgc.end();
 }
 
+// ── Experts : contrat-cadre, voyage réservé, notes de frais, remboursement et déclaration ──
+{
+  const pgc = new pg.Client({ connectionString: process.env.DATABASE_URL });
+  await pgc.connect();
+  const q1 = async (sql, args = []) => (await pgc.query(sql, args)).rows[0];
+  const proof = Buffer.from("%PDF-1.4\n1 0 obj << /Type /Catalog >> endobj\ntrailer << /Root 1 0 R >>\n%%EOF\n");
+  const isoDay = (n) => new Date(Date.now() + n * 86400e3).toISOString().slice(0, 10);
+  const NB = "nicolas.blanc@demo.kolbase.local";
+  await pgc.query(`insert into "Project" (id, "organizationId", title, "typeId", status, "plannedAt", "updatedAt") values ('e2e-r5-prj', 'demo-org-dentalys', 'Board implants Frais', 'advisory', 'ACCORD', now() - interval '2 days', now())`);
+  await pgc.query(`insert into "ProjectExpert" (id, "projectId", "practitionerId", status, "feeCents", days) values ('e2e-r5-x', 'e2e-r5-prj', 'demo-p-blanc', 'ACCORD', 150000, 3)`);
+  const url = `${BASE}/organisations/demo-org-dentalys/dossiers/e2e-r5-prj`;
+  const claire = await session();
+  await login(claire.page, "claire.morel@demo.kolbase.local");
+
+  // Contrat-cadre : période de douze mois au plus, fixée pendant le montage du dossier.
+  await claire.page.goto(url);
+  await claire.page.click('summary:has-text("Modifier l\'objet")');
+  await claire.page.check('input[name="framework"]');
+  await claire.page.fill('input[name="periodEnd"]', isoDay(400));
+  await claire.page.click('button:has-text("Mettre à jour l\'objet")');
+  await claire.page.waitForTimeout(1200);
+  check("Contrat-cadre : plus de douze mois refusé", (await text(claire.page)).includes("douze mois au plus"));
+  await claire.page.fill('input[name="periodEnd"]', isoDay(180));
+  await claire.page.click('button:has-text("Mettre à jour l\'objet")');
+  await claire.page.waitForTimeout(1200);
+  check("Contrat-cadre : période enregistrée", (await q1(`select framework from "Project" where id = 'e2e-r5-prj'`)).framework === true);
+  const conv = await claire.ctx.request.get(`${url}/convention/e2e-r5-x`);
+  check("Convention du contrat-cadre générée", conv.status() === 200 && (conv.headers()["content-type"] ?? "").includes("pdf"));
+  // Convention signée.
+  await pgc.query(`update "Project" set status = 'SIGNE' where id = 'e2e-r5-prj'`);
+  await pgc.query(`update "ProjectExpert" set status = 'SIGNE' where id = 'e2e-r5-x'`);
+
+  // Voyage réservé par l'organisation, envoyé à l'expert.
+  await claire.page.goto(`${url}?onglet=frais`);
+  let t = await text(claire.page);
+  check("Onglet Frais et voyages : expert engagé, aucun voyage", t.includes("Frais et voyages des experts") && t.includes("Aucun voyage réservé"));
+  await claire.page.click('summary:has-text("Réserver le voyage")');
+  const tf = 'form:has(input[name="hotelRef"])';
+  await claire.page.fill(`${tf} input[name="hotel"]`, "Hôtel Lumière (fictif)");
+  await claire.page.fill(`${tf} input[name="hotelRef"]`, "HL-4521");
+  await claire.page.fill(`${tf} input[name="checkIn"]`, isoDay(10));
+  await claire.page.fill(`${tf} input[name="checkOut"]`, isoDay(11));
+  await claire.page.fill(`${tf} input[name="outbound"]`, "TGV 6611 Grenoble 7 h 10 → Paris 10 h 05");
+  await claire.page.click(`${tf} button:has-text("Enregistrer le voyage")`);
+  const tm = await waitMail(NB, "Votre voyage — Board implants Frais");
+  check("Voyage : enregistré et envoyé à l'expert par e-mail", !!tm && tm.text.includes("Hôtel Lumière (fictif)") && tm.text.includes("TGV 6611") && !!(await q1(`select "sentAt" from "ExpertTravel" where "projectExpertId" = 'e2e-r5-x'`))?.sentAt, tm?.text.slice(0, 300));
+
+  // L'expert voit son voyage, le contrat-cadre, et dépose deux notes de frais avec justificatif.
+  const nb = await session();
+  await login(nb.page, NB);
+  await nb.page.goto(`${BASE}/sollicitations/e2e-r5-x`);
+  t = await text(nb.page);
+  check("Expert : voyage signalé, contrat-cadre et unités affichés", t.includes("a réservé votre voyage") && t.includes("Contrat-cadre") && t.includes("0 sur 3"));
+  await nb.page.goto(`${BASE}/sollicitations/e2e-r5-x?onglet=frais`);
+  t = await text(nb.page);
+  check("Expert : détail du voyage visible", t.includes("Hôtel Lumière (fictif)") && t.includes("HL-4521") && t.includes("TGV 6611"));
+  const ef = 'form:has(input[name="proof"])';
+  const expense = async (category, label, amount) => {
+    await nb.page.selectOption(`${ef} select[name="category"]`, category);
+    await nb.page.fill(`${ef} input[name="label"]`, label);
+    await nb.page.fill(`${ef} input[name="date"]`, isoDay(-1));
+    await nb.page.fill(`${ef} input[name="amount"]`, amount);
+    await nb.page.setInputFiles(`${ef} input[name="proof"]`, { name: "justificatif.pdf", mimeType: "application/pdf", buffer: proof });
+    await nb.page.click(`${ef} button:has-text("Envoyer la note de frais")`);
+    await nb.page.locator("text=Note de frais envoyée").first().waitFor({ timeout: 8000 }).catch(() => {});
+  };
+  await expense("repas", "Dîner de travail", "62,50");
+  const sm = await waitMail("claire.morel@demo.kolbase.local", "Note de frais de Dr Nicolas Blanc");
+  const first = await q1(`select status, "documentId", "amountCents" from "ExpertExpense" where "projectExpertId" = 'e2e-r5-x' and label = 'Dîner de travail'`);
+  check("Note de frais déposée avec son justificatif, l'équipe prévenue", first?.status === "submitted" && !!first.documentId && first.amountCents === 6250 && !!sm);
+  if (!(await nb.page.locator(`${ef} input[name="label"]`).isVisible())) await nb.page.click('summary:has-text("Déposer une note de frais")');
+  await expense("transport", "Train Grenoble – Paris", "98");
+  check("Seconde note de frais déposée", !!(await q1(`select 1 from "ExpertExpense" where "projectExpertId" = 'e2e-r5-x' and category = 'transport'`)));
+  check("Justificatifs à part des documents du dossier", !!(await q1(`select 1 from "Document" where "projectExpertId" = 'e2e-r5-x' and kind = 'JUSTIFICATIF'`)));
+
+  // L'organisation examine : plafond signalé, refus motivé, acceptation puis remboursement.
+  await claire.page.goto(`${url}?onglet=frais`);
+  t = await text(claire.page);
+  check("Organisation : notes à examiner, plafond du repas signalé", t.includes("à examiner") && t.includes("au-delà du plafond (50 €)"));
+  const dinner = claire.page.locator('tr:has-text("Dîner de travail")');
+  await dinner.locator('button:has-text("Refuser")').click();
+  await dinner.locator('input[name="note"]').fill("Repas au-delà du plafond de l'entreprise");
+  await dinner.locator('button:has-text("Confirmer le refus")').click();
+  const rm = await waitMail(NB, "Note de frais refusée");
+  check("Refus : motif transmis à l'expert", !!rm && rm.text.includes("au-delà du plafond de l'entreprise"));
+  await claire.page.goto(`${url}?onglet=frais`);
+  await claire.page.locator('tr:has-text("Train Grenoble") button:has-text("Accepter")').click();
+  await waitMail(NB, "Note de frais acceptée");
+  await claire.page.goto(`${url}?onglet=frais`);
+  await claire.page.locator('tr:has-text("Train Grenoble") button:has-text("Marquer remboursée")').click();
+  const pm = await waitMail(NB, "Frais remboursés");
+  check("Remboursement : statut et e-mail à l'expert", (await q1(`select status from "ExpertExpense" where "projectExpertId" = 'e2e-r5-x' and category = 'transport'`)).status === "paid" && !!pm);
+  await claire.page.goto(`${url}?onglet=budget`);
+  check("Budget : frais remboursés comptés", (await text(claire.page)).includes("Frais des experts (TTC)"));
+
+  // Mission du contrat-cadre consignée, dans la limite des unités de la convention.
+  await claire.page.goto(`${url}?onglet=experts`);
+  await claire.page.click('summary:has-text("Consigner une mission")');
+  const mf = 'form:has(button:has-text("Consigner la mission"))';
+  await claire.page.fill(`${mf} input[name="date"]`, isoDay(-1));
+  await claire.page.fill(`${mf} input[name="label"]`, "Webinaire implants courts");
+  await claire.page.fill(`${mf} input[name="units"]`, "2");
+  await claire.page.click(`${mf} button:has-text("Consigner la mission")`);
+  await claire.page.locator("text=Mission consignée.").first().waitFor({ timeout: 8000 }).catch(() => {});
+  check("Mission consignée : unités décomptées", (await q1(`select units from "FrameworkMission" where "projectExpertId" = 'e2e-r5-x'`))?.units === 2);
+  await claire.page.fill(`${mf} input[name="date"]`, isoDay(-1));
+  await claire.page.fill(`${mf} input[name="label"]`, "Relecture du support");
+  await claire.page.fill(`${mf} input[name="units"]`, "2");
+  await claire.page.click(`${mf} button:has-text("Consigner la mission")`);
+  await claire.page.waitForTimeout(1200);
+  check("Au-delà des unités prévues : un avenant est demandé", (await text(claire.page)).includes("un avenant à la convention est nécessaire") && (await q1(`select count(*)::int n from "FrameworkMission" where "projectExpertId" = 'e2e-r5-x'`)).n === 1);
+  await nb.page.goto(`${BASE}/sollicitations/e2e-r5-x`);
+  t = await text(nb.page);
+  check("Expert : missions du contrat-cadre consultables", t.includes("Webinaire implants courts") && t.includes("2 sur 3"));
+  await nb.page.goto(`${BASE}/sollicitations/e2e-r5-x?onglet=frais`);
+  t = await text(nb.page);
+  check("Expert : refus motivé et remboursement visibles", t.includes("Repas au-delà du plafond de l'entreprise") && t.includes("Remboursée"));
+
+  // Les frais remboursés sont déclarés avec la convention de l'expert (Transparence Santé).
+  const sophie = await session();
+  await login(sophie.page, "sophie.bernard@demo.kolbase.local");
+  const csv = await (await sophie.ctx.request.get(`${BASE}/organisations/demo-org-dentalys/conformite/declaration?tout=1`)).text();
+  const line = csv.split("\n").find((l) => l.includes("Frais de transport") && l.includes("KB-F-"));
+  check("Transparence Santé : frais remboursé déclaré, rattaché à la convention", !!line && line.includes("KB-C-E2E-R5-X") && line.includes(";98;"), line);
+  await sophie.ctx.close();
+  await nb.ctx.close();
+  await claire.ctx.close();
+  await pgc.query(`delete from "Project" where id = 'e2e-r5-prj'`);
+  await pgc.end();
+}
+
 // ── Agences : confier un événement en une seule action ─────────────────────
 {
   const agent = await session();

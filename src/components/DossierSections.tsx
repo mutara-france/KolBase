@@ -73,7 +73,9 @@ export async function BudgetTab({ orgId, projectId, canEdit }: { orgId: string; 
   const { engagedCents: fees, proposedCents: proposed } = expertSplit(project.experts, open);
   const exp = project.expenses.reduce((s, e) => s + e.amountCents, 0);
   const sup = quotes.reduce((s, q) => s + q.amountCents, 0);
-  const total = fees + exp + sup;
+  // Frais des experts acceptés ou remboursés (TTC, frais réels sur justificatif).
+  const travel = (await db.expertExpense.aggregate({ where: { projectExpert: { projectId }, status: { in: ["approved", "paid"] } }, _sum: { amountCents: true } }))._sum.amountCents ?? 0;
+  const total = fees + exp + sup + travel;
   const budget = project.budgetCents;
   const realPct = budget ? Math.round((total / budget) * 100) : null;
   const pct = realPct != null ? Math.min(100, realPct) : null;
@@ -208,6 +210,7 @@ export async function BudgetTab({ orgId, projectId, canEdit }: { orgId: string; 
             <div><dt>{t("Honoraires engagés")}</dt><dd>{fmtEur(locale, fees)}<small>{share(fees)}</small></dd></div>
             <div><dt>{t("Prestataires (devis retenus)")}</dt><dd>{fmtEur(locale, sup)}<small>{share(sup)}</small></dd></div>
             <div><dt>{t("Autres dépenses")}</dt><dd>{fmtEur(locale, exp)}<small>{share(exp)}</small></dd></div>
+            {travel > 0 && <div><dt>{t("Frais des experts (TTC)")}</dt><dd>{fmtEur(locale, travel)}<small>{share(travel)}</small></dd></div>}
             {proposed > 0 && <div className="muted"><dt>{t("Honoraires proposés, sans réponse")}</dt><dd>{fmtEur(locale, proposed)}</dd></div>}
             {budget != null && <div className={`total${over ? " over" : ""}`}><dt>{over ? t("Dépassement") : t("Reste disponible")}</dt><dd>{fmtEur(locale, Math.abs(budget - total))}</dd></div>}
           </dl>
@@ -286,7 +289,7 @@ export async function MaterialsPanel({ orgId, projectId, canSubmit, canReview }:
   );
 }
 
-const KIND_LABEL = { CONVENTION_SIGNEE: "Convention signée", PIECE: "Pièce", AUTORISATION_CUMUL: "Autorisation de cumul" } as const;
+const KIND_LABEL = { CONVENTION_SIGNEE: "Convention signée", PIECE: "Pièce", AUTORISATION_CUMUL: "Autorisation de cumul", JUSTIFICATIF: "Justificatif de frais" } as const;
 const fileSize = (n: number, t: T, locale: Locale) => {
   if (n < 1024 * 1024) return t("{n} Ko", { n: Math.max(1, Math.round(n / 1024)) });
   const mb = (n / 1024 / 1024).toFixed(1);
@@ -301,7 +304,8 @@ export async function DocumentsPanel({ projectId, linkId, canUpload, openUpload 
   const project = await db.project.findUnique({
     where: { id: projectId },
     include: {
-      documents: { where: linkId ? { projectExpertId: linkId } : {}, orderBy: { createdAt: "desc" } },
+      // Justificatifs de frais : affichés avec leur note de frais (onglet Frais et voyages).
+      documents: { where: { kind: { not: "JUSTIFICATIF" }, ...(linkId ? { projectExpertId: linkId } : {}) }, orderBy: { createdAt: "desc" } },
       experts: { where: { status: { notIn: ["ATT_EXPERTS", "DECLINE"] } }, include: { practitioner: { include: { user: { select: { firstName: true, lastName: true } } } } } },
     },
   });

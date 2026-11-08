@@ -152,6 +152,24 @@ export const orgOverview = cache(async (orgId: string) => {
       if (p.status === "ATT_EXPERTS" && now.getTime() - p.updatedAt.getTime() > 5 * DAY)
         todos.push({ href: dossier(p, "messagerie"), title: t("Relancer les experts : {title}", { title: p.title }), detail: t("Sans réponse depuis le {date}", { date: day(p.updatedAt) }), icon: "Inbox", tone: "warn" });
     }
+    // Notes de frais des experts : à examiner, puis à rembourser une fois acceptées.
+    const costs = await db.expertExpense.groupBy({ by: ["projectExpertId", "status"], where: { status: { in: ["submitted", "approved"] }, projectExpert: { project: { organizationId: orgId } } }, _count: true });
+    if (costs.length) {
+      const links = await db.projectExpert.findMany({ where: { id: { in: [...new Set(costs.map((c) => c.projectExpertId))] } }, select: { id: true, project: { select: { id: true, title: true } } } });
+      const byProject = new Map<string, { title: string; submitted: number; approved: number }>();
+      for (const c of costs) {
+        const pr = links.find((l) => l.id === c.projectExpertId)?.project;
+        if (!pr) continue;
+        const x = byProject.get(pr.id) ?? { title: pr.title, submitted: 0, approved: 0 };
+        if (c.status === "submitted") x.submitted += c._count; else x.approved += c._count;
+        byProject.set(pr.id, x);
+      }
+      for (const [id, x] of byProject) {
+        const href = `${base}/dossiers/${id}?onglet=frais`;
+        if (x.submitted) todos.push({ href, title: t(x.submitted > 1 ? "{n} notes de frais à examiner" : "{n} note de frais à examiner", { n: x.submitted }), detail: x.title, icon: "Receipt", tone: "warn" });
+        if (x.approved) todos.push({ href, title: t(x.approved > 1 ? "{n} notes de frais à rembourser" : "{n} note de frais à rembourser", { n: x.approved }), detail: x.title, icon: "Receipt" });
+      }
+    }
   }
   if (can.sourcing) {
     for (const c of calls)

@@ -279,6 +279,70 @@ export function notifyConventionDeposited(linkId: string) {
   });
 }
 
+/** Note de frais déposée par un expert : les interlocuteurs du dossier l'examinent. */
+export function notifyExpertExpenseSubmitted(expenseId: string) {
+  later(async () => {
+    const e = await db.expertExpense.findUnique({ where: { id: expenseId }, include: { projectExpert: { include: linkInclude } } });
+    if (!e) return;
+    const l = e.projectExpert;
+    await send(await projectTeam(l.project), (t, locale) => ({
+      subject: t("Note de frais de {expert} — {project}", { expert: expertName(l.practitioner), project: l.project.title }),
+      text: t("Bonjour,\n\n{expert} a déposé une note de frais pour « {project} » : {label}, {montant} TTC. Examinez-la (justificatif joint) dans l'onglet Frais et voyages du dossier.", { expert: expertName(l.practitioner), project: l.project.title, label: e.label, montant: fmtEur(locale, e.amountCents) }),
+      cta: { label: t("Examiner la note de frais"), href: `/organisations/${l.project.organizationId}/dossiers/${l.projectId}?onglet=frais` },
+    }), l.practitioner.userId);
+  });
+}
+
+/** Note de frais acceptée, refusée (motif) ou remboursée : l'expert est prévenu. */
+export function notifyExpertExpenseDecided(expenseId: string) {
+  later(async () => {
+    const e = await db.expertExpense.findUnique({ where: { id: expenseId }, include: { projectExpert: { include: linkInclude } } });
+    if (!e) return;
+    const l = e.projectExpert;
+    const org = l.project.organization.name;
+    await send([l.practitioner.user], (t, locale) => {
+      const what = { label: e.label, montant: fmtEur(locale, e.amountCents), org, project: l.project.title };
+      return e.status === "paid"
+        ? { subject: t("Frais remboursés — {project}", { project: l.project.title }), text: t("Bonjour,\n\n{org} a remboursé votre note de frais « {label} » ({montant} TTC) pour « {project} ».", what), cta: { label: t("Voir mes frais"), href: `/sollicitations/${l.id}?onglet=frais` } }
+        : e.status === "approved"
+          ? { subject: t("Note de frais acceptée — {project}", { project: l.project.title }), text: t("Bonjour,\n\n{org} a accepté votre note de frais « {label} » ({montant} TTC) pour « {project} » : le remboursement suit.", what), cta: { label: t("Voir mes frais"), href: `/sollicitations/${l.id}?onglet=frais` } }
+          : { subject: t("Note de frais refusée — {project}", { project: l.project.title }), text: `${t("Bonjour,\n\n{org} a refusé votre note de frais « {label} » ({montant} TTC) pour « {project} ».", what)}${e.decisionNote ? `\n\n${t("Motif : {note}", { note: e.decisionNote })}` : ""}`, cta: { label: t("Voir mes frais"), href: `/sollicitations/${l.id}?onglet=frais` } };
+    });
+  });
+}
+
+/** Voyage d'un expert (hôtel, dates, trajets, billets) réservé par l'organisation. */
+export function notifyExpertTravel(linkId: string) {
+  later(async () => {
+    const l = await db.projectExpert.findUnique({ where: { id: linkId }, include: { ...linkInclude, travel: true } });
+    const tr = l?.travel;
+    if (!l || !tr) return;
+    await sendService([l.practitioner.user], (t, locale) => {
+      const day = (d: Date | null) => (d ? d.toLocaleDateString(intlLocale(locale), { timeZone: "Europe/Paris", weekday: "long", day: "numeric", month: "long" }) : null);
+      const lines = [
+        tr.hotel ? t("Hôtel : {hotel}{ref}", { hotel: tr.hotel, ref: tr.hotelRef ? ` (${t("réservation {ref}", { ref: tr.hotelRef })})` : "" }) : null,
+        tr.checkIn ? t("Arrivée : {date}", { date: day(tr.checkIn)! }) : null,
+        tr.checkOut ? t("Départ : {date}", { date: day(tr.checkOut)! }) : null,
+        tr.roomType ? t("Chambre : {type}", { type: t(roomTypeLabel(tr.roomType) ?? tr.roomType) }) : null,
+        tr.outbound ? t("Aller : {trip}", { trip: tr.outbound }) : null,
+        tr.returnTrip ? t("Retour : {trip}", { trip: tr.returnTrip }) : null,
+        tr.ticketRef ? t("Billets : {ref}", { ref: tr.ticketRef }) : null,
+        tr.notes ? tr.notes : null,
+      ].filter(Boolean).join("\n");
+      return {
+        subject: t("Votre voyage — {project}", { project: l.project.title }),
+        text: [
+          t("Bonjour {name},", { name: l.practitioner.user.firstName }),
+          t("{org} a réservé votre voyage pour « {project} » :", { org: l.project.organization.name, project: l.project.title }),
+          lines,
+          t("Vos autres frais (sur justificatif) se déclarent dans l'onglet Frais et voyage de la collaboration."),
+        ].join("\n\n"),
+        cta: { label: t("Voir la collaboration"), href: `/sollicitations/${l.id}?onglet=frais` },
+      };
+    });
+  });
+}
+
 /**
  * Compte d'un expert supprimé : il est retiré des dossiers non signés où il était engagé ou sollicité, et de ses
  * candidatures. L'équipe Projets de chaque organisation concernée est prévenue (nom figé avant l'anonymisation).

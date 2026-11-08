@@ -1,6 +1,7 @@
 import "server-only";
 import { db } from "@/lib/db";
 import { collabType } from "@/lib/projects";
+import { EXPENSE_NATURE_BE, isExpenseCategory } from "@/lib/expert-costs";
 
 /**
  * Préparation de la publication belge (betransparent.be, loi dite « Sunshine Act ») : primes et avantages accordés sur
@@ -47,6 +48,12 @@ export async function belgianRows(orgId: string, year: number): Promise<BelgianR
       orderBy: { paidAt: "asc" },
     }),
   ]);
+  // Frais liés à la prestation (transport, hébergement, repas), remboursés dans l'année.
+  const expenses = await db.expertExpense.findMany({
+    where: { status: "paid", paidAt: range, projectExpert: { project: { organizationId: orgId }, practitioner: { country: "BE" } } },
+    include: { projectExpert: { include: { project: true, practitioner: { include: { user: { select: { firstName: true, lastName: true } } } } } } },
+    orderBy: { paidAt: "asc" },
+  });
   const pointed = new Set((await db.registration.groupBy({ by: ["eventId"], where: { eventId: { in: [...new Set(regs.map((r) => r.eventId))] }, checkedInAt: { not: null } } })).map((g) => g.eventId));
   const rows: Row[] = [];
   const people = new Set<string>();
@@ -86,6 +93,21 @@ export async function belgianRows(orgId: string, year: number): Promise<BelgianR
       "Référence KolBase": `KB-BE-R-${l.id}`.toUpperCase(),
     });
     report.remunerations++;
+  }
+  for (const x of expenses) {
+    const l = x.projectExpert;
+    people.add(l.practitioner.userId);
+    rows.push({
+      ...who(l.practitioner, l.practitioner.user),
+      Catégorie: SERVICE_FEES,
+      Nature: isExpenseCategory(x.category) ? EXPENSE_NATURE_BE[x.category] : x.label,
+      Date: day(x.paidAt!),
+      "Montant (EUR)": amount(x.amountCents),
+      Objet: `${l.project.title} : ${x.label}`.slice(0, 300),
+      "Visa Mdeon": "",
+      "Référence KolBase": `KB-BE-F-${x.id}`.toUpperCase(),
+    });
+    report.advantages++;
   }
   report.practitioners = people.size;
   return report;

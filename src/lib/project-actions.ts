@@ -12,6 +12,7 @@ import { fourEyes, projectAuthors } from "@/lib/four-eyes";
 import type { ProjectStatus } from "@/generated/prisma/client";
 import { complianceSettings, projectRegime } from "@/lib/compliance";
 import { missingCumulAuthorizations, missingSignedConventions } from "@/lib/project-documents";
+import { frameworkPeriodError, frameworkStart } from "@/lib/expert-costs";
 import { dayOrNull, eurToCents, str } from "@/lib/form";
 import { readFeeFields } from "@/lib/fee-fields";
 import { hoursOf } from "@/lib/fees";
@@ -355,7 +356,15 @@ export async function updateProjectObject(_: ActionState, form: FormData): Promi
   if (!title) return { error: t("Le titre est obligatoire.") };
   const plannedAt = dayOrNull(str(form, "plannedAt"));
   if (plannedAt === undefined) return { error: t("Date d'intervention invalide.") };
-  const data = { title, therapeuticArea: str(form, "therapeuticArea") || null, description: str(form, "description") || null, plannedAt };
+  // Contrat-cadre : plusieurs prestations de même nature, jusqu'à la fin de période (douze mois au plus).
+  const framework = form.get("framework") === "on";
+  const periodEnd = framework ? dayOrNull(str(form, "periodEnd")) : null;
+  if (periodEnd === undefined) return { error: t("Date de fin de période invalide.") };
+  if (framework) {
+    const err = frameworkPeriodError(frameworkStart({ plannedAt, createdAt: project.createdAt }), periodEnd);
+    if (err) return { error: t(err) };
+  }
+  const data = { title, therapeuticArea: str(form, "therapeuticArea") || null, description: str(form, "description") || null, plannedAt, framework, periodEnd };
   const changed = (Object.keys(data) as (keyof typeof data)[]).filter((k) => String(project[k] ?? null) !== String(data[k] ?? null));
   if (changed.length === 0) return { ok: t("Aucune modification.") };
   await db.project.update({ where: { id: projectId }, data });

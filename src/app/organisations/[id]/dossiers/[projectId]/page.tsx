@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { CalendarDays, Clock, Euro, FileDown, FileSignature, FileText, Globe, ImageDown, LayoutDashboard, Megaphone, MessagesSquare, Scale, Sparkles, User, UserPlus, Users, Wallet } from "lucide-react";
+import { CalendarDays, Clock, Euro, FileDown, FileSignature, FileText, Globe, ImageDown, LayoutDashboard, Megaphone, MessagesSquare, Receipt, Scale, Sparkles, User, UserPlus, Users, Wallet } from "lucide-react";
 import { SectionHead, StateTile } from "@/components/UI";
 import { detectConflicts } from "@/lib/conflicts";
 import { aiEnabled } from "@/lib/ai";
@@ -24,6 +24,7 @@ import { acceptCounterOffer, addProjectLead, advanceProject, removeProjectLead }
 import { ConfirmButton } from "@/components/ConfirmButton";
 import { expertSplit } from "@/lib/indicators";
 import { BudgetTab, ConflictsPanel, ConventionSignatureBlock, DocumentsPanel, MaterialsPanel } from "@/components/DossierSections";
+import { ExpertCostsTab, FrameworkPanel } from "@/components/ExpertCosts";
 import { missingCumulAuthorizations, missingSignedConventions } from "@/lib/project-documents";
 import { FOUR_EYES_BLOCKED, FOUR_EYES_JUSTIFY, fourEyes, projectAuthors } from "@/lib/four-eyes";
 import { supplierCategoryLabel } from "@/lib/suppliers";
@@ -97,6 +98,14 @@ const ACTION_LABEL: Record<string, string> = {
   "signature.draft": "Envoi en signature électronique inachevé",
   "signature.closed": "Demande de signature électronique close",
   "transparency.report": "Erreur signalée par l'expert sur sa déclaration Transparence Santé",
+  "expert_expense.submit": "Note de frais déposée par l'expert",
+  "expert_expense.withdraw": "Note de frais retirée par l'expert",
+  "expert_expense.approved": "Note de frais acceptée",
+  "expert_expense.rejected": "Note de frais refusée",
+  "expert_expense.paid": "Frais remboursés à l'expert",
+  "expert_travel.save": "Voyage de l'expert enregistré",
+  "framework.mission": "Mission consignée (contrat-cadre)",
+  "framework.mission_remove": "Mission retirée (contrat-cadre)",
 };
 
 /** Ce qu'il reste à faire, selon l'étape : affiché en tête de la colonne de droite. */
@@ -140,7 +149,8 @@ export default async function Page({ params, searchParams }: { params: Promise<{
         orderBy: { startsAt: "asc" },
         include: { rfqs: { include: { quotes: { select: { status: true, amountCents: true } } } } },
       },
-      _count: { select: { documents: true } },
+      // Justificatifs de frais : comptés avec leur note de frais, pas dans les documents.
+      _count: { select: { documents: { where: { kind: { not: "JUSTIFICATIF" } } } } },
     },
   });
   if (!project) notFound();
@@ -163,6 +173,11 @@ export default async function Page({ params, searchParams }: { params: Promise<{
     feeLevels(id),
   ]);
   const callEvent = fromCall?.openCall.event ?? null;
+  // Frais des experts : notes à examiner (pastille de l'onglet), frais acceptés ou remboursés (dans le budget).
+  const [expensesToReview, expertCosts] = await Promise.all([
+    db.expertExpense.count({ where: { projectExpert: { projectId }, status: "submitted" } }),
+    db.expertExpense.aggregate({ where: { projectExpert: { projectId }, status: { in: ["approved", "paid"] } }, _sum: { amountCents: true } }),
+  ]);
 
   const type = collabType(project.typeId);
   const isProject = roles.some((r) => PROJECT_ROLES.includes(r));
@@ -227,7 +242,7 @@ export default async function Page({ params, searchParams }: { params: Promise<{
   const live = project.experts.filter((e) => e.status !== "DECLINE");
   const { engaged, proposed: waiting, engagedCents: total } = expertSplit(project.experts, !closed);
   const supplierCents = project.events.flatMap((ev) => ev.rfqs.flatMap((r) => r.quotes)).filter((q) => q.status === "retained").reduce((s, q) => s + q.amountCents, 0);
-  const spent = total + project.expenses.reduce((s, e) => s + e.amountCents, 0) + supplierCents;
+  const spent = total + project.expenses.reduce((s, e) => s + e.amountCents, 0) + supplierCents + (expertCosts._sum.amountCents ?? 0);
   // Dossier terminé ou abandonné : plus d'événement à créer ; un dossier né d'un appel renvoie à l'événement de l'appel.
   const finished = project.status === "TERMINE" || project.status === "DECLINE";
   const budgetPct = project.budgetCents ? Math.round((spent / project.budgetCents) * 100) : null;
@@ -335,6 +350,7 @@ export default async function Page({ params, searchParams }: { params: Promise<{
     { key: "conformite", label: t("Conformité"), icon: Scale, alert: (project.status === "EN_VALID" && isCompliance) || project.status === "BLOQUE" || project.status === "REFUS_ORDRE" || (isCompliance && matPending > 0) },
     { key: "documents", label: t("Documents"), icon: FileText, count: project._count.documents || undefined, alert: unsigned.length > 0 },
     { key: "budget", label: t("Budget"), icon: Wallet, alert: over },
+    { key: "frais", label: t("Frais et voyages"), icon: Receipt, count: expensesToReview || undefined, alert: expensesToReview > 0, disabled: engagedLinks.length ? undefined : t("Après l'accord de principe d'un expert") },
     { key: "messagerie", label: t("Messagerie"), icon: MessagesSquare, count: toAnswerCount || undefined, alert: toAnswerCount > 0 },
   ];
   // « ?modifier=1 » (proposer d'autres conditions, reprendre le dossier) : l'onglet Experts, conditions dépliées.
@@ -623,10 +639,11 @@ export default async function Page({ params, searchParams }: { params: Promise<{
               <section className="card stack-sm" id="objet" aria-labelledby="objet-titre">
                 <SectionHead icon={FileText} id="objet-titre" title={t("Objet du dossier")} desc={t("Repris dans la sollicitation de chaque expert et dans sa convention.")} />
                 {project.description ? <p className="object-text">{project.description}</p> : <p className="muted">{t("Aucun objet renseigné.")}</p>}
+                {project.framework && project.periodEnd && <p className="text-sm"><strong>{t("Contrat-cadre")}</strong> · {t("jusqu'au {date}", { date: fmtDate(locale, project.periodEnd) })}</p>}
                 {editable && (
                   <details className="inline-edit" open={modifier === "1" && active === "apercu"}>
                     <summary>{t("Modifier l'objet")}</summary>
-                    <ProjectObjectForm orgId={id} projectId={projectId} title={project.title} area={project.therapeuticArea ?? ""} description={project.description ?? ""} planned={project.plannedAt ? project.plannedAt.toISOString().slice(0, 10) : ""} />
+                    <ProjectObjectForm orgId={id} projectId={projectId} title={project.title} area={project.therapeuticArea ?? ""} description={project.description ?? ""} planned={project.plannedAt ? project.plannedAt.toISOString().slice(0, 10) : ""} framework={project.framework} periodEnd={project.periodEnd ? project.periodEnd.toISOString().slice(0, 10) : ""} />
                   </details>
                 )}
               </section>
@@ -706,6 +723,7 @@ export default async function Page({ params, searchParams }: { params: Promise<{
             </SectionHead>
             {project.experts.length === 0 && <div className="card empty"><Users size={26} strokeWidth={1.6} aria-hidden /><p className="muted">{t("Sollicitez un expert : il répond depuis son espace, avec vos conditions.")}</p></div>}
             <div className="expert-list">{expertCards}</div>
+            {project.framework && <FrameworkPanel orgId={id} projectId={projectId} canEdit={isProject} />}
             {editable && (
               <details className="card add-card" id="solliciter" open={modifier === "1" || solliciter === "1" || project.experts.length === 0}>
                 <summary>
@@ -886,6 +904,8 @@ export default async function Page({ params, searchParams }: { params: Promise<{
         )}
 
         {active === "budget" && <BudgetTab orgId={id} projectId={projectId} canEdit={isProject} />}
+
+        {active === "frais" && <ExpertCostsTab orgId={id} projectId={projectId} canEdit={isProject} />}
 
         {active === "messagerie" && (
           fils.length === 0 ? (
