@@ -12,5 +12,5 @@ export async function GET(_: Request, { params }: { params: Promise<{ regId: str
   const regs = reg ? await attestableRegistrations({ eventId: reg.eventId, id: regId, userId: user!.id }) : [];
   if (regs.length === 0) return new Response("Attestation indisponible : présence non enregistrée.", { status: 404 });
   if (!eventEnded(regs[0].event)) return new Response("Attestation disponible après la fin de l'événement.", { status: 404 });
-  return pdfResponse(await attestationPdf(regs), `attestation-presence-${regs[0].event.startsAt.toISOString().slice(0, 10)}.pdf`);
+  return pdfResponse(await attestationPdf(regs), `${regs[0].event.training ? "attestation-formation" : "attestation-presence"}-${regs[0].event.startsAt.toISOString().slice(0, 10)}.pdf`);
 }

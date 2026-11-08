@@ -83,6 +83,8 @@ export async function updateOrganization(_: FormState, form: FormData): Promise<
       about: str(form, "about") || null,
       policy: str(form, "policy") || null,
       areas: str(form, "areas").split(",").map((a) => a.trim()).filter(Boolean),
+      // Formation : champs présents seulement pour les organisations qui forment.
+      ...(form.has("nda") ? { nda: str(form, "nda", 40) || null, qualiopi: str(form, "qualiopi", 160) || null, handicapContact: str(form, "handicapContact", 200) || null } : {}),
     },
   });
   await audit(user.id, "org.update", "Organization", orgId, renamed ? { renamed: { from: org.name, to: name } } : undefined);

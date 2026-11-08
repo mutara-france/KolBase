@@ -219,7 +219,7 @@ export default async function Page({ params, searchParams }: { params: Promise<{
             )}
             {isAdmin ? (
               <>
-                <EditOrgForm supplier={isSupplier} org={{ id: org.id, name: org.name, sector: org.sector, headquarters: org.headquarters, contactEmail: org.contactEmail, about: org.about, policy: org.policy, areas: org.areas }} />
+                <EditOrgForm supplier={isSupplier} trainer={org.kind !== "PRESTATAIRE" && org.kind !== "INDUSTRIEL"} org={{ id: org.id, name: org.name, sector: org.sector, headquarters: org.headquarters, contactEmail: org.contactEmail, about: org.about, policy: org.policy, areas: org.areas, nda: org.nda, qualiopi: org.qualiopi, handicapContact: org.handicapContact }} />
                 <LogoForm supplier={isSupplier} orgId={id} name={org.name} src={logoSrc(org)} verified={org.verification === "VERIFIED"} />
                 {/* Le référencement d'un prestataire se règle avec sa page prestataire. */}
                 {!isSupplier && <OrgVisibilityForm orgId={id} v={companyVisibility(org.visibility)} listed={org.listed} />}

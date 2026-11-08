@@ -19,7 +19,7 @@ export default async function Page({ params }: { params: Promise<{ id: string }>
   const { t } = await getT();
   const reg = await db.registration.findFirst({
     where: { eventId: id, userId: user.id },
-    include: { event: { include: { organization: { select: { name: true } } } }, survey: { select: { id: true } } },
+    include: { event: { include: { organization: { select: { name: true } }, training: { select: { eventId: true } } } }, survey: { select: { id: true } } },
   });
   if (!reg) notFound();
   const ended = eventEnded(reg.event);
@@ -40,7 +40,7 @@ export default async function Page({ params }: { params: Promise<{ id: string }>
         ) : !present ? (
           <p className="notice">{t("Le questionnaire est réservé aux participants dont la présence a été enregistrée à l'accueil.")}</p>
         ) : (
-          <SurveyForm eventId={id} />
+          <SurveyForm eventId={id} training={!!reg.event.training} />
         )}
       </main>
     </>

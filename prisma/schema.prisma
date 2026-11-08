@@ -328,6 +328,11 @@ model Organization {
   dpaVersion         String?
   dpaAcceptedAt      DateTime?
   dpaAcceptedById    String?
+  // Organisme de formation (ou société savante qui forme) : numéro de déclaration d'activité, certificat Qualiopi
+  // (numéro et certificateur), référent handicap. Repris sur les fiches de formation et les attestations.
+  nda                String?
+  qualiopi           String?
+  handicapContact    String?
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
 
@@ -785,6 +790,8 @@ model Event {
   messages      EventMessage[]
   invites       EventInvite[]
   budgetLines   EventBudgetLine[]
+  training      TrainingSheet?
+  sessions      EventSession[]
   surveys       SurveyResponse[]
   serviceOrders ServiceOrder[]
   rfqs          Rfq[]
@@ -952,10 +959,14 @@ model Registration {
   allergies       String?
   needs           String?
   needsConsentAt  DateTime?
+  // Évaluation des acquis (formation) par l'organisateur : acquis, partiel, non_acquis.
+  assessment      String?
+  assessedAt      DateTime?
 
-  benefits RegistrationBenefit[]
-  survey   SurveyResponse?
-  travel   RegistrationTravel?
+  benefits    RegistrationBenefit[]
+  survey      SurveyResponse?
+  travel      RegistrationTravel?
+  attendances Attendance[]
 
   @@unique([eventId, userId])
   @@index([userId])
@@ -1226,6 +1237,56 @@ model OrganizationLogo {
   updatedAt      DateTime     @updatedAt
 }
 
+/**
+ * Fiche d'une action de formation (information du public, Qualiopi) : objectifs, public, prérequis, durée, modalités
+ * pédagogiques et d'évaluation, accès et délai, accessibilité, tarif et financement, référence DPC, contact.
+ */
+model TrainingSheet {
+  eventId       String   @id
+  event         Event    @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  objectives    String
+  audience      String?
+  prerequisites String?
+  hours         Float?
+  methods       String?
+  assessment    String?
+  accessDelay   String?
+  accessibility String?
+  price         String?
+  funding       String[] @default([])
+  fundingNote   String?
+  dpcRef        String?
+  contact       String?
+  updatedAt     DateTime @updatedAt
+}
+
+/** Demi-journée d'un événement de plusieurs séquences : émargement à chacune. */
+model EventSession {
+  id          String       @id @default(cuid())
+  eventId     String
+  event       Event        @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  startsAt    DateTime
+  endsAt      DateTime
+  attendances Attendance[]
+
+  @@index([eventId, startsAt])
+}
+
+/** Émargement d'un participant à une demi-journée : signé par lui (connecté) ou relevé par l'organisateur. */
+model Attendance {
+  id             String       @id @default(cuid())
+  sessionId      String
+  session        EventSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  registrationId String
+  registration   Registration @relation(fields: [registrationId], references: [id], onDelete: Cascade)
+  signedAt       DateTime     @default(now())
+  method         String // self, team
+  byId           String?
+
+  @@unique([sessionId, registrationId])
+  @@index([registrationId])
+}
+
 // Questionnaire de satisfaction d'un participant (une réponse par inscription ; anonyme pour l'organisateur).
 model SurveyResponse {
   id             String       @id @default(cuid())
@@ -1236,6 +1297,9 @@ model SurveyResponse {
   overall        Int          // note globale, 1 à 5
   content        Int?         // contenu scientifique
   logistics      Int?         // organisation et accueil
+  // Formation : auto-positionnement sur les objectifs, avant et après (1 à 5).
+  selfBefore     Int?
+  selfAfter      Int?
   comment        String?
   createdAt      DateTime     @default(now())
 

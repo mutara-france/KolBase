@@ -39,10 +39,10 @@ export function NewOrgForm({ kinds, name, kind }: { kinds: Opt[]; name?: string;
   );
 }
 
-type Org = { id: string; name: string; sector: string | null; headquarters: string | null; contactEmail: string | null; about: string | null; policy: string | null; areas: string[] };
+type Org = { id: string; name: string; sector: string | null; headquarters: string | null; contactEmail: string | null; about: string | null; policy: string | null; areas: string[]; nda?: string | null; qualiopi?: string | null; handicapContact?: string | null };
 
 /** Fiche de l'organisation ; prestataire (`supplier`) : ni domaines thérapeutiques ni politique de collaboration. */
-export function EditOrgForm({ org, supplier = false }: { org: Org; supplier?: boolean }) {
+export function EditOrgForm({ org, supplier = false, trainer = false }: { org: Org; supplier?: boolean; trainer?: boolean }) {
   const t = useT();
   const [state, action, pending] = useActionState(updateOrganization, undefined);
   return (
@@ -65,6 +65,17 @@ export function EditOrgForm({ org, supplier = false }: { org: Org; supplier?: bo
       )}
       <label>{t("Présentation")}<textarea name="about" rows={3} defaultValue={org.about ?? ""} placeholder={supplier ? t("Vos prestations, votre savoir-faire, vos références…") : undefined} /></label>
       {supplier ? <input type="hidden" name="policy" value={org.policy ?? ""} /> : <label>{t("Politique de collaboration")}<textarea name="policy" rows={3} defaultValue={org.policy ?? ""} /></label>}
+      {/* Organisme de formation, société savante ou association qui forme : mentions des fiches et attestations. */}
+      {trainer && (
+        <fieldset className="stack-sm">
+          <legend>{t("Formation")}</legend>
+          <div className="row">
+            <label>{t("Numéro de déclaration d'activité")}<input name="nda" maxLength={40} defaultValue={org.nda ?? ""} placeholder="11 75 12345 75" /></label>
+            <label>{t("Certificat Qualiopi")}<input name="qualiopi" maxLength={160} defaultValue={org.qualiopi ?? ""} placeholder={t("N° et organisme certificateur")} /></label>
+          </div>
+          <label>{t("Référent handicap")}<input name="handicapContact" maxLength={200} defaultValue={org.handicapContact ?? ""} placeholder={t("Nom, e-mail ou téléphone")} /></label>
+        </fieldset>
+      )}
       <button className="btn" disabled={pending}>{pending ? t("Enregistrement…") : t("Enregistrer")}</button>
     </form>
   );

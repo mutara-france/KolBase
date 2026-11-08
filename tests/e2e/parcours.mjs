@@ -899,6 +899,126 @@ const linkIn = (mail) => mail?.text.match(/https?:\/\/\S+/g)?.find((u) => !u.end
   await pgc.end();
 }
 
+// ── Formation : fiche Qualiopi, demi-journées et émargement, acquis, attestation de fin de formation, résultats ──
+{
+  const pgc = new pg.Client({ connectionString: process.env.DATABASE_URL });
+  await pgc.connect();
+  const q1 = async (sql, args = []) => (await pgc.query(sql, args)).rows[0];
+  const EMMA = "emma.simon@demo.kolbase.local", HUGO = "hugo.robert@demo.kolbase.local";
+  await pgc.query(`insert into "Event" (id, "organizationId", title, "typeId", "startsAt", "durationMinutes", format, city, venue, capacity, "publishedAt", "updatedAt")
+    values ('e2e-r6-ev', 'demo-org-academie', 'Implants courts Formation', 'dpc', now() + interval '2 days', 420, 'PRESENTIEL', 'Paris', 'Centre Académie (fictif)', 20, now(), now())`);
+  const ws = `${BASE}/organisations/demo-org-academie/evenements/e2e-r6-ev`;
+  const anne = await session();
+  await login(anne.page, "anne.chevalier@demo.kolbase.local");
+  await anne.page.goto(ws);
+  let t = await text(anne.page);
+  check("Organisme de formation : fiche de formation et émargement proposés", t.includes("Fiche de formation") && t.includes("Demi-journées et émargement"));
+
+  // Fiche de la formation (information du public).
+  const sf = 'form:has(textarea[name="objectives"])';
+  await anne.page.fill(`${sf} textarea[name="objectives"]`, "Indiquer et poser un implant court en secteur postérieur.");
+  await anne.page.fill(`${sf} input[name="audience"]`, "Chirurgiens-dentistes");
+  await anne.page.fill(`${sf} input[name="prerequisites"]`, "Pratique de la chirurgie implantaire");
+  await anne.page.fill(`${sf} input[name="hours"]`, "14");
+  await anne.page.fill(`${sf} textarea[name="methods"]`, "Exposés, cas cliniques, travaux pratiques sur modèles");
+  await anne.page.fill(`${sf} textarea[name="assessment"]`, "Quiz avant et après, évaluation pratique");
+  await anne.page.fill(`${sf} input[name="accessDelay"]`, "Inscription en ligne jusqu'à 7 jours avant");
+  await anne.page.fill(`${sf} input[name="price"]`, "450 € TTC, déjeuner compris");
+  await anne.page.fill(`${sf} input[name="dpcRef"]`, "99992500001");
+  await anne.page.check(`${sf} input[name="funding"][value="dpc"]`);
+  await anne.page.check(`${sf} input[name="funding"][value="fifpl"]`);
+  await anne.page.fill(`${sf} input[name="contact"]`, "formation@academie.example");
+  await anne.page.click(`${sf} button:has-text("Enregistrer la fiche")`);
+  await anne.page.locator("text=Fiche de formation enregistrée").first().waitFor({ timeout: 8000 }).catch(() => {});
+  await anne.page.goto(ws);
+  t = await text(anne.page);
+  check("Fiche enregistrée : ce qui manque est signalé (accessibilité, déclaration d'activité)", !!(await q1(`select 1 from "TrainingSheet" where "eventId" = 'e2e-r6-ev' and 'dpc' = any(funding)`)) && t.includes("À compléter") && t.includes("Accessibilité") && t.includes("Numéro de déclaration d'activité"));
+
+  // Mentions de l'organisme : déclaration d'activité, Qualiopi, référent handicap.
+  await anne.page.goto(`${BASE}/organisations/demo-org-academie/membres?onglet=organisation`);
+  const of = 'form:has(input[name="nda"])';
+  await anne.page.fill(`${of} input[name="nda"]`, "11 75 99999 75");
+  await anne.page.fill(`${of} input[name="qualiopi"]`, "Certificat Q-0000 (fictif)");
+  await anne.page.fill(`${of} input[name="handicapContact"]`, "Mme Leroy, handicap@academie.example");
+  await anne.page.click(`${of} button:has-text("Enregistrer")`);
+  await anne.page.locator("text=Organisation mise à jour").first().waitFor({ timeout: 8000 }).catch(() => {});
+  check("Organisme : déclaration d'activité, Qualiopi et référent handicap enregistrés", (await q1(`select nda from "Organization" where id = 'demo-org-academie'`)).nda === "11 75 99999 75");
+  await anne.page.goto(ws);
+  check("Fiche complète une fois l'organisme renseigné", (await text(anne.page)).includes("Fiche complète."));
+
+  // Deux jours, matin et après-midi : quatre demi-journées.
+  const hf = 'form:has(input[name="firstDay"])';
+  await anne.page.fill(`${hf} input[name="days"]`, "2");
+  await anne.page.click(`${hf} button:has-text("Créer les demi-journées")`);
+  await anne.page.locator("text=4 demi-journées créées").first().waitFor({ timeout: 8000 }).catch(() => {});
+  check("Demi-journées : quatre créées, durée de l'événement étendue", (await q1(`select count(*)::int n from "EventSession" where "eventId" = 'e2e-r6-ev'`)).n === 4 && (await q1(`select "durationMinutes" d from "Event" where id = 'e2e-r6-ev'`)).d > 24 * 60);
+
+  // Page publique : fiche, financements, accessibilité, mentions légales de l'organisme.
+  const emma = await session();
+  await login(emma.page, EMMA);
+  await emma.page.goto(`${BASE}/evenements/e2e-r6-ev`);
+  t = await text(emma.page);
+  check("Page publique : fiche de la formation complète", t.includes("Fiche de la formation") && t.includes("Indiquer et poser un implant court") && t.includes("DPC (ANDPC), FIF-PL") && t.includes("Référent handicap : Mme Leroy") && t.includes("Déclaration d'activité n° 11 75 99999 75") && t.includes("Demi-journées"));
+
+  // La formation commence : première demi-journée en cours, deux inscrits.
+  await pgc.query(`insert into "Registration" (id, "eventId", "userId", profession) select 'e2e-r6-reg', 'e2e-r6-ev', id, 'Chirurgien-dentiste' from "User" where email = $1`, [EMMA]);
+  await pgc.query(`insert into "Registration" (id, "eventId", "userId", profession) select 'e2e-r6-reg2', 'e2e-r6-ev', id, 'Chirurgien-dentiste' from "User" where email = $1`, [HUGO]);
+  const ss = (await pgc.query(`select id from "EventSession" where "eventId" = 'e2e-r6-ev' order by "startsAt"`)).rows.map((r) => r.id);
+  await pgc.query(`update "Event" set "startsAt" = now() - interval '1 hour', "durationMinutes" = 2160 where id = 'e2e-r6-ev'`);
+  for (const [i, id] of ss.entries()) await pgc.query(`update "EventSession" set "startsAt" = now() + ($2 || ' hours')::interval, "endsAt" = now() + ($3 || ' hours')::interval where id = $1`, [id, String(i * 12 - 0.5), String(i * 12 + 3)]);
+  await emma.page.goto(`${BASE}/inscriptions/e2e-r6-reg/badge`);
+  await emma.page.click('button:has-text("Émarger")');
+  await emma.page.locator("text=Émargé à").first().waitFor({ timeout: 8000 }).catch(() => {});
+  const sig = await q1(`select a.method, r."checkedInAt" from "Attendance" a join "Registration" r on r.id = a."registrationId" where a."registrationId" = 'e2e-r6-reg'`);
+  check("Émargement : signé par la participante depuis son badge, présence enregistrée", sig?.method === "self" && !!sig.checkedInAt);
+  check("Émargement : une seule demi-journée ouverte à la signature", (await emma.page.locator('button:has-text("Émarger")').count()) === 0);
+
+  // L'équipe relève la présence du second participant ; la signature de la participante reste.
+  await anne.page.goto(ws);
+  await anne.page.check(`input[name="att_${ss[0]}_e2e-r6-reg2"]`);
+  await anne.page.click('button:has-text("Enregistrer l\'émargement")');
+  await anne.page.locator("text=Émargement enregistré.").first().waitFor({ timeout: 8000 }).catch(() => {});
+  check("Émargement relevé par l'équipe, signature de la participante conservée", (await q1(`select method from "Attendance" where "registrationId" = 'e2e-r6-reg2'`))?.method === "team" && (await q1(`select method from "Attendance" where "registrationId" = 'e2e-r6-reg'`))?.method === "self");
+  const sheet = await anne.ctx.request.get(`${ws}/emargement`);
+  check("Feuilles d'émargement : une par demi-journée (PDF)", sheet.ok() && (await PDFDocument.load(await sheet.body())).getPageCount() === 4);
+
+  // Formation terminée : évaluation des acquis, questionnaire avec auto-positionnement.
+  await pgc.query(`update "Event" set "startsAt" = now() - interval '3 days 1 hour', "durationMinutes" = 2160 where id = 'e2e-r6-ev'`);
+  await pgc.query(`update "EventSession" set "startsAt" = "startsAt" - interval '3 days', "endsAt" = "endsAt" - interval '3 days' where "eventId" = 'e2e-r6-ev'`);
+  await anne.page.goto(ws);
+  await anne.page.selectOption('select[name="assess_e2e-r6-reg"]', "acquis");
+  await anne.page.selectOption('select[name="assess_e2e-r6-reg2"]', "partiel");
+  await anne.page.click('button:has-text("Enregistrer l\'évaluation")');
+  await anne.page.locator("text=Évaluation des acquis enregistrée.").first().waitFor({ timeout: 8000 }).catch(() => {});
+  check("Évaluation des acquis enregistrée", (await q1(`select assessment from "Registration" where id = 'e2e-r6-reg'`)).assessment === "acquis" && (await q1(`select assessment from "Registration" where id = 'e2e-r6-reg2'`)).assessment === "partiel");
+  await emma.page.goto(`${BASE}/evenements/e2e-r6-ev/avis`);
+  check("Questionnaire de formation : auto-positionnement avant et après", (await emma.page.locator(".survey-q").count()) === 5);
+  await emma.page.locator(".survey-q").nth(0).locator(".stars label").nth(4).click();
+  await emma.page.locator(".survey-q").nth(3).locator(".stars label").nth(1).click();
+  await emma.page.locator(".survey-q").nth(4).locator(".stars label").nth(3).click();
+  await emma.page.click('button:has-text("Envoyer mon avis")');
+  await emma.page.locator("text=votre avis est transmis").first().waitFor({ timeout: 8000 }).catch(() => {});
+  const sr = await q1(`select overall, "selfBefore", "selfAfter" from "SurveyResponse" where "registrationId" = 'e2e-r6-reg'`);
+  check("Avis enregistré avec la progression perçue", sr?.overall === 5 && sr.selfBefore === 2 && sr.selfAfter === 4);
+  const att = await emma.ctx.request.get(`${BASE}/inscriptions/e2e-r6-reg/attestation`);
+  check("Attestation de fin de formation (PDF)", att.ok() && (att.headers()["content-disposition"] ?? "").includes("attestation-formation"));
+  await emma.page.goto(`${BASE}/evenements/e2e-r6-ev`);
+  check("Participante : attestation de fin de formation proposée", (await text(emma.page)).includes("Mon attestation de fin de formation"));
+
+  // Résultats publiés avec leur mode de calcul (page de l'organisme et de la formation).
+  await emma.page.goto(`${BASE}/structures/demo-org-academie`);
+  t = await text(emma.page);
+  check("Résultats publiés : satisfaction et acquis, mode de calcul", t.includes("Résultats de nos formations") && t.includes("Taux de satisfaction : 100 %") && t.includes("Acquis validés : 50 %") && t.includes("note globale de 4 ou 5 sur 5"));
+  await anne.page.goto(ws);
+  t = await text(anne.page);
+  check("Organisme : progression perçue affichée", t.includes("Progression perçue") && /2(,0)?\s*→\s*4/.test(t));
+  await emma.ctx.close();
+  await anne.ctx.close();
+  await pgc.query(`delete from "Event" where id = 'e2e-r6-ev'`);
+  await pgc.query(`update "Organization" set nda = null, qualiopi = null, "handicapContact" = null where id = 'demo-org-academie'`);
+  await pgc.end();
+}
+
 // ── Agences : confier un événement en une seule action ─────────────────────
 {
   const agent = await session();

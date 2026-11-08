@@ -30,7 +30,7 @@ export async function exportAccount(userId: string) {
       },
       photo: { select: { data: true, updatedAt: true } },
       memberships: { select: { role: true, createdAt: true, organization: { select: { name: true, kind: true } } } },
-      registrations: { include: { event: { select: { title: true, startsAt: true, organization: { select: { name: true } } } }, benefits: { include: { benefit: { select: { label: true } } } } } },
+      registrations: { include: { event: { select: { title: true, startsAt: true, organization: { select: { name: true } } } }, benefits: { include: { benefit: { select: { label: true } } } }, attendances: { select: { signedAt: true, method: true, session: { select: { startsAt: true, endsAt: true } } } } } },
       follows: { select: { createdAt: true, practitioner: { select: { id: true } }, organization: { select: { name: true } } } },
       sessions: { select: { createdAt: true, expiresAt: true, userAgent: true } },
       auditLogs: { select: { action: true, entityType: true, entityId: true, createdAt: true }, orderBy: { createdAt: "desc" }, take: 500 },
