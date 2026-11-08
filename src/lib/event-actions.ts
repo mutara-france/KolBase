@@ -14,9 +14,11 @@ import { getT } from "@/lib/i18n/server";
 import type { T } from "@/lib/i18n";
 import { engagementGate } from "@/lib/billing";
 import type { GateLink } from "@/lib/billing-plans";
-import { notifyEventCancelled, notifyEventChanged, notifyEventConfided, notifyEventReview, notifyEventWithdrawn, notifyMandateEnded, notifyRegistration, notifyRegistrationCancelled } from "@/lib/notifications";
+import { notifyEventCancelled, notifyEventChanged, notifyEventConfided, notifyEventMessage, notifyEventReview, notifyEventWithdrawn, notifyMandateEnded, notifyRegistration, notifyRegistrationCancelled } from "@/lib/notifications";
 import { activeMandate } from "@/lib/mandates";
 import { hospitalityGate, normalizeVisa } from "@/lib/belgium";
+import { readNeeds } from "@/lib/registration-needs";
+import { offerFreedPlaces } from "@/lib/waitlist";
 import { SOURCE_COOKIE } from "@/lib/services";
 import { deletableDraft, DRAFT_COUNTS } from "@/lib/event-drafts";
 import { EVENT_NOT_PUBLISHABLE, eventPublishable } from "@/lib/projects";
@@ -54,6 +56,7 @@ function readEventFields(form: FormData, t: T) {
       city: format === "DISTANCIEL" ? null : str(form, "city") || null,
       postalCode: format === "DISTANCIEL" ? null : str(form, "postalCode").replace(/\s/g, "").slice(0, 12) || null,
       venue: format === "DISTANCIEL" ? null : str(form, "venue") || null,
+      address: format === "DISTANCIEL" ? null : str(form, "address", 200) || null,
       capacity: intOrNull(str(form, "capacity")),
     },
     benefits,
@@ -157,6 +160,8 @@ export async function updateEvent(_: ActionState, form: FormData): Promise<Actio
   await audit(user.id, "event.update", "Event", event.id, { changes, ...(frozen ? {} : { benefits: benefits.length }), ...(backToReview ? { review: "submitted" } : {}) });
   if (changes.length > 0 && event._count.registrations > 0) notifyEventChanged(event.id, changes);
   if (backToReview) notifyEventReview(event.id, "submitted", user.id);
+  // Capacité augmentée : les places nouvelles sont proposées à la liste d'attente.
+  if ((fields.capacity ?? Infinity) > (event.capacity ?? Infinity) || (event.capacity && !fields.capacity)) await offerFreedPlaces(event.id);
   revalidatePath(`/organisations/${orgId}/evenements/${eventId}`);
   // Événement rattaché à un dossier : il se gère aussi dans l'onglet « Événement » du dossier.
   revalidatePath(`/organisations/${orgId}/dossiers`, "layout");
@@ -318,6 +323,10 @@ export async function registerToEvent(_: ActionState, form: FormData): Promise<A
     return { error: t("Vous exercez en Belgique : l'organisateur n'a pas encore communiqué le visa Mdeon de cet événement, préalable à toute prise en charge. Inscrivez-vous sans les prestations.") };
   if (accepted.length > 0 && user.practitioner && !form.get("ackHcp"))
     return { error: t("Merci de confirmer avoir pris connaissance de l'information sur les avantages.") };
+  // Besoins (régime, allergies, accessibilité) : facultatifs, enregistrés avec l'accord explicite de la personne.
+  const needs = readNeeds(form);
+  if (needs.error) return { error: t(needs.error) };
+  const consented = !!(needs.diet || needs.allergies || needs.needs);
 
   // L'événement est verrouillé le temps de compter les places et d'inscrire : deux inscriptions
   // simultanées ne peuvent pas dépasser la capacité.
@@ -331,11 +340,14 @@ export async function registerToEvent(_: ActionState, form: FormData): Promise<A
         profession: user.practitioner?.profession ?? null,
         structure: str(form, "structure") || user.practitioner?.hospital || null,
         sourceOrderId: source?.id ?? null,
+        diet: needs.diet, allergies: needs.allergies, needs: needs.needs, needsConsentAt: consented ? new Date() : null,
         benefits: { create: accepted.map((b) => ({ benefitId: b.id, valueCents: b.valueCents })) },
       },
     });
   });
   if (!reg) return { error: t("L'événement est complet.") };
+  // Inscrit : il quitte la liste d'attente s'il y était.
+  await db.waitlistEntry.deleteMany({ where: { eventId, userId: user.id } });
   await audit(user.id, "registration.create", "Registration", reg.id, {
     eventId,
     benefits: accepted.map((b) => b.catalogId),
@@ -361,6 +373,8 @@ export async function cancelRegistration(form: FormData) {
     await audit(user.id, "registration.cancel", "Registration", reg.id, { eventId });
     notifyRegistrationCancelled(user.id, eventId, reg._count.benefits);
     cancelled = true;
+    // Place libérée : la liste d'attente est prévenue dans l'ordre.
+    await offerFreedPlaces(eventId);
   }
   revalidatePath(`/evenements/${eventId}`);
   revalidatePath("/inscriptions");
@@ -452,6 +466,63 @@ export async function setEventMdeonVisa(_: ActionState, form: FormData): Promise
   revalidatePath(`/organisations/${orgId}/dossiers`, "layout");
   revalidatePath(`/evenements/${eventId}`);
   return { ok: visa ? t("Visa Mdeon enregistré : les praticiens exerçant en Belgique peuvent accepter les prestations.") : t("Visa Mdeon retiré.") };
+}
+
+/** Liste d'attente d'un événement complet : inscription de la personne connectée (prévenue quand une place se libère). */
+export async function joinWaitlist(form: FormData) {
+  const user = await requireUser();
+  const eventId = str(form, "eventId");
+  const event = await db.event.findFirst({
+    where: { id: eventId, publishedAt: { not: null }, cancelledAt: null, registrationOpen: true, startsAt: { gt: new Date() }, organization: { verification: "VERIFIED" } },
+    select: { id: true, capacity: true, _count: { select: { registrations: true } } },
+  });
+  if (!event?.capacity || event._count.registrations < event.capacity) return;
+  if (await db.registration.findUnique({ where: { eventId_userId: { eventId, userId: user.id } } })) return;
+  const created = await db.waitlistEntry.create({ data: { eventId, userId: user.id } }).then((w) => w, () => null);
+  if (created) await audit(user.id, "waitlist.join", "Event", eventId);
+  revalidatePath(`/evenements/${eventId}`);
+}
+
+/** Quitter la liste d'attente. */
+export async function leaveWaitlist(form: FormData) {
+  const user = await requireUser();
+  const eventId = str(form, "eventId");
+  const { count } = await db.waitlistEntry.deleteMany({ where: { eventId, userId: user.id } });
+  if (count) {
+    await audit(user.id, "waitlist.leave", "Event", eventId);
+    await offerFreedPlaces(eventId);
+  }
+  revalidatePath(`/evenements/${eventId}`);
+}
+
+/** Messages aux inscrits : trois au plus par événement sur 24 heures. */
+export const EVENT_MESSAGES_PER_DAY = 3;
+
+/** Message de l'organisateur (ou de son agence) à tous les inscrits, par e-mail ; gardé dans l'historique de l'événement. */
+export async function sendEventMessage(_: ActionState, form: FormData): Promise<ActionState> {
+  const { t } = await getT();
+  const orgId = str(form, "orgId");
+  const eventId = str(form, "eventId");
+  const { user, roles } = await requireMembership(orgId, EVENT_MANAGER_ROLES);
+  const subject = str(form, "subject", 120);
+  const body = str(form, "body");
+  if (!subject) return { error: t("Donnez un objet au message.") };
+  if (body.length < 10) return { error: t("Écrivez le message (10 caractères au moins).") };
+  if (body.length > 4000) return { error: t("Message trop long (4 000 caractères au maximum).") };
+  const event = await db.event.findFirst({
+    where: { id: eventId, organizationId: orgId, internal: false, cancelledAt: null, ...eventScope(user, roles) },
+    select: { id: true, _count: { select: { registrations: { where: { cancelledAt: null } } } } },
+  });
+  if (!event) return { error: t("Événement introuvable.") };
+  if (event._count.registrations === 0) return { error: t("Aucun inscrit à prévenir.") };
+  const recent = await db.eventMessage.count({ where: { eventId, createdAt: { gt: new Date(Date.now() - 86400e3) } } });
+  if (recent >= EVENT_MESSAGES_PER_DAY) return { error: t("Trois messages au plus par 24 heures : regroupez les informations dans un prochain message.") };
+  const m = await db.eventMessage.create({ data: { eventId, authorId: user.id, subject, body, recipients: event._count.registrations } });
+  await audit(user.id, "event.message", "Event", eventId, { messageId: m.id, recipients: m.recipients });
+  notifyEventMessage(m.id);
+  revalidatePath(`/organisations/${orgId}/evenements/${eventId}`);
+  revalidatePath(`/organisations/${orgId}/dossiers`, "layout");
+  return { ok: t(m.recipients > 1 ? "Message envoyé aux {n} inscrits." : "Message envoyé à l'inscrit.", { n: m.recipients }) };
 }
 
 // ─── Validation par la conformité ──────────────────────────────────────────

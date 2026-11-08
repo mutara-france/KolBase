@@ -559,6 +559,75 @@ const linkIn = (mail) => mail?.text.match(/https?:\/\/\S+/g)?.find((u) => !u.end
   await pgc.end();
 }
 
+// ── Inscription complète : besoins, adresse, liste d'attente, message aux inscrits ──
+{
+  const pgc = new pg.Client({ connectionString: process.env.DATABASE_URL });
+  await pgc.connect();
+  const q1 = async (sql, args = []) => (await pgc.query(sql, args)).rows[0];
+  await pgc.query(`insert into "Event" (id, "organizationId", title, "typeId", "startsAt", "durationMinutes", format, city, "postalCode", venue, address, capacity, "publishedAt", "updatedAt")
+    values ('e2e-r2-ev', 'demo-org-dentalys', 'Atelier occlusion Inscription', 'travaux-pratiques', now() + interval '30 days', 180, 'PRESENTIEL', 'Lille', '59777', 'Grand Palais (fictif)', '1 boulevard des Cités Unies', 1, now(), now())`);
+  await pgc.query(`insert into "EventBenefit" (id, "eventId", "catalogId", label, "valueCents") values ('e2e-r2-b-cafe', 'e2e-r2-ev', 'cafe', 'Pause café d''accueil', 800)`);
+  const ev = `${BASE}/evenements/e2e-r2-ev`;
+  const EMMA = "emma.simon@demo.kolbase.local", HUGO = "hugo.robert@demo.kolbase.local";
+  const emma = await session();
+  await login(emma.page, EMMA);
+  await emma.page.goto(ev);
+  check("Adresse complète affichée sur la page de l'événement", (await text(emma.page)).includes("1 boulevard des Cités Unies"));
+  // Besoins renseignés sans l'accord : refus ; avec l'accord : enregistrés.
+  await emma.page.locator("details.needs-fields summary").click();
+  await emma.page.selectOption('select[name="diet"]', "vegetarien");
+  await emma.page.fill('input[name="allergies"]', "crustacés");
+  check("Besoins : la case d'accord apparaît dès qu'un champ est rempli", (await emma.page.locator('input[name="needsConsent"]').count()) === 1);
+  await emma.page.check('input[name="needsConsent"]');
+  await emma.page.click('button:has-text("M\'inscrire")');
+  await emma.page.locator("text=Inscription confirmée").first().waitFor({ timeout: 8000 }).catch(() => {});
+  const er = await q1(`select r.diet, r.allergies, r."needsConsentAt" from "Registration" r join "User" u on u.id = r."userId" where u.email = $1 and r."eventId" = 'e2e-r2-ev'`, [EMMA]);
+  check("Besoins enregistrés avec la date de l'accord", er?.diet === "vegetarien" && er?.allergies === "crustacés" && !!er?.needsConsentAt, JSON.stringify(er));
+  const em = await waitMail(EMMA, "Inscription confirmée : « Atelier occlusion Inscription");
+  check("Confirmation : lieu avec l'adresse et le code postal", !!em && em.text.includes("Grand Palais (fictif), 1 boulevard des Cités Unies, 59777 Lille"), em?.text.slice(0, 300));
+
+  // Événement complet : liste d'attente.
+  const hugo = await session();
+  await login(hugo.page, HUGO);
+  await hugo.page.goto(ev);
+  await hugo.page.click('button:has-text("Rejoindre la liste d\'attente")');
+  await hugo.page.waitForTimeout(1000);
+  await hugo.page.goto(ev);
+  check("Liste d'attente : rang affiché", (await text(hugo.page)).includes("Vous êtes sur la liste d'attente (rang 1)"));
+
+  // Organisateur : besoins sans les noms, liste d'attente, message aux inscrits.
+  const claire = await session();
+  await login(claire.page, "claire.morel@demo.kolbase.local");
+  await claire.page.goto(`${BASE}/organisations/demo-org-dentalys/evenements/e2e-r2-ev`);
+  let t = await text(claire.page);
+  check("Organisateur : synthèse des repas et allergies, liste d'attente", t.includes("Repas et accessibilité") && t.includes("Végétarien : 1") && t.includes("crustacés") && t.includes("Liste d'attente") && t.includes("Hugo Robert"));
+  await claire.page.fill('form:has(textarea[name="body"]) input[name="subject"]', "Changement de salle");
+  await claire.page.fill('textarea[name="body"]', "L'atelier aura lieu en salle 3, au premier étage.");
+  await claire.page.click('button:has-text("Envoyer à l\'inscrit")');
+  const msg = await waitMail(EMMA, "Changement de salle");
+  check("Message aux inscrits : e-mail reçu, historique gardé", !!msg && msg.text.includes("salle 3") && !!(await q1(`select 1 from "EventMessage" where "eventId" = 'e2e-r2-ev' and recipients = 1`)));
+  const csv = await claire.page.request.get(`${BASE}/organisations/demo-org-dentalys/evenements/e2e-r2-ev/export`);
+  const body = await csv.text();
+  check("Export des inscrits : régime et allergies pour l'organisateur", body.includes("Régime") && body.includes("Végétarien") && body.includes("crustacés"));
+
+  // Place libérée : la liste d'attente est prévenue ; l'inscription la retire de la liste.
+  await emma.page.goto(ev);
+  await emma.page.click('button:has-text("Annuler mon inscription")');
+  await emma.page.click('button:has-text("Confirmer : annuler mon inscription")');
+  const offer = await waitMail(HUGO, "Une place s'est libérée : « Atelier occlusion Inscription");
+  check("Place libérée : la première personne en attente est prévenue", !!offer && !!(await q1(`select "notifiedAt" from "WaitlistEntry" w join "User" u on u.id = w."userId" where u.email = $1 and w."eventId" = 'e2e-r2-ev'`, [HUGO]))?.notifiedAt);
+  await hugo.page.goto(ev);
+  await hugo.page.click('button:has-text("M\'inscrire")');
+  await hugo.page.locator("text=Inscription confirmée").first().waitFor({ timeout: 8000 }).catch(() => {});
+  check("Inscrit depuis la liste d'attente : il la quitte", !!(await q1(`select 1 from "Registration" r join "User" u on u.id = r."userId" where u.email = $1 and r."eventId" = 'e2e-r2-ev'`, [HUGO])) && !(await q1(`select 1 from "WaitlistEntry" where "eventId" = 'e2e-r2-ev'`)));
+  await emma.ctx.close();
+  await hugo.ctx.close();
+  await claire.ctx.close();
+  await pgc.query(`delete from "Registration" where "eventId" = 'e2e-r2-ev'`);
+  await pgc.query(`delete from "Event" where id = 'e2e-r2-ev'`);
+  await pgc.end();
+}
+
 // ── Agences : confier un événement en une seule action ─────────────────────
 {
   const agent = await session();

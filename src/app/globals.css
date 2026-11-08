@@ -1720,6 +1720,11 @@ a.chip { display: inline-flex; align-items: center; text-decoration: none; }
 .journal-list li { display: grid; grid-template-columns: 150px minmax(0, 1fr) minmax(120px, 200px); gap: 12px; align-items: baseline; padding: 9px 0; border-bottom: 1px solid var(--line); }
 .journal-list li:last-child { border-bottom: 0; }
 .journal-list .stack-xs { display: flex; flex-direction: column; gap: 3px; min-width: 0; overflow-wrap: anywhere; }
+.stack-xs { display: flex; flex-direction: column; gap: 4px; }
+.needs-summary { margin-top: 16px; padding-top: 12px; border-top: 1px solid var(--line); }
+.needs-summary h3 { margin: 0; }
+.needs-fields .stack-sm { margin-top: 8px; }
+.waitlist-list { margin: 0; padding-left: 20px; display: grid; gap: 4px; }
 .journal-list .pill { white-space: normal; }
 @media (max-width: 760px) {
   .journal-list li { grid-template-columns: minmax(0, 1fr); gap: 4px; }

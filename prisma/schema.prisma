@@ -44,6 +44,7 @@ model User {
   practitioner  PractitionerProfile?
   memberships   Membership[]
   registrations Registration[]
+  waitlist      WaitlistEntry[]
   messages      Message[]
   rfqMessages   RfqMessage[]
   supplierReviews SupplierReview[]
@@ -698,6 +699,8 @@ model Event {
   // exerçant en Belgique). Sans numéro, ces praticiens s'inscrivent sans hospitalité.
   mdeonVisa        String?
   mdeonVisaAt      DateTime?
+  // Adresse postale du lieu (rue et numéro), en plus du nom du lieu, du code postal et de la ville.
+  address          String?
   // Agence prestataire mandatée : ses membres (rôle Prestataire) ne voient que les événements confiés.
   agencyId         String?
   agency           Organization? @relation("agencyEvents", fields: [agencyId], references: [id])
@@ -709,6 +712,8 @@ model Event {
 
   benefits      EventBenefit[]
   registrations Registration[]
+  waitlist      WaitlistEntry[]
+  messages      EventMessage[]
   surveys       SurveyResponse[]
   serviceOrders ServiceOrder[]
   rfqs          Rfq[]
@@ -854,6 +859,13 @@ model Registration {
   sourceOrder     ServiceOrder? @relation(fields: [sourceOrderId], references: [id], onDelete: SetNull)
   // Inscription annulée par l'annulation de l'événement (l'annulation par la personne inscrite la supprime).
   cancelledAt     DateTime?
+  // Besoins déclarés à l'inscription (facultatifs, avec l'accord explicite de la personne : données de santé ou
+  // révélant des convictions) : régime alimentaire, allergies, accessibilité ou adaptation. Transmis à l'organisateur
+  // et à ses prestataires pour l'événement, effacés 30 jours après sa fin.
+  diet            String?
+  allergies       String?
+  needs           String?
+  needsConsentAt  DateTime?
 
   benefits RegistrationBenefit[]
   survey   SurveyResponse?
@@ -861,6 +873,34 @@ model Registration {
   @@unique([eventId, userId])
   @@index([userId])
   @@index([sourceOrderId])
+}
+
+/** Liste d'attente d'un événement complet : prévenue dans l'ordre quand une place se libère (place non réservée). */
+model WaitlistEntry {
+  id         String    @id @default(cuid())
+  eventId    String
+  event      Event     @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  userId     String
+  user       User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  createdAt  DateTime  @default(now())
+  notifiedAt DateTime?
+
+  @@unique([eventId, userId])
+  @@index([eventId, createdAt])
+}
+
+/** Message de l'organisateur aux inscrits d'un événement (envoyé par e-mail, gardé en historique). */
+model EventMessage {
+  id         String   @id @default(cuid())
+  eventId    String
+  event      Event    @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  authorId   String
+  subject    String
+  body       String
+  recipients Int
+  createdAt  DateTime @default(now())
+
+  @@index([eventId, createdAt])
 }
 
 model RegistrationBenefit {

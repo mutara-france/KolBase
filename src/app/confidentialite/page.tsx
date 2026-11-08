@@ -27,6 +27,7 @@ export default function Page() {
           "Activité : inscriptions et présence aux événements, avantages acceptés, sollicitations, candidatures, projets proposés aux organisations, messages, conventions, honoraires et notes d'honoraires, documents déposés, avis laissés aux prestataires.",
           "Organisations et prestataires : rôle dans l'organisation, coordonnées professionnelles, données de facturation et d'abonnement (le moyen de paiement reste chez le prestataire de paiement).",
           "Données techniques : journal des actions sensibles (connexions, validations, décisions, exports), adresse IP utilisée pour limiter les tentatives de connexion, cookies décrits plus bas.",
+          "Besoins déclarés à l'inscription à un événement, s'il y a lieu : régime alimentaire, allergies, besoin d'accessibilité ou d'adaptation. Facultatifs, ils peuvent révéler une donnée de santé ou une conviction : ils ne sont enregistrés qu'avec votre accord exprès.",
           "Aucune donnée de santé de patients n'est traitée ; il est interdit d'en déposer.",
         ]} />],
         ["Finalités, bases légales et durées de conservation", <T key="3" head={["Finalité", "Base légale", "Conservation"]} rows={[
@@ -37,6 +38,7 @@ export default function Page() {
           ["Conventions, avantages, hospitalités et déclarations Transparence Santé (pour le compte des organisations)", "Obligation légale des organisations (articles L.1453-1 et suivants du Code de la santé publique)", "Durée des obligations déclaratives des organisations ; les éléments déclarés sont conservés même après suppression du compte"],
           ["Notifications par e-mail liées à votre activité", "Intérêt légitime ; désactivables dans « Mon compte »", "Le temps de l'envoi"],
           ["Utiliser la photo d'un expert pour annoncer ses interventions (programme, affiches, réseaux sociaux, e-mailing), par les organisations avec qui il collabore et par KolBase", "Consentement (case à cocher, retirable à tout moment dans « Mon compte »)", "Jusqu'au retrait de l'accord ou de la photo"],
+          ["Préparer l'accueil d'un événement selon vos besoins (repas, allergies, accessibilité) : transmis à l'organisateur et à son agence, et sans votre nom au lieu et au traiteur", "Consentement exprès (case à cocher à l'inscription, article 9 du RGPD)", "30 jours après la fin de l'événement"],
           ["Lettre d'information de KolBase", "Consentement (case à cocher, retirable en un clic)", "Jusqu'à la désinscription"],
           ["Mesure des services de communication (visites et inscriptions obtenues par un lien suivi)", "Intérêt légitime ; statistiques agrégées, sans nom", "13 mois"],
           ["Facturation des abonnements et des services", "Obligation légale (Code de commerce)", "10 ans pour les factures et pièces comptables"],

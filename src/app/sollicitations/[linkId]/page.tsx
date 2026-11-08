@@ -15,7 +15,7 @@ import { orgIsPublic } from "@/lib/org-roles";
 import { DocumentsPanel, ExpertSignatureBlock, MaterialsPanel } from "@/components/DossierSections";
 import { fmtDateTime, fmtEur, intlLocale } from "@/lib/i18n";
 import { DossierTabs, type DossierTab } from "@/components/DossierTabs";
-import { FORMAT_LABEL, formatDuration } from "@/lib/events";
+import { eventPlace, FORMAT_LABEL, formatDuration } from "@/lib/events";
 import { getT } from "@/lib/i18n/server";
 import { fmtHours, hoursDetail, hoursOf } from "@/lib/fees";
 
@@ -198,7 +198,7 @@ export default async function Page({ params, searchParams }: { params: Promise<{
                 <SectionHead icon={CalendarDays} title={ev.title} desc={`${t(FORMAT_LABEL[ev.format])}${ev.internal ? ` · ${t("réunion interne")}` : ""}`} />
                 <ul className="plain stack-sm text-sm">
                   <li><CalendarDays size={14} />{" "}{fmtDateTime(locale, ev.startsAt)}{ev.durationMinutes ? ` · ${formatDuration(ev.durationMinutes, locale)}` : ""}</li>
-                  <li><MapPin size={14} />{" "}{ev.format === "DISTANCIEL" ? t("En ligne") : [ev.venue, ev.city].filter(Boolean).join(", ") || t("Lieu à préciser")}</li>
+                  <li><MapPin size={14} />{" "}{ev.format === "DISTANCIEL" ? t("En ligne") : eventPlace(ev) || t("Lieu à préciser")}</li>
                   {engaged && ev.onlineUrl && ev.format !== "PRESENTIEL" && <li>{t("Lien de connexion :")}{" "}<a href={ev.onlineUrl} target="_blank" rel="noreferrer">{ev.onlineUrl}</a></li>}
                 </ul>
                 {ev.program && <><h3>{t("Programme")}</h3><p className="pre-line text-sm">{ev.program}</p></>}
