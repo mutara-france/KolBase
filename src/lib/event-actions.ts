@@ -14,11 +14,15 @@ import { getT } from "@/lib/i18n/server";
 import type { T } from "@/lib/i18n";
 import { engagementGate } from "@/lib/billing";
 import type { GateLink } from "@/lib/billing-plans";
-import { notifyEventCancelled, notifyEventChanged, notifyEventConfided, notifyEventMessage, notifyEventReview, notifyEventWithdrawn, notifyMandateEnded, notifyRegistration, notifyRegistrationCancelled } from "@/lib/notifications";
+import { notifyEventCancelled, notifyEventChanged, notifyEventConfided, notifyEventInvite, notifyEventMessage, notifyTravelBook, notifyEventReview, notifyEventWithdrawn, notifyMandateEnded, notifyRegistration, notifyRegistrationCancelled } from "@/lib/notifications";
 import { activeMandate } from "@/lib/mandates";
 import { hospitalityGate, normalizeVisa } from "@/lib/belgium";
 import { readNeeds } from "@/lib/registration-needs";
 import { offerFreedPlaces } from "@/lib/waitlist";
+import { readTravel, TRAVEL_BENEFITS, hasBooking } from "@/lib/travel";
+import { SUPPLIER_CATEGORIES } from "@/lib/suppliers";
+import { BUDGET_EXTRA } from "@/lib/event-budget";
+import { hashInvite, INVITE_REMINDER_MS, inviteFor, MAX_INVITES_PER_BATCH, newInviteToken, parseInviteList } from "@/lib/event-invites";
 import { SOURCE_COOKIE } from "@/lib/services";
 import { deletableDraft, DRAFT_COUNTS } from "@/lib/event-drafts";
 import { EVENT_NOT_PUBLISHABLE, eventPublishable } from "@/lib/projects";
@@ -57,6 +61,9 @@ function readEventFields(form: FormData, t: T) {
       postalCode: format === "DISTANCIEL" ? null : str(form, "postalCode").replace(/\s/g, "").slice(0, 12) || null,
       venue: format === "DISTANCIEL" ? null : str(form, "venue") || null,
       address: format === "DISTANCIEL" ? null : str(form, "address", 200) || null,
+      inviteOnly: form.get("inviteOnly") === "1",
+      hostedBy: str(form, "hostedBy", 160) || null,
+      hostedUrl: /^https:\/\/\S+$/.test(str(form, "hostedUrl", 300)) ? str(form, "hostedUrl", 300) : null,
       capacity: intOrNull(str(form, "capacity")),
     },
     benefits,
@@ -220,6 +227,15 @@ export async function setEventFlag(form: FormData) {
   const { count } = await db.event.updateMany({ where: { id: eventId, organizationId: orgId, cancelledAt: null, ...eventScope(user, roles), ...onlyPublic, ...noRegistrant }, data });
   if (!count) return;
   await audit(user.id, `event.${flag}`, "Event", eventId);
+  // Sur invitation : les invitations enregistrées pendant le brouillon partent à la publication (nouveau lien).
+  if (flag === "publish") {
+    const waiting = await db.eventInvite.findMany({ where: { eventId, event: { inviteOnly: true }, sentAt: null, declinedAt: null } });
+    for (const i of waiting) {
+      const token = newInviteToken();
+      await db.eventInvite.update({ where: { id: i.id }, data: { tokenHash: hashInvite(token), sentAt: new Date() } });
+      notifyEventInvite(i.id, token);
+    }
+  }
   revalidatePath(`/organisations/${orgId}/evenements/${eventId}`);
   // Événement rattaché à un dossier : il se gère aussi dans l'onglet « Événement » du dossier.
   revalidatePath(`/organisations/${orgId}/dossiers`, "layout");
@@ -304,6 +320,9 @@ export async function registerToEvent(_: ActionState, form: FormData): Promise<A
     include: { benefits: true, organization: { select: { kind: true } }, _count: { select: { registrations: true } } },
   });
   if (!event) return { error: t("Événement introuvable.") };
+  // Sur invitation : l'inscription suppose une invitation (lien personnel, ou adresse du compte invitée).
+  const invite = event.inviteOnly ? await inviteFor(eventId, user, str(form, "invitation") || null) : null;
+  if (event.inviteOnly && !invite) return { error: t("Cet événement est sur invitation : inscription réservée aux personnes invitées.") };
   if (!event.registrationOpen) return { error: t("Les inscriptions sont closes.") };
   if (event.startsAt < new Date()) return { error: t("Cet événement a déjà eu lieu.") };
   if (event.capacity && event._count.registrations >= event.capacity) return { error: t("L'événement est complet.") };
@@ -346,8 +365,12 @@ export async function registerToEvent(_: ActionState, form: FormData): Promise<A
     });
   });
   if (!reg) return { error: t("L'événement est complet.") };
-  // Inscrit : il quitte la liste d'attente s'il y était.
+  // Inscrit : il quitte la liste d'attente s'il y était ; son invitation est rattachée à son compte.
   await db.waitlistEntry.deleteMany({ where: { eventId, userId: user.id } });
+  if (invite) await db.eventInvite.update({ where: { id: invite.id }, data: { userId: user.id, declinedAt: null } });
+  // Nuitée ou transport acceptés : la ville de départ aide l'organisateur à réserver.
+  const departure = str(form, "departureCity", 120);
+  if (departure && accepted.some((b) => TRAVEL_BENEFITS.includes(b.catalogId))) await db.registrationTravel.create({ data: { registrationId: reg.id, departureCity: departure } });
   await audit(user.id, "registration.create", "Registration", reg.id, {
     eventId,
     benefits: accepted.map((b) => b.catalogId),
@@ -493,6 +516,131 @@ export async function leaveWaitlist(form: FormData) {
     await offerFreedPlaces(eventId);
   }
   revalidatePath(`/evenements/${eventId}`);
+}
+
+/**
+ * Invitations : une personne par ligne (e-mail, prénom, nom). Chaque invité reçoit un lien personnel ; une adresse
+ * déjà invitée n'est pas renvoyée. Réservé à l'équipe qui organise et à l'agence mandatée.
+ */
+export async function addEventInvites(_: ActionState, form: FormData): Promise<ActionState> {
+  const { t } = await getT();
+  const orgId = str(form, "orgId");
+  const eventId = str(form, "eventId");
+  const { user, roles } = await requireMembership(orgId, EVENT_MANAGER_ROLES);
+  const event = await db.event.findFirst({ where: { id: eventId, organizationId: orgId, inviteOnly: true, cancelledAt: null, ...eventScope(user, roles) }, select: { id: true, publishedAt: true, startsAt: true } });
+  if (!event) return { error: t("Événement introuvable ou ouvert à tous : cochez « Sur invitation » dans l'événement.") };
+  if (event.startsAt < new Date()) return { error: t("Cet événement a déjà eu lieu.") };
+  const { people, rejected } = parseInviteList(str(form, "people"));
+  if (people.length === 0) return { error: rejected.length ? t("Aucune adresse e-mail lisible : une personne par ligne, « e-mail ; prénom ; nom ».") : t("Ajoutez au moins une personne.") };
+  if (people.length > MAX_INVITES_PER_BATCH) return { error: t("{n} personnes au plus par envoi.", { n: MAX_INVITES_PER_BATCH }) };
+  const existing = new Set((await db.eventInvite.findMany({ where: { eventId, email: { in: people.map((p) => p.email) } }, select: { email: true } })).map((i) => i.email));
+  const fresh = people.filter((p) => !existing.has(p.email));
+  const users = new Map((await db.user.findMany({ where: { email: { in: fresh.map((p) => p.email) } }, select: { id: true, email: true } })).map((u) => [u.email, u.id]));
+  for (const p of fresh) {
+    const token = newInviteToken();
+    const inv = await db.eventInvite.create({ data: { eventId, email: p.email, firstName: p.firstName, lastName: p.lastName, userId: users.get(p.email) ?? null, tokenHash: hashInvite(token), createdById: user.id, sentAt: event.publishedAt ? new Date() : null } });
+    // Brouillon : les invitations partent à la publication de l'événement.
+    if (event.publishedAt) notifyEventInvite(inv.id, token);
+  }
+  await audit(user.id, "event.invites", "Event", eventId, { added: fresh.length, already: people.length - fresh.length, rejected: rejected.length });
+  revalidatePath(`/organisations/${orgId}/evenements/${eventId}`);
+  const parts = [
+    t(fresh.length > 1 ? "{n} invitations ajoutées" : "{n} invitation ajoutée", { n: fresh.length }),
+    existing.size ? t("{n} déjà invitée(s)", { n: existing.size }) : null,
+    rejected.length ? t("{n} ligne(s) illisible(s) : {lines}", { n: rejected.length, lines: rejected.slice(0, 3).join(" | ") }) : null,
+  ].filter(Boolean).join(" · ");
+  return { ok: `${parts}.${event.publishedAt ? "" : ` ${t("Elles partiront à la publication de l'événement.")}`}` };
+}
+
+/** Relance des invités qui n'ont ni répondu ni décliné (au plus une fois par 48 heures) ; nouveau lien personnel. */
+export async function remindEventInvites(form: FormData) {
+  const orgId = str(form, "orgId");
+  const eventId = str(form, "eventId");
+  const { user, roles } = await requireMembership(orgId, EVENT_MANAGER_ROLES);
+  const event = await db.event.findFirst({ where: { id: eventId, organizationId: orgId, inviteOnly: true, publishedAt: { not: null }, cancelledAt: null, startsAt: { gt: new Date() }, ...eventScope(user, roles) }, select: { id: true } });
+  if (!event) return;
+  const registered = new Set((await db.registration.findMany({ where: { eventId }, select: { userId: true } })).map((r) => r.userId));
+  const pending = (await db.eventInvite.findMany({ where: { eventId, declinedAt: null, sentAt: { not: null, lt: new Date(Date.now() - INVITE_REMINDER_MS) }, OR: [{ remindedAt: null }, { remindedAt: { lt: new Date(Date.now() - INVITE_REMINDER_MS) } }] } }))
+    .filter((i) => !i.userId || !registered.has(i.userId));
+  for (const i of pending) {
+    const token = newInviteToken();
+    await db.eventInvite.update({ where: { id: i.id }, data: { tokenHash: hashInvite(token), remindedAt: new Date() } });
+    notifyEventInvite(i.id, token, true);
+  }
+  await audit(user.id, "event.invites_remind", "Event", eventId, { reminded: pending.length });
+  revalidatePath(`/organisations/${orgId}/evenements/${eventId}`);
+}
+
+/** L'invité décline l'invitation (depuis la page de l'événement). */
+export async function declineEventInvite(form: FormData) {
+  const user = await requireUser();
+  const eventId = str(form, "eventId");
+  const invite = await inviteFor(eventId, user, str(form, "invitation") || null);
+  if (!invite) return;
+  await db.eventInvite.update({ where: { id: invite.id }, data: { declinedAt: new Date(), userId: user.id } });
+  await audit(user.id, "event.invite_decline", "Event", eventId);
+  revalidatePath(`/evenements/${eventId}`);
+}
+
+/** Réservations d'un participant (hôtel, dates, chambre, trajets, billets) : équipe qui organise ou agence mandatée. */
+export async function saveTravel(_: ActionState, form: FormData): Promise<ActionState> {
+  const { t } = await getT();
+  const orgId = str(form, "orgId");
+  const { user, roles } = await requireMembership(orgId, EVENT_MANAGER_ROLES);
+  const reg = await db.registration.findFirst({ where: { id: str(form, "registrationId"), event: { organizationId: orgId, ...eventScope(user, roles) } }, select: { id: true, eventId: true } });
+  if (!reg) return { error: t("Inscription introuvable.") };
+  const data = readTravel(form);
+  if ("error" in data) return { error: t(data.error) };
+  await db.registrationTravel.upsert({ where: { registrationId: reg.id }, create: { registrationId: reg.id, ...data }, update: data });
+  await audit(user.id, "registration.travel", "Registration", reg.id);
+  revalidatePath(`/organisations/${orgId}/evenements/${reg.eventId}`);
+  return { ok: t("Réservations enregistrées.") };
+}
+
+/** Carnets de voyage : envoyés aux participants dont la réservation est renseignée et a changé depuis le dernier envoi. */
+export async function sendTravelBooks(form: FormData) {
+  const orgId = str(form, "orgId");
+  const eventId = str(form, "eventId");
+  const { user, roles } = await requireMembership(orgId, EVENT_MANAGER_ROLES);
+  const event = await db.event.findFirst({ where: { id: eventId, organizationId: orgId, cancelledAt: null, ...eventScope(user, roles) }, select: { id: true } });
+  if (!event) return;
+  const travels = await db.registrationTravel.findMany({ where: { registration: { eventId, cancelledAt: null } } });
+  const due = travels.filter((tr) => hasBooking(tr) && (!tr.sentAt || tr.updatedAt.getTime() > tr.sentAt.getTime() + 1000));
+  for (const tr of due) {
+    await db.registrationTravel.update({ where: { registrationId: tr.registrationId }, data: { sentAt: new Date() } });
+    notifyTravelBook(tr.registrationId);
+  }
+  await audit(user.id, "event.travel_books", "Event", eventId, { sent: due.length });
+  revalidatePath(`/organisations/${orgId}/evenements/${eventId}`);
+}
+
+/** Budget de l'événement : poste (catégorie de prestataire, hospitalités, autre), libellé et montant prévu TTC. */
+export async function addBudgetLine(_: ActionState, form: FormData): Promise<ActionState> {
+  const { t } = await getT();
+  const orgId = str(form, "orgId");
+  const eventId = str(form, "eventId");
+  const { user, roles } = await requireMembership(orgId, EVENT_MANAGER_ROLES);
+  const event = await db.event.findFirst({ where: { id: eventId, organizationId: orgId, ...eventScope(user, roles) }, select: { id: true } });
+  if (!event) return { error: t("Événement introuvable.") };
+  const category = str(form, "category");
+  if (![...SUPPLIER_CATEGORIES, ...BUDGET_EXTRA].some((c) => c.id === category)) return { error: t("Poste invalide.") };
+  const planned = eurToCents(str(form, "planned"), { allowZero: false });
+  if (!planned || planned > 100_000_000) return { error: t("Montant prévu invalide.") };
+  const label = str(form, "label", 120) || "";
+  await db.eventBudgetLine.create({ data: { eventId, category, label, plannedCents: planned } });
+  await audit(user.id, "event.budget_line", "Event", eventId, { category, planned });
+  revalidatePath(`/organisations/${orgId}/evenements/${eventId}`);
+  return { ok: t("Poste ajouté au budget.") };
+}
+
+export async function removeBudgetLine(form: FormData) {
+  const orgId = str(form, "orgId");
+  const { user, roles } = await requireMembership(orgId, EVENT_MANAGER_ROLES);
+  const line = await db.eventBudgetLine.findFirst({ where: { id: str(form, "lineId"), event: { organizationId: orgId, ...eventScope(user, roles) } } });
+  if (!line) return;
+  await db.eventBudgetLine.delete({ where: { id: line.id } });
+  await audit(user.id, "event.budget_line_remove", "Event", line.eventId, { category: line.category });
+  revalidatePath(`/organisations/${orgId}/evenements/${line.eventId}`);
 }
 
 /** Messages aux inscrits : trois au plus par événement sur 24 heures. */

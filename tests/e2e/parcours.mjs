@@ -683,6 +683,89 @@ const linkIn = (mail) => mail?.text.match(/https?:\/\/\S+/g)?.find((u) => !u.end
   await pgc.end();
 }
 
+// ── Invitations et logistique : événement sur invitation, congrès d'un tiers, voyages, budget ──
+{
+  const pgc = new pg.Client({ connectionString: process.env.DATABASE_URL });
+  await pgc.connect();
+  const q1 = async (sql, args = []) => (await pgc.query(sql, args)).rows[0];
+  await pgc.query(`insert into "Event" (id, "organizationId", title, "typeId", "startsAt", "durationMinutes", format, city, venue, capacity, "publishedAt", "inviteOnly", "hostedBy", "hostedUrl", "updatedAt")
+    values ('e2e-r4-ev', 'demo-org-dentalys', 'Congrès ADF Invitation', 'pleniere', now() + interval '35 days', 480, 'PRESENTIEL', 'Paris', 'Palais des congrès (fictif)', 30, now(), true, 'ADF', 'https://www.adf.asso.fr', now())`);
+  await pgc.query(`insert into "EventBenefit" (id, "eventId", "catalogId", label, "valueCents") values ('e2e-r4-b-ins', 'e2e-r4-ev', 'inscription', 'Frais d''inscription', 45000), ('e2e-r4-b-nuit', 'e2e-r4-ev', 'nuitee', 'Nuitée d''hôtel', 14000), ('e2e-r4-b-tr', 'e2e-r4-ev', 'transport', 'Transport aller-retour', 9000)`);
+  const ev = `${BASE}/evenements/e2e-r4-ev`;
+  const anon = await session();
+  await anon.page.goto(`${BASE}/evenements`);
+  const agenda = await text(anon.page);
+  const direct = await anon.page.goto(ev);
+  check("Sur invitation : absent de l'agenda, page introuvable sans invitation", !agenda.includes("Congrès ADF Invitation") && direct.status() === 404);
+  await anon.ctx.close();
+
+  // L'organisatrice invite deux personnes ; chacune reçoit un lien personnel.
+  const EMMA = "emma.simon@demo.kolbase.local";
+  const claire = await session();
+  await login(claire.page, "claire.morel@demo.kolbase.local");
+  const ws = `${BASE}/organisations/demo-org-dentalys/evenements/e2e-r4-ev`;
+  await claire.page.goto(ws);
+  await claire.page.fill('textarea[name="people"]', `${EMMA} ; Emma ; Simon\nPaul Externe <paul.externe@exemple.fr>\npas une adresse`);
+  await claire.page.click('button:has-text("Inviter")');
+  await claire.page.waitForTimeout(1500);
+  const n = (await q1(`select count(*)::int n from "EventInvite" where "eventId" = 'e2e-r4-ev'`)).n;
+  check("Invitations : deux ajoutées, la ligne illisible signalée", n === 2 && (await text(claire.page)).includes("1 ligne(s) illisible(s)"));
+  const inv = await waitMail(EMMA, "Invitation : « Congrès ADF Invitation");
+  const link = inv?.text.match(/https?:\/\/\S+invitation=[\w-]+/)?.[0];
+  check("Invitation : e-mail avec lien personnel, organisateur du congrès cité", !!link && inv.text.includes("organisé par ADF"), inv?.text.slice(0, 300));
+
+  // L'invitée s'inscrit depuis le lien, accepte nuitée et transport, donne sa ville de départ.
+  const emma = await session();
+  await login(emma.page, EMMA);
+  await emma.page.goto(link.replace(/^https?:\/\/[^/]+/, BASE));
+  let t = await text(emma.page);
+  check("Invitée : page ouverte, congrès d'un tiers annoncé", t.includes("Événement sur invitation") && t.includes("Organisé par ADF"));
+  await emma.page.check('input[name="accept_e2e-r4-b-nuit"]');
+  await emma.page.check('input[name="accept_e2e-r4-b-tr"]');
+  await emma.page.fill('input[name="departureCity"]', "Montpellier");
+  await emma.page.check('input[name="ackHcp"]');
+  await emma.page.click('button:has-text("M\'inscrire")');
+  await emma.page.locator("text=Inscription confirmée").first().waitFor({ timeout: 8000 }).catch(() => {});
+  const reg = await q1(`select r.id, tr."departureCity" city from "Registration" r join "User" u on u.id = r."userId" left join "RegistrationTravel" tr on tr."registrationId" = r.id where u.email = $1 and r."eventId" = 'e2e-r4-ev'`, [EMMA]);
+  check("Invitée inscrite, ville de départ enregistrée", reg?.city === "Montpellier", JSON.stringify(reg));
+
+  // Organisatrice : réservation, carnet de voyage, liste des chambres, budget.
+  await claire.page.goto(ws);
+  t = await text(claire.page);
+  check("Organisatrice : invitée « Inscrit », voyageuse au départ de Montpellier", t.includes("Inscrit") && t.includes("départ de Montpellier"));
+  const row = claire.page.locator('#voyages li:has-text("Emma Simon")');
+  await row.locator("summary").click();
+  const day = (d) => new Date(Date.now() + d * 864e5).toISOString().slice(0, 10);
+  await row.locator('input[name="hotel"]').fill("Hôtel Rive Gauche (fictif)");
+  await row.locator('input[name="checkIn"]').fill(day(34));
+  await row.locator('input[name="checkOut"]').fill(day(36));
+  await row.locator('select[name="roomType"]').selectOption("single");
+  await row.locator('input[name="outbound"]').fill("TGV 6204 Montpellier 6 h 30 → Paris 9 h 50");
+  await row.locator('button:has-text("Enregistrer")').click();
+  await claire.page.waitForTimeout(1200);
+  await claire.page.goto(ws);
+  await claire.page.click('button:has-text("Envoyer le carnet de voyage")');
+  const book = await waitMail(EMMA, "Votre voyage : « Congrès ADF Invitation");
+  check("Carnet de voyage envoyé : hôtel, chambre et aller", !!book && book.text.includes("Hôtel Rive Gauche (fictif)") && book.text.includes("Individuelle") && book.text.includes("TGV 6204"), book?.text.slice(0, 300));
+  const rooming = await (await claire.page.request.get(`${ws}/chambres`)).text();
+  check("Liste des chambres pour l'hôtel : participante, deux nuits, chambre individuelle", rooming.includes("SIMON") && rooming.includes(";2;") && rooming.includes("Individuelle"));
+  await emma.page.goto(`${BASE}/inscriptions`);
+  check("Mes inscriptions : le voyage de la participante", (await text(emma.page)).includes("hôtel : Hôtel Rive Gauche (fictif)"));
+  await claire.page.goto(ws);
+  await claire.page.locator('#budget select[name="category"]').selectOption("hebergement");
+  await claire.page.fill('#budget input[name="label"]', "Nuitées des invités");
+  await claire.page.fill('#budget input[name="planned"]', "4200");
+  await claire.page.click('#budget button:has-text("Ajouter le poste")');
+  await claire.page.waitForTimeout(1200);
+  await claire.page.goto(ws);
+  check("Budget : poste prévu affiché", (await claire.page.locator("#budget").innerText()).includes("Nuitées des invités"));
+  await emma.ctx.close();
+  await claire.ctx.close();
+  await pgc.query(`delete from "Registration" where "eventId" = 'e2e-r4-ev'`);
+  await pgc.query(`delete from "Event" where id = 'e2e-r4-ev'`);
+  await pgc.end();
+}
+
 // ── Agences : confier un événement en une seule action ─────────────────────
 {
   const agent = await session();

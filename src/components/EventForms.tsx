@@ -2,7 +2,9 @@
 
 import Link from "next/link";
 import { useActionState, useState } from "react";
-import { createEvent, registerToEvent, reviewEvent, saveEventProgram, sendEventMessage, setEventMdeonVisa, updateEvent } from "@/lib/event-actions";
+import { addBudgetLine, addEventInvites, createEvent, registerToEvent, reviewEvent, saveEventProgram, saveTravel, sendEventMessage, setEventMdeonVisa, updateEvent } from "@/lib/event-actions";
+import { ROOM_TYPES } from "@/lib/travel";
+import { BUDGET_POSTS } from "@/lib/event-budget";
 import { canAcceptHospitality, type HospitalityGate } from "@/lib/belgium";
 import { DIETS } from "@/lib/registration-needs";
 import { AiDraft } from "@/components/AiDraft";
@@ -21,7 +23,7 @@ type CatalogItem = { id: string; label: string; typical: number };
 /** Valeurs d'un événement existant (formulaire de modification). */
 export type EventInitial = {
   title: string; typeId: string; therapeuticArea: string; description: string; startsAt: string; durationMinutes: string;
-  format: string; capacity: string; city: string; postalCode?: string; venue: string; address?: string; onlineUrl: string; benefits: { catalogId: string; valueCents: number }[];
+  format: string; capacity: string; city: string; postalCode?: string; venue: string; address?: string; onlineUrl: string; inviteOnly?: boolean; hostedBy?: string; hostedUrl?: string; benefits: { catalogId: string; valueCents: number }[];
 };
 
 type Frozen = { catalogId: string; label: string; valueCents: number }[];
@@ -77,6 +79,18 @@ function EventFields({ types, formats, catalog, initial, frozen, project, limits
         <label>{t("Domaine thérapeutique")}<input name="therapeuticArea" placeholder={t("Implantologie…")} defaultValue={initial?.therapeuticArea ?? project?.area ?? undefined} /></label>
       </div>
       <label>{t("Description")}<textarea name="description" rows={4} defaultValue={initial?.description} /></label>
+      <div>
+        <label className="check"><input type="checkbox" name="inviteOnly" value="1" defaultChecked={!!initial?.inviteOnly} /> {t("Sur invitation : hors de l'agenda public, inscription réservée aux invités")}</label>
+        <p className="hint">{t("Comité consultatif, atelier fermé, invitation à un congrès : vous ajoutez les invités depuis la fiche de l'événement, chacun reçoit un lien personnel.")}</p>
+      </div>
+      <details className="disclosure" open={!!initial?.hostedBy}>
+        <summary>{t("Congrès organisé par un tiers")}</summary>
+        <div className="row">
+          <label>{t("Organisateur du congrès")}<input name="hostedBy" maxLength={160} defaultValue={initial?.hostedBy} placeholder={t("ADF, société savante…")} /></label>
+          <label>{t("Page du congrès")}<input name="hostedUrl" type="url" inputMode="url" maxLength={300} defaultValue={initial?.hostedUrl} placeholder="https://…" /></label>
+        </div>
+        <p className="hint">{t("Vous invitez des praticiens à un congrès que vous n'organisez pas : proposez les frais d'inscription, le transport et la nuitée comme prestations ; chacun accepte ce qu'il veut, les conventions et déclarations suivent.")}</p>
+      </details>
       <div className="row">
         <label>{t("Date et heure (Paris)")}<input name="startsAt" type="datetime-local" required defaultValue={initial?.startsAt} onChange={(e) => setStart(e.target.value)} /></label>
         <label>{t("Durée (minutes)")}<input name="durationMinutes" type="number" min={0} step={15} defaultValue={initial?.durationMinutes} /></label>
@@ -188,10 +202,10 @@ export function EditEventForm({ orgId, eventId, types, formats, catalog, initial
   );
 }
 
-type Benefit = { id: string; label: string; valueCents: number };
+type Benefit = { id: string; label: string; valueCents: number; catalogId?: string };
 const eur = (c: number, locale: Locale) => (c / 100).toLocaleString(intlLocale(locale), { style: "currency", currency: "EUR" });
 
-export function RegisterForm({ eventId, benefits, hcp, defaultStructure, gate = "fr", visa = null }: { eventId: string; benefits: Benefit[]; hcp: boolean; defaultStructure: string; gate?: HospitalityGate; visa?: string | null }) {
+export function RegisterForm({ eventId, benefits, hcp, defaultStructure, gate = "fr", visa = null, invitation }: { eventId: string; benefits: Benefit[]; hcp: boolean; defaultStructure: string; gate?: HospitalityGate; visa?: string | null; invitation?: string }) {
   const [state, action, pending] = useActionState(registerToEvent, undefined);
   const [accepted, setAccepted] = useState<Record<string, boolean>>({});
   const t = useT();
@@ -204,6 +218,7 @@ export function RegisterForm({ eventId, benefits, hcp, defaultStructure, gate = 
     <form action={action} className="form">
       <Notice state={state} />
       <input type="hidden" name="eventId" value={eventId} />
+      {invitation && <input type="hidden" name="invitation" value={invitation} />}
       <label>{t("Structure d'exercice")}<input name="structure" defaultValue={defaultStructure} placeholder={t("Cabinet, hôpital…")} /></label>
       {benefits.length > 0 && (
         <fieldset>
@@ -223,6 +238,9 @@ export function RegisterForm({ eventId, benefits, hcp, defaultStructure, gate = 
           ))}
           {total > 0 && <p className="muted">{t("Valeur totale acceptée :")} <strong>{eur(total, locale)}</strong></p>}
         </fieldset>
+      )}
+      {!closed && benefits.some((b) => accepted[b.id] && (b.catalogId === "nuitee" || b.catalogId === "transport")) && (
+        <label>{t("Ville de départ")}<input name="departureCity" maxLength={120} placeholder={t("Pour réserver votre transport et votre hôtel")} /></label>
       )}
       <NeedsFields />
       {hcp && total > 0 && (
@@ -351,6 +369,81 @@ export function EventMessageForm({ orgId, eventId, count }: { orgId: string; eve
       <label>{t("Objet")}<input name="subject" maxLength={120} required placeholder={t("Changement de salle, informations pratiques…")} /></label>
       <label>{t("Message")}<textarea name="body" rows={4} maxLength={4000} required /></label>
       <button className="btn small" disabled={pending}>{pending ? t("Envoi…") : t(count > 1 ? "Envoyer aux {n} inscrits" : "Envoyer à l'inscrit", { n: count })}</button>
+    </form>
+  );
+}
+
+/** Invités : une personne par ligne (e-mail, prénom, nom), chacune reçoit un lien personnel. */
+export function InviteForm({ orgId, eventId }: { orgId: string; eventId: string }) {
+  const t = useT();
+  const [state, action, pending] = useActionState(addEventInvites, undefined);
+  return (
+    <form action={action} className="form stack-sm" key={state?.ok ? Date.now() : "invites"}>
+      <Notice state={state} />
+      <input type="hidden" name="orgId" value={orgId} />
+      <input type="hidden" name="eventId" value={eventId} />
+      <label>{t("Personnes à inviter")}
+        <textarea name="people" rows={4} required placeholder={t("claire.dupont@exemple.fr ; Claire ; Dupont\nJean Martin <jean.martin@exemple.fr>")} />
+        <span className="hint">{t("Une personne par ligne : e-mail, prénom, nom (séparés par un point-virgule), ou « Prénom Nom <e-mail> ». Collez directement depuis un tableur.")}</span>
+      </label>
+      <button className="btn small" disabled={pending}>{pending ? t("Envoi…") : t("Inviter")}</button>
+    </form>
+  );
+}
+
+type TravelInitial = { checkIn: string; checkOut: string; roomType: string; hotel: string; hotelRef: string; outbound: string; returnTrip: string; ticketRef: string; notes: string };
+
+/** Réservations d'un participant : hôtel, dates, chambre, trajets, billets. */
+export function TravelForm({ orgId, registrationId, initial }: { orgId: string; registrationId: string; initial: TravelInitial }) {
+  const t = useT();
+  const [state, action, pending] = useActionState(saveTravel, undefined);
+  return (
+    <form action={action} className="form stack-sm">
+      <Notice state={state} />
+      <input type="hidden" name="orgId" value={orgId} />
+      <input type="hidden" name="registrationId" value={registrationId} />
+      <div className="row">
+        <label>{t("Hôtel")}<input name="hotel" maxLength={160} defaultValue={initial.hotel} /></label>
+        <label>{t("N° de réservation")}<input name="hotelRef" maxLength={80} defaultValue={initial.hotelRef} /></label>
+      </div>
+      <div className="row">
+        <label>{t("Arrivée")}<input name="checkIn" type="date" defaultValue={initial.checkIn} /></label>
+        <label>{t("Départ")}<input name="checkOut" type="date" defaultValue={initial.checkOut} /></label>
+        <label>{t("Chambre")}
+          <select name="roomType" defaultValue={initial.roomType}>
+            <option value="">—</option>
+            {ROOM_TYPES.map((r) => <option key={r.id} value={r.id}>{t(r.label)}</option>)}
+          </select>
+        </label>
+      </div>
+      <div className="row">
+        <label>{t("Aller")}<input name="outbound" maxLength={300} defaultValue={initial.outbound} placeholder={t("TGV 6203 Paris 7 h 04 → Lyon 9 h 00")} /></label>
+        <label>{t("Retour")}<input name="returnTrip" maxLength={300} defaultValue={initial.returnTrip} /></label>
+      </div>
+      <div className="row">
+        <label>{t("Billets (référence)")}<input name="ticketRef" maxLength={120} defaultValue={initial.ticketRef} /></label>
+        <label>{t("Remarque")}<input name="notes" maxLength={500} defaultValue={initial.notes} /></label>
+      </div>
+      <button className="btn small secondary" disabled={pending}>{pending ? t("Enregistrement…") : t("Enregistrer")}</button>
+    </form>
+  );
+}
+
+/** Nouveau poste du budget de l'événement. */
+export function BudgetLineForm({ orgId, eventId }: { orgId: string; eventId: string }) {
+  const t = useT();
+  const [state, action, pending] = useActionState(addBudgetLine, undefined);
+  return (
+    <form action={action} className="form stack-sm" key={state?.ok ? Date.now() : "budget"}>
+      <Notice state={state} />
+      <input type="hidden" name="orgId" value={orgId} />
+      <input type="hidden" name="eventId" value={eventId} />
+      <div className="row">
+        <label>{t("Poste")}<select name="category" defaultValue="restauration">{BUDGET_POSTS.map((p) => <option key={p.id} value={p.id}>{t(p.label)}</option>)}</select></label>
+        <label>{t("Libellé")}<input name="label" maxLength={120} placeholder={t("Cocktail de clôture…")} /></label>
+        <label>{t("Prévu (€ TTC)")}<input name="planned" inputMode="decimal" required /></label>
+      </div>
+      <button className="btn small secondary" disabled={pending}>{pending ? t("Ajout…") : t("Ajouter le poste")}</button>
     </form>
   );
 }

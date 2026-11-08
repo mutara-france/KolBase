@@ -701,6 +701,11 @@ model Event {
   mdeonVisaAt      DateTime?
   // Adresse postale du lieu (rue et numéro), en plus du nom du lieu, du code postal et de la ville.
   address          String?
+  // Sur invitation : hors de l'agenda public, page et inscription réservées aux invités (comité, atelier fermé…).
+  inviteOnly       Boolean      @default(false)
+  // Congrès d'un tiers (ADF, société savante) auquel l'organisation invite des praticiens : son organisateur et sa page.
+  hostedBy         String?
+  hostedUrl        String?
   // Agence prestataire mandatée : ses membres (rôle Prestataire) ne voient que les événements confiés.
   agencyId         String?
   agency           Organization? @relation("agencyEvents", fields: [agencyId], references: [id])
@@ -714,6 +719,8 @@ model Event {
   registrations Registration[]
   waitlist      WaitlistEntry[]
   messages      EventMessage[]
+  invites       EventInvite[]
+  budgetLines   EventBudgetLine[]
   surveys       SurveyResponse[]
   serviceOrders ServiceOrder[]
   rfqs          Rfq[]
@@ -884,6 +891,7 @@ model Registration {
 
   benefits RegistrationBenefit[]
   survey   SurveyResponse?
+  travel   RegistrationTravel?
 
   @@unique([eventId, userId])
   @@index([userId])
@@ -902,6 +910,62 @@ model WaitlistEntry {
 
   @@unique([eventId, userId])
   @@index([eventId, createdAt])
+}
+
+/** Invitation nominative à un événement sur invitation : lien à usage personnel (jeton stocké haché), relance, réponse. */
+model EventInvite {
+  id          String    @id @default(cuid())
+  eventId     String
+  event       Event     @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  email       String
+  firstName   String?
+  lastName    String?
+  // Compte rattaché (inscription faite depuis l'invitation, ou adresse d'un compte existant).
+  userId      String?
+  tokenHash   String    @unique
+  invitedAt   DateTime  @default(now())
+  // Envoi de l'invitation (à l'ajout, ou à la publication pour un événement encore en brouillon).
+  sentAt      DateTime?
+  remindedAt  DateTime?
+  declinedAt  DateTime?
+  createdById String?
+
+  @@unique([eventId, email])
+  @@index([eventId])
+}
+
+/**
+ * Voyage et hébergement d'un participant (nuitée, transport acceptés) : demandes du participant, puis réservations
+ * de l'organisateur ou de son agence ; carnet de voyage envoyé au participant, liste des chambres pour l'hôtel.
+ */
+model RegistrationTravel {
+  registrationId String       @id
+  registration   Registration @relation(fields: [registrationId], references: [id], onDelete: Cascade)
+  departureCity  String?
+  checkIn        DateTime?
+  checkOut       DateTime?
+  roomType       String?      // single, double
+  hotel          String?
+  hotelRef       String?
+  outbound       String?
+  returnTrip     String?
+  ticketRef      String?
+  notes          String?
+  sentAt         DateTime?
+  updatedAt      DateTime     @updatedAt
+}
+
+/** Budget d'un événement par poste (catégorie de prestataire ou autre) : prévu, face aux devis retenus. */
+model EventBudgetLine {
+  id           String   @id @default(cuid())
+  eventId      String
+  event        Event    @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  category     String
+  label        String
+  plannedCents Int
+  createdAt    DateTime @default(now())
+
+  @@index([eventId])
 }
 
 /** Message de l'organisateur aux inscrits d'un événement (envoyé par e-mail, gardé en historique). */

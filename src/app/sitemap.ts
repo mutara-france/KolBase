@@ -14,7 +14,7 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
   const [experts, orgs, events, articles] = await Promise.all([
     db.practitionerProfile.findMany({ where: { listed: true, ...realPractitioner }, select: { id: true, updatedAt: true } }),
     db.organization.findMany({ where: { listed: true, verification: "VERIFIED", kind: { not: "PRESTATAIRE" }, ...realOrganization }, select: { id: true, updatedAt: true } }),
-    db.event.findMany({ where: { publishedAt: { not: null }, startsAt: { gte: new Date() }, organization: { verification: "VERIFIED", ...realOrganization } }, select: { id: true, updatedAt: true } }),
+    db.event.findMany({ where: { publishedAt: { not: null }, inviteOnly: false, startsAt: { gte: new Date() }, organization: { verification: "VERIFIED", ...realOrganization } }, select: { id: true, updatedAt: true } }),
     db.article.findMany({ where: { publishedAt: { not: null, lte: new Date() } }, select: { slug: true, updatedAt: true } }),
   ]);
   return [
