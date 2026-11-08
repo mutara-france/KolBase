@@ -31,6 +31,7 @@ export async function exportAccount(userId: string) {
       photo: { select: { data: true, updatedAt: true } },
       memberships: { select: { role: true, createdAt: true, organization: { select: { name: true, kind: true } } } },
       registrations: { include: { event: { select: { title: true, startsAt: true, organization: { select: { name: true } } } }, benefits: { include: { benefit: { select: { label: true } } } }, attendances: { select: { signedAt: true, method: true, session: { select: { startsAt: true, endsAt: true } } } } } },
+      abstracts: { select: { title: true, authors: true, body: true, topic: true, format: true, status: true, decisionNote: true, createdAt: true, event: { select: { title: true } } } },
       follows: { select: { createdAt: true, practitioner: { select: { id: true } }, organization: { select: { name: true } } } },
       sessions: { select: { createdAt: true, expiresAt: true, userAgent: true } },
       auditLogs: { select: { action: true, entityType: true, entityId: true, createdAt: true }, orderBy: { createdAt: "desc" }, take: 500 },
@@ -101,6 +102,8 @@ export async function anonymizeAccount(userId: string) {
     db.session.deleteMany({ where: { userId } }),
     db.authToken.deleteMany({ where: { userId } }),
     db.follow.deleteMany({ where: { userId } }),
+    // Communications non retenues (soumises, refusées, retirées) : effacées ; celles au programme restent.
+    db.abstract.deleteMany({ where: { userId, status: { not: "accepted" } } }),
     db.membership.deleteMany({ where: { userId } }),
     db.projectLead.deleteMany({ where: { userId } }),
     db.userPhoto.deleteMany({ where: { userId } }),

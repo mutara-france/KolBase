@@ -39,6 +39,7 @@ import { groupOrders, packItemStatus, packSaving, packStatus } from "@/lib/servi
 import { SendNowButton } from "@/components/FollowupForms";
 import { TableWrap } from "@/components/TableWrap";
 import { TrainingSections } from "@/components/TrainingSections";
+import { CongressSections } from "@/components/CongressSections";
 import { getT } from "@/lib/i18n/server";
 import { fmtDate, fmtEur, fmtTime, intlLocale } from "@/lib/i18n";
 
@@ -980,6 +981,7 @@ export async function EventWorkspace({ orgId: id, eventId, publie, mode = "page"
           );
         })()}
 
+        <CongressSections orgId={id} eventId={eventId} readOnly={readOnly} userId={user.id} organizer={isOrganizer} />
         <TrainingSections orgId={id} eventId={eventId} readOnly={readOnly} />
 
         {!event.internal && !readOnly && !event.cancelledAt && (

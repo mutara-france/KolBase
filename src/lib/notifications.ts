@@ -13,6 +13,7 @@ import { rnaAccepted } from "@/lib/org-roles";
 import { supplierCategoryLabel } from "@/lib/suppliers";
 import { fmtDate, fmtEur, intlLocale, isLocale, makeT, type Locale, type T } from "@/lib/i18n";
 import { roomTypeLabel } from "@/lib/travel";
+import { partnerLevelLabel } from "@/lib/congress";
 import { collabType, PROJECT_ROLES, SOURCING_ROLES, STATUS_LABEL, type ExpertNotice } from "@/lib/projects";
 import { featuredUntil, orderStats } from "@/lib/services";
 import { conversion, reportParts } from "@/lib/service-report";
@@ -276,6 +277,57 @@ export function notifyConventionDeposited(linkId: string) {
     const l = await db.projectExpert.findUnique({ where: { id: linkId }, include: linkInclude });
     if (!l) return;
     await send(await projectTeam(l.project), (t) => ({ subject: t("Convention signée déposée par {expert} — {project}", { expert: expertName(l.practitioner), project: l.project.title }), text: t("Bonjour,\n\n{expert} a déposé sa convention signée pour « {project} ». Vérifiez-la dans les documents du dossier, puis passez le dossier en « Signé » une fois toutes les conventions réunies.", { expert: expertName(l.practitioner), project: l.project.title }), cta: { label: t("Ouvrir le dossier"), href: `/organisations/${l.project.organizationId}/dossiers/${l.projectId}` } }));
+  });
+}
+
+/** Décision du comité sur une communication soumise : l'auteur est prévenu (format retenu, motif éventuel). */
+export function notifyAbstractDecision(abstractId: string) {
+  later(async () => {
+    const a = await db.abstract.findUnique({ where: { id: abstractId }, include: { user: { select: { ...userSelect, firstName: true } }, event: { select: { id: true, title: true, organization: { select: { name: true } } } } } });
+    if (!a || (a.status !== "accepted" && a.status !== "rejected")) return;
+    await send([a.user], (t) => ({
+      subject: a.status === "accepted" ? t("Communication retenue : « {title} »", { title: a.title }) : t("Communication non retenue : « {title} »", { title: a.title }),
+      text: [
+        t("Bonjour {name},", { name: a.user.firstName }),
+        a.status === "accepted"
+          ? t("Le comité de « {event} » ({org}) a retenu votre communication « {title} », en {format}. Le programme précisera le jour, l'heure et la salle.", { event: a.event.title, org: a.event.organization.name, title: a.title, format: a.acceptedFormat === "poster" ? t("poster") : t("communication orale") })
+          : t("Le comité de « {event} » ({org}) n'a pas retenu votre communication « {title} ».", { event: a.event.title, org: a.event.organization.name, title: a.title }),
+        a.decisionNote ? t("Message du comité : {note}", { note: a.decisionNote }) : null,
+      ].filter(Boolean).join("\n\n"),
+      cta: { label: t("Voir mes communications"), href: `/evenements/${a.event.id}/communications` },
+    }));
+  });
+}
+
+/** Convention de partenariat proposée : l'administration et la conformité de l'organisation partenaire répondent. */
+export function notifyPartnershipProposed(partnerId: string) {
+  later(async () => {
+    const p = await db.eventPartner.findUnique({ where: { id: partnerId }, include: { event: { select: { title: true, startsAt: true, organization: { select: { name: true } } } } } });
+    if (!p?.organizationId) return;
+    await send(await members(p.organizationId, ["ADMIN", "CONFORMITE"]), (t, locale) => ({
+      subject: t("Proposition de partenariat : « {title} »", { title: p.event.title }),
+      text: t("Bonjour,\n\n{org} vous propose un partenariat pour « {title} » ({date}) : {level}{amount}.{counterparts}\n\nSignez ou déclinez la convention depuis vos partenariats.", {
+        org: p.event.organization.name, title: p.event.title, date: fmtDate(locale, p.event.startsAt),
+        level: t(partnerLevelLabel(p.level)), amount: p.amountCents != null ? `, ${t("{amount} HT", { amount: fmtEur(locale, p.amountCents) })}` : "",
+        counterparts: p.counterparts ? `\n\n${t("Contreparties : {list}", { list: p.counterparts })}` : "",
+      }),
+      cta: { label: t("Voir la proposition"), href: `/organisations/${p.organizationId}/partenariats` },
+    }));
+  });
+}
+
+/** Réponse du partenaire (signée, déclinée) : l'équipe qui organise l'événement est prévenue. */
+export function notifyPartnershipAnswered(partnerId: string) {
+  later(async () => {
+    const p = await db.eventPartner.findUnique({ where: { id: partnerId }, include: { event: { select: { id: true, title: true, organizationId: true } } } });
+    if (!p || (p.status !== "signed" && p.status !== "declined")) return;
+    await send(await members(p.event.organizationId, EVENT_ORGANIZER_ROLES), (t) => ({
+      subject: p.status === "signed" ? t("Partenariat signé par {name} : « {title} »", { name: p.name, title: p.event.title }) : t("Partenariat décliné par {name} : « {title} »", { name: p.name, title: p.event.title }),
+      text: p.status === "signed"
+        ? t("Bonjour,\n\n{name} a signé la convention de partenariat pour « {title} ».", { name: p.name, title: p.event.title })
+        : `${t("Bonjour,\n\n{name} a décliné la convention de partenariat pour « {title} ».", { name: p.name, title: p.event.title })}${p.declineNote ? `\n\n${t("Motif : {note}", { note: p.declineNote })}` : ""}`,
+      cta: { label: t("Ouvrir l'événement"), href: `/organisations/${p.event.organizationId}/evenements/${p.event.id}#partenaires` },
+    }));
   });
 }
 

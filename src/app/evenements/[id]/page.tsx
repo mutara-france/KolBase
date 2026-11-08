@@ -1,4 +1,5 @@
 import { SignPanel, TrainingSheetPanel } from "@/components/TrainingPublic";
+import { AbstractsCallPanel, CongressProgram, EventPartnersPanel } from "@/components/CongressPublic";
 import Link from "next/link";
 import { attended, eventEnded } from "@/lib/event-followup";
 import { CalendarDays, CalendarPlus, Gift, MapPin, Users } from "lucide-react";
@@ -148,7 +149,9 @@ export default async function Page({ params, searchParams }: { params: Promise<{
           <div className="page-main">
             {event.description && <section className="card"><h2>{t("Présentation")}</h2><p className="pre-line">{event.description}</p></section>}
             {event.program && <section className="card"><h2>{t("Programme")}</h2><p className="program">{event.program}</p></section>}
+            <CongressProgram eventId={event.id} />
             <TrainingSheetPanel eventId={event.id} />
+            {!cancelled && <AbstractsCallPanel eventId={event.id} />}
             <section className="card">
               <h2>{t("Prestations proposées")}</h2>
               {event.benefits.length === 0 ? (
@@ -263,6 +266,7 @@ export default async function Page({ params, searchParams }: { params: Promise<{
               {!past && !cancelled && <a className="link" href={`/evenements/${id}/calendrier`}><CalendarPlus size={14} /> {t("Ajouter à mon agenda")}</a>}
             </section>
             {reg && !cancelled && <SignPanel eventId={id} registrationId={reg.id} />}
+            <EventPartnersPanel eventId={id} />
             <section className="card stack-sm">
               <h2 className="section-title">{event.organization.name}</h2>
               {event.organization.about && <p className="text-sm clamp-4">{event.organization.about}</p>}

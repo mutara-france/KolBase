@@ -1019,6 +1019,123 @@ const linkIn = (mail) => mail?.text.match(/https?:\/\/\S+/g)?.find((u) => !u.end
   await pgc.end();
 }
 
+// ── Congrès d'une société savante : programme en salles, appel à communications, partenaires ──
+{
+  const pgc = new pg.Client({ connectionString: process.env.DATABASE_URL });
+  await pgc.connect();
+  const q1 = async (sql, args = []) => (await pgc.query(sql, args)).rows[0];
+  const EMMA = "emma.simon@demo.kolbase.local";
+  await pgc.query(`insert into "Event" (id, "organizationId", title, "typeId", "startsAt", "durationMinutes", format, city, venue, capacity, "publishedAt", "updatedAt")
+    values ('e2e-r7-ev', 'demo-org-cdra', 'Congrès annuel Congrès', 'pleniere', now() + interval '60 days', 1980, 'PRESENTIEL', 'Lyon', 'Centre de congrès (fictif)', 400, now(), now())`);
+  const ws = `${BASE}/organisations/demo-org-cdra/evenements/e2e-r7-ev`;
+  const day = (n) => new Date(Date.now() + n * 864e5).toLocaleDateString("sv-SE", { timeZone: "Europe/Paris" });
+  const pierre = await session();
+  await login(pierre.page, "pierre.vidal@demo.kolbase.local");
+  await pierre.page.goto(ws);
+  let t = await text(pierre.page);
+  check("Société savante : programme par séance, appel à communications, partenaires", t.includes("Programme par séance") && t.includes("Appel à communications") && t.includes("Partenaires"));
+
+  // Deux salles, une conférence et un symposium.
+  for (const room of ["Amphithéâtre", "Salle 2"]) {
+    await pierre.page.fill('form:has(button:has-text("Ajouter la salle")) input[name="name"]', room);
+    await pierre.page.click('button:has-text("Ajouter la salle")');
+    await pierre.page.waitForTimeout(800);
+  }
+  check("Salles ajoutées", (await q1(`select count(*)::int n from "EventRoom" where "eventId" = 'e2e-r7-ev'`)).n === 2);
+  const rooms = (await pgc.query(`select id, name from "EventRoom" where "eventId" = 'e2e-r7-ev' order by position`)).rows;
+  await pierre.page.goto(ws);
+  if (!(await pierre.page.locator('form:has(button:has-text("Ajouter la séance")) input[name="title"]').isVisible())) await pierre.page.click('summary:has-text("Ajouter une séance")');
+  const pf = 'form:has(button:has-text("Ajouter la séance"))';
+  await pierre.page.fill(`${pf} input[name="day"]`, day(60));
+  await pierre.page.fill(`${pf} input[name="start"]`, "09:00");
+  await pierre.page.fill(`${pf} input[name="end"]`, "10:30");
+  await pierre.page.selectOption(`${pf} select[name="roomId"]`, rooms[0].id);
+  await pierre.page.fill(`${pf} input[name="title"]`, "Péri-implantite : état des lieux");
+  await pierre.page.fill(`${pf} input[name="speakers"]`, "Dr Nguyen");
+  await pierre.page.click(`${pf} button:has-text("Ajouter la séance")`);
+  await pierre.page.locator("text=Séance ajoutée au programme.").first().waitFor({ timeout: 8000 }).catch(() => {});
+  check("Séance ajoutée au programme", (await q1(`select count(*)::int n from "ProgramItem" where "eventId" = 'e2e-r7-ev'`)).n === 1);
+
+  // Partenaire industriel présent sur KolBase : la convention lui est proposée.
+  await pierre.page.goto(ws);
+  const partF = 'form:has(button:has-text("Ajouter le partenaire"))';
+  if (!(await pierre.page.locator(`${partF} select[name="partnerOrgId"]`).isVisible())) await pierre.page.click('summary:has-text("Ajouter un partenaire")');
+  await pierre.page.selectOption(`${partF} select[name="partnerOrgId"]`, "demo-org-dentalys");
+  await pierre.page.selectOption(`${partF} select[name="level"]`, "or");
+  await pierre.page.fill(`${partF} input[name="amount"]`, "8000");
+  await pierre.page.fill(`${partF} input[name="counterparts"]`, "Stand de 9 m², symposium de 45 minutes");
+  await pierre.page.click(`${partF} button:has-text("Ajouter le partenaire")`);
+  await pierre.page.locator("text=Partenaire ajouté").first().waitFor({ timeout: 8000 }).catch(() => {});
+  await pierre.page.goto(ws);
+  await pierre.page.click('button:has-text("Proposer la convention")');
+  const pm = await waitMail("claire.morel@demo.kolbase.local", "Proposition de partenariat : « Congrès annuel Congrès »");
+  check("Partenariat proposé : l'industriel est prévenu (montant, contreparties)", !!pm && pm.text.includes("8") && pm.text.includes("Stand de 9 m²") && (await q1(`select status from "EventPartner" where "eventId" = 'e2e-r7-ev'`)).status === "proposed");
+
+  // L'industriel (conformité) signe depuis ses partenariats ; l'organisateur est prévenu.
+  const sophie = await session();
+  await login(sophie.page, "sophie.bernard@demo.kolbase.local");
+  await sophie.page.goto(`${BASE}/organisations/demo-org-dentalys/partenariats`);
+  t = await text(sophie.page);
+  check("Industriel : proposition à signer, avec l'organisateur et le montant", t.includes("Congrès annuel Congrès") && t.includes("Collège Dentaire Rhône-Alpes") && t.includes("Partenaire or"));
+  await sophie.page.click('button:has-text("Signer la convention")');
+  const sm = await waitMail("pierre.vidal@demo.kolbase.local", "Partenariat signé par Dentalys Implants");
+  check("Partenariat signé : l'organisateur est prévenu", !!sm && (await q1(`select status from "EventPartner" where "eventId" = 'e2e-r7-ev'`)).status === "signed");
+  const pcsv = await (await sophie.ctx.request.get(`${BASE}/organisations/demo-org-dentalys/partenariats/export`)).text();
+  check("Convention signée exportée pour Transparence Santé (personne morale)", pcsv.includes("Partenariat") && pcsv.includes("Collège Dentaire Rhône-Alpes") && pcsv.includes(";8000;"));
+  await sophie.ctx.close();
+
+  // Appel à communications : ouvert par l'organisateur, une soumission, notée, retenue, placée au programme.
+  await pierre.page.goto(ws);
+  const cf = 'form:has(input[name="deadline"])';
+  if (!(await pierre.page.locator(`${cf} input[name="deadline"]`).isVisible())) await pierre.page.click('summary:has-text("Ouvrir l\'appel")');
+  await pierre.page.fill(`${cf} input[name="deadline"]`, day(30));
+  await pierre.page.fill(`${cf} textarea[name="topics"]`, "Implantologie\nParodontologie");
+  await pierre.page.click(`${cf} button:has-text("Ouvrir l'appel à communications")`);
+  await pierre.page.locator("text=Appel à communications ouvert").first().waitFor({ timeout: 8000 }).catch(() => {});
+  const emma = await session();
+  await login(emma.page, EMMA);
+  await emma.page.goto(`${BASE}/evenements/e2e-r7-ev`);
+  t = await text(emma.page);
+  check("Page publique : programme détaillé, partenaire, appel à communications", t.includes("Programme détaillé") && t.includes("Péri-implantite : état des lieux") && t.includes("Dentalys Implants") && t.includes("Soumettre une communication"));
+  await emma.page.goto(`${BASE}/evenements/e2e-r7-ev/communications`);
+  await emma.page.fill('input[name="title"]', "Implants courts : 5 ans de suivi");
+  await emma.page.fill('input[name="authors"]', "Simon Emma (Montpellier)");
+  await emma.page.selectOption('select[name="topic"]', "Implantologie");
+  await emma.page.selectOption('select[name="format"]', "oral");
+  await emma.page.fill('textarea[name="body"]', "Contexte : implants courts en secteur postérieur. Méthode : 48 patients suivis 5 ans. Résultats : survie de 96 %. Conclusion : alternative fiable.");
+  await emma.page.click('button:has-text("Soumettre la communication")');
+  await emma.page.locator("text=Communication soumise").first().waitFor({ timeout: 8000 }).catch(() => {});
+  const abs = await q1(`select id, status from "Abstract" where "eventId" = 'e2e-r7-ev'`);
+  check("Communication soumise par la praticienne", abs?.status === "submitted");
+  await pierre.page.goto(ws);
+  await pierre.page.selectOption(`form:has(input[name="abstractId"][value="${abs.id}"]) select[name="score"]`, "4");
+  await pierre.page.click(`form:has(input[name="abstractId"][value="${abs.id}"]):has(select[name="score"]) button:has-text("Noter")`);
+  await pierre.page.waitForTimeout(1000);
+  check("Relecture : note du comité enregistrée", (await q1(`select score from "AbstractReview" where "abstractId" = $1`, [abs.id]))?.score === 4);
+  await pierre.page.goto(ws);
+  const df = `form:has(input[name="abstractId"][value="${abs.id}"]):has(button[name="decision"])`;
+  await pierre.page.fill(`${df} input[name="note"]`, "Bravo, 10 minutes de présentation.");
+  await pierre.page.click(`${df} button[name="decision"][value="accept"]`);
+  const am = await waitMail(EMMA, "Communication retenue : « Implants courts : 5 ans de suivi »");
+  check("Communication retenue : l'autrice est prévenue (format, message du comité)", !!am && am.text.includes("communication orale") && am.text.includes("10 minutes"));
+  await pierre.page.goto(ws);
+  const sched = `form:has(input[name="abstractId"][value="${abs.id}"]):has(button:has-text("Placer au programme"))`;
+  await pierre.page.fill(`${sched} input[name="day"]`, day(60));
+  await pierre.page.fill(`${sched} input[name="start"]`, "11:00");
+  await pierre.page.fill(`${sched} input[name="end"]`, "11:10");
+  await pierre.page.selectOption(`${sched} select[name="roomId"]`, rooms[1].id);
+  await pierre.page.click(`${sched} button:has-text("Placer au programme")`);
+  await pierre.page.locator("text=Communication placée au programme.").first().waitFor({ timeout: 8000 }).catch(() => {});
+  check("Communication placée au programme", (await q1(`select kind from "ProgramItem" where "abstractId" = $1`, [abs.id]))?.kind === "communications");
+  await emma.page.goto(`${BASE}/evenements/e2e-r7-ev/communications`);
+  t = await text(emma.page);
+  check("Autrice : statut, message du comité et place au programme", t.includes("Retenue") && t.includes("Bravo, 10 minutes") && t.includes("Au programme") && t.includes("Salle 2"));
+  await emma.ctx.close();
+  await pierre.ctx.close();
+  await pgc.query(`delete from "Event" where id = 'e2e-r7-ev'`);
+  await pgc.end();
+}
+
 // ── Agences : confier un événement en une seule action ─────────────────────
 {
   const agent = await session();
