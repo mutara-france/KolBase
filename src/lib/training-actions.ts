@@ -63,12 +63,14 @@ export async function createHalfDays(_: ActionState, form: FormData): Promise<Ac
   const span = spanMinutes(list)!;
   // Les demi-journées commencent le jour de l'événement (sa date reste celle validée et annoncée).
   if (toParisInput(span.start).slice(0, 10) < toParisInput(event.startsAt).slice(0, 10)) return { error: t("Les demi-journées commencent le jour de l'événement ou après.") };
-  // Durée de l'événement étendue jusqu'à la fin de la dernière demi-journée (rappel, envoi après l'événement).
+  // Même jour, l'événement commence avec la première demi-journée ; sa durée va jusqu'à la fin de la dernière (rappel,
+  // envoi après l'événement).
+  const start = Math.min(event.startsAt.getTime(), span.start.getTime());
   const end = Math.max(eventEnd(event).getTime(), span.start.getTime() + span.minutes * 60e3);
   await db.$transaction([
     db.eventSession.deleteMany({ where: { eventId: event.id } }),
     db.eventSession.createMany({ data: list.map((s) => ({ eventId: event.id, ...s })) }),
-    db.event.update({ where: { id: event.id }, data: { durationMinutes: Math.round((end - event.startsAt.getTime()) / 60e3) } }),
+    db.event.update({ where: { id: event.id }, data: { startsAt: new Date(start), durationMinutes: Math.round((end - start) / 60e3) } }),
   ]);
   await audit(user.id, "event.sessions", "Event", event.id, { n: list.length });
   refresh(orgId, event.id);
