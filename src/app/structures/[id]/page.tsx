@@ -24,7 +24,7 @@ import { DemoNotice } from "@/components/DemoNotice";
 export async function generateMetadata({ params }: { params: Promise<{ id: string }> }): Promise<Metadata> {
   const { id } = await params;
   const { t } = await getT();
-  const o = await db.organization.findFirst({ where: { id, listed: true, verification: "VERIFIED" }, select: { name: true, kind: true, about: true } });
+  const o = await db.organization.findFirst({ where: { id, listed: true, verification: "VERIFIED" }, select: { name: true, kind: true, about: true, supplierCategories: true } });
   if (!o) return { title: t("Organisation — KolBase"), robots: { index: false } };
   const description = (o.about ?? t("{name} sur KolBase.", { name: o.name })).slice(0, 160);
   return {

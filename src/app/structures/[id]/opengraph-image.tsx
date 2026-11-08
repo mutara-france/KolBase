@@ -9,7 +9,7 @@ export const contentType = OG_TYPE;
 /** Aperçu de partage de la page publique d'une organisation validée. */
 export default async function Image({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
-  const o = await db.organization.findFirst({ where: { id, listed: true, verification: "VERIFIED" }, select: { name: true, kind: true, sector: true, headquarters: true, _count: { select: { events: { where: { publishedAt: { not: null }, startsAt: { gte: new Date() } } } } } } });
+  const o = await db.organization.findFirst({ where: { id, listed: true, verification: "VERIFIED" }, select: { name: true, kind: true, supplierCategories: true, sector: true, headquarters: true, _count: { select: { events: { where: { publishedAt: { not: null }, startsAt: { gte: new Date() } } } } } } });
   if (!o) return ogImage({ title: "Organisations sur KolBase" });
   const n = o._count.events;
   return ogImage({
