@@ -40,7 +40,7 @@ export function ExpenseDecisionForm({ orgId, expenseId }: { orgId: string; expen
   const [state, action, pending] = useActionState(decideExpertExpense, undefined);
   const [refusing, setRefusing] = useState(false);
   return (
-    <form action={action} className="stack-xs">
+    <form action={action} className="form stack-xs">
       <Notice state={state?.error ? state : undefined} />
       <input type="hidden" name="orgId" value={orgId} />
       <input type="hidden" name="expenseId" value={expenseId} />

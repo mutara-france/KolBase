@@ -2,6 +2,7 @@ import { db } from "@/lib/db";
 import { requirePlatformAdmin } from "@/lib/platform";
 import { EMAIL_LOG_DAYS, EMAIL_STATUS as STATUS } from "@/lib/email-log";
 import { TableWrap } from "@/components/TableWrap";
+import { FilterSelect } from "@/components/Filters";
 import { AdminFrame, ADMIN_HOME } from "../_parts/frame";
 
 export const metadata = { title: "E-mails — Administration KolBase" };
@@ -21,15 +22,11 @@ export default async function Page({ searchParams }: { searchParams: Promise<{ q
   });
   return (
     <AdminFrame title="E-mails" desc={`Envois des ${EMAIL_LOG_DAYS} derniers jours : destinataire, objet, statut. Le contenu n'est jamais conservé (il peut porter un lien de connexion).`} crumbs={[ADMIN_HOME]}>
-      <form className="inline-form" method="get">
-        <label>Destinataire<input name="q" defaultValue={q} placeholder="adresse ou partie d'adresse" /></label>
-        <label>Statut
-          <select name="statut" defaultValue={statut}>
-            <option value="">Tous</option>
-            {Object.entries(STATUS).map(([k, v]) => <option key={k} value={k}>{v.label}</option>)}
-          </select>
-        </label>
-        <button className="btn small">Filtrer</button>
+      <form className="filter-bar boxed" role="search" action="/admin/emails">
+        <label htmlFor="emails-q" className="sr-only">Destinataire</label>
+        <input id="emails-q" name="q" type="search" defaultValue={q} placeholder="Adresse ou partie d'adresse…" />
+        <FilterSelect name="statut" label="Statut" value={statut} all="Tous les statuts" options={Object.entries(STATUS).map(([value, v]) => ({ value, label: v.label }))} />
+        <button className="btn secondary">Filtrer</button>
       </form>
       {list.length === 0 ? <p className="muted">Aucun envoi.</p> : (
         <TableWrap label="E-mails envoyés">
