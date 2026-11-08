@@ -1,10 +1,11 @@
 "use client";
+import { detailFields } from "@/lib/supplier-profiles";
 import { SectionHead } from "@/components/UI";
 
 import { useActionState, useState } from "react";
 import { Check, Plus, Send, Star, Store } from "lucide-react";
 import { CategoryIcon } from "@/components/SupplierBits";
-import { createRfq, postRfqMessage, submitQuote, updateSupplierProfile } from "@/lib/rfq-actions";
+import { createRfq, postRfqMessage, submitQuote, updateSupplierProfile, confirmFinalHeadcount } from "@/lib/rfq-actions";
 import { Notice } from "@/components/AuthForms";
 import { ActionForm } from "@/components/ActionForm";
 import { BLOCKED_UNTIL, type Blocked } from "@/lib/billing-plans";
@@ -19,7 +20,7 @@ type Supplier = {
   id: string; name: string; categories: string[]; city: string | null; coverage: string | null; about: string | null; since: number; rating?: number | null; reviews?: number;
   logo?: string | null; priceHint?: string | null; from?: string | null;
 };
-type EventOpt = { id: string; label: string; city: string | null; capacity: number | null; agencyId?: string | null };
+type EventOpt = { id: string; label: string; city: string | null; capacity: number | null; agencyId?: string | null; day?: string; endDay?: string };
 
 /**
  * Prestataire à consulter (nouvelle demande). `eventAgency` : l'agence à qui l'événement choisi est confié. La consulter
@@ -64,6 +65,9 @@ export function NewRfqForm({ orgId, categories, suppliers, events, defaultEventI
   const ev = events.find((e) => e.id === eventId);
   const [headcount, setHeadcount] = useState(ev?.capacity ? String(ev.capacity) : "");
   const [deadline, setDeadline] = useState("");
+  // Dates de la prestation : celles de l'événement par défaut, à saisir pour une demande sans événement.
+  const [serviceStart, setServiceStart] = useState(ev?.day ?? "");
+  const [serviceEnd, setServiceEnd] = useState(ev?.endDay && ev.endDay !== ev.day ? ev.endDay : "");
   const matching = suppliers.filter((s) => s.categories.includes(category));
   const toggle = (id: string) => setPicked((p) => (p.includes(id) ? p.filter((x) => x !== id) : [...p, id]));
   const catLabel = categories.find((c) => c.id === category)?.label ?? "";
@@ -78,7 +82,7 @@ export function NewRfqForm({ orgId, categories, suppliers, events, defaultEventI
         <section className="card form rfq-step">
           <h2 className="rfq-step-title"><span className="step-num">1</span> {t("La prestation")}</h2>
           <label>{t("Événement concerné")}
-            <select name="eventId" value={eventId} onChange={(e) => { setEventId(e.target.value); const c = events.find((x) => x.id === e.target.value)?.capacity; if (c) setHeadcount(String(c)); }}>
+            <select name="eventId" value={eventId} onChange={(e) => { setEventId(e.target.value); const x = events.find((y) => y.id === e.target.value); if (x?.capacity) setHeadcount(String(x.capacity)); if (x?.day) { setServiceStart(x.day); setServiceEnd(x.endDay && x.endDay !== x.day ? x.endDay : ""); } }}>
               <option value="">{t("— aucun —")}</option>
               {events.map((e) => <option key={e.id} value={e.id}>{e.label}</option>)}
             </select>
@@ -101,6 +105,11 @@ export function NewRfqForm({ orgId, categories, suppliers, events, defaultEventI
             <label>{t("Participants attendus")}<input name="headcount" type="number" min={1} value={headcount} onChange={(e) => setHeadcount(e.target.value)} placeholder={t("Selon l'événement")} /></label>
             <label>{t("Réponse attendue avant")}<input name="deadline" type="date" value={deadline} onChange={(e) => setDeadline(e.target.value)} /></label>
           </div>
+          <div className="row">
+            <label>{t("Date de la prestation")}<input name="serviceStart" type="date" value={serviceStart} onChange={(e) => setServiceStart(e.target.value)} required={!eventId} /></label>
+            <label>{t("Dernier jour (si plusieurs jours)")}<input name="serviceEnd" type="date" value={serviceEnd} min={serviceStart || undefined} onChange={(e) => setServiceEnd(e.target.value)} /></label>
+          </div>
+          <RfqDetailFields key={category} category={category} />
         </section>
         <section className="card form rfq-step">
           <div className="flex-between wrap">
@@ -120,6 +129,7 @@ export function NewRfqForm({ orgId, categories, suppliers, events, defaultEventI
         <dl className="recap-list">
           <div><dt>{t("Événement")}</dt><dd>{ev ? ev.label : t("aucun")}</dd></div>
           <div><dt>{t("Participants")}</dt><dd>{headcount || "—"}</dd></div>
+          <div><dt>{t("Prestation")}</dt><dd>{serviceStart ? new Date(`${serviceStart}T12:00`).toLocaleDateString(intlLocale(locale), { day: "numeric", month: "short", year: "numeric" }) : t("date à préciser")}</dd></div>
           <div><dt>{t("Réponse avant")}</dt><dd>{deadline ? new Date(`${deadline}T12:00`).toLocaleDateString(intlLocale(locale), { day: "numeric", month: "short", year: "numeric" }) : t("sans date")}</dd></div>
           <div><dt>{t("Prestataires consultés")}</dt><dd>{pickedNames.length ? pickedNames.join(", ") : t("à choisir à l'étape 3")}</dd></div>
         </dl>
@@ -131,7 +141,40 @@ export function NewRfqForm({ orgId, categories, suppliers, events, defaultEventI
   );
 }
 
-type QuoteCurrent = { amount: string; delay: string; note: string; lines: { label: string; qty: number; unit: string; vatBp: number }[]; vatBp: number; validUntil: string; conditions: string; revision: number; fileName: string | null };
+/** Questions propres à la catégorie de la demande (format, configuration, nuits, trajets…). */
+function RfqDetailFields({ category }: { category: string }) {
+  const t = useT();
+  const fields = detailFields(category);
+  if (fields.length === 0) return null;
+  return (
+    <fieldset className="rfq-details">
+      <legend>{t("Ce qu'il faut au prestataire pour chiffrer")}</legend>
+      <div className="grid-fields">
+        {fields.map((f) =>
+          f.kind === "choice" ? (
+            <label key={f.key}>{t(f.label)}
+              <select name={`d_${f.key}`} defaultValue="">
+                <option value="">{t("— à préciser —")}</option>
+                {f.options.map((o) => <option key={o.id} value={o.id}>{t(o.label)}</option>)}
+              </select>
+            </label>
+          ) : f.kind === "multi" ? (
+            <div key={f.key} className="span-all">
+              <span className="label">{t(f.label)}</span>
+              <div className="checks">{f.options.map((o) => <label key={o.id} className="check"><input type="checkbox" name={`d_${f.key}`} value={o.id} /> {t(o.label)}</label>)}</div>
+            </div>
+          ) : f.kind === "text" ? (
+            <label key={f.key} className="span-all">{t(f.label)}<textarea name={`d_${f.key}`} rows={3} maxLength={2000} />{f.hint && <span className="hint">{t(f.hint)}</span>}</label>
+          ) : (
+            <label key={f.key}>{t(f.label)}<input name={`d_${f.key}`} type={f.kind} min={f.kind === "number" ? 0 : undefined} />{f.hint && <span className="hint">{t(f.hint)}</span>}</label>
+          ),
+        )}
+      </div>
+    </fieldset>
+  );
+}
+
+type QuoteCurrent = { amount: string; delay: string; note: string; lines: { label: string; qty: number; unit: string; vatBp: number }[]; vatBp: number; validUntil: string; conditions: string; revision: number; fileName: string | null; depositPct?: number | null; cancelFreeDays?: number | null; cancelMidPct?: number | null; cancelFullDays?: number | null };
 type Row = { key: number; label: string; qty: string; unit: string; vat: number };
 
 const eur = (locale: Locale, n: number) => n.toLocaleString(intlLocale(locale), { style: "currency", currency: "EUR" });
@@ -234,9 +277,19 @@ export function QuoteForm({ orgId, rfqId, category, current, headcount, uploads,
           {headcount ? <span>{t("Par participant")}{" "}<strong>{eur(locale, ttc / headcount)}</strong> {t("TTC")}</span> : null}
         </div>
       )}
+      <fieldset className="quote-terms">
+        <legend>{t("Acompte et annulation")}</legend>
+        <div className="row">
+          <label>{t("Acompte (% du TTC)")}<input name="depositPct" type="number" min={0} max={100} defaultValue={current?.depositPct ?? ""} placeholder="30" /></label>
+          <label>{t("Annulation sans frais jusqu'à J-")}<input name="cancelFreeDays" type="number" min={0} max={365} defaultValue={current?.cancelFreeDays ?? ""} placeholder="30" /></label>
+          <label>{t("Ensuite, part due (%)")}<input name="cancelMidPct" type="number" min={0} max={100} defaultValue={current?.cancelMidPct ?? ""} placeholder="50" /></label>
+          <label>{t("Totalité due à moins de J-")}<input name="cancelFullDays" type="number" min={0} max={365} defaultValue={current?.cancelFullDays ?? ""} placeholder="15" /></label>
+        </div>
+        <p className="hint">{t("Facultatif : le client compare ces conditions d'un devis à l'autre. Laissez vide ce qui ne s'applique pas.")}</p>
+      </fieldset>
       <div className="row">
         <label>{t("Délai / disponibilité")}<input name="delay" defaultValue={current?.delay} placeholder={t("Confirmation sous 48 h")} /></label>
-        <label>{t("Conditions")}<input name="conditions" defaultValue={current?.conditions} placeholder={t("Acompte 30 %, annulation sans frais jusqu'à J-15…")} /></label>
+        <label>{t("Autres conditions")}<input name="conditions" defaultValue={current?.conditions} placeholder={t("Minimum de commande, frais de déplacement…")} /></label>
       </div>
       <label>{t("Présentation de l'offre")}<textarea name="note" rows={ai ? 4 : 2} defaultValue={current?.note} placeholder={t("Ce qui est inclus, options, références…")} /></label>
       {ai && <AiDraft kind="offre" target="note" label={t("Rédiger la présentation avec l'IA")} />}
@@ -296,6 +349,24 @@ export function RfqMessageForm({ orgId, rfqId, supplierId, placeholder }: { orgI
         <input type="hidden" name="supplierId" value={supplierId} />
         <button className="btn small" disabled={pending}>{pending ? t("Envoi…") : t("Envoyer")}</button>
       </div>
+    </form>
+  );
+}
+
+/** Nombre définitif au prestataire retenu : proposé d'après les inscrits, modifiable jusqu'à la prestation. */
+export function FinalHeadcountForm({ orgId, rfqId, current, suggested, basis }: { orgId: string; rfqId: string; current: number | null; suggested: number | null; basis: string | null }) {
+  const t = useT();
+  const [state, action, pending] = useActionState(confirmFinalHeadcount, undefined);
+  return (
+    <form action={action} className="form stack-sm">
+      <Notice state={state} />
+      <input type="hidden" name="orgId" value={orgId} />
+      <input type="hidden" name="rfqId" value={rfqId} />
+      <div className="row">
+        <label>{t("Nombre définitif")}<input name="finalHeadcount" type="number" min={1} max={100000} required defaultValue={current ?? suggested ?? ""} /></label>
+      </div>
+      {basis && <p className="hint">{basis}</p>}
+      <button className="btn small" disabled={pending}>{pending ? t("Envoi…") : current != null ? t("Mettre à jour et prévenir le prestataire") : t("Confirmer au prestataire")}</button>
     </form>
   );
 }

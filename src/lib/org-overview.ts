@@ -14,6 +14,7 @@ import { subscribeHref } from "@/lib/billing-plans";
 import { activeMandate } from "@/lib/mandates";
 import { de } from "@/lib/elision";
 import { rfqConflict } from "@/lib/suppliers";
+import { FINAL_COUNT_CATEGORIES, FINAL_COUNT_DAYS } from "@/lib/supplier-profiles";
 import { getT } from "@/lib/i18n/server";
 import { fmtDate } from "@/lib/i18n";
 import { complianceSettings, hospitalityRegime } from "@/lib/compliance";
@@ -228,6 +229,21 @@ export const orgOverview = cache(async (orgId: string) => {
         todos.push({ href: `${base}/prestataires/${r.id}`, title: t("Devis à retenir : {title}", { title: label }), detail: t("Proposé par l'agence mandatée"), icon: "Receipt", tone: "warn" });
       else if (r._count.quotes > 0)
         todos.push({ href: `${base}/prestataires/${r.id}`, title: t("Devis à comparer : {title}", { title: label }), detail: t(r._count.suppliers > 1 ? (r._count.quotes > 1 ? "{n} devis reçus sur {m} prestataires" : "{n} devis reçu sur {m} prestataires") : "{n} devis reçu sur {m} prestataire", { n: r._count.quotes, m: r._count.suppliers }), icon: "Receipt", tone: "warn" });
+    }
+  }
+  // Nombre définitif à confirmer au prestataire retenu, dans les 15 jours qui précèdent la prestation.
+  if (can.events) {
+    const soon = new Date(Date.now() + (FINAL_COUNT_DAYS + 5) * 86400e3);
+    const due = await db.rfq.findMany({
+      where: {
+        organizationId: orgId, status: "awarded", category: { in: FINAL_COUNT_CATEGORIES }, finalHeadcount: null, ...rfqScope,
+        OR: [{ serviceStart: { gt: new Date(), lte: soon } }, { serviceStart: null, event: { startsAt: { gt: new Date(), lte: soon } } }],
+      },
+      include: { event: { select: { title: true } }, quotes: { where: { status: "retained" }, select: { supplier: { select: { name: true } } } }, suppliers: { select: { supplierId: true } } },
+    });
+    for (const r of due) {
+      if (rfqConflict(r.suppliers.map((s) => s.supplierId), ownOrgs) || !r.quotes[0]) continue;
+      todos.push({ href: `${base}/prestataires/${r.id}#nombre-definitif`, title: t("Nombre définitif à confirmer à {name}", { name: r.quotes[0].supplier.name }), detail: r.event?.title ?? t("Demande de devis"), icon: "Receipt", tone: "warn" });
     }
   }
   for (const w of waitingQuotes)

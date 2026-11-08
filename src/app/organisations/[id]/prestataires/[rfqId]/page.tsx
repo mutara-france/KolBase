@@ -1,4 +1,6 @@
 import Link from "next/link";
+import { RfqBrief } from "@/components/RfqBrief";
+import { FINAL_COUNT_BENEFITS, FINAL_COUNT_CATEGORIES, FINAL_COUNT_DAYS, termsParts } from "@/lib/supplier-profiles";
 import { notFound } from "next/navigation";
 import { ArrowLeft, BellRing, CalendarClock, Check, Clock, FileSignature, FileText, Info, MessageSquare, Plus, Send, Star, UserPlus, Users, X } from "lucide-react";
 import { SiteHeader } from "@/components/SiteHeader";
@@ -6,7 +8,8 @@ import { SectionNav } from "@/components/SectionNav";
 import { SectionHead } from "@/components/UI";
 import { Avatar } from "@/components/Avatar";
 import { CategoryIcon, PerHeadGauge, StepTrail, type Step } from "@/components/SupplierBits";
-import { RfqMessageForm } from "@/components/RfqForms";
+import { FinalHeadcountForm, RfqMessageForm } from "@/components/RfqForms";
+import { db } from "@/lib/db";
 import { ReviewForm } from "@/components/BookForms";
 import { Thread } from "@/components/ProjectBits";
 import { ConfirmButton } from "@/components/ConfirmButton";
@@ -45,6 +48,21 @@ export default async function Page({ params }: { params: Promise<{ id: string; r
   const base = `/organisations/${id}`;
   const st = RFQ_STATUS[rfqDisplayStatus(r)];
   const kept = r.quotes.find((q) => q.status === "retained");
+  // Nombre définitif (traiteur, hôtel, transport, lieu) : proposé d'après les inscrits et les prestations acceptées.
+  const serviceAt = r.serviceStart ?? r.event?.startsAt ?? null;
+  const finalCount = kept && r.status === "awarded" && !r.conflicted && FINAL_COUNT_CATEGORIES.includes(r.category) && (!serviceAt || serviceAt > new Date())
+    ? await (async () => {
+        const regs = r.eventId ? await db.registration.findMany({ where: { eventId: r.eventId, cancelledAt: null }, select: { benefits: { select: { benefit: { select: { catalogId: true } } } } } }) : [];
+        const wanted = FINAL_COUNT_BENEFITS[r.category];
+        const accepted = wanted ? regs.filter((g) => g.benefits.some((b) => wanted.includes(b.benefit.catalogId))).length : 0;
+        const suggested = accepted || regs.length || r.headcount || null;
+        const basis = !r.eventId ? null : accepted
+          ? t("Proposé : {n} inscrits ont accepté cette prestation ({m} inscrits en tout).", { n: accepted, m: regs.length })
+          : t("Proposé : {n} inscrits à ce jour.", { n: regs.length });
+        const soon = !!serviceAt && serviceAt.getTime() - Date.now() < (FINAL_COUNT_DAYS + 5) * 86400e3;
+        return { suggested, basis, soon };
+      })()
+    : null;
   const best = r.quotes.length > 1 && !r.conflicted ? r.quotes[0].id : null;
   const ended = !!r.event && eventEnded(r.event, now);
   const present = r.event ? presentBy.get(r.event.id) ?? 0 : 0;
@@ -127,6 +145,7 @@ export default async function Page({ params }: { params: Promise<{ id: string; r
           <section className="card stack-sm">
             <SectionHead icon={FileText} title={t("Le besoin")} desc={who(r.createdById) ? t("Créée par {v} le {date}", { v: who(r.createdById)!, date: fmtDate(locale, r.createdAt) }) : t("Créée le {date}", { date: fmtDate(locale, r.createdAt) })} />
             <p className="rfq-needs">{r.needs}</p>
+            <RfqBrief rfq={r} />
             {r.status === "cancelled" && r.cancelledAt && (
               <p className="notice warn">{who(r.cancelledById) ? t("Annulée par {v} le {date}", { v: who(r.cancelledById)!, date: fmtDate(locale, r.cancelledAt) }) : t("Annulée le {date}", { date: fmtDate(locale, r.cancelledAt) })}</p>
             )}
@@ -218,6 +237,14 @@ export default async function Page({ params }: { params: Promise<{ id: string; r
             </section>
           )}
 
+          {finalCount && (
+            <section className="card stack-sm" id="nombre-definitif">
+              <SectionHead icon={Users} title={t("Nombre définitif")} desc={t("{name} facture sur ce nombre : il le demande en général 7 à 15 jours avant la prestation.", { name: kept!.supplier.name })} tone={r.finalHeadcount == null && finalCount.soon ? "warn" : undefined} />
+              {r.finalHeadcount != null && r.finalHeadcountAt && <p className="text-sm">{t("Confirmé : {n}, le {date}.", { n: r.finalHeadcount, date: fmtDate(locale, r.finalHeadcountAt) })}</p>}
+              <FinalHeadcountForm orgId={id} rfqId={r.id} current={r.finalHeadcount} suggested={finalCount.suggested} basis={finalCount.basis} />
+            </section>
+          )}
+
           {kept && r.status === "awarded" && isOrganizer && (!r.event || r.event.startsAt < now) && (
             <section className="card stack-sm">
               <SectionHead icon={Star} title={t("Votre avis sur {name}", { name: kept.supplier.name })} desc={t("Publié sur la page du prestataire avec le nom de votre organisation ; il aide les autres organisations à choisir.")} />
@@ -294,6 +321,7 @@ function QuoteCard({ q, r, t, locale, orgId, meId, best, ended, present, setting
       <ul className="q-facts">
         <li className={expired ? "warn-text" : ""}><CalendarClock size={14} /> {q.validUntil ? t(expired ? "expiré le {date}" : "valable jusqu'au {date}", { date: fmtDate(locale, q.validUntil) }) : t("sans date de validité")}</li>
         {q.delay && <li><Clock size={14} /> {q.delay}</li>}
+        {termsParts(q).length > 0 && <li><FileSignature size={14} /> {t("Acompte et annulation : {terms}", { terms: termsParts(q).map((p) => t(p.key, p.vars)).join(", ") })}</li>}
         {q.conditions && <li><FileSignature size={14} /> {t("Conditions : {conditions}", { conditions: q.conditions })}</li>}
       </ul>
       {q.note && <p className="q-note">{q.note}</p>}

@@ -1570,6 +1570,16 @@ details.fold[open] > summary h2::after { content: " ▾"; }
 .step-trail li.current .step-detail { color: var(--outremer); }
 .hero-facts > div.warn { background: var(--warn-bg); border-color: #f0d9b3; }
 .rfq-needs { margin: 0; white-space: pre-line; font-size: 14.5px; line-height: 1.6; color: var(--ink); }
+.rfq-brief .brief-list { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(200px, 100%), 1fr)); gap: 8px 16px; margin: 0; }
+.rfq-brief .brief-list > div { min-width: 0; }
+.rfq-brief dt { font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.06em; color: var(--ink-soft); }
+.rfq-brief dd { margin: 2px 0 0; overflow-wrap: anywhere; }
+.rfq-details { border: 1px solid var(--line); border-radius: 14px; padding: 12px 14px; }
+.rfq-details .grid-fields { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(220px, 100%), 1fr)); gap: 12px; }
+.rfq-details .span-all { grid-column: 1 / -1; }
+.quote-terms { border: 1px solid var(--line); border-radius: 14px; padding: 12px 14px; }
+.book-group { border: 0; padding: 0; margin: 0 0 8px; }
+.book-group legend { font-weight: 700; margin-bottom: 6px; }
 
 /* Comparaison des devis : une carte par prestataire, côte à côte. */
 .quote-compare { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(290px, 100%), 1fr)); gap: 16px; align-items: start; }

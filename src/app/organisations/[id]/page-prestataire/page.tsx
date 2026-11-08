@@ -1,7 +1,8 @@
 import { SectionHead, PageHead } from "@/components/UI";
 import { BannerForm, BookForm, OfferForm, PhotoForm } from "@/components/BookForms";
 import { removeSupplierBanner, removeSupplierOffer, removeSupplierPhoto } from "@/lib/book-actions";
-import { bannerSrc, delayLabel, EQUIPMENT, OFFER_UNITS, PHOTO_MAX, photoSrc, readCapacities, supplierBook } from "@/lib/supplier-book";
+import { bannerSrc, delayLabel, OFFER_UNITS, PHOTO_MAX, photoSrc, readCapacities, supplierBook } from "@/lib/supplier-book";
+import { capacityFields, equipmentOptions } from "@/lib/supplier-profiles";
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { CheckCircle2, Clock, ExternalLink, Gauge, ImageIcon, Images, Package, Star, TrendingUp } from "lucide-react";
@@ -66,7 +67,19 @@ export default async function Page({ params }: { params: Promise<{ id: string }>
               <SectionHead icon={ImageIcon} title={t("Bannière")} desc={t("L'image large en tête de votre page et de votre carte dans l'annuaire des prestataires.")} />
               <BannerForm orgId={id} current={bannerSrc(org)} onRemove={removeSupplierBanner} />
             </section>
-            <BookForm orgId={id} capacities={readCapacities(org.capacities)} equipment={org.equipment} options={EQUIPMENT} accessible={org.accessible} priceHint={org.priceHint ?? ""} />
+            <BookForm
+              orgId={id}
+              capacities={readCapacities(org.capacities)}
+              equipment={org.equipment}
+              groups={org.supplierCategories.map((c) => ({
+                category: c,
+                label: supplierCategoryLabel(c),
+                fields: capacityFields(org.supplierCategories).find((g) => g.category === c)?.fields ?? [],
+                options: equipmentOptions(org.supplierCategories).find((g) => g.category === c)?.options ?? [],
+              })).filter((g) => g.fields.length + g.options.length > 0)}
+              accessible={org.accessible}
+              priceHint={org.priceHint ?? ""}
+            />
             <section className="card stack-sm">
               <SectionHead icon={Images} title={t("Réalisations ({photos}/{PHOTO_MAX})", { photos: photos.length, PHOTO_MAX })} desc={t("Vos réalisations en images (buffets, salles, installations, supports…), avec une légende : elles s'affichent sur votre page.")} />
               {photos.length > 0 && (

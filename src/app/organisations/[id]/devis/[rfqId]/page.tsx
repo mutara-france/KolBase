@@ -1,4 +1,6 @@
 import Link from "next/link";
+import { RfqBrief } from "@/components/RfqBrief";
+import { termsParts } from "@/lib/supplier-profiles";
 import { notFound, redirect } from "next/navigation";
 import { ArrowLeft, Building2, CalendarClock, Clock, FileSignature, FileText, MapPin, MessageSquare, Users } from "lucide-react";
 import { SiteHeader } from "@/components/SiteHeader";
@@ -105,6 +107,7 @@ export default async function Page({ params }: { params: Promise<{ id: string; r
             <section className="card stack-sm">
               <SectionHead icon={FileText} title={t("La demande")} desc={t("Ce que {name} attend de vous.", { name: r.organization.name })} />
               <p className="rfq-needs">{r.needs}</p>
+              <RfqBrief rfq={r} />
               <dl className="hero-facts">
                 <div><dt><CalendarClock size={13} /> {t("Réponse attendue")}</dt><dd className={late ? "warn-text" : ""}>{r.deadline ? fmtDate(locale, r.deadline) : t("à définir")}<small>{late ? t("échéance dépassée") : r.sentAt ? t("reçue le {date}", { date: fmtDate(locale, r.sentAt) }) : ""}</small></dd></div>
                 <div><dt><Users size={13} /> {t("Participants")}</dt><dd>{r.headcount ?? "—"}<small>{r.category === "restauration" ? t("couverts à prévoir") : t("attendus")}</small></dd></div>
@@ -144,6 +147,7 @@ export default async function Page({ params }: { params: Promise<{ id: string; r
                 <ul className="q-facts">
                   <li><CalendarClock size={14} /> {q.validUntil ? t(q.validUntil < now ? "expiré le {date}" : "valable jusqu'au {date}", { date: fmtDate(locale, q.validUntil) }) : t("sans date de validité")}</li>
                   {q.delay && <li><Clock size={14} /> {q.delay}</li>}
+                  {termsParts(q).length > 0 && <li><FileSignature size={14} /> {t("Acompte et annulation : {terms}", { terms: termsParts(q).map((p) => t(p.key, p.vars)).join(", ") })}</li>}
                   {q.conditions && <li><FileSignature size={14} /> {t("Conditions : {conditions}", { conditions: q.conditions })}</li>}
                 </ul>
                 {q.note && <p className="q-note">{q.note}</p>}
@@ -162,6 +166,7 @@ export default async function Page({ params }: { params: Promise<{ id: string; r
                 blocked={quoteBlocked}
                 current={q ? {
                   amount: String(q.amountCents / 100), delay: q.delay ?? "", note: q.note ?? "", conditions: q.conditions ?? "", vatBp: q.vatBp, revision: q.revision, fileName: q.fileName,
+                  depositPct: q.depositPct, cancelFreeDays: q.cancelFreeDays, cancelMidPct: q.cancelMidPct, cancelFullDays: q.cancelFullDays,
                   validUntil: q.validUntil ? q.validUntil.toISOString().slice(0, 10) : "",
                   lines: lines.map((l) => ({ label: l.label, qty: l.qty, unit: String(l.unitCents / 100), vatBp: lineVat(l, q.vatBp) })),
                 } : undefined}

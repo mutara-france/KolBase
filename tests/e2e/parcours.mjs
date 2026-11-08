@@ -628,6 +628,61 @@ const linkIn = (mail) => mail?.text.match(/https?:\/\/\S+/g)?.find((u) => !u.end
   await pgc.end();
 }
 
+// ── Prestataires par métier : capacités, questions de la demande, conditions, nombre définitif ──
+{
+  const pgc = new pg.Client({ connectionString: process.env.DATABASE_URL });
+  await pgc.connect();
+  const q1 = async (sql, args = []) => (await pgc.query(sql, args)).rows[0];
+  const LUD = "ludovic.perrin@demo.kolbase.local";
+  const lud = await session();
+  await login(lud.page, LUD);
+  await lud.page.goto(`${BASE}/organisations/demo-sup-belleville/page-prestataire`);
+  const capCount = (k) => lud.page.locator(`input[name="cap_${k}"]`).count();
+  check("Traiteur : capacités de son métier (couverts, cocktail), ni chambres ni places en théâtre", (await capCount("banquet")) === 1 && (await capCount("cocktail")) === 1 && (await capCount("rooms")) === 0 && (await capCount("seats")) === 0);
+
+  // Demande sans événement, depuis l'interface : date de la prestation et questions propres au traiteur.
+  const claire = await session();
+  await login(claire.page, "claire.morel@demo.kolbase.local");
+  await claire.page.goto(`${BASE}/organisations/demo-org-dentalys/prestataires?onglet=nouvelle&cat=restauration&prestataire=demo-sup-belleville`);
+  await claire.page.fill('textarea[name="needs"]', "Cocktail de clôture d'une journée de formation, 40 personnes.");
+  await claire.page.fill('input[name="serviceStart"]', new Date(Date.now() + 20 * 864e5).toISOString().slice(0, 10));
+  await claire.page.selectOption('select[name="d_format"]', "cocktail");
+  await claire.page.fill('input[name="d_serviceTime"]', "19:30");
+  await claire.page.selectOption('select[name="d_drinks"]', "vins");
+  await Promise.all([claire.page.waitForURL(/\/prestataires\/[a-z0-9]+$/, { timeout: 10000 }), claire.page.click('button:has-text("Enregistrer en brouillon")')]);
+  const rfqId = claire.page.url().split("/").pop();
+  const row = await q1(`select details, "serviceStart" from "Rfq" where id = $1`, [rfqId]);
+  check("Demande : questions du traiteur et date de la prestation enregistrées", row?.details?.format === "cocktail" && row.details.serviceTime === "19:30" && row.details.drinks === "vins" && !!row.serviceStart, JSON.stringify(row));
+  await pgc.query(`update "Rfq" set status = 'sent', "sentAt" = now() where id = $1`, [rfqId]);
+  await lud.page.goto(`${BASE}/organisations/demo-sup-belleville/devis/${rfqId}`);
+  let t = await text(lud.page);
+  check("Prestataire : la demande dit ce qu'il faut pour chiffrer (date, format, heure, boissons)", t.includes("Dates de la prestation") && t.includes("Cocktail") && t.includes("19:30") && t.includes("Avec vins"));
+  await lud.ctx.close();
+
+  // Devis avec acompte et barème d'annulation, comparé puis retenu ; nombre définitif confirmé au traiteur.
+  await pgc.query(`insert into "Quote" (id, "rfqId", "supplierId", "amountCents", lines, "vatBp", "depositPct", "cancelFreeDays", "cancelMidPct", "cancelFullDays", "updatedAt") values ('e2e-r3-q', $1, 'demo-sup-belleville', 128000, '[]', 1000, 30, 30, 50, 15, now())`, [rfqId]);
+  await claire.page.goto(`${BASE}/organisations/demo-org-dentalys/prestataires/${rfqId}`);
+  const card = claire.page.locator(`section#rfq-${rfqId}`);
+  const ct = await card.innerText();
+  check("Comparaison : acompte et barème d'annulation en clair", ct.includes("acompte de 30 %") && ct.includes("annulation sans frais jusqu'à J-30") && ct.includes("50 % dus de J-30 à J-15") && ct.includes("totalité due à moins de J-15"), ct.slice(0, 400));
+  // Premier devis retenu du traiteur : l'abonnement se déclenche ; l'état de départ est rétabli à la fin.
+  const subBefore = await q1(`select "triggeredAt", "triggeredBy" from "Subscription" where "organizationId" = 'demo-sup-belleville'`);
+  await card.locator('.quote:has-text("Traiteur Belleville") button:has-text("Retenir")').click();
+  await card.locator('.quote:has-text("Traiteur Belleville") button:has-text("Confirmer : retenir le devis")').click();
+  await claire.page.waitForTimeout(1500);
+  await claire.page.goto(`${BASE}/organisations/demo-org-dentalys/prestataires/${rfqId}`);
+  check("Devis retenu : carte « Nombre définitif »", (await claire.page.locator("#nombre-definitif").count()) === 1);
+  await claire.page.fill('#nombre-definitif input[name="finalHeadcount"]', "42");
+  await claire.page.click('#nombre-definitif button:has-text("Confirmer au prestataire")');
+  const mail = await waitMail(LUD, "Nombre définitif : 42");
+  check("Nombre définitif : enregistré et envoyé au traiteur", !!mail && (await q1(`select "finalHeadcount" n from "Rfq" where id = $1`, [rfqId])).n === 42);
+  await claire.ctx.close();
+  await pgc.query(`delete from "Rfq" where id = $1`, [rfqId]);
+  if (!subBefore) await pgc.query(`delete from "Subscription" where "organizationId" = 'demo-sup-belleville'`);
+  else await pgc.query(`update "Subscription" set "triggeredAt" = $1, "triggeredBy" = $2 where "organizationId" = 'demo-sup-belleville'`, [subBefore.triggeredAt, subBefore.triggeredBy]);
+  await pgc.end();
+}
+
 // ── Agences : confier un événement en une seule action ─────────────────────
 {
   const agent = await session();

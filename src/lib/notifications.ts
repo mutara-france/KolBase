@@ -641,6 +641,20 @@ export function notifyRfqMessage(rfqId: string, supplierId: string, fromSupplier
   });
 }
 
+/** Nombre définitif confirmé au prestataire retenu (traiteur, hôtel, transport, lieu). */
+export function notifyFinalHeadcount(rfqId: string, actorId: string) {
+  later(async () => {
+    const r = await db.rfq.findUnique({ where: { id: rfqId }, include: { organization: { select: { name: true } }, event: { select: { title: true } }, quotes: { where: { status: "retained" }, select: { supplierId: true } } } });
+    const supplierId = r?.quotes[0]?.supplierId;
+    if (!r || !supplierId || r.finalHeadcount == null) return;
+    await send(await supplierTeam(supplierId), (t) => ({
+      subject: t("Nombre définitif : {n} ({org})", { n: r.finalHeadcount!, org: r.organization.name }),
+      text: t("Bonjour,\n\n{org} vous confirme le nombre définitif pour la prestation retenue{event} : {n}.", { org: r.organization.name, event: r.event ? ` (${r.event.title})` : "", n: r.finalHeadcount! }),
+      cta: { label: t("Voir la demande"), href: `/organisations/${supplierId}/devis/${r.id}` },
+    }), actorId);
+  });
+}
+
 // ─── E-mails de service (toujours envoyés) ─────────────────────────────────
 
 /** Invitation à rejoindre une organisation, quand l'adresse est connue : le rôle proposé est annoncé. */

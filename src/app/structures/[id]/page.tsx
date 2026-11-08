@@ -5,7 +5,8 @@ import { ArrowLeft, Award, Clock, Images, Info, Lock, Mail, MapPin, Receipt, Shi
 import { SectionHead } from "@/components/UI";
 import { CategoryIcon } from "@/components/SupplierBits";
 import { EVENT_MANAGER_ROLES } from "@/lib/events";
-import { bannerSrc, CAPACITY_LABEL, delayLabel, OFFER_UNITS, photoSrc, readCapacities, supplierBook } from "@/lib/supplier-book";
+import { bannerSrc, delayLabel, OFFER_UNITS, photoSrc, readCapacities, supplierBook } from "@/lib/supplier-book";
+import { capacityUnit } from "@/lib/supplier-profiles";
 import { supplierCategoryLabel } from "@/lib/suppliers";
 import { SiteHeader } from "@/components/SiteHeader";
 import { Avatar } from "@/components/Avatar";
@@ -138,7 +139,7 @@ export default async function Page({ params }: { params: Promise<{ id: string }>
                   {o.coverage && <p className="meta-line"><MapPin size={12} /> {t("Zone couverte : {zone}", { zone: o.coverage })}</p>}
                   {Object.keys(caps).length > 0 && (
                     <ul className="plain text-sm">
-                      {(Object.keys(caps) as (keyof typeof caps)[]).map((k) => <li key={k}><strong>{caps[k]}</strong> {t(CAPACITY_LABEL[k])}</li>)}
+                      {Object.keys(caps).map((k) => <li key={k}><strong>{caps[k]}</strong> {t(capacityUnit(k))}</li>)}
                     </ul>
                   )}
                   {(o.equipment.length > 0 || o.accessible) && (

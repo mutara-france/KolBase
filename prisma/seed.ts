@@ -621,13 +621,13 @@ async function main() {
 
   // ─── Book des prestataires : capacités, équipements, tarifs indicatifs, prestations passées et avis ───
   const BOOKS: { id: string; capacities: Record<string, number>; equipment: string[]; accessible: boolean; priceHint: string; offers: [string, number, string][] }[] = [
-    { id: "demo-sup-belleville", capacities: { cocktail: 300, banquet: 180 }, equipment: [], accessible: true, priceHint: "Cocktail à partir de 32 € HT par personne",
+    { id: "demo-sup-belleville", capacities: { cocktail: 300, banquet: 180 }, equipment: ["Cocktail", "Buffet", "Menus végétariens", "Personnel de service"], accessible: true, priceHint: "Cocktail à partir de 32 € HT par personne",
       offers: [["Pause café d'accueil", 600, "personne"], ["Cocktail dînatoire 12 pièces, boissons comprises", 3200, "personne"], ["Déjeuner assis, 3 plats", 3800, "personne"], ["Maître d'hôtel (4 h)", 10000, "forfait"]] },
-    { id: "demo-sup-confluence", capacities: { seats: 200, cocktail: 250 }, equipment: ["Vidéoprojecteur et écran", "Sonorisation et micros", "Visioconférence", "Captation vidéo", "Salles de sous-commission", "Wi-Fi"], accessible: true, priceHint: "Salle d'atelier à partir de 520 € HT la journée",
+    { id: "demo-sup-confluence", capacities: { seats: 200, cocktail: 250, subrooms: 3 }, equipment: ["Vidéoprojecteur et écran", "Sonorisation et micros", "Visioconférence", "Wi-Fi"], accessible: true, priceHint: "Salle d'atelier à partir de 520 € HT la journée",
       offers: [["Salle d'atelier (journée)", 52000, "jour"], ["Amphithéâtre 200 places (journée)", 240000, "jour"], ["Forfait technique : écran, visioconférence", 12000, "forfait"]] },
-    { id: "demo-sup-rivegauche", capacities: { rooms: 80 }, equipment: ["Wi-Fi", "Restauration sur place", "Parking"], accessible: true, priceHint: "Chambre à partir de 118 € HT la nuit",
+    { id: "demo-sup-rivegauche", capacities: { rooms: 80 }, equipment: ["Petit-déjeuner", "Restaurant", "Parking"], accessible: true, priceHint: "Chambre à partir de 118 € HT la nuit",
       offers: [["Chambre individuelle, petit-déjeuner inclus", 11800, "nuit"]] },
-    { id: "demo-sup-navette", capacities: {}, equipment: [], accessible: true, priceHint: "Navette 50 places à partir de 690 € HT",
+    { id: "demo-sup-navette", capacities: { vehicles: 3, vehicleSeats: 50 }, equipment: ["Autocar", "Navette gare ou aéroport"], accessible: true, priceHint: "Navette 50 places à partir de 690 € HT",
       offers: [["Navette 50 places, aller-retour gare", 69000, "forfait"]] },
   ];
   for (const b of BOOKS) {
