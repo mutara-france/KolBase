@@ -6,11 +6,12 @@ import { revalidatePath } from "next/cache";
 import { db } from "@/lib/db";
 import { audit, requireUser } from "@/lib/auth";
 import { eurToCents, str, UNITS_INVALID, unitsOrNull } from "@/lib/form";
-import { collabType, PROPOSAL_MAX_ORGS, PROPOSAL_ORIGIN, PROPOSAL_WITHDRAWN, PROPOSALS_PER_MONTH, proposalText } from "@/lib/projects";
+import { collabType, PROJECT_ROLES, PROPOSAL_MAX_ORGS, PROPOSAL_ORIGIN, PROPOSAL_WITHDRAWN, PROPOSALS_PER_MONTH, proposalText } from "@/lib/projects";
 import { ALLOWED_TYPES, matchesType, MAX_UPLOAD_BYTES, putObject, safeFileName, storageEnabled } from "@/lib/storage";
 import { notifyProposal, notifyProposalWithdrawnByExpert } from "@/lib/notifications";
 import { getT } from "@/lib/i18n/server";
-import { proposalsThisMonth } from "@/lib/proposals";
+import { groupEntities, proposalsThisMonth } from "@/lib/proposals";
+import { isTopic, pickChannel, pickEntity, responseDue } from "@/lib/routing";
 
 export type ProposalState = { error?: string; ok?: string } | undefined;
 
@@ -44,11 +45,28 @@ export async function submitProposal(_: ProposalState, form: FormData): Promise<
   const units = parsedUnits ?? 1;
   if (form.get("attest") !== "1") return { error: t("Cochez l'engagement : une prestation réelle, rémunérée à sa juste valeur.") };
 
-  const orgIds = [...new Set(form.getAll("orgId").map(String).filter(Boolean))];
-  if (orgIds.length === 0) return { error: t("Choisissez au moins une organisation.") };
-  if (orgIds.length > PROPOSAL_MAX_ORGS) return { error: t("Cinq organisations au plus par proposition.") };
-  const orgs = await db.organization.findMany({ where: { id: { in: orgIds }, listed: true, verification: "VERIFIED", kind: { not: "PRESTATAIRE" } }, select: { id: true, name: true } });
-  if (orgs.length !== orgIds.length) return { error: t("Une des organisations choisies ne reçoit pas de propositions (introuvable ou non référencée).") };
+  const picked = [...new Set(form.getAll("orgId").map(String).filter(Boolean))];
+  if (picked.length === 0) return { error: t("Choisissez au moins une organisation.") };
+  if (picked.length > PROPOSAL_MAX_ORGS) return { error: t("Cinq organisations au plus par proposition.") };
+  // Sujet : aiguille la proposition vers le bon canal (responsable, délai) ; idée de produit : conditions acceptées.
+  const topic = str(form, "topic") || "autre";
+  if (!isTopic(topic)) return { error: t("Sujet invalide.") };
+  const brand = str(form, "brand", 60) || null;
+  if (topic === "innovation" && form.get("ipAck") !== "1") return { error: t("Idée de produit : prenez connaissance des conditions de soumission et cochez la case.") };
+  const ndaRequested = topic === "innovation" && form.get("nda") === "1";
+  // Groupe choisi : l'entité qui couvre le pays de l'expert (et la marque) reçoit la proposition.
+  const orgIds: string[] = [];
+  for (const v of picked) {
+    if (!v.startsWith("group:")) { orgIds.push(v); continue; }
+    const entity = pickEntity(await groupEntities(v.slice(6)), { country: prac.country, brand });
+    if (!entity) return { error: t("Une des organisations choisies ne reçoit pas de propositions (introuvable ou non référencée).") };
+    orgIds.push(entity.id);
+  }
+  const orgs = await db.organization.findMany({
+    where: { id: { in: [...new Set(orgIds)] }, listed: true, verification: "VERIFIED", kind: { not: "PRESTATAIRE" } },
+    select: { id: true, name: true, responseDays: true, channels: true, members: { where: { role: { in: PROJECT_ROLES } }, select: { userId: true } } },
+  });
+  if (orgs.length !== new Set(orgIds).size) return { error: t("Une des organisations choisies ne reçoit pas de propositions (introuvable ou non référencée).") };
 
   if ((await proposalsThisMonth(prac.id)) >= PROPOSALS_PER_MONTH)
     return { error: t("Vous avez envoyé {n} propositions ces 30 derniers jours, le maximum : attendez les réponses avant d'en envoyer d'autres.", { n: PROPOSALS_PER_MONTH }) };
@@ -77,14 +95,24 @@ export async function submitProposal(_: ProposalState, form: FormData): Promise<
   const now = new Date();
   const { proposal, copies } = await db.$transaction(async (tx) => {
     const proposal = await tx.expertProposal.create({
-      data: { practitionerId: prac.id, title, typeId, therapeuticArea: area || null, description, audience: audience || null, schedule: schedule || null, logistics: logistics || null, feeCents: fee, units },
+      data: {
+        practitionerId: prac.id, title, typeId, therapeuticArea: area || null, description, audience: audience || null, schedule: schedule || null, logistics: logistics || null, feeCents: fee, units,
+        topic, ipAckAt: topic === "innovation" ? now : null, ndaRequested,
+      },
     });
     const copies: { projectId: string; linkId: string; orgId: string }[] = [];
     for (const org of orgs) {
+      // Canal du sujet : son responsable (et son suppléant), encore membres, deviennent responsables du dossier.
+      const channel = pickChannel(org.channels, topic);
+      const team = new Set(org.members.map((m) => m.userId));
+      const leads = channel ? [channel.ownerId, channel.backupId].filter((u): u is string => !!u && team.has(u)) : [];
+      const days = channel?.responseDays ?? org.responseDays ?? null;
       const project = await tx.project.create({
         data: {
           organizationId: org.id, title, typeId, therapeuticArea: area || prac.specialty, description: text,
           origin: PROPOSAL_ORIGIN, status: "ATT_IND", createdById: user.id, proposalId: proposal.id,
+          channelId: channel?.id ?? null, responseDue: days ? responseDue(now, days) : null,
+          leads: { create: [...new Set(leads)].map((userId) => ({ userId })) },
           experts: { create: { practitionerId: prac.id, status: "ACCORD", feeCents: fee, days: units, respondedAt: now } },
         },
         include: { experts: { select: { id: true } } },

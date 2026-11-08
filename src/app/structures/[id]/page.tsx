@@ -53,6 +53,7 @@ export default async function Page({ params }: { params: Promise<{ id: string }>
       events: { where: { publishedAt: { not: null }, inviteOnly: false, startsAt: { gte: now } }, orderBy: { startsAt: "asc" }, include: { _count: { select: { registrations: true } } } },
       // Collaborations : les dossiers signés seulement, comme la fiche expert.
       _count: { select: { projects: { where: { status: { in: SIGNED_STATUSES } } } } },
+      group: { select: { id: true, name: true } },
     },
   });
   if (!o) notFound();
@@ -217,6 +218,8 @@ export default async function Page({ params }: { params: Promise<{ id: string }>
               {v.contact === "masque" && viewer !== "proprietaire" ? <p className="muted">{t("Non communiqué.")}</p> : canSee(v.contact, viewer) ? <p>{o.contactEmail ? <a href={`mailto:${o.contactEmail}`}>{o.contactEmail}</a> : t("Non renseigné.")}</p> : lock(t("Contact"))}
             </section>
           </div>}
+          {/* Entité d'un groupe : le portail du groupe aiguille les propositions vers l'entité du pays de l'expert. */}
+          {o.group && <p className="notice"><Link href={`/groupes/${o.group.id}`}>{t("Fait partie du groupe {name} : proposer un projet au groupe", { name: o.group.name })}</Link></p>}
           {/* Organisme qui forme : indicateurs de résultats publiés (Qualiopi), avec leur mode de calcul. */}
           {!isSupplier && o.kind !== "INDUSTRIEL" && <OrgTrainingResults orgId={id} />}
           {!isSupplier && v.projets !== "masque" && (

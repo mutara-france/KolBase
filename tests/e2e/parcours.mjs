@@ -1211,6 +1211,98 @@ const linkIn = (mail) => mail?.text.match(/https?:\/\/\S+/g)?.find((u) => !u.end
   await pgc.end();
 }
 
+// ── Groupes et entités : aiguillage des propositions par pays et par sujet, transfert, portail du groupe ──
+{
+  const pgc = new pg.Client({ connectionString: process.env.DATABASE_URL });
+  await pgc.connect();
+  const q1 = async (sql, args = []) => (await pgc.query(sql, args)).rows[0];
+  const EMMA = "emma.simon@demo.kolbase.local", CLAIRE = "claire.morel@demo.kolbase.local";
+  // L'équipe KolBase crée le groupe et y rattache Dentalys, puis OrthoNova.
+  const anne = await session();
+  await login(anne.page, "anne.chevalier@demo.kolbase.local");
+  await anne.page.goto(`${BASE}/admin/organisations/demo-org-dentalys`);
+  await anne.page.selectOption('select[name="groupId"]', "nouveau");
+  await anne.page.fill('input[name="newGroup"]', "Groupe Dentalys International");
+  await anne.page.click('form:has(select[name="groupId"]) button:has-text("Enregistrer")');
+  await anne.page.locator("text=rattachée au groupe").first().waitFor({ timeout: 8000 }).catch(() => {});
+  const gid = (await q1(`select "groupId" from "Organization" where id = 'demo-org-dentalys'`))?.groupId;
+  check("Groupe créé, Dentalys rattachée", !!gid);
+  await anne.page.goto(`${BASE}/admin/organisations/demo-org-orthonova`);
+  await anne.page.selectOption('select[name="groupId"]', gid);
+  await anne.page.click('form:has(select[name="groupId"]) button:has-text("Enregistrer")');
+  await anne.page.locator("text=rattachée au groupe").first().waitFor({ timeout: 8000 }).catch(() => {});
+  check("OrthoNova rattachée au même groupe", (await q1(`select "groupId" from "Organization" where id = 'demo-org-orthonova'`))?.groupId === gid);
+  await anne.ctx.close();
+
+  // Dentalys : entité France, canal Formation (responsable Julien, suppléant Marc, réponse sous 5 jours).
+  const claire = await session();
+  await login(claire.page, CLAIRE);
+  await claire.page.goto(`${BASE}/organisations/demo-org-dentalys/canaux`);
+  await claire.page.fill('input[name="countries"]', "FR");
+  await claire.page.click('button:has-text("Enregistrer le périmètre")');
+  await claire.page.locator("text=Périmètre enregistré").first().waitFor({ timeout: 8000 }).catch(() => {});
+  const cf = 'form:has(button:has-text("Ajouter le canal"))';
+  await claire.page.selectOption(`${cf} select[name="topic"]`, "formation");
+  await claire.page.selectOption(`${cf} select[name="ownerId"]`, "demo-u-julien");
+  await claire.page.selectOption(`${cf} select[name="backupId"]`, "demo-u-marc");
+  await claire.page.fill(`${cf} input[name="responseDays"]`, "5");
+  await claire.page.click(`${cf} button:has-text("Ajouter le canal")`);
+  await claire.page.locator("text=Canal enregistré").first().waitFor({ timeout: 8000 }).catch(() => {});
+  check("Entité France et canal Formation enregistrés", (await q1(`select "coveredCountries" c from "Organization" where id = 'demo-org-dentalys'`)).c.join() === "FR" && (await q1(`select "ownerId", "responseDays" from "ContactChannel" where "organizationId" = 'demo-org-dentalys' and topic = 'formation'`))?.responseDays === 5);
+
+  // Portail du groupe, puis proposition de la praticienne (France) au groupe, sujet Formation.
+  const emma = await session();
+  await login(emma.page, EMMA);
+  await emma.page.goto(`${BASE}/groupes/${gid}`);
+  let t = await text(emma.page);
+  check("Portail du groupe : entités, sujet et délai de réponse", t.includes("Groupe Dentalys International") && t.includes("Formation et enseignement") && t.includes("réponse sous 5 jours") && t.includes("OrthoNova"));
+  const propose = async (title, topic, extra = async () => {}) => {
+    await emma.page.goto(`${BASE}/propositions/nouvelle?groupe=${gid}&sujet=${topic}`);
+    await emma.page.fill('input[name="title"]', title);
+    await emma.page.fill('textarea[name="description"]', "Programme de formation pratique en chirurgie guidée, cas cliniques et ateliers sur modèles.");
+    await extra();
+    await emma.page.check('input[name="attest"]');
+    await Promise.all([emma.page.waitForURL(/\/propositions\?envoyee=/, { timeout: 10000 }).catch(() => {}), emma.page.click('button:has-text("Envoyer la proposition")')]);
+  };
+  check("Proposition au groupe : le groupe est présélectionné", await emma.page.goto(`${BASE}/propositions/nouvelle?groupe=${gid}&sujet=formation`).then(() => emma.page.locator(`input[value="group:${gid}"]`).isChecked()));
+  await propose("Formation e2e : chirurgie guidée Groupe", "formation");
+  const prj = await q1(`select p.id, p."organizationId", p."responseDue", c.topic from "Project" p left join "ContactChannel" c on c.id = p."channelId" where p.title = 'Formation e2e : chirurgie guidée Groupe'`);
+  check("Aiguillage : entité France, canal Formation, réponse attendue sous 5 jours", prj?.organizationId === "demo-org-dentalys" && prj.topic === "formation" && Math.abs(new Date(prj.responseDue).getTime() - Date.now() - 5 * 864e5) < 3600e3, JSON.stringify(prj));
+  const leads = (await pgc.query(`select "userId" from "ProjectLead" where "projectId" = $1 order by "userId"`, [prj.id])).rows.map((r) => r.userId);
+  check("Responsable et suppléant du canal : responsables du dossier", leads.join() === "demo-u-julien,demo-u-marc", leads.join());
+  const pm = await waitMail("julien.faure@demo.kolbase.local", "Projet proposé par Dr Emma Simon : Formation e2e");
+  check("E-mail au responsable du sujet (et pas à toute l'équipe)", !!pm && pm.text.includes("Sujet : Formation et enseignement") && pm.text.includes("Réponse attendue avant le") && !mails.some((m) => m.to === CLAIRE && m.subject.includes("Formation e2e")));
+
+  // L'entité France transmet la proposition au siège (OrthoNova) ; l'expert est prévenu.
+  await claire.page.goto(`${BASE}/organisations/demo-org-dentalys/dossiers/${prj.id}`);
+  t = await text(claire.page);
+  check("Dossier : aiguillage affiché (sujet, réponse attendue)", t.includes("Aiguillage") && t.includes("Sujet : Formation et enseignement") && t.includes("réponse attendue avant le"));
+  await claire.page.click('summary:has-text("Transmettre à un autre interlocuteur")');
+  await claire.page.selectOption('select[name="target"]', "demo-org-orthonova|formation");
+  await claire.page.click('button:has-text("Transmettre la proposition")');
+  await claire.page.locator("text=Proposition transmise à OrthoNova").first().waitFor({ timeout: 8000 }).catch(() => {});
+  check("Transfert : le dossier passe à OrthoNova", (await q1(`select "organizationId" from "Project" where id = $1`, [prj.id]))?.organizationId === "demo-org-orthonova");
+  check("Transfert : l'expert et la nouvelle entité sont prévenus", !!(await waitMail(EMMA, "Votre proposition est transmise")) && !!(await waitMail("thomas.garnier@demo.kolbase.local", "Projet proposé par Dr Emma Simon : Formation e2e")));
+
+  // Idée de produit : conditions de soumission acceptées, accord de confidentialité demandé.
+  await propose("Idée e2e : guide chirurgical Groupe", "innovation", async () => {
+    await emma.page.check('input[name="ipAck"]');
+    await emma.page.check('input[name="nda"]');
+  });
+  const idea = await q1(`select x."ipAckAt", x."ndaRequested", p.id, p."organizationId" from "ExpertProposal" x join "Project" p on p."proposalId" = x.id where x.title = 'Idée e2e : guide chirurgical Groupe'`);
+  check("Idée de produit : conditions acceptées, accord de confidentialité demandé", !!idea?.ipAckAt && idea.ndaRequested === true && idea.organizationId === "demo-org-dentalys");
+  await claire.page.goto(`${BASE}/organisations/demo-org-dentalys/dossiers/${idea.id}`);
+  check("Organisation : demande d'accord de confidentialité signalée", (await text(claire.page)).includes("l'expert demande un accord de confidentialité"));
+  await emma.ctx.close();
+  await claire.ctx.close();
+  await pgc.query(`delete from "Project" where title in ('Formation e2e : chirurgie guidée Groupe', 'Idée e2e : guide chirurgical Groupe')`);
+  await pgc.query(`delete from "ExpertProposal" where title in ('Formation e2e : chirurgie guidée Groupe', 'Idée e2e : guide chirurgical Groupe')`);
+  await pgc.query(`delete from "ContactChannel" where "organizationId" in ('demo-org-dentalys', 'demo-org-orthonova')`);
+  await pgc.query(`update "Organization" set "groupId" = null, "coveredCountries" = '{}', brands = '{}' where id in ('demo-org-dentalys', 'demo-org-orthonova')`);
+  await pgc.query(`delete from "OrgGroup" where id = $1`, [gid]);
+  await pgc.end();
+}
+
 // ── Agences : confier un événement en une seule action ─────────────────────
 {
   const agent = await session();

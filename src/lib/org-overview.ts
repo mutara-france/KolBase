@@ -131,7 +131,13 @@ export const orgOverview = cache(async (orgId: string) => {
     todos.push({ href: `${base}/membres#sans-conformite`, title: t("Attribuer le rôle Conformité"), detail: t("Personne ne peut valider les dossiers de l'organisation"), icon: "ShieldCheck", tone: "warn" });
   if (can.project) {
     for (const p of projects) {
-      if (p.status === "ATT_IND") todos.push({ href: dossier(p), title: t("Proposition d'expert à examiner"), detail: p.title, icon: "Inbox" });
+      // Proposition aiguillée vers un canal : délai de réponse annoncé à l'expert, retard signalé.
+      if (p.status === "ATT_IND")
+        todos.push({
+          href: dossier(p), title: t("Proposition d'expert à examiner"),
+          detail: p.responseDue ? `${p.title} · ${t("réponse attendue avant le {date}", { date: day(p.responseDue) })}` : p.title,
+          icon: "Inbox", ...(p.responseDue && p.responseDue < now ? { tone: "danger" as const } : p.responseDue && p.responseDue.getTime() - now.getTime() < 2 * DAY ? { tone: "warn" as const } : {}),
+        });
       if (p.status === "ACCORD") {
         // Délai interne de soumission (Paramètres de la conformité) : échéance annoncée, retard signalé.
         const due = submissionDue(plannedDate(p), limits);

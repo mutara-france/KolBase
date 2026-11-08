@@ -14,7 +14,8 @@ import { withdrawProposal } from "@/lib/proposal-actions";
 import { ConfirmButton } from "@/components/ConfirmButton";
 import { orgIsPublic } from "@/lib/org-roles";
 import { DocumentsPanel, ExpertSignatureBlock, MaterialsPanel } from "@/components/DossierSections";
-import { fmtDateTime, fmtEur, intlLocale } from "@/lib/i18n";
+import { fmtDate, fmtDateTime, fmtEur, intlLocale } from "@/lib/i18n";
+import { topicLabel } from "@/lib/routing";
 import { DossierTabs, type DossierTab } from "@/components/DossierTabs";
 import { eventPlace, FORMAT_LABEL, formatDuration } from "@/lib/events";
 import { getT } from "@/lib/i18n/server";
@@ -35,6 +36,7 @@ export default async function Page({ params, searchParams }: { params: Promise<{
       project: {
         include: {
           organization: true,
+          channel: { select: { topic: true } },
           // Événement de la collaboration : rattaché au dossier, ou celui de l'opportunité à laquelle l'expert a candidaté.
           events: { where: { cancelledAt: null }, orderBy: { startsAt: "asc" } },
         },
@@ -144,6 +146,9 @@ export default async function Page({ params, searchParams }: { params: Promise<{
               <span className="eyebrow-sm">{t("Prochaine étape")}</span>
               <p className="next-hint">{next}</p>
               {state === "abandonne" && p.abandonNote && <p className="text-sm">{t("Motif : {note}", { note: p.abandonNote })}</p>}
+              {awaitingOrg && (p.channel || p.responseDue) && (
+                <p className="text-sm">{[p.channel ? t("Transmise à la personne en charge : {topic}", { topic: t(topicLabel(p.channel.topic)) }) : null, p.responseDue ? t("réponse attendue avant le {date}", { date: fmtDate(locale, p.responseDue) }) : null].filter(Boolean).join(" · ")}</p>
+              )}
               {awaitingOrg && (
                 <form action={withdrawProposal}>
                   <input type="hidden" name="linkId" value={link.id} />

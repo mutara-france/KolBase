@@ -93,4 +93,10 @@ export const EMAILS: Record<string, string> = {
   "La présentation de votre organisation": "Your organisation's presentation",
   "La description de l'événement « {label} »": "The description of the event “{label}”",
   "Votre avis ({label})": "Your review ({label})",
+  "Sujet : {topic}.": "Topic: {topic}.",
+  "Réponse attendue avant le {date}.": "Response expected by {date}.",
+  "Votre proposition est transmise : {title}": "Your proposal has been forwarded: {title}",
+  "{org} a transmis votre proposition « {title} » à la personne en charge de ce sujet{topic}.": "{org} has forwarded your proposal “{title}” to the person in charge of this topic{topic}.",
+  "{from} a transmis votre proposition « {title} » à {org}, l'entité du groupe en charge{topic}.": "{from} has forwarded your proposal “{title}” to {org}, the group entity in charge{topic}.",
+  "Voir ma proposition": "See my proposal",
 };
