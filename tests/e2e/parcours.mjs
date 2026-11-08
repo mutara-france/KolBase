@@ -600,7 +600,7 @@ const linkIn = (mail) => mail?.text.match(/https?:\/\/\S+/g)?.find((u) => !u.end
   await login(claire.page, "claire.morel@demo.kolbase.local");
   await claire.page.goto(`${BASE}/organisations/demo-org-dentalys/evenements/e2e-r2-ev`);
   let t = await text(claire.page);
-  check("Organisateur : synthèse des repas et allergies, liste d'attente", t.includes("Repas et accessibilité") && t.includes("Végétarien : 1") && t.includes("crustacés") && t.includes("Liste d'attente") && t.includes("Hugo Robert"));
+  check("Organisateur : synthèse des repas et allergies, liste d'attente", t.includes("Synthèse sans les noms") && t.includes("Végétarien : 1") && t.includes("crustacés") && t.includes("Liste d'attente") && t.includes("Hugo Robert"));
   await claire.page.fill('form:has(textarea[name="body"]) input[name="subject"]', "Changement de salle");
   await claire.page.fill('textarea[name="body"]', "L'atelier aura lieu en salle 3, au premier étage.");
   await claire.page.click('button:has-text("Envoyer à l\'inscrit")');
