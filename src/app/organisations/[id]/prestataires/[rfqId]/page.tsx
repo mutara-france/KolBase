@@ -249,7 +249,7 @@ export default async function Page({ params }: { params: Promise<{ id: string; r
             <section className="card stack-sm">
               <SectionHead icon={Star} title={t("Votre avis sur {name}", { name: kept.supplier.name })} desc={t("Publié sur la page du prestataire avec le nom de votre organisation ; il aide les autres organisations à choisir.")} />
               {r.review
-                ? <p className="text-sm">{t("Votre avis :")}{" "}<span className="rating">{"★".repeat(r.review.rating)}</span> {r.review.comment ? `« ${r.review.comment} »` : ""}</p>
+                ? <p className="text-sm">{t("Votre avis :")}{" "}<span className="rating">{"★".repeat(r.review.rating)}</span> {r.review.comment ? `« ${r.review.comment} »` : ""}{r.review.hiddenAt ? ` · ${t("masqué par l'équipe KolBase : {note}", { note: r.review.hiddenReason ?? "" })}` : ""}</p>
                 : <ReviewForm orgId={id} rfqId={r.id} supplier={kept.supplier.name} />}
             </section>
           )}

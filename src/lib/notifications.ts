@@ -793,6 +793,37 @@ export function notifyPlatformAdmins(subject: string, text: string, href: string
   });
 }
 
+
+/**
+ * Décision sur un signalement : l'auteur du signalement (compte ou adresse) en est informé ; si le contenu est retiré,
+ * son auteur l'est aussi, avec le motif et la possibilité de contester (CGU).
+ */
+export function notifyReportDecision(reportId: string) {
+  later(async () => {
+    const r = await db.report.findUnique({ where: { id: reportId }, include: { reporter: { select: userSelect } } });
+    if (!r || r.status !== "closed") return;
+    const outcome = (t: T) => (r.decision === "retire" ? t("le contenu a été retiré ou masqué") : t("le signalement a été classé sans suite"));
+    const reporterMail = (t: T) => ({
+      subject: t("Votre signalement : « {label} »", { label: r.targetLabel }),
+      text: t("Bonjour,\n\nVous avez signalé « {label} ». Après examen par l'équipe KolBase, {outcome}.\n\nMotif : {note}", { label: r.targetLabel, outcome: outcome(t), note: r.decisionNote ?? "" }),
+    });
+    if (r.reporter) await sendService([r.reporter], reporterMail);
+    else if (r.reporterEmail) await sendMail({ to: r.reporterEmail, ...reporterMail(makeT("fr")) });
+    if (r.decision !== "retire") return;
+    // Auteur du contenu : l'expert, les administrateurs de l'organisation, ou l'auteur de l'avis.
+    const authors =
+      r.targetType === "expert" ? await db.user.findMany({ where: { practitioner: { id: r.targetId } }, select: userSelect })
+      : r.targetType === "organisation" ? await members(r.targetId, ["ADMIN"])
+      : r.targetType === "evenement" ? await (async () => { const e = await db.event.findUnique({ where: { id: r.targetId }, select: { organizationId: true } }); return e ? members(e.organizationId, ["ADMIN", ...EVENT_ORGANIZER_ROLES]) : []; })()
+      : await (async () => { const v = await db.supplierReview.findUnique({ where: { id: r.targetId }, select: { author: { select: userSelect } } }); return v ? [v.author] : []; })();
+    const what: Record<string, string> = { expert: "Votre présentation d'expert", organisation: "La présentation de votre organisation", evenement: "La description de l'événement « {label} »", avis: "Votre avis ({label})" };
+    await sendService(authors, (t) => ({
+      subject: t("Contenu retiré par l'équipe KolBase"),
+      text: t("Bonjour,\n\n{what} a été retiré(e) de KolBase après un signalement.\n\nMotif : {note}\n\nVous pouvez contester cette décision en répondant à l'équipe KolBase, à l'adresse indiquée dans les conditions d'utilisation.", { what: t(what[r.targetType] ?? "Un contenu", { label: r.targetLabel }), note: r.decisionNote ?? "" }),
+    }));
+  });
+}
+
 // ─── Décisions de l'équipe KolBase (toujours envoyées : elles concernent le compte) ───
 
 /** Envoi à chaque destinataire, sans tenir compte de la préférence de notifications (e-mail de service). */

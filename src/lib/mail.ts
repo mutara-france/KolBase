@@ -52,17 +52,29 @@ export function renderMail(m: Mail) {
 export const isReservedAddress = (to: string) => /\.(local|test|invalid|example)$/i.test(to.trim()) && process.env.MAIL_DELIVER_RESERVED !== "1";
 
 export async function sendMail(m: Mail): Promise<boolean> {
-  if (isReservedAddress(m.to)) return false;
+  // Journal des envois (destinataire, objet, statut), consultable par l'équipe KolBase ; chargé à l'envoi seulement.
+  const log = async (status: "sent" | "failed" | "not_configured" | "reserved", error?: string) => (await import("@/lib/email-log")).logEmail(m.to, m.subject, status, error);
+  if (isReservedAddress(m.to)) {
+    await log("reserved");
+    return false;
+  }
   const { text, html } = renderMail(m);
   const t = transport();
   if (!t) {
     // En production, le contenu n'est jamais journalisé : il peut contenir un lien de réinitialisation ou d'invitation.
     const body = process.env.NODE_ENV === "production" ? "(contenu masqué)" : `\n${text}`;
     console.info(`[e-mail non envoyé : SMTP_URL absent] À : ${process.env.NODE_ENV === "production" ? maskEmails(m.to) : m.to} — ${m.subject} ${body}`);
+    await log("not_configured");
     return false;
   }
   const headers = m.unsubscribe ? { "List-Unsubscribe": `<${m.unsubscribe.oneClick}>`, "List-Unsubscribe-Post": "List-Unsubscribe=One-Click" } : undefined;
-  await t.sendMail({ from: FROM(), to: m.to, subject: m.subject, text, html, headers, attachments: m.attachments });
+  try {
+    await t.sendMail({ from: FROM(), to: m.to, subject: m.subject, text, html, headers, attachments: m.attachments });
+  } catch (e) {
+    await log("failed", errorText(e));
+    throw e;
+  }
+  await log("sent");
   return true;
 }
 

@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { Building2, ExternalLink, History, KeyRound, ShieldCheck, UserRound } from "lucide-react";
+import { Building2, ExternalLink, History, KeyRound, Mail, ShieldCheck, UserRound } from "lucide-react";
 import { db } from "@/lib/db";
 import { platformAdminEmails, requirePlatformAdmin } from "@/lib/platform";
 import { formatDate } from "@/lib/events";
@@ -13,6 +13,7 @@ import { resendAccountVerification, resetAccountTwoFactor, setAccountDisabled } 
 import { SectionHead } from "@/components/UI";
 import { ConfirmButton } from "@/components/ConfirmButton";
 import { AdminFrame, ADMIN_HOME } from "../../_parts/frame";
+import { EMAIL_LOG_DAYS, EMAIL_STATUS } from "@/lib/email-log";
 import type { OrgKind } from "@/generated/prisma/client";
 
 export const metadata = { title: "Compte — Administration KolBase" };
@@ -57,6 +58,7 @@ export default async function Page({ params, searchParams }: { params: Promise<{
       u.memberships.filter((m) => m.role === "ADMIN").map(async (m) => ((await db.membership.count({ where: { organizationId: m.organizationId, role: "ADMIN" } })) === 1 ? m.organization.name : null)),
     ).then((l) => l.filter((x): x is string => !!x)),
   ]);
+  const emails = await db.emailLog.findMany({ where: { to: u.email.toLowerCase() }, orderBy: { createdAt: "desc" }, take: 20 });
   const orgs = new Map<string, { org: { id: string; name: string; kind: OrgKind }; roles: string[] }>();
   for (const m of u.memberships) {
     const o = orgs.get(m.organizationId) ?? { org: m.organization, roles: [] };
@@ -93,6 +95,18 @@ export default async function Page({ params, searchParams }: { params: Promise<{
           <dt>Langue</dt><dd>{u.locale === "en" ? "anglais" : "français"}</dd>
           {u.phone && (<><dt>Téléphone</dt><dd>{u.phone}</dd></>)}
         </dl>
+      </section>
+
+      {/* Derniers e-mails envoyés à ce compte (journal, sans le contenu) : assistance « je n'ai rien reçu ». */}
+      <section className="card stack-sm" aria-labelledby="compte-emails">
+        <SectionHead icon={Mail} id="compte-emails" title="Derniers e-mails" desc={`Journal des ${EMAIL_LOG_DAYS} derniers jours, sans le contenu.`}>
+          <Link className="btn ghost small" href={`/admin/emails?q=${encodeURIComponent(u.email)}`}>Tout l&apos;historique</Link>
+        </SectionHead>
+        {emails.length === 0 ? <p className="muted text-sm">Aucun e-mail envoyé à cette adresse.</p> : (
+          <ul className="plain stack-xs text-sm">
+            {emails.map((m) => <li key={m.id} className="flex-between"><span>{m.subject}</span><span className="muted nowrap">{time(m.createdAt)} · <span className={`pill ${EMAIL_STATUS[m.status]?.tone ?? ""}`}>{EMAIL_STATUS[m.status]?.label ?? m.status}</span></span></li>)}
+          </ul>
+        )}
       </section>
 
       {p && (

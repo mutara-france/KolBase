@@ -11,7 +11,7 @@ export const NAV_COOKIE = "kb_nav";
  * les pages d'une même rubrique se retrouvant en onglets. Module sans dépendance serveur (utilisé aussi côté client).
  */
 
-export type ShellIcon = "House" | "Users" | "Folder" | "FileText" | "CalendarDays" | "ShieldCheck" | "Send" | "Megaphone" | "UserRound" | "Receipt" | "Plug" | "ExternalLink" | "Wallet" | "BarChart3" | "Store" | "Building2" | "BadgeCheck" | "ScrollText" | "Newspaper" | "Activity";
+export type ShellIcon = "House" | "Users" | "Folder" | "FileText" | "CalendarDays" | "ShieldCheck" | "Send" | "Megaphone" | "UserRound" | "Receipt" | "Plug" | "ExternalLink" | "Wallet" | "BarChart3" | "Store" | "Building2" | "BadgeCheck" | "ScrollText" | "Newspaper" | "Activity" | "Flag" | "Mail";
 export type ShellItem = { key: string; href: string; label: string; short?: string; icon: ShellIcon; badge?: number; match?: string[]; exact?: boolean; /** Absente de la barre du bas (mobile) quand elle compterait plus de cinq entrées. */ secondary?: boolean };
 export type ShellLink = { href: string; label: string; icon: ShellIcon };
 export type ShellSpace = {
@@ -137,16 +137,18 @@ export function practitionerSectionTabs(section: PractitionerSectionKey): Sectio
  * Espace « Administration KolBase » (administrateurs de la plateforme) : tableau de bord, décisions à prendre
  * (organisations, identités, services, avec leur pastille), comptes et journal ; le reste passe dans le menu sur mobile.
  */
-export function adminNavItems(counts: { orgs: number; identities: number; services: number }): ShellItem[] {
+export function adminNavItems(counts: { orgs: number; identities: number; services: number; reports?: number }): ShellItem[] {
   return [
     { key: "admin-accueil", href: "/admin", label: "Tableau de bord", short: "Accueil", icon: "House", exact: true },
     { key: "admin-organisations", href: "/admin/organisations", label: "Organisations", short: "Organis.", icon: "Building2", badge: counts.orgs },
     { key: "admin-comptes", href: "/admin/comptes", label: "Comptes", icon: "Users" },
     { key: "admin-identites", href: "/admin/identites", label: "Identités", icon: "BadgeCheck", badge: counts.identities },
     { key: "admin-journal", href: "/admin/journal", label: "Journal d'activité", short: "Journal", icon: "ScrollText" },
+    { key: "admin-signalements", href: "/admin/signalements", label: "Signalements", icon: "Flag", badge: counts.reports ?? 0 },
     { key: "admin-services", href: "/admin/services", label: "Services", icon: "Megaphone", badge: counts.services, secondary: true },
     { key: "admin-abonnements", href: "/admin/abonnements", label: "Abonnements", icon: "Wallet", secondary: true },
     { key: "admin-actualites", href: "/admin/actualites", label: "Actualités", icon: "Newspaper", secondary: true },
+    { key: "admin-emails", href: "/admin/emails", label: "E-mails", icon: "Mail", secondary: true },
     { key: "admin-exploitation", href: "/admin/exploitation", label: "Exploitation", icon: "Activity", secondary: true },
   ];
 }

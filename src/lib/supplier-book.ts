@@ -45,7 +45,8 @@ export async function supplierBook(supplierId: string, withMarket = false) {
       where: { supplierId },
       include: { rfq: { select: { category: true, city: true, headcount: true, sentAt: true, event: { select: { startsAt: true, city: true, typeId: true } } } } },
     }),
-    db.supplierReview.findMany({ where: { supplierId }, include: { client: { select: { name: true } } }, orderBy: { createdAt: "desc" } }),
+    // Avis masqués par l'équipe KolBase (signalement fondé) : ni affichés, ni comptés.
+    db.supplierReview.findMany({ where: { supplierId, hiddenAt: null }, include: { client: { select: { name: true } } }, orderBy: { createdAt: "desc" } }),
   ]);
   const answered = quotes.length;
   const delays = quotes.filter((q) => q.rfq.sentAt).map((q) => (q.createdAt.getTime() - q.rfq.sentAt!.getTime()) / 36e5).filter((h) => h >= 0);

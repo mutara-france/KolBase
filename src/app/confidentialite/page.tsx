@@ -42,6 +42,8 @@ export default function Page() {
           ["Lettre d'information de KolBase", "Consentement (case à cocher, retirable en un clic)", "Jusqu'à la désinscription"],
           ["Mesure des services de communication (visites et inscriptions obtenues par un lien suivi)", "Intérêt légitime ; statistiques agrégées, sans nom", "13 mois"],
           ["Facturation des abonnements et des services", "Obligation légale (Code de commerce)", "10 ans pour les factures et pièces comptables"],
+          ["Traiter les signalements de contenus (registre, décision motivée communiquée aux personnes concernées)", "Obligation légale (loi pour la confiance dans l'économie numérique, règlement européen sur les services numériques) et intérêt légitime", "5 ans après la décision"],
+          ["Journal des e-mails envoyés (destinataire, objet, date, statut, sans le contenu), pour l'assistance", "Intérêt légitime (preuve d'envoi, assistance)", "90 jours"],
           ["Journal des actions sensibles et sécurité (prévention des fraudes, limitation des tentatives)", "Intérêt légitime et obligation légale (traçabilité des conventions)", "Durée du compte, puis 5 ans ; sessions et liens de connexion expirés supprimés sous 30 jours"],
           ["Assistant de rédaction (intelligence artificielle), à votre demande", "Intérêt légitime (aide à la rédaction)", "Non conservé par KolBase au-delà du brouillon proposé"],
           ["Prospection commerciale auprès des organisations et des prestataires", "Intérêt légitime (prospection entre professionnels, avec possibilité de refus à chaque message)", "3 ans après le dernier contact"],

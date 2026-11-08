@@ -1,4 +1,5 @@
 import { SignPanel, TrainingSheetPanel } from "@/components/TrainingPublic";
+import { ReportLink } from "@/components/ReportLink";
 import { AbstractsCallPanel, CongressProgram, EventPartnersPanel } from "@/components/CongressPublic";
 import Link from "next/link";
 import { attended, eventEnded } from "@/lib/event-followup";
@@ -272,6 +273,7 @@ export default async function Page({ params, searchParams }: { params: Promise<{
               {event.organization.about && <p className="text-sm clamp-4">{event.organization.about}</p>}
               {orgIsPublic(event.organization) && <Link className="link" href={`/structures/${event.organizationId}`}>{t("Voir la page de l'organisation")}</Link>}
             </section>
+            {!cancelled && <ReportLink type="evenement" id={id} />}
           </aside>
         </div>
       </main>
