@@ -17,6 +17,7 @@ import { jsonLd } from "@/lib/jsonld";
 import { orgIsPublic } from "@/lib/org-roles";
 import { ConfirmButton } from "@/components/ConfirmButton";
 import { isDemoOrgId } from "@/lib/demo";
+import { DemoNotice } from "@/components/DemoNotice";
 
 /** « lundi 3 novembre 2026 à 14:00 » / « Monday, 3 November 2026 at 14:00 » (heure de Paris). */
 const dateTime = (locale: Locale, d: Date) => fmtDate(locale, d, { weekday: "long", day: "numeric", month: "long", year: "numeric", hour: "2-digit", minute: "2-digit" });
@@ -104,6 +105,7 @@ export default async function Page({ params, searchParams }: { params: Promise<{
       <SiteHeader variant="public" />
       <script type="application/ld+json" dangerouslySetInnerHTML={jsonLd(structured)} />
       <main className="stack">
+        {isDemoOrgId(event.organizationId) && <DemoNotice kind="event" />}
         <PageHero
           eyebrow={`${t(eventTypeLabel(event.typeId))}${event.therapeuticArea ? ` · ${t(event.therapeuticArea)}` : ""} · ${t(FORMAT_LABEL[event.format])}`}
           status={<span className={`pill ${status.tone}`}>{status.label}</span>}

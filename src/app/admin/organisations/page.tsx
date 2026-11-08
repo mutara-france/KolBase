@@ -2,7 +2,7 @@ import Link from "next/link";
 import { SearchX } from "lucide-react";
 import { db } from "@/lib/db";
 import { requirePlatformAdmin } from "@/lib/platform";
-import { ORG_FAMILIES, ORG_KIND_LABEL, VERIFICATION_LABEL } from "@/lib/org-roles";
+import { ORG_FAMILIES, orgKindDisplay, VERIFICATION_LABEL } from "@/lib/org-roles";
 import { formatDate } from "@/lib/events";
 import { normalize } from "@/lib/search";
 import { displayStatus, STATUS_LABEL } from "@/lib/billing-plans";
@@ -109,7 +109,7 @@ export default async function Page({ searchParams }: { searchParams: Promise<{ q
                     <Avatar name={o.name} size={32} square src={logoSrc(o)} />
                     <span className="row-main">
                       <span className="row-title"><strong>{o.name}</strong>{o.id.startsWith("demo-") && <span className="pill done">Démonstration</span>}</span>
-                      <span className="text-sm muted">{ORG_KIND_LABEL[o.kind]}{o.headquarters ? ` · ${o.headquarters}` : ""}{twins(o).length ? " · même SIREN qu'une autre organisation" : ""}</span>
+                      <span className="text-sm muted">{orgKindDisplay(o)}{o.headquarters ? ` · ${o.headquarters}` : ""}{twins(o).length ? " · même SIREN qu'une autre organisation" : ""}</span>
                     </span>
                   </span>
                 </span>

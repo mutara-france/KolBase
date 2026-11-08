@@ -12,13 +12,14 @@ import { Avatar } from "@/components/Avatar";
 import { CallCard, EventCard } from "@/components/PublicCards";
 import { db } from "@/lib/db";
 import { getCurrentUser, viaMandate } from "@/lib/auth";
-import { ORG_KIND_LABEL, orgIsPublic } from "@/lib/orgs";
+import { orgIsPublic, orgKindDisplay } from "@/lib/orgs";
 import { canSee, companyVisibility, type Viewer } from "@/lib/visibility";
 import { FollowButton } from "@/components/FollowButton";
 import { callFull, SIGNED_STATUSES } from "@/lib/projects";
 import type { Metadata } from "next";
 import { getT } from "@/lib/i18n/server";
 import { isDemoOrgId } from "@/lib/demo";
+import { DemoNotice } from "@/components/DemoNotice";
 
 export async function generateMetadata({ params }: { params: Promise<{ id: string }> }): Promise<Metadata> {
   const { id } = await params;
@@ -27,10 +28,10 @@ export async function generateMetadata({ params }: { params: Promise<{ id: strin
   if (!o) return { title: t("Organisation — KolBase"), robots: { index: false } };
   const description = (o.about ?? t("{name} sur KolBase.", { name: o.name })).slice(0, 160);
   return {
-    title: `${o.name} — ${t(ORG_KIND_LABEL[o.kind])} — KolBase`,
+    title: `${o.name} — ${t(orgKindDisplay(o))} — KolBase`,
     description,
     alternates: { canonical: `/structures/${id}` },
-    openGraph: { type: "website", siteName: "KolBase", url: `/structures/${id}`, title: `${o.name} — ${t(ORG_KIND_LABEL[o.kind])}`, description },
+    openGraph: { type: "website", siteName: "KolBase", url: `/structures/${id}`, title: `${o.name} — ${t(orgKindDisplay(o))}`, description },
     ...(isDemoOrgId(id) ? { robots: { index: false } } : {}),
   };
 }
@@ -75,6 +76,7 @@ export default async function Page({ params }: { params: Promise<{ id: string }>
       <main className={user ? "" : "landing"}>
         <div className={user ? "stack" : "public-section stack"}>
           <Link href="/structures" className="back-link"><ArrowLeft size={14} /> {t("Toutes les organisations")}</Link>
+          {isDemoOrgId(o.id) && <DemoNotice kind="organisation" />}
           {/* Aperçu par un membre : la page n'est pas encore (ou plus) visible du public. */}
           {isMember && !orgIsPublic(o) && (
             <p className="notice warn" role="status">
@@ -95,7 +97,7 @@ export default async function Page({ params }: { params: Promise<{ id: string }>
           <section className={`card profile-hero${isSupplier ? " on-banner" : ""}`}>
             <Avatar name={o.name} size={76} square src={logoSrc(o)} />
             <div className="grow">
-              <span className="sector-tag">{t(ORG_KIND_LABEL[o.kind])}</span>
+              <span className="sector-tag">{t(orgKindDisplay(o))}</span>
               <h1 className="profile-name">{o.name}</h1>
               <p className="text-sm">{[o.sector ? t(o.sector) : null, o.headquarters].filter(Boolean).join(" · ")}</p>
               {isSupplier && o.supplierCategories.length > 0 && (

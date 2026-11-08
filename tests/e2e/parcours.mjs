@@ -5240,6 +5240,26 @@ async function submitNewOrg(page, siren) {
   await pgc.end();
 }
 
+// ── Données de démonstration signalées, prestataire présenté par sa catégorie ──────────────
+{
+  const v = await session();
+  await v.page.goto(`${BASE}/experts/demo-p-durand`);
+  check("Démonstration : fiche d'expert fictif signalée", (await text(v.page)).includes("Profil fictif, présenté pour la démonstration de KolBase"));
+  await v.page.goto(`${BASE}/evenements/demo-ev-live-surgery`);
+  check("Démonstration : événement fictif signalé", (await text(v.page)).includes("Événement fictif, présenté pour la démonstration de KolBase"));
+  await v.page.goto(`${BASE}/experts`);
+  check("Démonstration : étiquette sur les cartes d'experts", /démonstration/i.test(await v.page.locator('a.kol-card[href="/experts/demo-p-durand"]').innerText()));
+  await v.page.goto(`${BASE}/evenements`);
+  check("Démonstration : étiquette sur les cartes de l'agenda", (await v.page.locator("article.event-card .demo-tag").count()) > 0);
+  await v.page.goto(`${BASE}/structures/demo-sup-belleville`);
+  const tag = (await v.page.locator(".profile-hero .sector-tag").innerText()).trim();
+  check("Prestataire : présenté par sa catégorie", /^restauration et traiteur$/i.test(tag) && (await v.page.title()).includes("Restauration et traiteur"), `${tag} | ${await v.page.title()}`);
+  check("Démonstration : organisation fictive signalée", (await text(v.page)).includes("Organisation fictive, présentée pour la démonstration de KolBase"));
+  await v.page.goto(`${BASE}/structures/straumann`);
+  check("Organisation réelle : pas de mention de démonstration", !(await text(v.page)).includes("présentée pour la démonstration"));
+  await v.ctx.close();
+}
+
 // ── 4. Limitation des tentatives ───────────────────────────────────────────
 {
   const { ctx, page } = await session();

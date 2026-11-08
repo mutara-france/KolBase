@@ -843,4 +843,6 @@ export const PRATICIEN: Record<string, string> = {
   "Voir la page publique de l'événement": "See the event's public page",
   "{org} vous a écrit : répondre dans la messagerie": "{org} has written to you: reply in Messages",
   "Ce compte a été désactivé par l'équipe KolBase. Pour en savoir plus, écrivez à {email}.": "This account has been disabled by the KolBase team. To find out more, write to {email}.",
+  "L'envoi d'e-mails n'est pas encore activé sur KolBase : la réinitialisation par e-mail est indisponible pour l'instant. Écrivez à {email}.": "Email sending is not yet enabled on KolBase: password reset by email is unavailable for now. Write to {email}.",
+  "L'envoi d'e-mails n'est pas encore activé sur KolBase : aucun lien ne peut partir pour l'instant.": "Email sending is not yet enabled on KolBase: no link can be sent for now.",
 };

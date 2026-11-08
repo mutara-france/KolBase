@@ -1726,3 +1726,8 @@ a.chip { display: inline-flex; align-items: center; text-decoration: none; }
 }
 .row-title { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 8px; min-width: 0; }
 .row-title .pill { flex: none; white-space: nowrap; }
+
+/* Données de démonstration : signalées sur la page et sur les cartes. */
+.notice.demo-notice { display: flex; align-items: center; gap: 8px; background: var(--bg-subtle); color: var(--ink); border-color: var(--line); }
+.notice.demo-notice svg { flex: none; color: var(--outremer); }
+.demo-tag { align-self: flex-start; display: inline-flex; margin-bottom: 6px; padding: 2px 8px; border-radius: 999px; background: var(--bg-subtle); color: var(--ink-soft); font-family: var(--font-mono); font-size: 10.5px; letter-spacing: 0.08em; text-transform: uppercase; }

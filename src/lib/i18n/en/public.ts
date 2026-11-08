@@ -447,4 +447,9 @@ export const PUBLIC: Record<string, string> = {
   "Comment récupérer ou supprimer mes données ?": "How do I get or delete my data?",
   "Depuis « Mon compte » : « Télécharger mes données » fournit l'ensemble de vos données ; la suppression du compte efface le reste, sauf ce que des conventions ou déclarations passées obligent à conserver.": "From “My account”: “Download my data” provides all your data; deleting the account erases the rest, except what past agreements or declarations require us to keep.",
   "Référencez votre structure avec toutes vos prestations (salle, traiteur, hébergement, transport, audiovisuel…) et complétez votre book.": "List your business with all your services (venue, catering, accommodation, transport, audiovisual…) and complete your portfolio.",
+  "Prestataire": "Service provider",
+  "Profil fictif, présenté pour la démonstration de KolBase : cette personne n'existe pas.": "Fictitious profile, shown to demonstrate KolBase: this person does not exist.",
+  "Événement fictif, présenté pour la démonstration de KolBase : il n'aura pas lieu.": "Fictitious event, shown to demonstrate KolBase: it will not take place.",
+  "Organisation fictive, présentée pour la démonstration de KolBase.": "Fictitious organisation, shown to demonstrate KolBase.",
+  "Démonstration": "Demo",
 };

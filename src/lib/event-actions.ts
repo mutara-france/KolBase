@@ -4,6 +4,7 @@ import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import { db } from "@/lib/db";
+import { mailEnabled } from "@/lib/mail";
 import { audit, requireUser } from "@/lib/auth";
 import { isVerifiedOrg, notVerified, requireMembership } from "@/lib/orgs";
 import { BENEFIT_CATALOG, COMPLIANCE_ROLES, EVENT_MANAGER_ROLES, EVENT_ORGANIZER_ROLES, eventChanges, eventEnded, eventScope, EVENT_TYPES, ONLINE_URL_INVALID, parseOnlineUrl, parseParisDateTime } from "@/lib/events";
@@ -337,7 +338,7 @@ export async function registerToEvent(_: ActionState, form: FormData): Promise<A
   // Confirmation par e-mail : date, lieu ou lien de connexion, badge, invitation d'agenda.
   notifyRegistration(reg.id);
   revalidatePath(`/evenements/${eventId}`);
-  return { ok: t("Inscription confirmée. Un e-mail de confirmation vous est envoyé, avec l'événement pour votre agenda.") };
+  return { ok: mailEnabled() ? t("Inscription confirmée. Un e-mail de confirmation vous est envoyé, avec l'événement pour votre agenda.") : t("Inscription confirmée. Votre badge et l'événement pour votre agenda sont dans « Mes inscriptions ».") };
 }
 
 /** Annulation par la personne inscrite (confirmée en deux temps), depuis l'événement ou « Mes inscriptions ». */

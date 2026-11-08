@@ -4,6 +4,7 @@ import { createHash, randomBytes } from "node:crypto";
 import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import { db } from "@/lib/db";
+import { mailEnabled } from "@/lib/mail";
 import { audit, requireUser } from "@/lib/auth";
 import { invitableRoles, isVerifiedOrg, requireMembership, roleLabel, SIREN_REQUIRED, sirenFields } from "@/lib/orgs";
 import { blockedFor, hit } from "@/lib/rate-limit";
@@ -160,7 +161,7 @@ export async function createInvitation(_: InviteState, form: FormData): Promise<
   const link = `${process.env.APP_URL ?? ""}/invitation/${token}`;
   if (email) notifyInvitation(email, org.name, `${user.firstName} ${user.lastName}`, link, roleLabel(role, org.kind));
   return {
-    ok: `${email ? `${t("Invitation envoyée à {email}.", { email })} ` : ""}${t("Lien valable {INVITE_DAYS} jours, à usage unique. Copiez-le maintenant : il ne sera plus affiché.", { INVITE_DAYS })}`,
+    ok: `${email ? `${mailEnabled() ? t("Invitation envoyée à {email}.", { email }) : t("L'envoi d'e-mails n'est pas encore activé sur KolBase : transmettez vous-même ce lien à {email}.", { email })} ` : ""}${t("Lien valable {INVITE_DAYS} jours, à usage unique. Copiez-le maintenant : il ne sera plus affiché.", { INVITE_DAYS })}`,
     link,
   };
 }

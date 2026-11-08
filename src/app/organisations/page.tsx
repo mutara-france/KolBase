@@ -2,7 +2,7 @@ import Link from "next/link";
 import { SiteHeader } from "@/components/SiteHeader";
 import { Avatar } from "@/components/Avatar";
 import { requireUser } from "@/lib/auth";
-import { ORG_KIND_LABEL, roleLabel } from "@/lib/orgs";
+import { orgKindDisplay, roleLabel } from "@/lib/orgs";
 import { logoSrc } from "@/lib/logos";
 import { getT } from "@/lib/i18n/server";
 
@@ -14,9 +14,9 @@ export async function generateMetadata() {
 export default async function Page() {
   const { t } = await getT();
   const user = await requireUser();
-  const byOrg = new Map<string, { name: string; logo: string | null; kind: keyof typeof ORG_KIND_LABEL; roles: string[] }>();
+  const byOrg = new Map<string, { name: string; logo: string | null; kind: string; roles: string[] }>();
   for (const m of user.memberships) {
-    const e = byOrg.get(m.organizationId) ?? { name: m.organization.name, logo: logoSrc(m.organization), kind: m.organization.kind, roles: [] };
+    const e = byOrg.get(m.organizationId) ?? { name: m.organization.name, logo: logoSrc(m.organization), kind: t(orgKindDisplay(m.organization)), roles: [] };
     e.roles.push(t(roleLabel(m.role, m.organization.kind)));
     byOrg.set(m.organizationId, e);
   }
@@ -30,7 +30,7 @@ export default async function Page() {
           <Link key={id} href={`/organisations/${id}`} className="card tile">
             <span className="tile-head">
               <Avatar name={o.name} size={40} square src={o.logo} />
-              <span><strong>{o.name}</strong><br /><span className="muted">{t(ORG_KIND_LABEL[o.kind])} · {o.roles.join(", ")}</span></span>
+              <span><strong>{o.name}</strong><br /><span className="muted">{o.kind} · {o.roles.join(", ")}</span></span>
             </span>
           </Link>
         ))}

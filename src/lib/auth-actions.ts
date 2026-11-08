@@ -11,7 +11,7 @@ import { blockedFor, clientIp, hit, reset } from "@/lib/rate-limit";
 import { safeNext } from "@/lib/safe-redirect";
 import { canBeExpert, isRpps, normalizeRpps, PROFESSIONS } from "@/lib/professions";
 import { country, isCountry, licenseRule, practicesInFrance } from "@/lib/countries";
-import { sendLater } from "@/lib/mail";
+import { mailEnabled, sendLater } from "@/lib/mail";
 import { notifyPlatformAdmins } from "@/lib/notifications";
 import { consumeToken, findToken, issueToken } from "@/lib/tokens";
 import { sendVerification } from "@/lib/verification";
@@ -276,6 +276,8 @@ export async function requestPasswordReset(_: FormState, form: FormData): Promis
   const email = str(form, "email").toLowerCase();
   const { t } = await getT();
   if (!emailOk(email)) return { error: t("Adresse e-mail invalide.") };
+  // Envoi d'e-mails pas encore configuré : le dire plutôt qu'annoncer un lien qui ne partira pas (même réponse pour tous).
+  if (!mailEnabled()) return { error: t("L'envoi d'e-mails n'est pas encore activé sur KolBase : la réinitialisation par e-mail est indisponible pour l'instant. Écrivez à {email}.", { email: LEGAL.contactEmail ?? "contact@kolbase.io" }) };
   const ipKey = `reset:ip:${await clientIp()}`;
   const emailKey = `reset:email:${email}`;
   const wait = Math.max(await blockedFor(ipKey, RESET_MAX_PER_IP, RESET_WINDOW_MS), await blockedFor(emailKey, RESET_MAX_PER_EMAIL, RESET_WINDOW_MS));
@@ -329,6 +331,7 @@ export async function resendVerification(_: FormState): Promise<FormState> {
   const user = await requireUser();
   const { t } = await getT();
   if (user.emailVerifiedAt) return { ok: t("Votre adresse est déjà confirmée.") };
+  if (!mailEnabled()) return { error: t("L'envoi d'e-mails n'est pas encore activé sur KolBase : aucun lien ne peut partir pour l'instant.") };
   const key = `verify:user:${user.id}`;
   const wait = await blockedFor(key, VERIFY_RESEND_MAX, RESET_WINDOW_MS);
   if (wait) return tooMany(t, wait);

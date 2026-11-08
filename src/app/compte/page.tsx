@@ -1,6 +1,7 @@
 import { BookOpen, Building, Building2, KeyRound } from "lucide-react";
 import { SectionHead, PageHead } from "@/components/UI";
 import { SiteHeader } from "@/components/SiteHeader";
+import { mailEnabled } from "@/lib/mail";
 import { EmailVerificationNotice, ListingForm, MyDataCard, NotificationsForm, PasswordForm, ProfileForm } from "@/components/AccountForms";
 import { retentionReasons } from "@/lib/account";
 import Link from "next/link";
@@ -82,7 +83,7 @@ export default async function Page({ searchParams }: { searchParams: Promise<{ a
         {orcidNotice && <p className={`notice ${orcidNotice[0]}`}>{t(orcidNotice[1])}</p>}
         {emailNotice && <p className={`notice ${emailNotice[0]}`}>{t(emailNotice[1])}</p>}
         {admin === "confirmer" && !user.emailVerifiedAt && <p className="notice warn">{t("Confirmez votre adresse e-mail pour accéder à l'administration KolBase.")}</p>}
-        {!user.emailVerifiedAt && <EmailVerificationNotice email={user.email} practitioner={!!user.practitioner} />}
+        {!user.emailVerifiedAt && <EmailVerificationNotice email={user.email} practitioner={!!user.practitioner} mailOn={mailEnabled()} />}
         {/* Sommaire : la page est longue, chaque encart a son ancre. */}
         <nav className="account-toc" aria-label={t("Sommaire")}>
           {[
@@ -189,7 +190,7 @@ export default async function Page({ searchParams }: { searchParams: Promise<{ a
               : null
           }
         /></div>
-        <div id="notifications"><NotificationsForm email={wantsEmail(user)} newsletter={subscribed(user)} practitioner={!!user.practitioner} /></div>
+        <div id="notifications"><NotificationsForm email={wantsEmail(user)} newsletter={subscribed(user)} practitioner={!!user.practitioner} mailOn={mailEnabled()} /></div>
         <div id="identifiants"><PasswordForm email={user.email} /></div>
         <section className="card stack-sm" id="securite" aria-labelledby="securite-titre">
           <SectionHead icon={KeyRound} id="securite-titre" title={t("Sécurité : double authentification")} />
