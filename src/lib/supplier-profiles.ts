@@ -136,7 +136,6 @@ export function equipmentOptions(categories: string[]): { category: string; opti
 
 /** Toutes les clés de capacité connues (lecture des capacités enregistrées). */
 export const ALL_CAPACITY_KEYS = [...new Set(Object.values(SUPPLIER_PROFILES).flatMap((p) => p.capacities.map((f) => f.key)))];
-export const ALL_EQUIPMENT = [...new Set(Object.values(SUPPLIER_PROFILES).flatMap((p) => p.equipment))];
 /** Libellé après le nombre (« 120 places en théâtre »). */
 export const capacityUnit = (key: string) => Object.values(SUPPLIER_PROFILES).flatMap((p) => p.capacities).find((f) => f.key === key)?.unit ?? key;
 

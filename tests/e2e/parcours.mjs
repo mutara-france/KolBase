@@ -655,7 +655,7 @@ const linkIn = (mail) => mail?.text.match(/https?:\/\/\S+/g)?.find((u) => !u.end
   check("Demande : questions du traiteur et date de la prestation enregistrées", row?.details?.format === "cocktail" && row.details.serviceTime === "19:30" && row.details.drinks === "vins" && !!row.serviceStart, JSON.stringify(row));
   await pgc.query(`update "Rfq" set status = 'sent', "sentAt" = now() where id = $1`, [rfqId]);
   await lud.page.goto(`${BASE}/organisations/demo-sup-belleville/devis/${rfqId}`);
-  let t = await text(lud.page);
+  const t = await text(lud.page);
   check("Prestataire : la demande dit ce qu'il faut pour chiffrer (date, format, heure, boissons)", t.includes("Dates de la prestation") && t.includes("Cocktail") && t.includes("19:30") && t.includes("Avec vins"));
   await lud.ctx.close();
 
