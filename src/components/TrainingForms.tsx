@@ -121,7 +121,7 @@ export function AssessmentForm({ ids, rows }: { ids: Ids; rows: { id: string; na
   const t = useT();
   const [state, action, pending] = useActionState(saveAssessments, undefined);
   return (
-    <form action={action} className="stack-sm">
+    <form action={action} className="form stack-sm">
       <Notice state={state} />
       <H {...ids} />
       <ul className="plain stack-xs">
