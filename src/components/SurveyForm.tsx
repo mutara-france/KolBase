@@ -24,7 +24,7 @@ function Stars({ name, label, required = false }: { name: string; label: string;
 }
 
 /** Questionnaire de satisfaction : note globale (obligatoire), contenu, organisation, commentaire. */
-export function SurveyForm({ eventId }: { eventId: string }) {
+export function SurveyForm({ eventId, training = false }: { eventId: string; training?: boolean }) {
   const t = useT();
   const [state, action, pending] = useActionState(submitSurvey, undefined);
   if (state?.ok) return <p className="notice ok">{state.ok}</p>;
@@ -35,6 +35,9 @@ export function SurveyForm({ eventId }: { eventId: string }) {
       <Stars name="overall" label={t("Dans l'ensemble, êtes-vous satisfait ?")} required />
       <Stars name="content" label={t("Contenu scientifique")} />
       <Stars name="logistics" label={t("Organisation et accueil")} />
+      {/* Formation : auto-positionnement sur les objectifs, avant et après (progression perçue). */}
+      {training && <Stars name="selfBefore" label={t("Avant la formation, votre maîtrise des objectifs")} />}
+      {training && <Stars name="selfAfter" label={t("Après la formation, votre maîtrise des objectifs")} />}
       <label>{t("Un commentaire pour l'organisateur (facultatif)")}
         <textarea name="comment" rows={4} maxLength={2000} placeholder={t("Ce qui vous a plu, ce qui pourrait être amélioré…")} />
       </label>

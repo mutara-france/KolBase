@@ -2,6 +2,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { Check } from "lucide-react";
 import { SiteHeader } from "@/components/SiteHeader";
+import { SignPanel } from "@/components/TrainingPublic";
 import { db } from "@/lib/db";
 import { requireUser } from "@/lib/auth";
 import { checkinUrl, ensureCheckinCode, qrSvg } from "@/lib/checkin";
@@ -51,6 +52,8 @@ export default async function Page({ params }: { params: Promise<{ regId: string
             <p className="muted text-sm">{t("Présentez ce code à l'accueil : l'organisateur le scanne pour enregistrer votre arrivée.")}</p>
           )}
         </section>
+        {/* Formation en demi-journées : émargement depuis le téléphone, à chaque demi-journée. */}
+        <SignPanel eventId={reg.event.id} registrationId={reg.id} />
       </main>
     </>
   );

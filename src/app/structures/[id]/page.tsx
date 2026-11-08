@@ -3,6 +3,7 @@ import { logoSrc } from "@/lib/logos";
 import { notFound } from "next/navigation";
 import { ArrowLeft, Award, Clock, Images, Info, Lock, Mail, MapPin, Receipt, ShieldCheck, Star, Tag } from "lucide-react";
 import { SectionHead } from "@/components/UI";
+import { OrgTrainingResults } from "@/components/TrainingPublic";
 import { CategoryIcon } from "@/components/SupplierBits";
 import { EVENT_MANAGER_ROLES } from "@/lib/events";
 import { bannerSrc, delayLabel, OFFER_UNITS, photoSrc, readCapacities, supplierBook } from "@/lib/supplier-book";
@@ -214,6 +215,8 @@ export default async function Page({ params }: { params: Promise<{ id: string }>
               {v.contact === "masque" && viewer !== "proprietaire" ? <p className="muted">{t("Non communiqué.")}</p> : canSee(v.contact, viewer) ? <p>{o.contactEmail ? <a href={`mailto:${o.contactEmail}`}>{o.contactEmail}</a> : t("Non renseigné.")}</p> : lock(t("Contact"))}
             </section>
           </div>}
+          {/* Organisme qui forme : indicateurs de résultats publiés (Qualiopi), avec leur mode de calcul. */}
+          {!isSupplier && o.kind !== "INDUSTRIEL" && <OrgTrainingResults orgId={id} />}
           {!isSupplier && v.projets !== "masque" && (
             <section>
               <div className="section-head"><div><div className="eyebrow mb-1">{t("Opportunités")}</div><h2 className="section-h2">{t("Ouvertes aux praticiens")}</h2></div></div>

@@ -66,9 +66,11 @@ export async function submitSurvey(_: FormState, form: FormData): Promise<FormSt
   const overall = rating(form, "overall", true);
   const content = rating(form, "content", false);
   const logistics = rating(form, "logistics", false);
-  if ([overall, content, logistics].some((x) => Number.isNaN(x))) return { error: t("Choisissez une note de 1 à 5.") };
+  const selfBefore = rating(form, "selfBefore", false);
+  const selfAfter = rating(form, "selfAfter", false);
+  if ([overall, content, logistics, selfBefore, selfAfter].some((x) => Number.isNaN(x))) return { error: t("Choisissez une note de 1 à 5.") };
   await db.surveyResponse.create({
-    data: { registrationId: reg.id, eventId: reg.eventId, overall: overall as number, content, logistics, comment: str(form, "comment").slice(0, 2000) || null },
+    data: { registrationId: reg.id, eventId: reg.eventId, overall: overall as number, content, logistics, selfBefore, selfAfter, comment: str(form, "comment").slice(0, 2000) || null },
   });
   revalidatePath(`/evenements/${reg.eventId}/avis`);
   revalidatePath(`/organisations/${reg.event.organizationId}/evenements/${reg.eventId}`);

@@ -1,3 +1,4 @@
+import { SignPanel, TrainingSheetPanel } from "@/components/TrainingPublic";
 import Link from "next/link";
 import { attended, eventEnded } from "@/lib/event-followup";
 import { CalendarDays, CalendarPlus, Gift, MapPin, Users } from "lucide-react";
@@ -54,7 +55,7 @@ export default async function Page({ params, searchParams }: { params: Promise<{
       // Le lien de connexion n'est lu que pour une personne inscrite (plus bas).
       omit: { onlineUrl: true },
       include: {
-        organization: true, benefits: true, _count: { select: { registrations: true } },
+        organization: true, benefits: true, _count: { select: { registrations: true } }, training: { select: { eventId: true } },
         calls: { where: { status: "open" }, include: { _count: { select: { applications: { where: { status: "retained" } } } } }, orderBy: { createdAt: "asc" } },
       },
     }),
@@ -147,6 +148,7 @@ export default async function Page({ params, searchParams }: { params: Promise<{
           <div className="page-main">
             {event.description && <section className="card"><h2>{t("Présentation")}</h2><p className="pre-line">{event.description}</p></section>}
             {event.program && <section className="card"><h2>{t("Programme")}</h2><p className="program">{event.program}</p></section>}
+            <TrainingSheetPanel eventId={event.id} />
             <section className="card">
               <h2>{t("Prestations proposées")}</h2>
               {event.benefits.length === 0 ? (
@@ -203,7 +205,7 @@ export default async function Page({ params, searchParams }: { params: Promise<{
                   </p>
                   {gate === "be" && event.mdeonVisa && reg.benefits.length > 0 && <p className="muted text-sm">{t("Visa Mdeon n° {visa}", { visa: event.mdeonVisa })}</p>}
                   {!ended && event.format !== "DISTANCIEL" && <Link className="btn secondary" href={`/inscriptions/${reg.id}/badge`}>{t("Mon badge d'accueil")}</Link>}
-                  {ended && reg.checkedInAt && <a className="btn secondary" href={`/inscriptions/${reg.id}/attestation`}>{t("Mon attestation de présence")}</a>}
+                  {ended && reg.checkedInAt && <a className="btn secondary" href={`/inscriptions/${reg.id}/attestation`}>{event.training ? t("Mon attestation de fin de formation") : t("Mon attestation de présence")}</a>}
                   {canReview && <Link className="btn ghost" href={`/evenements/${id}/avis`}>{t("Donner mon avis")}</Link>}
                   {!reg.declared && !past && (
                     <form action={cancelRegistration}>
@@ -260,6 +262,7 @@ export default async function Page({ params, searchParams }: { params: Promise<{
               )}
               {!past && !cancelled && <a className="link" href={`/evenements/${id}/calendrier`}><CalendarPlus size={14} /> {t("Ajouter à mon agenda")}</a>}
             </section>
+            {reg && !cancelled && <SignPanel eventId={id} registrationId={reg.id} />}
             <section className="card stack-sm">
               <h2 className="section-title">{event.organization.name}</h2>
               {event.organization.about && <p className="text-sm clamp-4">{event.organization.about}</p>}
