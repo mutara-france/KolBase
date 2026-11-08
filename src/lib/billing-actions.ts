@@ -67,7 +67,7 @@ async function applyExemption(form: FormData): Promise<ExemptionState> {
   await audit(admin.id, remove ? "billing.exempt_remove" : "billing.exempt", "Organization", orgId, { until: remove ? undefined : until, stripe: stripeBilling ?? undefined });
   // L'organisation est prévenue : gratuité offerte (ou prolongée), ou retirée alors qu'elle était en cours.
   if (!remove || exempt(before)) notifyExemption(orgId, remove ? null : date, remove ? null : data.exemptNote ?? null, stripeBilling);
-  revalidatePath("/admin");
+  revalidatePath("/admin", "layout");
 }
 
 /** Retrait de la gratuité (formulaire simple, avec confirmation). */

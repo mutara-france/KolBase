@@ -25,7 +25,7 @@ const refresh = (orgId: string, eventId: string) => {
   revalidatePath(`/organisations/${orgId}/evenements/${eventId}`);
   // Événement rattaché à un dossier : il se gère aussi dans l'onglet « Événement » du dossier.
   revalidatePath(`/organisations/${orgId}/dossiers`, "layout");
-  revalidatePath("/admin");
+  revalidatePath("/admin", "layout");
   revalidatePath("/");
 };
 
@@ -68,7 +68,7 @@ export async function orderService(_: FormState, form: FormData): Promise<FormSt
     },
   })));
   for (const o of orders) await audit(user.id, "service.order", "ServiceOrder", o.id, { offer: offer.code, priceCents: o.priceCents });
-  notifyPlatformAdmins(`Service commandé : ${offer.label}`, `${user.firstName} ${user.lastName} commande « ${offer.label} » (${(offer.priceCents / 100).toLocaleString("fr-FR")} € HT) pour l'événement « ${event.title} » du ${formatDate(event.startsAt)}.${offer.kind === "pack" ? `\n\nServices compris : ${items.map((i) => i.label).join(", ")}.` : ""}`, "/admin?onglet=services");
+  notifyPlatformAdmins(`Service commandé : ${offer.label}`, `${user.firstName} ${user.lastName} commande « ${offer.label} » (${(offer.priceCents / 100).toLocaleString("fr-FR")} € HT) pour l'événement « ${event.title} » du ${formatDate(event.startsAt)}.${offer.kind === "pack" ? `\n\nServices compris : ${items.map((i) => i.label).join(", ")}.` : ""}`, "/admin/services");
   refresh(orgId, event.id);
   return { ok: t("Commande transmise à l'équipe KolBase : vous serez prévenu de sa planification.") };
 }
@@ -132,7 +132,7 @@ export async function saveServiceOffer(form: FormData) {
   if (id) await db.serviceOffer.update({ where: { id }, data });
   else await db.serviceOffer.create({ data: { ...data, kind, code: `${kind}-${Date.now().toString(36)}` } });
   await audit(admin.id, id ? "service.offer_update" : "service.offer_create", "ServiceOffer", id || label);
-  revalidatePath("/admin");
+  revalidatePath("/admin", "layout");
 }
 
 /** Texte envoyé : pour un e-mailing commandé, l'annonceur est nommé (communication commerciale identifiée). */
@@ -193,7 +193,7 @@ export async function sendNewsletter(_: FormState, form: FormData): Promise<Form
     notifyServiceOrder(order.id);
     refresh(order.organizationId, order.eventId);
   }
-  revalidatePath("/admin");
+  revalidatePath("/admin", "layout");
   return { ok: t("Lettre envoyée à {sent} membre{v}.", { sent, v: sent > 1 ? "s" : "" }), sent: true };
 }
 

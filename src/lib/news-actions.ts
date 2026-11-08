@@ -16,7 +16,7 @@ function refresh(slug?: string) {
   revalidatePath("/actualites");
   if (slug) revalidatePath(`/actualites/${slug}`);
   revalidatePath("/");
-  revalidatePath("/admin");
+  revalidatePath("/admin", "layout");
 }
 
 /** Création ou modification d'une actualité (brouillon tant qu'elle n'est pas publiée). */
@@ -73,5 +73,5 @@ export async function deleteArticle(form: FormData) {
   const a = await db.article.delete({ where: { id } });
   await audit(admin.id, "news.delete", "Article", id, { title: a.title });
   refresh(a.slug);
-  redirect("/admin?onglet=actualites");
+  redirect("/admin/actualites");
 }

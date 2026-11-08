@@ -14,6 +14,8 @@ import { country, isCountry, licenseRule, practicesInFrance } from "@/lib/countr
 import { sendLater } from "@/lib/mail";
 import { notifyPlatformAdmins } from "@/lib/notifications";
 import { consumeToken, findToken, issueToken } from "@/lib/tokens";
+import { sendVerification } from "@/lib/verification";
+import { LEGAL } from "@/lib/legal";
 import { anonymizeAccount, soleAdminOrgs } from "@/lib/account";
 import { startSecondFactor } from "@/lib/two-factor";
 import { MAX_NAME, str } from "@/lib/form";
@@ -39,23 +41,6 @@ const RESET_WINDOW_MS = 60 * 60 * 1000;
 const RESET_MAX_PER_EMAIL = 3;
 const RESET_MAX_PER_IP = 10;
 const VERIFY_RESEND_MAX = 3;
-
-/**
- * Lien de confirmation d'adresse (valable 7 jours) ; `next` : page où revenir ensuite (invitation…). La lettre
- * d'information n'est donnée comme raison qu'à un praticien (elle leur est réservée).
- */
-async function sendVerification(user: { id: string; email: string; firstName: string }, practitioner: boolean, next?: string | null) {
-  const token = await issueToken(user.id, "VERIFY_EMAIL", next);
-  const why = practitioner
-    ? "Le reste de KolBase fonctionne sans cette confirmation ; elle est nécessaire pour recevoir la lettre d'information."
-    : "C'est à cette adresse que KolBase vous écrit (invitations, demandes, factures).";
-  sendLater({
-    to: user.email,
-    subject: "Confirmez votre adresse e-mail — KolBase",
-    text: `Bonjour ${user.firstName},\n\nConfirmez votre adresse e-mail en un clic. ${why} Le lien est valable 7 jours et ne sert qu'une fois.\n\nSi vous n'avez pas créé de compte, ignorez ce message.`,
-    cta: { label: "Confirmer mon adresse", href: `/confirmer-email/${token}` },
-  });
-}
 
 const tooMany = (t: T, minutes: number) => ({
   error: minutes > 1 ? t("Trop de tentatives. Réessayez dans {n} minutes.", { n: minutes }) : t("Trop de tentatives. Réessayez dans {n} minute.", { n: minutes }),
@@ -132,6 +117,11 @@ export async function signIn(_: FormState, form: FormData): Promise<FormState> {
     return { error: t("E-mail ou mot de passe incorrect.") };
   }
   await reset(emailKey);
+  // Compte désactivé par l'équipe KolBase : le mot de passe est juste, mais la connexion est refusée.
+  if (user.disabledAt) {
+    await audit(user.id, "user.signin_disabled", "User", user.id);
+    return { error: t("Ce compte a été désactivé par l'équipe KolBase. Pour en savoir plus, écrivez à {email}.", { email: LEGAL.contactEmail ?? "contact@kolbase.io" }) };
+  }
   // Hash d'un ancien format ou de paramètres dépassés : recalculé maintenant que le mot de passe est connu.
   if (user.passwordHash && needsRehash(user.passwordHash)) await db.user.update({ where: { id: user.id }, data: { passwordHash: await hashPassword(password) } });
   // Double authentification : le mot de passe ne suffit pas, le code de l'application est demandé ensuite.
@@ -218,7 +208,7 @@ export async function updateProfile(_: FormState, form: FormData): Promise<FormS
   // La langue choisie s'applique aussi à cet appareil (le sélecteur de langue pose le même cookie).
   if (locale !== user.locale) (await cookies()).set(LOCALE_COOKIE, locale, { path: "/", maxAge: 365 * 24 * 3600, sameSite: "lax", httpOnly: true, secure: process.env.NODE_ENV === "production" });
   await audit(user.id, "user.update_profile", "User", user.id, unlisted ? { unlisted: true } : undefined);
-  if (toCheck) notifyPlatformAdmins(`Identité à vérifier : ${firstName} ${lastName}`, `${firstName} ${lastName} a renseigné : ${toCheck}.`, "/admin?onglet=praticiens");
+  if (toCheck) notifyPlatformAdmins(`Identité à vérifier : ${firstName} ${lastName}`, `${firstName} ${lastName} a renseigné : ${toCheck}.`, "/admin/identites");
   revalidatePath("/compte");
   return { ok: unlisted ? t("Informations enregistrées. Votre référencement d'expert est suspendu (identifiant professionnel ou profession requis).") : t("Informations enregistrées.") };
 }
@@ -259,7 +249,7 @@ export async function setListed(_: FormState, form: FormData): Promise<FormState
       return { error: t("Ce numéro RPPS est déjà associé à un autre compte. Contactez-nous s'il s'agit du vôtre.") };
     if (!canBeExpert(p.profession)) return { error: t("Le référencement comme expert est réservé aux chirurgiens-dentistes, orthodontistes, chirurgiens oraux et stomatologues.") };
     await db.practitionerProfile.update({ where: { userId: user.id }, data: { rpps: typedRpps, rppsVerified: false, rppsCheckedAt: null, rppsCheckNote: null } });
-    notifyPlatformAdmins(`Identité à vérifier : ${user.firstName} ${user.lastName}`, `${user.firstName} ${user.lastName} a renseigné : RPPS ${typedRpps}.`, "/admin?onglet=praticiens");
+    notifyPlatformAdmins(`Identité à vérifier : ${user.firstName} ${user.lastName}`, `${user.firstName} ${user.lastName} a renseigné : RPPS ${typedRpps}.`, "/admin/identites");
     identifier = typedRpps;
   }
   if (listed && !identifier)
@@ -293,7 +283,8 @@ export async function requestPasswordReset(_: FormState, form: FormData): Promis
   await hit(ipKey);
   await hit(emailKey);
   const user = await db.user.findUnique({ where: { email } });
-  if (user) {
+  // Compte désactivé : pas de lien (même réponse neutre, qu'il existe ou non).
+  if (user && !user.disabledAt) {
     // La page d'origine suit le lien : retour à cette page après le nouveau mot de passe.
     const token = await issueToken(user.id, "RESET_PASSWORD", safeNext(str(form, "next"), ""));
     sendLater({
@@ -316,6 +307,7 @@ export async function resetPassword(_: FormState, form: FormData): Promise<FormS
   const pwErr = passwordProblem(password);
   if (pwErr) return { error: tr(pwErr) };
   if (password !== String(form.get("confirm") ?? "")) return { error: tr("Les deux mots de passe ne correspondent pas.") };
+  if (t.user.disabledAt) return { error: tr("Ce lien n'est plus valable. Demandez-en un nouveau.") };
   if (!(await consumeToken(t.id, t.userId, "RESET_PASSWORD"))) return { error: tr("Ce lien n'est plus valable. Demandez-en un nouveau.") };
   await db.user.update({
     where: { id: t.userId },

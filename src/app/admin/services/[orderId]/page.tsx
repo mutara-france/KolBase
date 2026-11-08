@@ -26,7 +26,7 @@ export default async function Page({ params }: { params: Promise<{ orderId: stri
     <>
       <SiteHeader />
       <main className="narrow stack">
-        <p className="muted"><Link href="/admin?onglet=services">Administration › Services</Link></p>
+        <p className="muted"><Link href="/admin">Administration</Link> › <Link href="/admin/services">Services</Link></p>
         <h1>{o.label}</h1>
         <p className="muted">{o.organization.name} · « <Link href={`/evenements/${e.id}`}>{e.title}</Link> » du {formatDate(e.startsAt)} · {formatEUR(o.priceCents)} HT</p>
         {o.brief && <p className="notice">Consignes : « {o.brief} »</p>}

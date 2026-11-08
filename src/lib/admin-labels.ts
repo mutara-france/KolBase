@@ -1,0 +1,200 @@
+/**
+ * Libellés du journal d'activité (table AuditLog) pour l'administration KolBase : actions et objets en français,
+ * liens vers la fiche concernée. Module sans dépendance serveur.
+ */
+
+/** Domaine d'une action (préfixe avant le point). */
+export const AUDIT_DOMAINS: Record<string, string> = {
+  user: "Compte",
+  admin: "Administration KolBase",
+  platform: "Administration KolBase",
+  org: "Organisation",
+  project: "Dossier",
+  solicitation: "Sollicitation",
+  signature: "Signature",
+  expert: "Honoraires",
+  feenote: "Note d'honoraires",
+  material: "Supports",
+  document: "Document",
+  expense: "Dépense",
+  event: "Événement",
+  registration: "Inscription",
+  opencall: "Opportunité",
+  application: "Candidature",
+  rfq: "Demande de devis",
+  supplier: "Prestataire",
+  mandate: "Mandat d'agence",
+  billing: "Facturation",
+  service: "Service KolBase",
+  newsletter: "Lettre d'information",
+  news: "Actualité",
+  compliance: "Conformité",
+  transparence: "Transparence Santé",
+  practitioner: "Profil praticien",
+  interest: "Liens d'intérêts",
+  orcid: "ORCID",
+  ai: "Assistant d'IA",
+};
+
+/** Actions courantes, nommées en clair ; les autres s'affichent « Domaine · code ». */
+const AUDIT_ACTIONS: Record<string, string> = {
+  "user.signup": "Compte créé",
+  "user.signin": "Connexion",
+  "user.signin_password": "Mot de passe accepté (code de double authentification attendu)",
+  "user.signin_failed": "Échec de connexion",
+  "user.signin_disabled": "Connexion refusée (compte désactivé)",
+  "user.email_verified": "Adresse e-mail confirmée",
+  "user.reset_request": "Réinitialisation du mot de passe demandée",
+  "user.reset_password": "Mot de passe réinitialisé",
+  "user.change_password": "Mot de passe modifié",
+  "user.2fa_enabled": "Double authentification activée",
+  "user.2fa_disabled": "Double authentification désactivée",
+  "user.2fa_failed": "Code de double authentification refusé",
+  "user.2fa_recovery_codes": "Codes de secours régénérés",
+  "user.notify_prefs": "Préférences de notification modifiées",
+  "user.newsletter_off": "Désinscription de la lettre d'information",
+  "user.export": "Export de ses données",
+  "user.delete": "Compte supprimé",
+  "user.update_profile": "Profil modifié",
+  "admin.account_disable": "Compte désactivé par KolBase",
+  "admin.account_enable": "Compte réactivé par KolBase",
+  "admin.2fa_reset": "Double authentification réinitialisée par KolBase",
+  "admin.verification_resend": "Lien de confirmation renvoyé par KolBase",
+  "admin.photo_remove": "Photo retirée par KolBase",
+  "platform.org_verify": "Organisation validée",
+  "platform.org_reject": "Organisation refusée",
+  "platform.org_suspend": "Organisation suspendue",
+  "platform.org_reactivate": "Organisation réactivée",
+  "platform.siren_check": "SIREN contrôlé",
+  "platform.rpps_verify": "Identité validée",
+  "platform.rpps_reject": "Identité refusée",
+  "org.create": "Organisation créée",
+  "org.update": "Fiche de l'organisation modifiée",
+  "org.invite": "Invitation envoyée",
+  "org.invite_accept": "Invitation acceptée",
+  "org.invite_revoke": "Invitation retirée",
+  "org.dpa_accept": "Contrat de sous-traitance accepté",
+  "project.create": "Dossier créé",
+  "project.accept_proposal": "Dossier : proposition d'expert acceptée",
+  "project.decline_proposal": "Dossier : proposition d'expert déclinée",
+  "project.submit": "Dossier soumis à la conformité",
+  "project.validate": "Dossier validé par la conformité",
+  "project.block": "Dossier bloqué par la conformité",
+  "project.revise": "Dossier repris après blocage",
+  "project.back_to_accord": "Dossier : retour en accord de principe",
+  "project.ordre": "Dossier : autorisation demandée à l'Ordre",
+  "project.declaration": "Dossier : déclaration simple, passage en signature",
+  "project.hors_france": "Dossier hors France : passage en signature",
+  "project.ordre_ok": "Dossier : autorisation de l'Ordre obtenue",
+  "project.ordre_ko": "Dossier : autorisation de l'Ordre refusée",
+  "project.signed": "Dossier : convention signée",
+  "project.done": "Dossier : prestation réalisée",
+  "project.abandon": "Dossier abandonné",
+  "project.edit": "Dossier modifié",
+  "project.budget": "Budget du dossier modifié",
+  "project.terms": "Conditions d'un expert modifiées",
+  "project.add_expert": "Expert ajouté au dossier",
+  "solicitation.accept": "Sollicitation acceptée par l'expert",
+  "solicitation.decline": "Sollicitation déclinée par l'expert",
+  "solicitation.counter": "Autres honoraires proposés par l'expert",
+  "signature.send": "Convention envoyée en signature électronique",
+  "signature.done": "Convention signée électroniquement",
+  "signature.declined": "Signature électronique refusée",
+  "signature.expired": "Signature électronique expirée",
+  "signature.canceled": "Signature électronique annulée",
+  "expert.paid": "Honoraires marqués payés",
+  "feenote.issue": "Note d'honoraires établie",
+  "event.publish": "Événement publié",
+  "event.unpublish": "Événement retiré de l'agenda",
+  "event.open": "Inscriptions ouvertes",
+  "event.close": "Inscriptions fermées",
+  "event.internal": "Événement passé en réunion interne",
+  "event.public": "Réunion interne ouverte au public",
+  "event.update": "Événement modifié",
+  "opencall.create": "Opportunité publiée",
+  "opencall.open": "Opportunité rouverte",
+  "opencall.closed": "Opportunité clôturée",
+  "application.create": "Candidature envoyée",
+  "application.retain": "Candidature retenue",
+  "application.reject": "Candidature écartée",
+  "service.plan": "Service planifié",
+  "service.refuse": "Service refusé",
+  "service.done": "Service réalisé",
+  "service.invoiced": "Service marqué facturé",
+  "service.cancel": "Service annulé",
+  "rfq.cancel": "Demande de devis annulée",
+  "rfq.remind": "Prestataires relancés",
+  "rfq.propose": "Devis envoyé par un prestataire",
+  "rfq.decline": "Demande déclinée par un prestataire",
+  "supplier.review": "Avis publié sur un prestataire",
+  "mandate.create": "Événement confié à une agence",
+  "mandate.end": "Fin de mandat d'une agence",
+  "project.propose": "Projet proposé par un expert",
+  "event.create": "Événement créé",
+  "event.cancel": "Événement annulé",
+  "registration.create": "Inscription à un événement",
+  "registration.cancel": "Inscription annulée",
+  "rfq.send": "Demande de devis envoyée",
+  "rfq.award": "Devis retenu",
+  "billing.checkout": "Abonnement : passage au paiement",
+  "service.order": "Service commandé",
+  "news.publish": "Actualité publiée",
+  "transparence.publish": "Déclaration Transparence Santé publiée",
+};
+
+export function auditLabel(action: string) {
+  if (AUDIT_ACTIONS[action]) return AUDIT_ACTIONS[action];
+  const [domain, ...rest] = action.split(".");
+  const code = rest.join(".").replace(/_/g, " ");
+  return `${AUDIT_DOMAINS[domain] ?? domain}${code ? ` · ${code}` : ""}`;
+}
+
+/** Action signalée dans le journal (sécurité, décision de KolBase). */
+export const auditTone = (action: string) =>
+  /signin_failed|signin_disabled|2fa_failed|2fa_disabled|2fa_reset|account_disable|org_suspend|org_reject|rpps_reject|user\.delete/.test(action) ? "bad" : action.startsWith("admin.") || action.startsWith("platform.") ? "electric" : "";
+
+export const ENTITY_LABELS: Record<string, string> = {
+  User: "Compte",
+  Organization: "Organisation",
+  PractitionerProfile: "Praticien",
+  Project: "Dossier",
+  ProjectExpert: "Expert d'un dossier",
+  Event: "Événement",
+  Registration: "Inscription",
+  Rfq: "Demande de devis",
+  OpenCall: "Opportunité",
+  Application: "Candidature",
+  ServiceOrder: "Service",
+  Article: "Actualité",
+  Invitation: "Invitation",
+  Mandate: "Mandat",
+  SupplierOffer: "Prestation au catalogue",
+  SupplierReview: "Avis sur un prestataire",
+  OrganizationPhoto: "Photo de prestataire",
+  FeeNote: "Note d'honoraires",
+  NewsletterCampaign: "Lettre d'information",
+  DeclaredInterest: "Lien d'intérêts",
+  PractitionerStructure: "Structure d'exercice",
+};
+
+/** Fiche à ouvrir depuis le journal, quand l'objet en a une côté administration ou public. */
+export function entityHref(type: string, id: string) {
+  if (type === "User") return `/admin/comptes/${id}`;
+  if (type === "Organization") return `/admin/organisations/${id}`;
+  if (type === "Event") return `/evenements/${id}`;
+  if (type === "Article") return `/admin/actualites/${id}`;
+  if (type === "ServiceOrder") return `/admin/services`;
+  return null;
+}
+
+/** Filtres de domaine proposés dans le journal. */
+export const JOURNAL_DOMAINS = [
+  { value: "securite", label: "Sécurité (connexions, mots de passe, double authentification)", prefixes: ["user.signin", "user.reset", "user.change_password", "user.2fa", "admin.2fa", "admin.account"] },
+  { value: "kolbase", label: "Décisions de KolBase", prefixes: ["platform.", "admin."] },
+  { value: "comptes", label: "Comptes", prefixes: ["user."] },
+  { value: "organisations", label: "Organisations", prefixes: ["org.", "compliance.", "transparence."] },
+  { value: "dossiers", label: "Dossiers et experts", prefixes: ["project.", "solicitation.", "signature.", "expert.", "feenote.", "material.", "document.", "expense."] },
+  { value: "evenements", label: "Événements et inscriptions", prefixes: ["event.", "registration."] },
+  { value: "prestataires", label: "Prestataires et devis", prefixes: ["rfq.", "supplier.", "mandate."] },
+  { value: "facturation", label: "Facturation et services", prefixes: ["billing.", "service.", "newsletter."] },
+] as const;

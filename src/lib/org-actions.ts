@@ -57,7 +57,7 @@ export async function createOrganization(_: FormState, form: FormData): Promise<
     },
   });
   await audit(user.id, "org.create", "Organization", org.id, { name, siren });
-  notifyPlatformAdmins(`Organisation à valider : ${name}`, `${user.firstName} ${user.lastName} a créé l'organisation « ${name} »${siren ? ` (SIREN ${siren}${check?.legalName ? `, ${check.legalName}` : ""})` : rna ? ` (RNA ${rna})` : " sans SIREN"}.`, "/admin");
+  notifyPlatformAdmins(`Organisation à valider : ${name}`, `${user.firstName} ${user.lastName} a créé l'organisation « ${name} »${siren ? ` (SIREN ${siren}${check?.legalName ? `, ${check.legalName}` : ""})` : rna ? ` (RNA ${rna})` : " sans SIREN"}.`, "/admin/organisations?statut=a-valider");
   redirect(`/organisations/${org.id}`);
 }
 
@@ -85,7 +85,7 @@ export async function updateOrganization(_: FormState, form: FormData): Promise<
     },
   });
   await audit(user.id, "org.update", "Organization", orgId, renamed ? { renamed: { from: org.name, to: name } } : undefined);
-  if (renamed) notifyPlatformAdmins(`Organisation renommée, à valider : ${name}`, `« ${org.name} » s'appelle désormais « ${name} » et doit être validée à nouveau.`, "/admin");
+  if (renamed) notifyPlatformAdmins(`Organisation renommée, à valider : ${name}`, `« ${org.name} » s'appelle désormais « ${name} » et doit être validée à nouveau.`, "/admin/organisations?statut=a-valider");
   revalidatePath(`/organisations/${orgId}`);
   revalidatePath(`/organisations/${orgId}/membres`);
   return { ok: renamed ? t("Organisation mise à jour. Le nom ayant changé, KolBase doit la valider à nouveau.") : t("Organisation mise à jour.") };
@@ -107,7 +107,7 @@ export async function submitSiren(_: FormState, form: FormData): Promise<FormSta
       data: { rna, ...(resubmitRna ? { verification: "PENDING", verificationNote: null, verificationRequestedAt: new Date(), ...(org.verification === "VERIFIED" ? { listed: false } : {}) } : {}) },
     });
     await audit(user.id, "org.rna", "Organization", orgId, { rna });
-    if (resubmitRna) notifyPlatformAdmins(`Organisation à valider : ${org.name}`, `${org.name} a renseigné le numéro RNA ${rna}.`, "/admin");
+    if (resubmitRna) notifyPlatformAdmins(`Organisation à valider : ${org.name}`, `${org.name} a renseigné le numéro RNA ${rna}.`, "/admin/organisations?statut=a-valider");
     revalidatePath(`/organisations/${orgId}`);
     revalidatePath(`/organisations/${orgId}/membres`);
     return { ok: t("Numéro RNA enregistré. Un administrateur KolBase va valider votre organisation.") };
@@ -125,7 +125,7 @@ export async function submitSiren(_: FormState, form: FormData): Promise<FormSta
     data: { ...data, ...(resubmit ? { verification: "PENDING", verificationNote: null, verificationRequestedAt: new Date(), ...(org.verification === "VERIFIED" ? { listed: false } : {}) } : {}) },
   });
   await audit(user.id, "org.siren", "Organization", orgId, { siren, found: lookup?.found ?? null });
-  if (resubmit) notifyPlatformAdmins(`Organisation à valider : ${org.name}`, `${org.name} a renseigné le SIREN ${siren}${lookup?.found ? ` (${lookup.name})` : ""}.`, "/admin");
+  if (resubmit) notifyPlatformAdmins(`Organisation à valider : ${org.name}`, `${org.name} a renseigné le SIREN ${siren}${lookup?.found ? ` (${lookup.name})` : ""}.`, "/admin/organisations?statut=a-valider");
   revalidatePath(`/organisations/${orgId}`);
   revalidatePath(`/organisations/${orgId}/membres`);
   return { ok: lookup?.found ? `SIREN reconnu : ${lookup.name}. Un administrateur KolBase va valider votre organisation.` : t("SIREN enregistré (répertoire indisponible pour le moment). KolBase le vérifiera lors de la validation.") };
@@ -250,7 +250,7 @@ export async function updateOrgLogo(_: FormState, form: FormData): Promise<FormS
   ]);
   await audit(user.id, "org.logo", "Organization", orgId, { type, size: bytes.byteLength });
   // Un logo est une marque : l'équipe KolBase est prévenue pour pouvoir contrôler son usage.
-  if (org.verification === "VERIFIED") notifyPlatformAdmins(`Logo modifié : ${org.name}`, `${org.name} a publié un nouveau logo, visible sur le site public.`, "/admin");
+  if (org.verification === "VERIFIED") notifyPlatformAdmins(`Logo modifié : ${org.name}`, `${org.name} a publié un nouveau logo, visible sur le site public.`, `/admin/organisations/${org.id}`);
   revalidatePath(`/organisations/${orgId}/membres`);
   revalidatePath(`/structures/${orgId}`);
   return { ok: org.verification === "VERIFIED" ? t("Logo enregistré.") : t("Logo enregistré. Il sera visible publiquement une fois l'organisation validée par KolBase.") };

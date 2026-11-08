@@ -49,8 +49,8 @@ const PROFILES = {
     "/organisations/demo-sup-belleville/devis/demo-rfq-passe-cocktail", "/organisations/demo-sup-belleville/page-prestataire",
   ],
   "anne.chevalier@demo.kolbase.local": [
-    "/admin", "/admin?onglet=organisations", "/admin?onglet=praticiens", "/admin?onglet=abonnements", "/admin?onglet=services",
-    "/admin?onglet=actualites", "/admin?onglet=lancement", "/admin/actualites/nouveau", "/admin/actualites/art-lettre-information", "/admin/services/lettre",
+    "/admin", "/admin/organisations", "/admin/organisations/demo-org-dentalys", "/admin/comptes", "/admin/comptes/demo-u-julien", "/admin/identites",
+    "/admin/journal", "/admin/abonnements", "/admin/services", "/admin/actualites", "/admin/exploitation", "/admin/actualites/nouveau", "/admin/actualites/art-lettre-information", "/admin/services/lettre",
   ],
 };
 const VIEWPORTS = [

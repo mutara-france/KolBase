@@ -10,7 +10,7 @@ import { notifyIdentityDecision, notifyOrgDecision, notifyPhotoRemoved } from "@
 import { syncStripePause } from "@/lib/billing";
 
 const refresh = () => {
-  revalidatePath("/admin");
+  revalidatePath("/admin", "layout");
   revalidatePath("/", "layout");
 };
 
@@ -109,6 +109,6 @@ export async function removePractitionerPhoto(form: FormData) {
   ]);
   await audit(admin.id, "admin.photo_remove", "PractitionerProfile", practitionerId, { note });
   notifyPhotoRemoved(practitionerId, note);
-  revalidatePath("/admin");
+  revalidatePath("/admin", "layout");
   revalidatePath(`/experts/${practitionerId}`);
 }

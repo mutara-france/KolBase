@@ -52,6 +52,8 @@ export const getCurrentUser = cache(async () => {
     include: { user: { include: { practitioner: true, memberships: { include: { organization: true } } } } },
   });
   if (!session || session.expiresAt < new Date()) return null;
+  // Compte désactivé par l'équipe KolBase : ses sessions sont fermées à la désactivation ; garde-fou si l'une subsiste.
+  if (session.user.disabledAt) return null;
   const user = session.user;
   // Agences mandatées : les membres d'une agence accèdent à chaque organisation qui la mandate (mandat actif),
   // avec le seul rôle « Agence mandatée » (événements confiés). Aucune invitation séparée : le mandat fait foi.

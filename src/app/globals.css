@@ -1706,3 +1706,23 @@ a.chip { display: inline-flex; align-items: center; text-decoration: none; }
 .list-count { margin: -8px 0 12px; }
 .logistics-need { margin-top: 2px; }
 .logistics-need .pre-line { display: block; margin-top: 2px; color: var(--ink); }
+
+/* Administration KolBase : à traiter, journal d'activité. */
+.admin-page .crumbs a { color: var(--ink-soft); }
+.admin-todo { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; }
+.admin-todo li + li { border-top: 1px solid var(--line); }
+.admin-todo-row { display: grid; grid-template-columns: 20px 44px minmax(0, 1fr); align-items: center; gap: 10px; padding: 11px 4px; color: var(--ink); text-decoration: none !important; }
+.admin-todo-row svg { color: var(--outremer); }
+.admin-todo-row strong { font-family: var(--font-display); font-size: 19px; text-align: right; color: var(--outremer); }
+.admin-todo-row:hover span { color: var(--outremer); }
+.admin-todo-row.bad svg, .admin-todo-row.bad strong { color: var(--danger, #b42318); }
+.journal-list { list-style: none; margin: 0; padding: 0; }
+.journal-list li { display: grid; grid-template-columns: 150px minmax(0, 1fr) minmax(120px, 200px); gap: 12px; align-items: baseline; padding: 9px 0; border-bottom: 1px solid var(--line); }
+.journal-list li:last-child { border-bottom: 0; }
+.journal-list .stack-xs { display: flex; flex-direction: column; gap: 3px; min-width: 0; overflow-wrap: anywhere; }
+.journal-list .pill { white-space: normal; }
+@media (max-width: 760px) {
+  .journal-list li { grid-template-columns: minmax(0, 1fr); gap: 4px; }
+}
+.row-title { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 8px; min-width: 0; }
+.row-title .pill { flex: none; white-space: nowrap; }
