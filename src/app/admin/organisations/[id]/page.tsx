@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { ExternalLink, History, Users } from "lucide-react";
+import { ExternalLink, History, Network, Users } from "lucide-react";
+import { AdminGroupForm } from "@/components/RoutingForms";
 import { db } from "@/lib/db";
 import { requirePlatformAdmin } from "@/lib/platform";
 import { formatDate } from "@/lib/events";
@@ -29,9 +30,11 @@ export default async function Page({ params }: { params: Promise<{ id: string }>
       mandatesGiven: { include: { agency: { select: { id: true, name: true } } } },
       mandatesReceived: { include: { mandator: { select: { id: true, name: true } } } },
       _count: { select: { events: true, projects: true, openCalls: true, rfqs: true, quotes: true, serviceOrders: true } },
+      group: { include: { entities: { select: { id: true, name: true }, orderBy: { name: "asc" } } } },
     },
   });
   if (!o) notFound();
+  const groups = await db.orgGroup.findMany({ select: { id: true, name: true }, orderBy: { name: "asc" } });
   const [twins, published, sent, journal] = await Promise.all([
     o.siren ? db.organization.findMany({ where: { siren: o.siren, NOT: { id: o.id } }, select: { name: true, verification: true } }) : [],
     db.event.count({ where: { organizationId: o.id, publishedAt: { not: null } } }),
@@ -57,6 +60,18 @@ export default async function Page({ params }: { params: Promise<{ id: string }>
       actions={o.listed && o.verification === "VERIFIED" ? <Link className="btn ghost small" href={`/structures/${o.id}`}>Page publique <ExternalLink size={14} aria-hidden /></Link> : undefined}
     >
       <OrgCard o={o} admins={admins} twins={twins} link={false} />
+
+      {!supplier && (
+        <section className="card stack-sm" aria-labelledby="org-groupe">
+          <SectionHead icon={Network} id="org-groupe" title="Groupe" desc="Entités d'un même groupe (plusieurs pays) : un expert qui propose un projet au groupe est aiguillé vers l'entité de son pays. Chaque entité règle son périmètre et ses canaux." />
+          {o.group && (
+            <p className="text-sm">
+              <Link href={`/groupes/${o.group.id}`}>{o.group.name}</Link> · {o.group.entities.length} entité{o.group.entities.length > 1 ? "s" : ""} : {o.group.entities.map((e) => e.name).join(", ")}
+            </p>
+          )}
+          <AdminGroupForm orgId={o.id} groups={groups} current={o.groupId ?? ""} />
+        </section>
+      )}
 
       <section className="card stack-sm" aria-labelledby="org-activite">
         <SectionHead icon={History} id="org-activite" title="Activité et abonnement" />

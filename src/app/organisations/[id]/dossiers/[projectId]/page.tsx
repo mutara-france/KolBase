@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { CalendarDays, Clock, Euro, FileDown, FileSignature, FileText, Globe, ImageDown, LayoutDashboard, Megaphone, MessagesSquare, Receipt, Scale, Sparkles, User, UserPlus, Users, Wallet } from "lucide-react";
+import { CalendarDays, Clock, Euro, FileDown, FileSignature, FileText, Globe, ImageDown, LayoutDashboard, Megaphone, MessagesSquare, Receipt, Route, Scale, Sparkles, User, UserPlus, Users, Wallet } from "lucide-react";
 import { SectionHead, StateTile } from "@/components/UI";
 import { detectConflicts } from "@/lib/conflicts";
 import { aiEnabled } from "@/lib/ai";
@@ -25,6 +25,8 @@ import { ConfirmButton } from "@/components/ConfirmButton";
 import { expertSplit } from "@/lib/indicators";
 import { BudgetTab, ConflictsPanel, ConventionSignatureBlock, DocumentsPanel, MaterialsPanel } from "@/components/DossierSections";
 import { ExpertCostsTab, FrameworkPanel } from "@/components/ExpertCosts";
+import { TransferForm } from "@/components/RoutingForms";
+import { topicLabel } from "@/lib/routing";
 import { missingCumulAuthorizations, missingSignedConventions } from "@/lib/project-documents";
 import { FOUR_EYES_BLOCKED, FOUR_EYES_JUSTIFY, fourEyes, projectAuthors } from "@/lib/four-eyes";
 import { supplierCategoryLabel } from "@/lib/suppliers";
@@ -106,6 +108,7 @@ const ACTION_LABEL: Record<string, string> = {
   "expert_travel.save": "Voyage de l'expert enregistré",
   "framework.mission": "Mission consignée (contrat-cadre)",
   "framework.mission_remove": "Mission retirée (contrat-cadre)",
+  "project.transfer": "Proposition transmise à un autre interlocuteur",
 };
 
 /** Ce qu'il reste à faire, selon l'étape : affiché en tête de la colonne de droite. */
@@ -151,6 +154,9 @@ export default async function Page({ params, searchParams }: { params: Promise<{
       },
       // Justificatifs de frais : comptés avec leur note de frais, pas dans les documents.
       _count: { select: { documents: { where: { kind: { not: "JUSTIFICATIF" } } } } },
+      // Proposition d'expert aiguillée : canal (sujet), réponse attendue, idée de produit sous accord de confidentialité.
+      channel: { select: { topic: true } },
+      proposal: { select: { topic: true, ndaRequested: true } },
     },
   });
   if (!project) notFound();
@@ -173,6 +179,20 @@ export default async function Page({ params, searchParams }: { params: Promise<{
     feeLevels(id),
   ]);
   const callEvent = fromCall?.openCall.event ?? null;
+  // Proposition à examiner : transfert possible à un autre sujet de l'organisation ou à une autre entité du groupe.
+  const transferTargets = project.status === "ATT_IND" && project.origin === PROPOSAL_ORIGIN
+    ? await (async () => {
+        const [own, entities] = await Promise.all([
+          db.contactChannel.findMany({ where: { organizationId: id }, select: { topic: true } }),
+          org.groupId ? db.organization.findMany({ where: { groupId: org.groupId, NOT: { id }, listed: true, verification: "VERIFIED" }, select: { id: true, name: true, coveredCountries: true } }) : Promise.resolve([]),
+        ]);
+        const topic = project.proposal?.topic ?? project.channel?.topic ?? "autre";
+        return [
+          ...own.filter((c) => c.topic !== project.channel?.topic).map((c) => ({ value: `${id}|${c.topic}`, label: t("{org} · {topic}", { org: org.name, topic: t(topicLabel(c.topic)) }) })),
+          ...entities.map((e) => ({ value: `${e.id}|${topic}`, label: `${e.name}${e.coveredCountries.length ? ` (${e.coveredCountries.join(", ")})` : ` (${t("siège")})`}` })),
+        ];
+      })()
+    : [];
   // Frais des experts : notes à examiner (pastille de l'onglet), frais acceptés ou remboursés (dans le budget).
   const [expensesToReview, expertCosts] = await Promise.all([
     db.expertExpense.count({ where: { projectExpert: { projectId }, status: "submitted" } }),
@@ -663,6 +683,19 @@ export default async function Page({ params, searchParams }: { params: Promise<{
               </section>
             </div>
             <aside className="page-aside">
+              {project.status === "ATT_IND" && project.origin === PROPOSAL_ORIGIN && (
+                <section className="card stack-sm" id="aiguillage" aria-labelledby="aiguillage-titre">
+                  <SectionHead icon={Route} id="aiguillage-titre" title={t("Aiguillage")} tone={project.responseDue && project.responseDue < new Date() ? "danger" : "brand"}
+                    desc={[project.channel || project.proposal?.topic ? t("Sujet : {topic}", { topic: t(topicLabel(project.channel?.topic ?? project.proposal?.topic)) }) : null, project.responseDue ? t("réponse attendue avant le {date}", { date: fmtDate(locale, project.responseDue) }) : null].filter(Boolean).join(" · ") || undefined} />
+                  {project.proposal?.ndaRequested && <p className="notice warn text-sm">{t("Idée de produit : l'expert demande un accord de confidentialité avant de la détailler. Proposez-le dans la messagerie si vous souhaitez en savoir plus.")}</p>}
+                  {isProject && transferTargets.length > 0 && (
+                    <details className="disclosure">
+                      <summary>{t("Transmettre à un autre interlocuteur")}</summary>
+                      <TransferForm orgId={id} projectId={projectId} targets={transferTargets} />
+                    </details>
+                  )}
+                </section>
+              )}
               <section className="card stack-sm" id="responsables" aria-labelledby="responsables-titre">
                 <SectionHead icon={User} id="responsables-titre" title={t("Responsables")} desc={t("Ils retrouvent le dossier dans « Mes dossiers » et en reçoivent les e-mails.")} />
                 {leads.length === 0 ? (

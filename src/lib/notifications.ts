@@ -14,6 +14,7 @@ import { supplierCategoryLabel } from "@/lib/suppliers";
 import { fmtDate, fmtEur, intlLocale, isLocale, makeT, type Locale, type T } from "@/lib/i18n";
 import { roomTypeLabel } from "@/lib/travel";
 import { partnerLevelLabel } from "@/lib/congress";
+import { topicLabel } from "@/lib/routing";
 import { collabType, PROJECT_ROLES, SOURCING_ROLES, STATUS_LABEL, type ExpertNotice } from "@/lib/projects";
 import { featuredUntil, orderStats } from "@/lib/services";
 import { conversion, reportParts } from "@/lib/service-report";
@@ -442,11 +443,42 @@ export function notifyCounterAccepted(linkId: string) {
 /** Projet proposé par un expert (une copie par organisation : rien n'indique les autres destinataires). */
 export function notifyProposal(projectId: string) {
   later(async () => {
-    const p = await db.project.findUnique({ where: { id: projectId }, include: { experts: { include: { practitioner: linkInclude.practitioner } } } });
+    const p = await db.project.findUnique({ where: { id: projectId }, include: { experts: { include: { practitioner: linkInclude.practitioner } }, channel: { select: { topic: true } }, _count: { select: { leads: true } } } });
     const e = p?.experts[0];
     if (!p || !e) return;
     const type = collabType(p.typeId)?.label;
-    await send(await members(p.organizationId, SOURCING_ROLES), (t, locale) => ({ subject: t("Projet proposé par {expert} : {title}", { expert: expertName(e.practitioner), title: p.title }), text: [t("Bonjour,"), t("{expert} propose un projet à votre organisation : « {title} »{v}{v2}.", { expert: expertName(e.practitioner), title: p.title, v: type ? ` (${type.toLowerCase()})` : "", v2: e.feeCents != null ? t(", honoraires souhaités : {montant} HT", { montant: fmtEur(locale, e.feeCents) }) : "" }), t("Acceptez-le pour ouvrir le circuit habituel (conformité, convention, signature), ou déclinez-le : l'expert est prévenu de votre réponse.")].join("\n\n"), cta: { label: t("Voir la proposition"), href: `/organisations/${p.organizationId}/dossiers/${p.id}` } }));
+    // Proposition aiguillée vers un canal : son responsable (et son suppléant) ; sinon l'équipe qui sollicite les experts.
+    const to = p._count.leads ? await projectTeam(p) : await members(p.organizationId, SOURCING_ROLES);
+    await send(to, (t, locale) => ({
+      subject: t("Projet proposé par {expert} : {title}", { expert: expertName(e.practitioner), title: p.title }),
+      text: [
+        t("Bonjour,"),
+        t("{expert} propose un projet à votre organisation : « {title} »{v}{v2}.", { expert: expertName(e.practitioner), title: p.title, v: type ? ` (${type.toLowerCase()})` : "", v2: e.feeCents != null ? t(", honoraires souhaités : {montant} HT", { montant: fmtEur(locale, e.feeCents) }) : "" }),
+        p.channel || p.responseDue ? [p.channel ? t("Sujet : {topic}.", { topic: t(topicLabel(p.channel.topic)) }) : null, p.responseDue ? t("Réponse attendue avant le {date}.", { date: fmtDate(locale, p.responseDue) }) : null].filter(Boolean).join(" ") : null,
+        t("Acceptez-le pour ouvrir le circuit habituel (conformité, convention, signature), ou déclinez-le : l'expert est prévenu de votre réponse."),
+      ].filter(Boolean).join("\n\n"),
+      cta: { label: t("Voir la proposition"), href: `/organisations/${p.organizationId}/dossiers/${p.id}` },
+    }));
+  });
+}
+
+/** Proposition transmise à une autre entité du groupe ou à un autre interlocuteur : l'expert est prévenu. */
+export function notifyProposalTransferred(projectId: string, fromOrg: string) {
+  later(async () => {
+    const p = await db.project.findUnique({ where: { id: projectId }, include: { organization: { select: { name: true } }, channel: { select: { topic: true } }, experts: { include: { practitioner: linkInclude.practitioner } } } });
+    const e = p?.experts[0];
+    if (!p || !e) return;
+    await send([e.practitioner.user], (t, locale) => ({
+      subject: t("Votre proposition est transmise : {title}", { title: p.title }),
+      text: [
+        t("Bonjour {name},", { name: e.practitioner.user.firstName }),
+        p.organization.name === fromOrg
+          ? t("{org} a transmis votre proposition « {title} » à la personne en charge de ce sujet{topic}.", { org: fromOrg, title: p.title, topic: p.channel ? ` (${t(topicLabel(p.channel.topic))})` : "" })
+          : t("{from} a transmis votre proposition « {title} » à {org}, l'entité du groupe en charge{topic}.", { from: fromOrg, org: p.organization.name, title: p.title, topic: p.channel ? ` (${t(topicLabel(p.channel.topic))})` : "" }),
+        p.responseDue ? t("Réponse attendue avant le {date}.", { date: fmtDate(locale, p.responseDue) }) : null,
+      ].filter(Boolean).join("\n\n"),
+      cta: { label: t("Voir ma proposition"), href: `/sollicitations/${e.id}` },
+    }));
   });
 }
 

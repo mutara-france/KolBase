@@ -210,6 +210,11 @@ model ExpertProposal {
   logistics       String?
   feeCents        Int?                // honoraires souhaités (total HT)
   units           Float?
+  // Sujet (aiguillage vers le bon canal de l'organisation) ; idée de produit : conditions de soumission acceptées,
+  // accord de confidentialité demandé avant de détailler.
+  topic           String?
+  ipAckAt         DateTime?
+  ndaRequested    Boolean             @default(false)
   createdAt       DateTime            @default(now())
 
   projects Project[]
@@ -363,6 +368,41 @@ model Organization {
   agencyEvents     Event[]       @relation("agencyEvents")
   // Partenariats d'événements (congrès d'une société savante, d'une association) proposés à l'organisation.
   eventPartnerships EventPartner[]
+  // Groupe (plusieurs entités dans le monde) et périmètre de l'entité : pays couverts (vide : siège, tous pays),
+  // marques ; canaux de contact par sujet.
+  groupId          String?
+  group            OrgGroup?        @relation(fields: [groupId], references: [id], onDelete: SetNull)
+  coveredCountries String[]         @default([])
+  brands           String[]         @default([])
+  channels         ContactChannel[]
+}
+
+/** Groupe d'organisations (industriel présent dans plusieurs pays) : ses entités sont rattachées par l'équipe KolBase. */
+model OrgGroup {
+  id        String         @id @default(cuid())
+  name      String
+  about     String?
+  createdAt DateTime       @default(now())
+  entities  Organization[]
+}
+
+/**
+ * Canal d'une organisation pour un sujet (formation, recherche clinique, innovation…) : membre responsable, suppléant,
+ * délai de réponse, conditions de soumission d'une idée. Les propositions des experts y sont aiguillées.
+ */
+model ContactChannel {
+  id             String       @id @default(cuid())
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  topic          String
+  ownerId        String
+  backupId       String?
+  responseDays   Int          @default(10)
+  ipPolicy       String?
+  createdAt      DateTime     @default(now())
+  projects       Project[]
+
+  @@unique([organizationId, topic])
 }
 
 // Invitation d'un membre par lien (jeton à usage unique, stocké haché).
@@ -486,6 +526,10 @@ model Project {
   // Copie d'un projet proposé par un expert (envoyé à plusieurs organisations, chacune a la sienne).
   proposalId      String?
   proposal        ExpertProposal? @relation(fields: [proposalId], references: [id], onDelete: SetNull)
+  // Canal de l'organisation qui reçoit la proposition (sujet, responsable) et réponse attendue (délai du canal).
+  channelId       String?
+  channel         ContactChannel? @relation(fields: [channelId], references: [id], onDelete: SetNull)
+  responseDue     DateTime?
   createdAt       DateTime      @default(now())
   updatedAt       DateTime      @updatedAt
 

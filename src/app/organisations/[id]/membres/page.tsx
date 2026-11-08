@@ -221,6 +221,14 @@ export default async function Page({ params, searchParams }: { params: Promise<{
               <>
                 <EditOrgForm supplier={isSupplier} trainer={org.kind !== "PRESTATAIRE" && org.kind !== "INDUSTRIEL"} org={{ id: org.id, name: org.name, sector: org.sector, headquarters: org.headquarters, contactEmail: org.contactEmail, about: org.about, policy: org.policy, areas: org.areas, nda: org.nda, qualiopi: org.qualiopi, handicapContact: org.handicapContact }} />
                 <LogoForm supplier={isSupplier} orgId={id} name={org.name} src={logoSrc(org)} verified={org.verification === "VERIFIED"} />
+                {/* Aiguillage des propositions d'experts : sujet, responsable, délai ; entité d'un groupe : pays et marques. */}
+                {!isSupplier && (
+                  <section className="card stack-sm">
+                    <h2 className="section-title">{t("Canaux de contact")}</h2>
+                    <p className="text-sm muted">{t("Qui reçoit les propositions des experts selon le sujet (formation, recherche clinique, innovation…), avec quel délai de réponse.")}</p>
+                    <Link className="btn ghost small" href={`/organisations/${id}/canaux`}>{t("Régler les canaux")}</Link>
+                  </section>
+                )}
                 {/* Le référencement d'un prestataire se règle avec sa page prestataire. */}
                 {!isSupplier && <OrgVisibilityForm orgId={id} v={companyVisibility(org.visibility)} listed={org.listed} />}
               </>
