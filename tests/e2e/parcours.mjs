@@ -6114,6 +6114,34 @@ async function submitNewOrg(page, siren) {
   await v.ctx.close();
 }
 
+// ── Prestataire : catégorie principale choisie ───────────────────────────────────────────
+{
+  const pgc = new pg.Client({ connectionString: process.env.DATABASE_URL });
+  await pgc.connect();
+  const cats = async () => (await pgc.query(`select "supplierCategories" c from "Organization" where id = 'demo-sup-belleville'`)).rows[0].c;
+  const l = await session();
+  await login(l.page, "ludovic.perrin@demo.kolbase.local");
+  await l.page.goto(`${BASE}/organisations/demo-sup-belleville/page-prestataire`);
+  const form = l.page.locator('form:has(input[name="coverage"])');
+  check("Catégorie principale : pas de choix avec une seule catégorie", (await form.locator('select[name="main"]').count()) === 0);
+  await form.locator('input[name="categories"][value="salle"]').check();
+  await form.locator('select[name="main"]').selectOption("salle");
+  await form.locator('button:has-text("Enregistrer")').click();
+  await l.page.waitForTimeout(1500);
+  const c1 = await cats();
+  check("Catégorie principale : enregistrée en tête", JSON.stringify(c1) === JSON.stringify(["salle", "restauration"]), JSON.stringify(c1));
+  await l.page.goto(`${BASE}/structures/demo-sup-belleville`);
+  check("Catégorie principale : titre de la page du prestataire", (await l.page.title()).includes("Salle et lieu de réception") && /^salle et lieu de réception$/i.test((await l.page.locator(".profile-hero .sector-tag").innerText()).trim()), await l.page.title());
+  await l.page.goto(`${BASE}/organisations/demo-sup-belleville/page-prestataire`);
+  await form.locator('select[name="main"]').selectOption("restauration");
+  await form.locator('input[name="categories"][value="salle"]').uncheck();
+  await form.locator('button:has-text("Enregistrer")').click();
+  await l.page.waitForTimeout(1500);
+  check("Catégorie principale : retour à une seule catégorie", JSON.stringify(await cats()) === JSON.stringify(["restauration"]), JSON.stringify(await cats()));
+  await l.ctx.close();
+  await pgc.end();
+}
+
 // ── 4. Limitation des tentatives ───────────────────────────────────────────
 {
   const { ctx, page } = await session();

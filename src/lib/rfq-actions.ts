@@ -382,7 +382,10 @@ export async function updateSupplierProfile(_: ActionState, form: FormData): Pro
   const orgId = str(form, "orgId");
   const { user, isAdmin, org: ctxOrg } = await requireSupplier(orgId);
   if (!isAdmin) return { error: t("Réservé aux administrateurs.") };
-  const categories = form.getAll("categories").map(String).filter((c) => SUPPLIER_CATEGORIES.some((x) => x.id === c));
+  const checked = form.getAll("categories").map(String).filter((c) => SUPPLIER_CATEGORIES.some((x) => x.id === c));
+  // Catégorie principale choisie par le prestataire, enregistrée en tête : elle le présente (titre, couleur, icône).
+  const main = str(form, "main");
+  const categories = checked.includes(main) ? [main, ...checked.filter((c) => c !== main)] : checked;
   const asked = form.get("listed") === "on";
   if (asked && categories.length === 0) return { error: t("Choisissez au moins une catégorie pour être référencé.") };
   // En attente de validation : catégories et zone sont enregistrées ; le référencement suivra la validation.
