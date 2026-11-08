@@ -160,7 +160,7 @@ describe("navigation et rôles", () => {
   });
   it("la relecture des supports est rangée dans la conformité, sur un seul niveau d'onglets", () => {
     expect(orgSectionTabs("dossiers", "o", ["ADMIN"], "INDUSTRIEL").map((t) => t.key)).toEqual(["dossiers"]);
-    expect(orgSectionTabs("conformite", "o", ["CONFORMITE"], "INDUSTRIEL").map((t) => t.key)).toEqual(["a-valider", "relecture", "autorisations", "hospitalites", "registre", "transparence", "parametres"]);
+    expect(orgSectionTabs("conformite", "o", ["CONFORMITE"], "INDUSTRIEL").map((t) => t.key)).toEqual(["a-valider", "relecture", "autorisations", "hospitalites", "registre", "transparence", "partenariats", "parametres"]);
     expect(orgSectionTabs("conformite", "o", ["PROJETS"], "INDUSTRIEL")).toEqual([]);
   });
   it("correspondance des chemins", () => {

@@ -54,6 +54,7 @@ model User {
   invitationsAccepted Invitation[] @relation("acceptedBy")
   follows             Follow[]
   authTokens          AuthToken[]
+  abstracts           Abstract[]
 }
 
 enum AuthTokenPurpose {
@@ -359,6 +360,8 @@ model Organization {
   rfqMessages      RfqMessage[]
   followers        Follow[]
   agencyEvents     Event[]       @relation("agencyEvents")
+  // Partenariats d'événements (congrès d'une société savante, d'une association) proposés à l'organisation.
+  eventPartnerships EventPartner[]
 }
 
 // Invitation d'un membre par lien (jeton à usage unique, stocké haché).
@@ -781,6 +784,9 @@ model Event {
   // Événement annulé (avec des inscrits) : lisible à son adresse avec la mention, hors de l'agenda, sans inscription.
   cancelledAt      DateTime?
   cancelReason     String?
+  // Appel à communications (congrès) : ouvert jusqu'à cette date, thèmes proposés.
+  abstractsDeadline DateTime?
+  abstractTopics    String[]     @default([])
   createdAt        DateTime     @default(now())
   updatedAt        DateTime     @updatedAt
 
@@ -792,6 +798,10 @@ model Event {
   budgetLines   EventBudgetLine[]
   training      TrainingSheet?
   sessions      EventSession[]
+  rooms         EventRoom[]
+  programItems  ProgramItem[]
+  partners      EventPartner[]
+  abstracts     Abstract[]
   surveys       SurveyResponse[]
   serviceOrders ServiceOrder[]
   rfqs          Rfq[]
@@ -1258,6 +1268,107 @@ model TrainingSheet {
   dpcRef        String?
   contact       String?
   updatedAt     DateTime @updatedAt
+}
+
+/** Salle d'un congrès (programme en sessions parallèles). */
+model EventRoom {
+  id       String        @id @default(cuid())
+  eventId  String
+  event    Event         @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  name     String
+  capacity Int?
+  position Int           @default(0)
+  items    ProgramItem[]
+
+  @@index([eventId])
+}
+
+/** Séance du programme : conférence, atelier, symposium d'un partenaire, communications, pause ; salle et horaires. */
+model ProgramItem {
+  id         String        @id @default(cuid())
+  eventId    String
+  event      Event         @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  roomId     String?
+  room       EventRoom?    @relation(fields: [roomId], references: [id], onDelete: SetNull)
+  startsAt   DateTime
+  endsAt     DateTime
+  kind       String
+  title      String
+  speakers   String?
+  partnerId  String?
+  partner    EventPartner? @relation(fields: [partnerId], references: [id], onDelete: SetNull)
+  abstractId String?       @unique
+  abstract   Abstract?     @relation(fields: [abstractId], references: [id], onDelete: SetNull)
+  createdAt  DateTime      @default(now())
+
+  @@index([eventId, startsAt])
+}
+
+/**
+ * Partenaire d'un événement (industriel, autre organisme) : niveau, montant HT, contreparties (stand, symposium,
+ * logo…). Proposé à une organisation présente sur KolBase, il est signé ou décliné par elle ; sinon suivi à la main.
+ */
+model EventPartner {
+  id             String        @id @default(cuid())
+  eventId        String
+  event          Event         @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  organizationId String?
+  organization   Organization? @relation(fields: [organizationId], references: [id], onDelete: SetNull)
+  name           String
+  level          String
+  amountCents    Int?
+  counterparts   String?
+  status         String        @default("draft") // draft, proposed, signed, declined, paid
+  proposedAt     DateTime?
+  signedAt       DateTime?
+  signedById     String?
+  declinedAt     DateTime?
+  declineNote    String?
+  paidAt         DateTime?
+  showLogo       Boolean       @default(true)
+  createdAt      DateTime      @default(now())
+  items          ProgramItem[]
+
+  @@index([eventId])
+  @@index([organizationId])
+}
+
+/** Communication soumise à l'appel d'un congrès (résumé), relue par le comité, retenue ou non. */
+model Abstract {
+  id             String           @id @default(cuid())
+  eventId        String
+  event          Event            @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  userId         String
+  user           User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  title          String
+  authors        String
+  body           String
+  topic          String?
+  format         String // oral, poster, indifferent
+  status         String           @default("submitted") // submitted, accepted, rejected, withdrawn
+  acceptedFormat String?
+  decisionNote   String?
+  decidedAt      DateTime?
+  decidedById    String?
+  createdAt      DateTime         @default(now())
+  reviews        AbstractReview[]
+  item           ProgramItem?
+
+  @@index([eventId])
+  @@index([userId])
+}
+
+/** Avis d'un relecteur du comité sur une communication (note de 1 à 5). */
+model AbstractReview {
+  id         String   @id @default(cuid())
+  abstractId String
+  abstract   Abstract @relation(fields: [abstractId], references: [id], onDelete: Cascade)
+  reviewerId String
+  score      Int
+  comment    String?
+  createdAt  DateTime @default(now())
+
+  @@unique([abstractId, reviewerId])
 }
 
 /** Demi-journée d'un événement de plusieurs séquences : émargement à chacune. */

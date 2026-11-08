@@ -64,7 +64,7 @@ export function orgNavItems(orgId: string, roles: OrgRole[], kind: string): Shel
       icon: "CalendarDays",
       match: [`${base}/prestataires`],
     });
-  if (has(roles, COMPLIANCE_ROLES)) items.push({ key: "conformite", href: `${base}/conformite`, label: "Conformité", icon: "ShieldCheck", match: [`${base}/hospitalites`, `${base}/relecture`] });
+  if (has(roles, COMPLIANCE_ROLES)) items.push({ key: "conformite", href: `${base}/conformite`, label: "Conformité", icon: "ShieldCheck", match: [`${base}/hospitalites`, `${base}/relecture`, `${base}/partenariats`] });
   if (has(roles, STATS_ROLES)) items.push({ key: "statistiques", href: `${base}/statistiques`, label: "Statistiques", short: "Stats", icon: "BarChart3", secondary: true });
   return items;
 }
@@ -108,6 +108,8 @@ export function orgSectionTabs(section: OrgSectionKey, orgId: string, roles: Org
               has(roles, COMPLIANCE_ROLES) && { key: "hospitalites", href: `${base}/hospitalites`, label: "Hospitalités" },
               has(roles, COMPLIANCE_ROLES) && { key: "registre", href: `${base}/conformite?onglet=registre`, label: "Registre des conventions" },
               has(roles, COMPLIANCE_ROLES) && { key: "transparence", href: `${base}/conformite?onglet=transparence`, label: "Transparence Santé" },
+              // Industriel : conventions de partenariat proposées par les organisateurs de congrès (sociétés savantes…).
+              kind === "INDUSTRIEL" && has(roles, COMPLIANCE_ROLES) && { key: "partenariats", href: `${base}/partenariats`, label: "Partenariats" },
               has(roles, COMPLIANCE_ROLES) && { key: "parametres", href: `${base}/conformite?onglet=parametres`, label: "Paramètres" },
             ];
   return tabs.filter((t): t is SectionTab => !!t);

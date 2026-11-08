@@ -176,6 +176,22 @@ export const orgOverview = cache(async (orgId: string) => {
       if (c.applications.length)
         todos.push({ href: `${base}/opportunites/${c.id}`, title: t(c.applications.length > 1 ? "{n} candidatures à examiner" : "{n} candidature à examiner", { n: c.applications.length }), detail: c.title, icon: "UserRound" });
   }
+  // Partenariats proposés par les organisateurs de congrès : l'administration ou la conformité signe ou décline.
+  if (org.kind === "INDUSTRIEL" && (roles.includes("ADMIN") || can.compliance)) {
+    const props = await db.eventPartner.findMany({ where: { organizationId: orgId, status: "proposed" }, select: { event: { select: { title: true, organization: { select: { name: true } } } } } });
+    for (const p of props) todos.push({ href: `${base}/partenariats`, title: t("Partenariat à signer : {title}", { title: p.event.title }), detail: p.event.organization.name, icon: "Inbox", tone: "warn" });
+  }
+  // Appel à communications : soumissions en attente de décision de l'équipe qui organise.
+  if (can.organizer) {
+    const subs = await db.abstract.groupBy({ by: ["eventId"], where: { status: "submitted", event: { organizationId: orgId } }, _count: true });
+    if (subs.length) {
+      const evs = await db.event.findMany({ where: { id: { in: subs.map((x) => x.eventId) } }, select: { id: true, title: true } });
+      for (const x of subs) {
+        const ev = evs.find((e) => e.id === x.eventId);
+        if (ev) todos.push({ href: `${base}/evenements/${ev.id}#communications`, title: t(x._count > 1 ? "{n} communications à examiner" : "{n} communication à examiner", { n: x._count }), detail: ev.title, icon: "Inbox" });
+      }
+    }
+  }
   if (can.compliance) {
     for (const p of projects)
       if ((p.status === "SIGNE" || p.status === "TERMINE") && !p.declared)

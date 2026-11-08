@@ -1752,3 +1752,12 @@ a.chip { display: inline-flex; align-items: center; text-decoration: none; }
 .belgium-block h3 { margin: 0; }
 .demo-tag { align-self: flex-start; display: inline-flex; margin-bottom: 6px; padding: 2px 8px; border-radius: 999px; background: var(--bg-subtle); color: var(--ink-soft); font-family: var(--font-mono); font-size: 10.5px; letter-spacing: 0.08em; text-transform: uppercase; }
 :not(.stack) > .notice.demo-notice { margin-bottom: 16px; }
+
+/* Congrès : programme détaillé, partenaires, communications soumises. */
+.program-list > li { padding: 6px 0; border-bottom: 1px solid var(--line); }
+.program-list > li:last-child { border-bottom: 0; }
+.partner-list { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(220px, 100%), 1fr)); gap: 10px 16px; margin: 0; }
+.partner-item { display: flex; align-items: center; gap: 10px; min-width: 0; }
+.partner-logo { width: 40px; height: 40px; object-fit: contain; border-radius: 8px; background: #fff; border: 1px solid var(--line); flex: none; }
+.abstract-item { padding-bottom: 12px; border-bottom: 1px solid var(--line); }
+.abstract-item:last-child { border-bottom: 0; }
