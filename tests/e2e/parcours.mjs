@@ -656,7 +656,7 @@ const linkIn = (mail) => mail?.text.match(/https?:\/\/\S+/g)?.find((u) => !u.end
   await pgc.query(`update "Rfq" set status = 'sent', "sentAt" = now() where id = $1`, [rfqId]);
   await lud.page.goto(`${BASE}/organisations/demo-sup-belleville/devis/${rfqId}`);
   const t = await text(lud.page);
-  check("Prestataire : la demande dit ce qu'il faut pour chiffrer (date, format, heure, boissons)", t.includes("Dates de la prestation") && t.includes("Cocktail") && t.includes("19:30") && t.includes("Avec vins"));
+  check("Prestataire : la demande dit ce qu'il faut pour chiffrer (date, format, heure, boissons)", /dates de la prestation/i.test(t) && t.includes("Cocktail") && t.includes("19:30") && t.includes("Avec vins"));
   await lud.ctx.close();
 
   // Devis avec acompte et barème d'annulation, comparé puis retenu ; nombre définitif confirmé au traiteur.
