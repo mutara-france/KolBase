@@ -81,7 +81,7 @@ export async function supplierDirectory(excludeOrgIds: string[]) {
       },
       orderBy: { name: "asc" },
     }),
-    db.supplierReview.groupBy({ by: ["supplierId"], _avg: { rating: true }, _count: { _all: true } }),
+    db.supplierReview.groupBy({ by: ["supplierId"], where: { hiddenAt: null }, _avg: { rating: true }, _count: { _all: true } }),
   ]);
   return orgs.map((s) => {
     const r = ratings.find((x) => x.supplierId === s.id);

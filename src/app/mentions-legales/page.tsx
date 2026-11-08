@@ -43,7 +43,7 @@ export default async function Page() {
           "Polices de caractères : Figtree, Montserrat et IBM Plex Mono, sous licence SIL Open Font License, servies par KolBase.",
         ]}</P>],
         ["Signaler un contenu", <P key="s">{[
-          <>Tout contenu manifestement illicite, inexact ou contraire à la déontologie peut être signalé à <a href={`mailto:${LEGAL.contactEmail}`}>{legal("contactEmail")}</a>, en précisant l&apos;adresse de la page, le contenu en cause et les raisons du signalement. L&apos;éditeur l&apos;examine sans délai, retire ou rend inaccessible le contenu si nécessaire et informe de sa décision l&apos;auteur du signalement et celui du contenu.</>,
+          <>Tout contenu manifestement illicite, inexact ou contraire à la déontologie peut être signalé depuis le lien « Signaler » de la page concernée, ou à <a href={`mailto:${LEGAL.contactEmail}`}>{legal("contactEmail")}</a> en précisant l&apos;adresse de la page, le contenu en cause et les raisons du signalement. L&apos;éditeur l&apos;examine sans délai, retire ou rend inaccessible le contenu si nécessaire et informe de sa décision l&apos;auteur du signalement et celui du contenu.</>,
           "Cette adresse est aussi le point de contact unique de KolBase auprès des autorités et des utilisateurs au sens du règlement (UE) 2022/2065 sur les services numériques ; les échanges s'y font en français ou en anglais.",
         ]}</P>],
         ...(demo > 0 ? [["Données de démonstration", <P key="demo">{["Pendant la phase de pré-lancement, la plateforme présente aussi des organisations, praticiens et événements entièrement fictifs, signalés comme tels. Toute ressemblance avec des personnes ou des structures existantes serait fortuite."]}</P>] as [string, React.ReactNode]] : []),

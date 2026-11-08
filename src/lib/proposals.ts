@@ -18,11 +18,23 @@ export async function orgsAwaitingProposal(practitionerId: string) {
   return new Set(rows.map((r) => r.organizationId));
 }
 
-/** Destinataires possibles : organisations validées et référencées, hors prestataires. */
+/** Destinataires possibles : organisations validées et référencées, hors prestataires (avec leur groupe éventuel). */
 export function proposalRecipients() {
   return db.organization.findMany({
     where: { listed: true, verification: "VERIFIED", kind: { not: "PRESTATAIRE" } },
-    select: { id: true, name: true, kind: true, sector: true, areas: true, logoUpdatedAt: true },
+    select: { id: true, name: true, kind: true, sector: true, areas: true, logoUpdatedAt: true, groupId: true, brands: true, coveredCountries: true, group: { select: { id: true, name: true } } },
     orderBy: { name: "asc" },
+  });
+}
+
+/**
+ * Entités d'un groupe pouvant recevoir une proposition, avec leurs canaux : l'aiguillage choisit celle du pays de
+ * l'expert (et de la marque), puis le canal du sujet.
+ */
+export function groupEntities(groupId: string) {
+  return db.organization.findMany({
+    where: { groupId, listed: true, verification: "VERIFIED", kind: { not: "PRESTATAIRE" } },
+    select: { id: true, name: true, coveredCountries: true, brands: true },
+    orderBy: { createdAt: "asc" },
   });
 }

@@ -130,7 +130,7 @@ export default async function Page({ searchParams }: { searchParams: Promise<{ a
         {p?.listed && (
           <div id="profil-expert"><ExpertProfileForm
             types={INTERVENTION_TYPES}
-            p={{ bio: p.bio, hospital: p.hospital, subspecialty: p.subspecialty, orcid: p.orcid, languages: p.languages, interventionTypes: p.interventionTypes, dayRateCents: p.dayRateCents }}
+            p={{ bio: p.bio, hospital: p.hospital, subspecialty: p.subspecialty, orcid: p.orcid, languages: p.languages, interventionTypes: p.interventionTypes, dayRateCents: p.dayRateCents, publicAgent: p.publicAgent, country: p.country }}
           /></div>
         )}
         {p?.listed && <KolVisibilityForm v={kolVisibility(p.visibility)} />}

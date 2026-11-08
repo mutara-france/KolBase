@@ -14,6 +14,7 @@ import { subscribeHref } from "@/lib/billing-plans";
 import { activeMandate } from "@/lib/mandates";
 import { de } from "@/lib/elision";
 import { rfqConflict } from "@/lib/suppliers";
+import { FINAL_COUNT_CATEGORIES, FINAL_COUNT_DAYS } from "@/lib/supplier-profiles";
 import { getT } from "@/lib/i18n/server";
 import { fmtDate } from "@/lib/i18n";
 import { complianceSettings, hospitalityRegime } from "@/lib/compliance";
@@ -130,7 +131,13 @@ export const orgOverview = cache(async (orgId: string) => {
     todos.push({ href: `${base}/membres#sans-conformite`, title: t("Attribuer le rôle Conformité"), detail: t("Personne ne peut valider les dossiers de l'organisation"), icon: "ShieldCheck", tone: "warn" });
   if (can.project) {
     for (const p of projects) {
-      if (p.status === "ATT_IND") todos.push({ href: dossier(p), title: t("Proposition d'expert à examiner"), detail: p.title, icon: "Inbox" });
+      // Proposition aiguillée vers un canal : délai de réponse annoncé à l'expert, retard signalé.
+      if (p.status === "ATT_IND")
+        todos.push({
+          href: dossier(p), title: t("Proposition d'expert à examiner"),
+          detail: p.responseDue ? `${p.title} · ${t("réponse attendue avant le {date}", { date: day(p.responseDue) })}` : p.title,
+          icon: "Inbox", ...(p.responseDue && p.responseDue < now ? { tone: "danger" as const } : p.responseDue && p.responseDue.getTime() - now.getTime() < 2 * DAY ? { tone: "warn" as const } : {}),
+        });
       if (p.status === "ACCORD") {
         // Délai interne de soumission (Paramètres de la conformité) : échéance annoncée, retard signalé.
         const due = submissionDue(plannedDate(p), limits);
@@ -151,11 +158,45 @@ export const orgOverview = cache(async (orgId: string) => {
       if (p.status === "ATT_EXPERTS" && now.getTime() - p.updatedAt.getTime() > 5 * DAY)
         todos.push({ href: dossier(p, "messagerie"), title: t("Relancer les experts : {title}", { title: p.title }), detail: t("Sans réponse depuis le {date}", { date: day(p.updatedAt) }), icon: "Inbox", tone: "warn" });
     }
+    // Notes de frais des experts : à examiner, puis à rembourser une fois acceptées.
+    const costs = await db.expertExpense.groupBy({ by: ["projectExpertId", "status"], where: { status: { in: ["submitted", "approved"] }, projectExpert: { project: { organizationId: orgId } } }, _count: true });
+    if (costs.length) {
+      const links = await db.projectExpert.findMany({ where: { id: { in: [...new Set(costs.map((c) => c.projectExpertId))] } }, select: { id: true, project: { select: { id: true, title: true } } } });
+      const byProject = new Map<string, { title: string; submitted: number; approved: number }>();
+      for (const c of costs) {
+        const pr = links.find((l) => l.id === c.projectExpertId)?.project;
+        if (!pr) continue;
+        const x = byProject.get(pr.id) ?? { title: pr.title, submitted: 0, approved: 0 };
+        if (c.status === "submitted") x.submitted += c._count; else x.approved += c._count;
+        byProject.set(pr.id, x);
+      }
+      for (const [id, x] of byProject) {
+        const href = `${base}/dossiers/${id}?onglet=frais`;
+        if (x.submitted) todos.push({ href, title: t(x.submitted > 1 ? "{n} notes de frais à examiner" : "{n} note de frais à examiner", { n: x.submitted }), detail: x.title, icon: "Receipt", tone: "warn" });
+        if (x.approved) todos.push({ href, title: t(x.approved > 1 ? "{n} notes de frais à rembourser" : "{n} note de frais à rembourser", { n: x.approved }), detail: x.title, icon: "Receipt" });
+      }
+    }
   }
   if (can.sourcing) {
     for (const c of calls)
       if (c.applications.length)
         todos.push({ href: `${base}/opportunites/${c.id}`, title: t(c.applications.length > 1 ? "{n} candidatures à examiner" : "{n} candidature à examiner", { n: c.applications.length }), detail: c.title, icon: "UserRound" });
+  }
+  // Partenariats proposés par les organisateurs de congrès : l'administration ou la conformité signe ou décline.
+  if (org.kind === "INDUSTRIEL" && (roles.includes("ADMIN") || can.compliance)) {
+    const props = await db.eventPartner.findMany({ where: { organizationId: orgId, status: "proposed" }, select: { event: { select: { title: true, organization: { select: { name: true } } } } } });
+    for (const p of props) todos.push({ href: `${base}/partenariats`, title: t("Partenariat à signer : {title}", { title: p.event.title }), detail: p.event.organization.name, icon: "Inbox", tone: "warn" });
+  }
+  // Appel à communications : soumissions en attente de décision de l'équipe qui organise.
+  if (can.organizer) {
+    const subs = await db.abstract.groupBy({ by: ["eventId"], where: { status: "submitted", event: { organizationId: orgId } }, _count: true });
+    if (subs.length) {
+      const evs = await db.event.findMany({ where: { id: { in: subs.map((x) => x.eventId) } }, select: { id: true, title: true } });
+      for (const x of subs) {
+        const ev = evs.find((e) => e.id === x.eventId);
+        if (ev) todos.push({ href: `${base}/evenements/${ev.id}#communications`, title: t(x._count > 1 ? "{n} communications à examiner" : "{n} communication à examiner", { n: x._count }), detail: ev.title, icon: "Inbox" });
+      }
+    }
   }
   if (can.compliance) {
     for (const p of projects)
@@ -228,6 +269,21 @@ export const orgOverview = cache(async (orgId: string) => {
         todos.push({ href: `${base}/prestataires/${r.id}`, title: t("Devis à retenir : {title}", { title: label }), detail: t("Proposé par l'agence mandatée"), icon: "Receipt", tone: "warn" });
       else if (r._count.quotes > 0)
         todos.push({ href: `${base}/prestataires/${r.id}`, title: t("Devis à comparer : {title}", { title: label }), detail: t(r._count.suppliers > 1 ? (r._count.quotes > 1 ? "{n} devis reçus sur {m} prestataires" : "{n} devis reçu sur {m} prestataires") : "{n} devis reçu sur {m} prestataire", { n: r._count.quotes, m: r._count.suppliers }), icon: "Receipt", tone: "warn" });
+    }
+  }
+  // Nombre définitif à confirmer au prestataire retenu, dans les 15 jours qui précèdent la prestation.
+  if (can.events) {
+    const soon = new Date(Date.now() + (FINAL_COUNT_DAYS + 5) * 86400e3);
+    const due = await db.rfq.findMany({
+      where: {
+        organizationId: orgId, status: "awarded", category: { in: FINAL_COUNT_CATEGORIES }, finalHeadcount: null, ...rfqScope,
+        OR: [{ serviceStart: { gt: new Date(), lte: soon } }, { serviceStart: null, event: { startsAt: { gt: new Date(), lte: soon } } }],
+      },
+      include: { event: { select: { title: true } }, quotes: { where: { status: "retained" }, select: { supplier: { select: { name: true } } } }, suppliers: { select: { supplierId: true } } },
+    });
+    for (const r of due) {
+      if (rfqConflict(r.suppliers.map((s) => s.supplierId), ownOrgs) || !r.quotes[0]) continue;
+      todos.push({ href: `${base}/prestataires/${r.id}#nombre-definitif`, title: t("Nombre définitif à confirmer à {name}", { name: r.quotes[0].supplier.name }), detail: r.event?.title ?? t("Demande de devis"), icon: "Receipt", tone: "warn" });
     }
   }
   for (const w of waitingQuotes)

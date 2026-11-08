@@ -8,7 +8,7 @@ import { practitionerSectionTabs } from "@/lib/nav";
 import { db } from "@/lib/db";
 import { requireUser } from "@/lib/auth";
 import { TZ } from "@/lib/events";
-import { fmtEur, intlLocale } from "@/lib/i18n";
+import { fmtDate, fmtEur, intlLocale } from "@/lib/i18n";
 import { getT } from "@/lib/i18n/server";
 import { pointedPastEvents } from "@/lib/checkin";
 import { isAbsent } from "@/lib/indicators";
@@ -28,10 +28,16 @@ export default async function Page({ searchParams }: { searchParams: Promise<{ a
     d.toLocaleString(intlLocale(locale), { timeZone: TZ, weekday: "long", day: "numeric", month: "long", year: "numeric", hour: "2-digit", minute: "2-digit" });
   const regs = await db.registration.findMany({
     where: { userId: user.id },
-    include: { event: { include: { organization: { select: { name: true, verification: true } } } }, benefits: { include: { benefit: true } }, survey: { select: { id: true } } },
+    include: { event: { include: { organization: { select: { name: true, verification: true } } } }, benefits: { include: { benefit: true } }, survey: { select: { id: true } }, travel: true },
     orderBy: { event: { startsAt: "asc" } },
   });
   const now = new Date();
+  // Listes d'attente des événements à venir.
+  const waiting = await db.waitlistEntry.findMany({
+    where: { userId: user.id, event: { startsAt: { gt: now }, cancelledAt: null } },
+    include: { event: { select: { id: true, title: true, startsAt: true } } },
+    orderBy: { event: { startsAt: "asc" } },
+  });
   // Absent au pointage d'un événement passé : les prestations acceptées n'ont pas été consommées, ni déclarées.
   const pointed = await pointedPastEvents(regs.map((r) => r.eventId), now);
   const absent = new Set(regs.filter((r) => r.benefits.length > 0 && !r.declared && isAbsent(r, pointed.has(r.eventId))).map((r) => r.id));
@@ -77,6 +83,20 @@ export default async function Page({ searchParams }: { searchParams: Promise<{ a
             {absent.has(r.id) && ` · ${t("absent : non déclaré")}`}
           </span>
         </Link>
+        {/* Carnet de voyage : envoyé par l'organisateur (hôtel, dates, trajets, billets). */}
+        {r.travel?.sentAt && !eventEnded(r.event, now) && (
+          <p className="text-sm travel-summary">
+            <strong>{t("Votre voyage")}</strong>{" "}
+            {[
+              r.travel.hotel && t("hôtel : {hotel}", { hotel: r.travel.hotel }),
+              r.travel.checkIn && t("arrivée le {date}", { date: fmtDate(locale, r.travel.checkIn) }),
+              r.travel.checkOut && t("départ le {date}", { date: fmtDate(locale, r.travel.checkOut) }),
+              r.travel.outbound && t("aller : {trip}", { trip: r.travel.outbound }),
+              r.travel.returnTrip && t("retour : {trip}", { trip: r.travel.returnTrip }),
+              r.travel.ticketRef && t("billets : {ref}", { ref: r.travel.ticketRef }),
+            ].filter(Boolean).join(" · ")}
+          </p>
+        )}
         {badge && <Link className="btn small secondary" href={`/inscriptions/${r.id}/badge`}><QrCode size={14} /> {t("Mon badge d'accueil")}</Link>}
         {r.event.format !== "PRESENTIEL" && !eventEnded(r.event, now) && (
           r.event.onlineUrl
@@ -113,7 +133,15 @@ export default async function Page({ searchParams }: { searchParams: Promise<{ a
           <a className="btn ghost small" href="/inscriptions/calendrier">{t("Exporter vers mon agenda (.ics)")}</a>
         </PageHead>
         {annulee && <p className="notice ok">{t("Inscription annulée. Un e-mail vous le confirme.")}</p>}
-        {regs.length === 0 && (
+        {waiting.length > 0 && (
+          <section className="card stack-sm" aria-labelledby="attente-titre">
+            <SectionHead icon={CalendarClock} id="attente-titre" title={t("Listes d'attente")} desc={t("Vous êtes prévenu par e-mail si une place se libère : la première personne qui s'inscrit l'obtient.")} />
+            <ul className="plain stack-xs">
+              {waiting.map((w) => <li key={w.id}><Link href={`/evenements/${w.event.id}`}>{w.event.title}</Link> <span className="muted text-sm">· {formatDateTime(w.event.startsAt)}</span></li>)}
+            </ul>
+          </section>
+        )}
+        {regs.length === 0 && waiting.length === 0 && (
           <div className="card empty">
             <EmptyState icon={CalendarDays} title={t("Aucune inscription.")} action={<Link className="btn secondary small" href="/evenements">{t("Voir l'agenda")}</Link>}>
               {t("Inscrivez-vous aux événements de l'agenda : vos badges, attestations et avantages se retrouvent ici.")}

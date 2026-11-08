@@ -89,7 +89,7 @@ export default async function Page({ searchParams }: { searchParams: Promise<{ o
                       {fees.map((f) => (
                         <tr key={f.id}>
                           <td className="nowrap" data-label={t("Date")}>{fmtDate(locale, f.date)}</td>
-                          <td data-label={t("Collaboration")}><Link href={`/sollicitations/${f.id}`}>{f.title}</Link><div className="text-xs muted">{t(f.type)}</div></td>
+                          <td data-label={t("Collaboration")}><Link href={`/sollicitations/${f.id}`}>{f.title}</Link><div className="text-xs muted">{t(f.type)}{f.expensesCents > 0 ? ` · ${t("frais remboursés : {montant} TTC", { montant: fmtEur(locale, f.expensesCents) })}` : ""}</div></td>
                           <td data-label={t("Organisation")}>{f.org.name}</td>
                           <td className="num" data-label={t("Montant HT")}>{fmtEur(locale, f.paidCents ?? f.feeCents)}</td>
                           <td data-label={t("Statut")}><span className={`pill ${f.paidAt ? "ok" : f.signed ? "wait" : ""}`}>{feeStatus(f)}</span></td>

@@ -13,8 +13,9 @@ import { MAX_UPLOAD_BYTES, putObject, safeFileName, storageEnabled } from "@/lib
 import { engagementGate, gateMessage, markSupplierTriggered, stripeEnabled, supplierCanQuote } from "@/lib/billing";
 import type { GateLink } from "@/lib/billing-plans";
 import { awardRight } from "@/lib/mandates";
-import { notifyAward, notifyProposalWithdrawn, notifyQuote, notifyRfqDeclined, notifyQuoteProposed, notifyRfqCancelled, notifyRfqMessage, notifyRfqSent, notifySupplierBilling } from "@/lib/notifications";
+import { notifyAward, notifyFinalHeadcount, notifyProposalWithdrawn, notifyQuote, notifyRfqDeclined, notifyQuoteProposed, notifyRfqCancelled, notifyRfqMessage, notifyRfqSent, notifySupplierBilling } from "@/lib/notifications";
 import { getT } from "@/lib/i18n/server";
+import { FINAL_COUNT_CATEGORIES, readDetails, readQuoteTerms } from "@/lib/supplier-profiles";
 
 export type ActionState = { error?: string; ok?: string; fix?: GateLink } | undefined;
 
@@ -62,6 +63,13 @@ export async function createRfq(_: ActionState, form: FormData): Promise<ActionS
   const deadline = deadlineRaw ? parseParisDateTime(`${deadlineRaw}T23:59`) : null;
   if (deadlineRaw && (!deadline || deadline < new Date())) return { error: t("Date de réponse invalide ou passée.") };
   const headcount = intOrNull(str(form, "headcount")) || event?.capacity || null;
+  // Dates de la prestation : exigées sans événement ; à défaut, celles de l'événement.
+  const day = (v: string) => (/^\d{4}-\d{2}-\d{2}$/.test(v) ? parseParisDateTime(`${v}T12:00`) : null);
+  const serviceStart = day(str(form, "serviceStart")) ?? event?.startsAt ?? null;
+  const serviceEnd = day(str(form, "serviceEnd")) ?? (event ? new Date(event.startsAt.getTime() + (event.durationMinutes ?? 0) * 60e3) : null);
+  if (!serviceStart) return { error: t("Indiquez la date de la prestation : sans événement, le prestataire ne peut pas chiffrer.") };
+  if (serviceEnd && serviceEnd < serviceStart) return { error: t("Le dernier jour précède la date de la prestation.") };
+  const details = readDetails(category, form);
   const send = str(form, "intent") === "send";
   if (send && !isVerifiedOrg(org)) return { error: t("Envoi impossible pour l'instant : {v} Enregistrez la demande en brouillon.", { v: t(notVerified(org)) }) };
   const gate = send ? await engagementGate(orgId, "devis") : null;
@@ -69,7 +77,7 @@ export async function createRfq(_: ActionState, form: FormData): Promise<ActionS
 
   const rfq = await db.rfq.create({
     data: {
-      organizationId: orgId, eventId, category, needs, deadline, headcount, city: str(form, "city") || event?.city || null,
+      organizationId: orgId, eventId, category, needs, deadline, headcount, city: str(form, "city") || event?.city || null, details, serviceStart, serviceEnd,
       status: send ? "sent" : "draft", sentAt: send ? new Date() : null, createdById: user.id,
       suppliers: { create: supplierIds.map((supplierId) => ({ supplierId })) },
     },
@@ -329,9 +337,11 @@ export async function submitQuote(_: ActionState, form: FormData): Promise<Actio
     upload = { bytes, name: safeFileName(file.name || "devis.pdf") };
   }
 
+  const terms = readQuoteTerms(form);
+  if ("error" in terms) return { error: t(terms.error) };
   const existing = await db.quote.findUnique({ where: { rfqId_supplierId: { rfqId, supplierId: orgId } } });
   const data = {
-    amountCents, lines, vatBp, ttcCents, validUntil, conditions: str(form, "conditions") || null,
+    amountCents, lines, vatBp, ttcCents, validUntil, conditions: str(form, "conditions") || null, ...terms,
     delay: str(form, "delay") || null, note: str(form, "note") || null, authorId: user.id, status: "submitted" as const,
   };
   const q = existing
@@ -388,3 +398,26 @@ export async function updateSupplierProfile(_: ActionState, form: FormData): Pro
   return { ok: t("Catégories et zone enregistrées.") };
 }
 
+/**
+ * Nombre définitif confirmé au prestataire retenu (traiteur, hôtel, transport, lieu) : il facture sur cette base et
+ * le demande en général 7 à 15 jours avant. Modifiable tant que la prestation n'a pas eu lieu ; chaque envoi le prévient.
+ */
+export async function confirmFinalHeadcount(_: ActionState, form: FormData): Promise<ActionState> {
+  const { t } = await getT();
+  const orgId = str(form, "orgId");
+  const { user, roles } = await requireMembership(orgId, EVENT_MANAGER_ROLES);
+  const rfqId = str(form, "rfqId");
+  const n = intOrNull(str(form, "finalHeadcount"));
+  if (!n || n < 1 || n > 100000) return { error: t("Indiquez le nombre définitif (1 à 100 000).") };
+  if (await rfqConflicted(rfqId, user)) return { error: t("Action non autorisée.") };
+  const rfq = await db.rfq.findFirst({
+    where: { id: rfqId, organizationId: orgId, status: "awarded", category: { in: FINAL_COUNT_CATEGORIES }, ...rfqScope(user, roles) },
+    select: { id: true, finalHeadcount: true, quotes: { where: { status: "retained" }, select: { id: true } } },
+  });
+  if (!rfq?.quotes[0]) return { error: t("Demande introuvable.") };
+  await db.rfq.update({ where: { id: rfqId }, data: { finalHeadcount: n, finalHeadcountAt: new Date(), finalHeadcountById: user.id } });
+  await audit(user.id, "rfq.final_headcount", "Rfq", rfqId, { n, previous: rfq.finalHeadcount ?? undefined });
+  notifyFinalHeadcount(rfqId, user.id);
+  revalidatePath(`/organisations/${orgId}/prestataires/${rfqId}`);
+  return { ok: t("Nombre définitif transmis au prestataire : {n}.", { n }) };
+}

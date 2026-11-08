@@ -93,6 +93,14 @@ Variables Render : `SEED_DEMO` (1 = actif, 0 = désactivé), `DEMO_PASSWORD` (mo
   Belgique, NPI aux États-Unis, n° d'Ordre ailleurs), contrôlé de la même façon. Un dossier dont tous les experts
   exercent à l'étranger sort du circuit EPS (étape « Hors France ») ; le dossier, le registre et la convention
   rappellent les règles du pays (Sunshine Act belge et visa Mdeon, Open Payments, code MedTech Europe).
+- **Règles d'hospitalité** (`src/lib/belgium.ts`, `src/lib/compliance.ts`) : un étudiant exerçant en France
+  s'inscrit sans aucune prestation (hospitalité interdite) ; les frais d'inscription pris en charge ont leur seuil
+  d'autorisation propre (1 000 €), hors total. Un praticien exerçant en Belgique n'accepte l'hospitalité d'un
+  événement d'industriel sur plusieurs jours ou avec nuitée qu'une fois le visa Mdeon saisi dans l'événement
+  (date limite : 15e jour ouvrable belge avant le début ; plafonds Mdeon signalés) ; le numéro figure dans son
+  e-mail de confirmation, et la conformité prépare chaque année la publication betransparent.be.
+- **Experts agents publics** (praticien hospitalier, hospitalo-universitaire) : la déclaration ou la demande
+  d'autorisation à l'Ordre attend leur autorisation de cumul d'activités, déposée dans le dossier (article R.1453-14).
 - **ORCID** : avec `ORCID_CLIENT_ID` / `ORCID_CLIENT_SECRET`, le praticien prouve son iD en se connectant à
   son compte ORCID avant d'importer ses publications.
 - **Administration** : espace `/admin`, réservé aux comptes listés dans `PLATFORM_ADMIN_EMAILS` (adresse confirmée

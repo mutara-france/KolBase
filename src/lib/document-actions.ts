@@ -46,25 +46,27 @@ export async function uploadDocument(_: ActionState, form: FormData): Promise<Ac
   if (!matchesType(file.type, bytes))
       return { error: file.type === "application/pdf" ? t("Ce fichier n'est pas un PDF valide.") : t("Format non accepté : PDF, JPEG, PNG, Word, Excel ou PowerPoint.") };
 
-  const kind = str(form, "kind") === "CONVENTION_SIGNEE" ? "CONVENTION_SIGNEE" : "PIECE";
+  const rawKind = str(form, "kind");
+  const kind = rawKind === "CONVENTION_SIGNEE" || rawKind === "AUTORISATION_CUMUL" ? rawKind : "PIECE";
   // Un expert dépose pour son propre lien ; l'organisation choisit l'expert concerné (obligatoire pour une convention).
   const linkId = a.ownLink && !a.team ? a.ownLink.id : str(form, "linkId") || null;
   const link = linkId ? a.project.experts.find((e) => e.id === linkId && ENGAGED(e.status)) : null;
   if (linkId && !link) return { error: t("Expert introuvable sur ce dossier.") };
   if (kind === "CONVENTION_SIGNEE" && !link) return { error: t("Indiquez l'expert signataire de la convention.") };
+  if (kind === "AUTORISATION_CUMUL" && !link) return { error: t("Indiquez l'expert concerné par l'autorisation de cumul.") };
 
   const key = `dossiers/${a.project.id}/${randomBytes(8).toString("hex")}-${safeFileName(file.name)}`;
   await putObject(key, bytes, file.type);
   const doc = await db.document.create({
     data: { projectId: a.project.id, projectExpertId: link?.id ?? null, kind, name: file.name.slice(0, 200), contentType: file.type, size: file.size, storageKey: key, uploadedById: a.user.id },
   });
-  await audit(a.user.id, kind === "CONVENTION_SIGNEE" ? "document.signed_convention" : "document.upload", "Project", a.project.id, { documentId: doc.id, name: doc.name, linkId: link?.id });
+  await audit(a.user.id, kind === "CONVENTION_SIGNEE" ? "document.signed_convention" : kind === "AUTORISATION_CUMUL" ? "document.cumul" : "document.upload", "Project", a.project.id, { documentId: doc.id, name: doc.name, linkId: link?.id });
   // Convention signée déposée à la main : la demande de signature électronique encore en cours est close.
   if (kind === "CONVENTION_SIGNEE" && link) await closeOpenSignatures({ projectExpertId: link.id }, "convention signée déposée dans KolBase");
   // Déposée par l'expert lui-même : l'équipe Projets est prévenue (elle confirme ensuite la signature du dossier).
   if (kind === "CONVENTION_SIGNEE" && link && a.ownLink?.id === link.id && !a.team) notifyConventionDeposited(link.id);
   refresh(a.project.organizationId, a.project.id, link?.id);
-  return { ok: kind === "CONVENTION_SIGNEE" ? t("Convention signée déposée.") : t("Document déposé.") };
+  return { ok: kind === "CONVENTION_SIGNEE" ? t("Convention signée déposée.") : kind === "AUTORISATION_CUMUL" ? t("Autorisation de cumul déposée.") : t("Document déposé.") };
 }
 
 /** Retrait d'un document : l'équipe du dossier ou son auteur ; une convention signée d'un dossier signé reste archivée. */

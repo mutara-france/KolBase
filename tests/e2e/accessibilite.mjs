@@ -36,7 +36,7 @@ const PAGES = {
     "/organisations/demo-org-dentalys/membres",
   ],
   "ludovic.perrin@demo.kolbase.local": ["/organisations/demo-sup-belleville/devis", "/organisations/demo-sup-belleville/devis/demo-rfq-cocktail", "/organisations/demo-sup-belleville/page-prestataire"],
-  "anne.chevalier@demo.kolbase.local": ["/admin", "/admin/organisations", "/admin/comptes", "/admin/comptes/demo-u-julien", "/admin/journal", "/admin/exploitation"],
+  "anne.chevalier@demo.kolbase.local": ["/admin", "/admin/organisations", "/admin/comptes", "/admin/comptes/demo-u-julien", "/admin/journal", "/admin/signalements", "/admin/emails", "/admin/exploitation"],
 };
 
 // Violations bloquantes. Une règle ne s'ajoute ici qu'avec un ticket de correction : la liste doit rester vide.

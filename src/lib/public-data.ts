@@ -23,7 +23,7 @@ export const myRegisteredEventIds = cache(async () => {
 });
 
 /** Événements de l'agenda public : publiés, à venir, d'une organisation validée (même règle pour la liste et les compteurs). */
-const publicEventWhere = (now = new Date()) => ({ publishedAt: { not: null }, internal: false, startsAt: { gte: now }, organization: { verification: "VERIFIED" as const } });
+const publicEventWhere = (now = new Date()) => ({ publishedAt: { not: null }, internal: false, inviteOnly: false, startsAt: { gte: now }, organization: { verification: "VERIFIED" as const } });
 
 /**
  * Agenda public. `tracked` : liens suivis de la mise à la une (accueil seulement) ; ailleurs (/evenements), l'événement
@@ -132,7 +132,7 @@ export async function publicSpecialties(): Promise<{ name: string; count: number
 
 /** Prochain événement publié d'une organisation et nombre d'événements à venir. */
 export async function publicOrgAgenda(organizationId: string) {
-  const where = { organizationId, publishedAt: { not: null }, startsAt: { gte: new Date() } };
+  const where = { organizationId, publishedAt: { not: null }, inviteOnly: false, startsAt: { gte: new Date() } };
   const [next, upcoming] = await Promise.all([
     db.event.findFirst({ where, orderBy: { startsAt: "asc" }, select: { id: true, title: true, startsAt: true, city: true } }),
     db.event.count({ where }),

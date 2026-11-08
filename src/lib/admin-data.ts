@@ -26,12 +26,13 @@ export async function tasksState() {
 
 /** Pastilles de la navigation de l'administration : ce qui attend une décision de KolBase. */
 export async function adminCounts() {
-  const [orgs, identities, services] = await Promise.all([
+  const [orgs, identities, services, reports] = await Promise.all([
     db.organization.count({ where: { verification: "PENDING" } }),
     db.practitionerProfile.count({ where: identityQueueWhere }),
     db.serviceOrder.count({ where: { status: "demandee" } }),
+    db.report.count({ where: { status: "open" } }),
   ]);
-  return { orgs, identities, services };
+  return { orgs, identities, services, reports };
 }
 
 export type LaunchItem = { ok: boolean; optional?: boolean; label: string; detail: string };

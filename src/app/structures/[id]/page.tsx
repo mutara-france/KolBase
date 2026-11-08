@@ -1,11 +1,14 @@
 import Link from "next/link";
+import { ReportLink } from "@/components/ReportLink";
 import { logoSrc } from "@/lib/logos";
 import { notFound } from "next/navigation";
 import { ArrowLeft, Award, Clock, Images, Info, Lock, Mail, MapPin, Receipt, ShieldCheck, Star, Tag } from "lucide-react";
 import { SectionHead } from "@/components/UI";
+import { OrgTrainingResults } from "@/components/TrainingPublic";
 import { CategoryIcon } from "@/components/SupplierBits";
 import { EVENT_MANAGER_ROLES } from "@/lib/events";
-import { bannerSrc, CAPACITY_LABEL, delayLabel, OFFER_UNITS, photoSrc, readCapacities, supplierBook } from "@/lib/supplier-book";
+import { bannerSrc, delayLabel, OFFER_UNITS, photoSrc, readCapacities, supplierBook } from "@/lib/supplier-book";
+import { capacityUnit } from "@/lib/supplier-profiles";
 import { supplierCategoryLabel } from "@/lib/suppliers";
 import { SiteHeader } from "@/components/SiteHeader";
 import { Avatar } from "@/components/Avatar";
@@ -47,9 +50,10 @@ export default async function Page({ params }: { params: Promise<{ id: string }>
     where: { id, ...(isMember ? {} : { listed: true, verification: "VERIFIED" }) },
     include: {
       openCalls: { where: { status: "open", OR: [{ deadline: null }, { deadline: { gte: now } }] }, orderBy: { deadline: "asc" }, include: { _count: { select: { applications: { where: { status: "retained" } } } } } },
-      events: { where: { publishedAt: { not: null }, startsAt: { gte: now } }, orderBy: { startsAt: "asc" }, include: { _count: { select: { registrations: true } } } },
+      events: { where: { publishedAt: { not: null }, inviteOnly: false, startsAt: { gte: now } }, orderBy: { startsAt: "asc" }, include: { _count: { select: { registrations: true } } } },
       // Collaborations : les dossiers signés seulement, comme la fiche expert.
       _count: { select: { projects: { where: { status: { in: SIGNED_STATUSES } } } } },
+      group: { select: { id: true, name: true } },
     },
   });
   if (!o) notFound();
@@ -138,7 +142,7 @@ export default async function Page({ params }: { params: Promise<{ id: string }>
                   {o.coverage && <p className="meta-line"><MapPin size={12} /> {t("Zone couverte : {zone}", { zone: o.coverage })}</p>}
                   {Object.keys(caps).length > 0 && (
                     <ul className="plain text-sm">
-                      {(Object.keys(caps) as (keyof typeof caps)[]).map((k) => <li key={k}><strong>{caps[k]}</strong> {t(CAPACITY_LABEL[k])}</li>)}
+                      {Object.keys(caps).map((k) => <li key={k}><strong>{caps[k]}</strong> {t(capacityUnit(k))}</li>)}
                     </ul>
                   )}
                   {(o.equipment.length > 0 || o.accessible) && (
@@ -178,6 +182,7 @@ export default async function Page({ params }: { params: Promise<{ id: string }>
                   <div key={r.id} className="review">
                     <span><span className="rating">{Array.from({ length: r.rating }, (_, i) => <Star key={i} size={14} />)}</span> <strong>{t("Organisation cliente")}</strong> <span className="muted text-xs">{r.createdAt.toLocaleDateString(locale === "en" ? "en-GB" : "fr-FR", { month: "long", year: "numeric", timeZone: "Europe/Paris" })}</span></span>
                     {r.comment && <p className="text-sm">{r.comment}</p>}
+                    {r.comment && <ReportLink type="avis" id={r.id} label={t("Signaler cet avis")} />}
                   </div>
                 ))}
               </section>
@@ -213,6 +218,10 @@ export default async function Page({ params }: { params: Promise<{ id: string }>
               {v.contact === "masque" && viewer !== "proprietaire" ? <p className="muted">{t("Non communiqué.")}</p> : canSee(v.contact, viewer) ? <p>{o.contactEmail ? <a href={`mailto:${o.contactEmail}`}>{o.contactEmail}</a> : t("Non renseigné.")}</p> : lock(t("Contact"))}
             </section>
           </div>}
+          {/* Entité d'un groupe : le portail du groupe aiguille les propositions vers l'entité du pays de l'expert. */}
+          {o.group && <p className="notice"><Link href={`/groupes/${o.group.id}`}>{t("Fait partie du groupe {name} : proposer un projet au groupe", { name: o.group.name })}</Link></p>}
+          {/* Organisme qui forme : indicateurs de résultats publiés (Qualiopi), avec leur mode de calcul. */}
+          {!isSupplier && o.kind !== "INDUSTRIEL" && <OrgTrainingResults orgId={id} />}
           {!isSupplier && v.projets !== "masque" && (
             <section>
               <div className="section-head"><div><div className="eyebrow mb-1">{t("Opportunités")}</div><h2 className="section-h2">{t("Ouvertes aux praticiens")}</h2></div></div>
@@ -236,6 +245,7 @@ export default async function Page({ params }: { params: Promise<{ id: string }>
               </>
             )}
           </section>}
+          <ReportLink type="organisation" id={id} />
         </div>
       </main>
     </>

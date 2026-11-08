@@ -21,7 +21,7 @@ export async function exportAccount(userId: string) {
           // Liens d'intérêts déclarés et notes d'honoraires établies (données de l'émetteur figées dans la note).
           declaredInterests: { select: { organization: true, nature: true, startYear: true, endYear: true, createdAt: true } },
           feeNotes: { select: { number: true, issuedAt: true, amountCents: true, vatBp: true, totalCents: true, data: true, organization: { select: { name: true } } }, orderBy: { issuedAt: "asc" } },
-          projectLinks: { include: { project: { select: { title: true, typeId: true, status: true, organization: { select: { name: true } } } }, messages: { select: { body: true, createdAt: true, authorId: true } } } },
+          projectLinks: { include: { project: { select: { title: true, typeId: true, status: true, organization: { select: { name: true } } } }, messages: { select: { body: true, createdAt: true, authorId: true } }, expenses: { select: { category: true, label: true, date: true, amountCents: true, status: true, decisionNote: true, paidAt: true } }, travel: true, missions: { select: { date: true, label: true, units: true } } } },
           applications: { include: { openCall: { select: { title: true, organization: { select: { name: true } }, event: { select: { title: true, startsAt: true } } } } } },
           // Projets proposés aux organisations, avec la réponse de chacune.
           proposals: { include: { projects: { select: { status: true, createdAt: true, organization: { select: { name: true } } } } }, orderBy: { createdAt: "asc" } },
@@ -30,7 +30,8 @@ export async function exportAccount(userId: string) {
       },
       photo: { select: { data: true, updatedAt: true } },
       memberships: { select: { role: true, createdAt: true, organization: { select: { name: true, kind: true } } } },
-      registrations: { include: { event: { select: { title: true, startsAt: true, organization: { select: { name: true } } } }, benefits: { include: { benefit: { select: { label: true } } } } } },
+      registrations: { include: { event: { select: { title: true, startsAt: true, organization: { select: { name: true } } } }, benefits: { include: { benefit: { select: { label: true } } } }, attendances: { select: { signedAt: true, method: true, session: { select: { startsAt: true, endsAt: true } } } } } },
+      abstracts: { select: { title: true, authors: true, body: true, topic: true, format: true, status: true, decisionNote: true, createdAt: true, event: { select: { title: true } } } },
       follows: { select: { createdAt: true, practitioner: { select: { id: true } }, organization: { select: { name: true } } } },
       sessions: { select: { createdAt: true, expiresAt: true, userAgent: true } },
       auditLogs: { select: { action: true, entityType: true, entityId: true, createdAt: true }, orderBy: { createdAt: "desc" }, take: 500 },
@@ -101,6 +102,8 @@ export async function anonymizeAccount(userId: string) {
     db.session.deleteMany({ where: { userId } }),
     db.authToken.deleteMany({ where: { userId } }),
     db.follow.deleteMany({ where: { userId } }),
+    // Communications non retenues (soumises, refusées, retirées) : effacées ; celles au programme restent.
+    db.abstract.deleteMany({ where: { userId, status: { not: "accepted" } } }),
     db.membership.deleteMany({ where: { userId } }),
     db.projectLead.deleteMany({ where: { userId } }),
     db.userPhoto.deleteMany({ where: { userId } }),

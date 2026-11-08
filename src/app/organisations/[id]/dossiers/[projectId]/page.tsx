@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { CalendarDays, Clock, Euro, FileDown, FileSignature, FileText, Globe, ImageDown, LayoutDashboard, Megaphone, MessagesSquare, Scale, Sparkles, User, UserPlus, Users, Wallet } from "lucide-react";
+import { CalendarDays, Clock, Euro, FileDown, FileSignature, FileText, Globe, ImageDown, LayoutDashboard, Megaphone, MessagesSquare, Receipt, Route, Scale, Sparkles, User, UserPlus, Users, Wallet } from "lucide-react";
 import { SectionHead, StateTile } from "@/components/UI";
 import { detectConflicts } from "@/lib/conflicts";
 import { aiEnabled } from "@/lib/ai";
@@ -24,7 +24,10 @@ import { acceptCounterOffer, addProjectLead, advanceProject, removeProjectLead }
 import { ConfirmButton } from "@/components/ConfirmButton";
 import { expertSplit } from "@/lib/indicators";
 import { BudgetTab, ConflictsPanel, ConventionSignatureBlock, DocumentsPanel, MaterialsPanel } from "@/components/DossierSections";
-import { missingSignedConventions } from "@/lib/project-documents";
+import { ExpertCostsTab, FrameworkPanel } from "@/components/ExpertCosts";
+import { TransferForm } from "@/components/RoutingForms";
+import { topicLabel } from "@/lib/routing";
+import { missingCumulAuthorizations, missingSignedConventions } from "@/lib/project-documents";
 import { FOUR_EYES_BLOCKED, FOUR_EYES_JUSTIFY, fourEyes, projectAuthors } from "@/lib/four-eyes";
 import { supplierCategoryLabel } from "@/lib/suppliers";
 import type { ProjectStatus } from "@/generated/prisma/client";
@@ -97,6 +100,15 @@ const ACTION_LABEL: Record<string, string> = {
   "signature.draft": "Envoi en signature électronique inachevé",
   "signature.closed": "Demande de signature électronique close",
   "transparency.report": "Erreur signalée par l'expert sur sa déclaration Transparence Santé",
+  "expert_expense.submit": "Note de frais déposée par l'expert",
+  "expert_expense.withdraw": "Note de frais retirée par l'expert",
+  "expert_expense.approved": "Note de frais acceptée",
+  "expert_expense.rejected": "Note de frais refusée",
+  "expert_expense.paid": "Frais remboursés à l'expert",
+  "expert_travel.save": "Voyage de l'expert enregistré",
+  "framework.mission": "Mission consignée (contrat-cadre)",
+  "framework.mission_remove": "Mission retirée (contrat-cadre)",
+  "project.transfer": "Proposition transmise à un autre interlocuteur",
 };
 
 /** Ce qu'il reste à faire, selon l'étape : affiché en tête de la colonne de droite. */
@@ -140,7 +152,11 @@ export default async function Page({ params, searchParams }: { params: Promise<{
         orderBy: { startsAt: "asc" },
         include: { rfqs: { include: { quotes: { select: { status: true, amountCents: true } } } } },
       },
-      _count: { select: { documents: true } },
+      // Justificatifs de frais : comptés avec leur note de frais, pas dans les documents.
+      _count: { select: { documents: { where: { kind: { not: "JUSTIFICATIF" } } } } },
+      // Proposition d'expert aiguillée : canal (sujet), réponse attendue, idée de produit sous accord de confidentialité.
+      channel: { select: { topic: true } },
+      proposal: { select: { topic: true, ndaRequested: true } },
     },
   });
   if (!project) notFound();
@@ -163,6 +179,25 @@ export default async function Page({ params, searchParams }: { params: Promise<{
     feeLevels(id),
   ]);
   const callEvent = fromCall?.openCall.event ?? null;
+  // Proposition à examiner : transfert possible à un autre sujet de l'organisation ou à une autre entité du groupe.
+  const transferTargets = project.status === "ATT_IND" && project.origin === PROPOSAL_ORIGIN
+    ? await (async () => {
+        const [own, entities] = await Promise.all([
+          db.contactChannel.findMany({ where: { organizationId: id }, select: { topic: true } }),
+          org.groupId ? db.organization.findMany({ where: { groupId: org.groupId, NOT: { id }, listed: true, verification: "VERIFIED" }, select: { id: true, name: true, coveredCountries: true } }) : Promise.resolve([]),
+        ]);
+        const topic = project.proposal?.topic ?? project.channel?.topic ?? "autre";
+        return [
+          ...own.filter((c) => c.topic !== project.channel?.topic).map((c) => ({ value: `${id}|${c.topic}`, label: t("{org} · {topic}", { org: org.name, topic: t(topicLabel(c.topic)) }) })),
+          ...entities.map((e) => ({ value: `${e.id}|${topic}`, label: `${e.name}${e.coveredCountries.length ? ` (${e.coveredCountries.join(", ")})` : ` (${t("siège")})`}` })),
+        ];
+      })()
+    : [];
+  // Frais des experts : notes à examiner (pastille de l'onglet), frais acceptés ou remboursés (dans le budget).
+  const [expensesToReview, expertCosts] = await Promise.all([
+    db.expertExpense.count({ where: { projectExpert: { projectId }, status: "submitted" } }),
+    db.expertExpense.aggregate({ where: { projectExpert: { projectId }, status: { in: ["approved", "paid"] } }, _sum: { amountCents: true } }),
+  ]);
 
   const type = collabType(project.typeId);
   const isProject = roles.some((r) => PROJECT_ROLES.includes(r));
@@ -179,6 +214,9 @@ export default async function Page({ params, searchParams }: { params: Promise<{
   const unsigned = project.status === "SIGNATURE" ? await missingSignedConventions(projectId) : [];
   // Sans stockage de documents, la convention signée ne peut pas être déposée : une attestation explicite est demandée.
   const attestable = unsigned.length > 0 && !storageEnabled();
+  // Experts agents publics : autorisation de cumul à joindre avant la déclaration ou la demande à l'Ordre.
+  const noCumul = project.status === "VALIDE" ? await missingCumulAuthorizations(projectId) : [];
+  const cumulAttestable = noCumul.length > 0 && !storageEnabled();
   const attester = project.signatureAttestedById ? await db.user.findUnique({ where: { id: project.signatureAttestedById }, select: { firstName: true, lastName: true } }) : null;
   const closed = !recruitmentOpen(project.status);
   // Modification (objet, conditions, ajout d'un expert) pendant le recrutement ; le retour en accord de principe
@@ -210,6 +248,7 @@ export default async function Page({ params, searchParams }: { params: Promise<{
     // « Convention signée » attend la convention signée (ou la signature électronique) de chaque expert engagé ;
     // sans stockage configuré, l'étape reste proposée mais exige une attestation.
     if (k === "signed" && unsigned.length > 0 && !attestable) return false;
+    if ((k === "declaration" || k === "ordre") && noCumul.length > 0 && !cumulAttestable) return false;
     if (k === "validate" && fourEyesRule === "blocked") return false;
     if (k === "back_to_accord" && signStarted) return false;
     return (t.from as readonly string[]).includes(project.status) && (t.roles === "compliance" ? isCompliance : isProject);
@@ -223,7 +262,7 @@ export default async function Page({ params, searchParams }: { params: Promise<{
   const live = project.experts.filter((e) => e.status !== "DECLINE");
   const { engaged, proposed: waiting, engagedCents: total } = expertSplit(project.experts, !closed);
   const supplierCents = project.events.flatMap((ev) => ev.rfqs.flatMap((r) => r.quotes)).filter((q) => q.status === "retained").reduce((s, q) => s + q.amountCents, 0);
-  const spent = total + project.expenses.reduce((s, e) => s + e.amountCents, 0) + supplierCents;
+  const spent = total + project.expenses.reduce((s, e) => s + e.amountCents, 0) + supplierCents + (expertCosts._sum.amountCents ?? 0);
   // Dossier terminé ou abandonné : plus d'événement à créer ; un dossier né d'un appel renvoie à l'événement de l'appel.
   const finished = project.status === "TERMINE" || project.status === "DECLINE";
   const budgetPct = project.budgetCents ? Math.round((spent / project.budgetCents) * 100) : null;
@@ -331,6 +370,7 @@ export default async function Page({ params, searchParams }: { params: Promise<{
     { key: "conformite", label: t("Conformité"), icon: Scale, alert: (project.status === "EN_VALID" && isCompliance) || project.status === "BLOQUE" || project.status === "REFUS_ORDRE" || (isCompliance && matPending > 0) },
     { key: "documents", label: t("Documents"), icon: FileText, count: project._count.documents || undefined, alert: unsigned.length > 0 },
     { key: "budget", label: t("Budget"), icon: Wallet, alert: over },
+    { key: "frais", label: t("Frais et voyages"), icon: Receipt, count: expensesToReview || undefined, alert: expensesToReview > 0, disabled: engagedLinks.length ? undefined : t("Après l'accord de principe d'un expert") },
     { key: "messagerie", label: t("Messagerie"), icon: MessagesSquare, count: toAnswerCount || undefined, alert: toAnswerCount > 0 },
   ];
   // « ?modifier=1 » (proposer d'autres conditions, reprendre le dossier) : l'onglet Experts, conditions dépliées.
@@ -347,6 +387,11 @@ export default async function Page({ params, searchParams }: { params: Promise<{
       {k === "signed" && attestable && (
         <label className="check text-sm">
           <input type="checkbox" name="attest" value="1" required />{" "}{t("J'atteste que la convention de {join} est signée par les deux parties et conservée par l'organisation.", { join: unsigned.join(", ") })}
+        </label>
+      )}
+      {(k === "declaration" || k === "ordre") && cumulAttestable && (
+        <label className="check text-sm">
+          <input type="checkbox" name="attestCumul" value="1" required />{" "}{t("J'atteste que l'autorisation de cumul d'activités de {join} est jointe à la transmission à l'Ordre et conservée par l'organisation.", { join: noCumul.join(", ") })}
         </label>
       )}
       {k === "submit" && waiting.length > 0 ? (
@@ -405,6 +450,12 @@ export default async function Page({ params, searchParams }: { params: Promise<{
                     ? t("Faites signer la convention de {join} depuis l'onglet Documents (signature électronique, ou dépôt de la convention signée) pour passer le dossier en « Signé ».", { join: unsigned.join(", ") })
                     : t("Déposez la convention signée de {join} dans l'onglet Documents pour passer le dossier en « Signé ».", { join: unsigned.join(", ") })}{" "}
                   <Link href={`${tabHref("documents")}#conventions`}>{t("Ouvrir les conventions")}</Link>
+                </p>
+              )}
+              {noCumul.length > 0 && !cumulAttestable && isProject && (
+                <p className="notice warn">
+                  {t("Expert agent public : déposez l'autorisation de cumul d'activités de {join} (ou l'accusé de sa déclaration à l'employeur) dans l'onglet Documents. La déclaration ou la demande d'autorisation à l'Ordre doit la comporter.", { join: noCumul.join(", ") })}{" "}
+                  <Link href={tabHref("documents")}>{t("Ouvrir les documents")}</Link>
                 </p>
               )}
               {attestable && (
@@ -608,10 +659,11 @@ export default async function Page({ params, searchParams }: { params: Promise<{
               <section className="card stack-sm" id="objet" aria-labelledby="objet-titre">
                 <SectionHead icon={FileText} id="objet-titre" title={t("Objet du dossier")} desc={t("Repris dans la sollicitation de chaque expert et dans sa convention.")} />
                 {project.description ? <p className="object-text">{project.description}</p> : <p className="muted">{t("Aucun objet renseigné.")}</p>}
+                {project.framework && project.periodEnd && <p className="text-sm"><strong>{t("Contrat-cadre")}</strong> · {t("jusqu'au {date}", { date: fmtDate(locale, project.periodEnd) })}</p>}
                 {editable && (
                   <details className="inline-edit" open={modifier === "1" && active === "apercu"}>
                     <summary>{t("Modifier l'objet")}</summary>
-                    <ProjectObjectForm orgId={id} projectId={projectId} title={project.title} area={project.therapeuticArea ?? ""} description={project.description ?? ""} planned={project.plannedAt ? project.plannedAt.toISOString().slice(0, 10) : ""} />
+                    <ProjectObjectForm orgId={id} projectId={projectId} title={project.title} area={project.therapeuticArea ?? ""} description={project.description ?? ""} planned={project.plannedAt ? project.plannedAt.toISOString().slice(0, 10) : ""} framework={project.framework} periodEnd={project.periodEnd ? project.periodEnd.toISOString().slice(0, 10) : ""} />
                   </details>
                 )}
               </section>
@@ -631,6 +683,19 @@ export default async function Page({ params, searchParams }: { params: Promise<{
               </section>
             </div>
             <aside className="page-aside">
+              {project.status === "ATT_IND" && project.origin === PROPOSAL_ORIGIN && (
+                <section className="card stack-sm" id="aiguillage" aria-labelledby="aiguillage-titre">
+                  <SectionHead icon={Route} id="aiguillage-titre" title={t("Aiguillage")} tone={project.responseDue && project.responseDue < new Date() ? "danger" : "brand"}
+                    desc={[project.channel || project.proposal?.topic ? t("Sujet : {topic}", { topic: t(topicLabel(project.channel?.topic ?? project.proposal?.topic)) }) : null, project.responseDue ? t("réponse attendue avant le {date}", { date: fmtDate(locale, project.responseDue) }) : null].filter(Boolean).join(" · ") || undefined} />
+                  {project.proposal?.ndaRequested && <p className="notice warn text-sm">{t("Idée de produit : l'expert demande un accord de confidentialité avant de la détailler. Proposez-le dans la messagerie si vous souhaitez en savoir plus.")}</p>}
+                  {isProject && transferTargets.length > 0 && (
+                    <details className="disclosure">
+                      <summary>{t("Transmettre à un autre interlocuteur")}</summary>
+                      <TransferForm orgId={id} projectId={projectId} targets={transferTargets} />
+                    </details>
+                  )}
+                </section>
+              )}
               <section className="card stack-sm" id="responsables" aria-labelledby="responsables-titre">
                 <SectionHead icon={User} id="responsables-titre" title={t("Responsables")} desc={t("Ils retrouvent le dossier dans « Mes dossiers » et en reçoivent les e-mails.")} />
                 {leads.length === 0 ? (
@@ -691,6 +756,7 @@ export default async function Page({ params, searchParams }: { params: Promise<{
             </SectionHead>
             {project.experts.length === 0 && <div className="card empty"><Users size={26} strokeWidth={1.6} aria-hidden /><p className="muted">{t("Sollicitez un expert : il répond depuis son espace, avec vos conditions.")}</p></div>}
             <div className="expert-list">{expertCards}</div>
+            {project.framework && <FrameworkPanel orgId={id} projectId={projectId} canEdit={isProject} />}
             {editable && (
               <details className="card add-card" id="solliciter" open={modifier === "1" || solliciter === "1" || project.experts.length === 0}>
                 <summary>
@@ -871,6 +937,8 @@ export default async function Page({ params, searchParams }: { params: Promise<{
         )}
 
         {active === "budget" && <BudgetTab orgId={id} projectId={projectId} canEdit={isProject} />}
+
+        {active === "frais" && <ExpertCostsTab orgId={id} projectId={projectId} canEdit={isProject} />}
 
         {active === "messagerie" && (
           fils.length === 0 ? (

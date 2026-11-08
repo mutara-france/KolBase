@@ -162,6 +162,10 @@ export type CollabConventionInput = {
   link: { units: number | null; feeCents: number | null; prepHours?: number | null; interventionHours?: number | null; travelHours?: number | null };
   fmv: { min: number; max: number; perUnit: number; verdict: "ok" | "above" | "below" } | null;
   expertLocale?: string;
+  /** Contrat-cadre : période couverte (douze mois au plus). */
+  framework?: { start: Date; end: Date } | null;
+  /** Plafonds de remboursement des frais (€ TTC) : hospitalités de l'organisation, ou Mdeon pour la Belgique. */
+  expenseCaps?: { night: number; meal: number } | null;
 };
 
 /** Titre « Dr » selon la langue. */
@@ -203,7 +207,7 @@ export async function buildCollaborationConventionForSignature(i: CollabConventi
   const unit = t(i.project.unit);
   w.rows([
     [t("Nature"), t(i.project.typeLabel)],
-    [t("Volume"), `${units} ${unit}${units > 1 ? "s" : ""}`],
+    [i.framework ? t("Volume maximal") : t("Volume"), `${units} ${unit}${units > 1 ? "s" : ""}`],
     // Volume horaire déclaré : il justifie la rémunération (taux horaire réel) auprès de l'Ordre.
     ...(hoursOf(i.link) != null
       ? [
@@ -216,7 +220,12 @@ export async function buildCollaborationConventionForSignature(i: CollabConventi
     // Même délai que la note d'honoraires (PAYMENT_TERMS, src/lib/fee-notes.ts).
     [t("Paiement"), t("Par virement, à 30 jours après réalisation de la prestation et réception de la facture.")],
   ]);
-  w.text(t("Les frais de déplacement et d'hébergement éventuellement pris en charge par l'Organisation sont limités au strict nécessaire à la prestation et font l'objet d'une déclaration distincte."), { color: MUTED });
+  w.text(
+    i.expenseCaps
+      ? t("Les frais de transport, d'hébergement et de repas nécessaires à la prestation sont réservés par l'Organisation ou remboursés à l'Expert sur justificatifs (frais réels), dans la limite de {nuit} TTC par nuitée et de {repas} TTC par repas. Limités au strict nécessaire à la prestation, ils sont déclarés avec la présente convention.", { nuit: eur(locale, i.expenseCaps.night * 100), repas: eur(locale, i.expenseCaps.meal * 100) })
+      : t("Les frais de déplacement et d'hébergement éventuellement pris en charge par l'Organisation sont limités au strict nécessaire à la prestation et font l'objet d'une déclaration distincte."),
+    { color: MUTED },
+  );
 
   w.heading(t("Article 3 - Encadrement réglementaire"));
   for (const line of conventionClause(e.country ?? "FR", t)) w.text(line);
@@ -229,7 +238,12 @@ export async function buildCollaborationConventionForSignature(i: CollabConventi
   w.text(t("L'Expert conserve une totale indépendance scientifique. Il s'engage à déclarer ses liens d'intérêts lors de toute intervention publique en lien avec l'Organisation, et à garder confidentielles les informations non publiques portées à sa connaissance."));
 
   w.heading(t("Article 5 - Durée"));
-  w.text(t("La convention prend effet à sa signature par les deux parties et, le cas échéant, après obtention de l'autorisation ordinale. Elle prend fin à l'achèvement de la prestation."));
+  if (i.framework) {
+    w.text(t("Contrat-cadre : la convention prend effet à sa signature par les deux parties et, le cas échéant, après obtention de l'autorisation ordinale. Elle couvre les prestations de même nature réalisées du {debut} au {fin}, dans la limite du volume indiqué à l'article 2.", { debut: longDate(locale, i.framework.start), fin: longDate(locale, i.framework.end) }));
+    w.text(t("Chaque mission (date, objet, unités) est consignée dans KolBase, où l'Expert la consulte. Au-delà du volume prévu, un avenant est nécessaire."));
+  } else {
+    w.text(t("La convention prend effet à sa signature par les deux parties et, le cas échéant, après obtention de l'autorisation ordinale. Elle prend fin à l'achèvement de la prestation."));
+  }
 
   if (i.org.policy) { w.heading(t("Politique de collaboration de l'Organisation")); w.text(i.org.policy, { color: MUTED }); }
 

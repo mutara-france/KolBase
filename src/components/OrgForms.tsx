@@ -39,10 +39,10 @@ export function NewOrgForm({ kinds, name, kind }: { kinds: Opt[]; name?: string;
   );
 }
 
-type Org = { id: string; name: string; sector: string | null; headquarters: string | null; contactEmail: string | null; about: string | null; policy: string | null; areas: string[] };
+type Org = { id: string; name: string; sector: string | null; headquarters: string | null; contactEmail: string | null; about: string | null; policy: string | null; areas: string[]; nda?: string | null; qualiopi?: string | null; handicapContact?: string | null };
 
 /** Fiche de l'organisation ; prestataire (`supplier`) : ni domaines thérapeutiques ni politique de collaboration. */
-export function EditOrgForm({ org, supplier = false }: { org: Org; supplier?: boolean }) {
+export function EditOrgForm({ org, supplier = false, trainer = false }: { org: Org; supplier?: boolean; trainer?: boolean }) {
   const t = useT();
   const [state, action, pending] = useActionState(updateOrganization, undefined);
   return (
@@ -65,6 +65,17 @@ export function EditOrgForm({ org, supplier = false }: { org: Org; supplier?: bo
       )}
       <label>{t("Présentation")}<textarea name="about" rows={3} defaultValue={org.about ?? ""} placeholder={supplier ? t("Vos prestations, votre savoir-faire, vos références…") : undefined} /></label>
       {supplier ? <input type="hidden" name="policy" value={org.policy ?? ""} /> : <label>{t("Politique de collaboration")}<textarea name="policy" rows={3} defaultValue={org.policy ?? ""} /></label>}
+      {/* Organisme de formation, société savante ou association qui forme : mentions des fiches et attestations. */}
+      {trainer && (
+        <fieldset className="stack-sm">
+          <legend>{t("Formation")}</legend>
+          <div className="row">
+            <label>{t("Numéro de déclaration d'activité")}<input name="nda" maxLength={40} defaultValue={org.nda ?? ""} placeholder="11 75 12345 75" /></label>
+            <label>{t("Certificat Qualiopi")}<input name="qualiopi" maxLength={160} defaultValue={org.qualiopi ?? ""} placeholder={t("N° et organisme certificateur")} /></label>
+          </div>
+          <label>{t("Référent handicap")}<input name="handicapContact" maxLength={200} defaultValue={org.handicapContact ?? ""} placeholder={t("Nom, e-mail ou téléphone")} /></label>
+        </fieldset>
+      )}
       <button className="btn" disabled={pending}>{pending ? t("Enregistrement…") : t("Enregistrer")}</button>
     </form>
   );
@@ -98,7 +109,7 @@ export function InviteForm({ orgId, roles }: { orgId: string; roles: Opt[] }) {
   );
 }
 
-type Expert = { bio: string | null; hospital: string | null; subspecialty: string | null; orcid: string | null; languages: string[]; interventionTypes: string[]; dayRateCents: number | null };
+type Expert = { bio: string | null; hospital: string | null; subspecialty: string | null; orcid: string | null; languages: string[]; interventionTypes: string[]; dayRateCents: number | null; publicAgent?: boolean; country?: string };
 
 export function ExpertProfileForm({ p, types }: { p: Expert; types: string[] }) {
   const [state, action, pending] = useActionState(updateExpertProfile, undefined);
@@ -112,6 +123,16 @@ export function ExpertProfileForm({ p, types }: { p: Expert; types: string[] }) 
         <label>{t("Établissement / cabinet")}<input name="hospital" defaultValue={p.hospital ?? ""} /></label>
         <label>{t("Sur-spécialité")}<input name="subspecialty" defaultValue={p.subspecialty ?? ""} /></label>
       </div>
+      {/* Agent public en France : l'autorisation de cumul de l'employeur accompagne chaque convention rémunérée. */}
+      {(p.country ?? "FR") === "FR" && (
+        <div>
+          <label className="check">
+            <input type="checkbox" name="publicAgent" value="1" defaultChecked={!!p.publicAgent} />
+            {t("J'exerce comme agent public (praticien hospitalier, hospitalo-universitaire, autre agent d'un établissement public)")}
+          </label>
+          <p className="hint">{t("Une collaboration rémunérée suppose alors l'autorisation de cumul d'activités de votre employeur (ou l'accusé de votre déclaration), transmise avec la convention à l'Ordre. Vous la déposez dans le dossier.")}</p>
+        </div>
+      )}
       <div className="row">
         <label>{t("Langues")}<input name="languages" defaultValue={p.languages.join(", ")} placeholder={t("fr, en")} /></label>
         <label>ORCID<input name="orcid" defaultValue={p.orcid ?? ""} placeholder="0000-0000-0000-0000" /></label>

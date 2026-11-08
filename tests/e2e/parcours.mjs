@@ -449,6 +449,860 @@ const linkIn = (mail) => mail?.text.match(/https?:\/\/\S+/g)?.find((u) => !u.end
   await db.end();
 }
 
+// ── Règles : étudiants, Belgique (visa Mdeon, betransparent.be), agents publics, frais d'inscription ──
+{
+  const pgc = new pg.Client({ connectionString: process.env.DATABASE_URL });
+  await pgc.connect();
+  const q1 = async (sql, args = []) => (await pgc.query(sql, args)).rows[0];
+  const pdf = Buffer.from("%PDF-1.4\n1 0 obj << /Type /Catalog >> endobj\ntrailer << /Root 1 0 R >>\n%%EOF\n");
+  // Rencontres d'un industriel sur deux jours, nuitée offerte, déjeuner au-delà du plafond Mdeon (45 €).
+  await pgc.query(`insert into "Event" (id, "organizationId", title, "typeId", "startsAt", "durationMinutes", format, city, venue, capacity, "publishedAt", "updatedAt")
+    values ('e2e-r1-ev', 'demo-org-dentalys', 'Rencontres implantaires Règles', 'pleniere', date_trunc('day', now()) + interval '40 days 8 hours', 1980, 'PRESENTIEL', 'Lille', 'Grand Palais (fictif)', 50, now(), now())`);
+  await pgc.query(`insert into "EventBenefit" (id, "eventId", "catalogId", label, "valueCents") values ('e2e-r1-b-nuit', 'e2e-r1-ev', 'nuitee', 'Nuitée d''hôtel', 14000), ('e2e-r1-b-dej', 'e2e-r1-ev', 'dejeuner', 'Déjeuner sur place', 5200)`);
+  const ev = `${BASE}/evenements/e2e-r1-ev`;
+
+  // Étudiant : l'hospitalité lui est interdite ; il s'inscrit sans.
+  const paul = await session();
+  await login(paul.page, "paul.laurent@demo.kolbase.local");
+  await paul.page.goto(ev);
+  let t = await text(paul.page);
+  check("Étudiant : prestations visibles mais impossibles à accepter", t.includes("En tant qu'étudiant, vous ne pouvez accepter") && (await paul.page.locator('input[name="accept_e2e-r1-b-nuit"]').isDisabled()));
+  await paul.page.evaluate(() => { const c = document.querySelector('input[name="accept_e2e-r1-b-nuit"]'); c.disabled = false; c.checked = true; });
+  await paul.page.click('button:has-text("M\'inscrire")');
+  await paul.page.waitForTimeout(1200);
+  const paulReg = () => q1(`select r.id, (select count(*)::int from "RegistrationBenefit" b where b."registrationId" = r.id) n from "Registration" r join "User" u on u.id = r."userId" where u.email = 'paul.laurent@demo.kolbase.local' and r."eventId" = 'e2e-r1-ev'`);
+  check("Étudiant : une prestation forcée est refusée par le serveur", (await text(paul.page)).includes("vous ne pouvez accepter aucune prestation") && !(await paulReg()));
+  await paul.page.goto(ev);
+  await paul.page.click('button:has-text("M\'inscrire")');
+  await paul.page.locator("text=Inscription confirmée").first().waitFor({ timeout: 8000 }).catch(() => {});
+  const pr = await paulReg();
+  check("Étudiant : inscription possible, sans prestation", !!pr && pr.n === 0);
+  await paul.ctx.close();
+
+  // Praticienne exerçant en Belgique : pas de prestation tant que le visa Mdeon n'est pas communiqué.
+  const SJ = "sophie.janssens@demo.kolbase.local";
+  const sj = await session();
+  await login(sj.page, SJ);
+  await sj.page.goto(ev);
+  t = await text(sj.page);
+  check("Belgique : sans visa Mdeon, prestations indisponibles", t.includes("suppose un visa Mdeon") && (await sj.page.locator('input[name="accept_e2e-r1-b-nuit"]').isDisabled()));
+  const claire = await session();
+  await login(claire.page, "claire.morel@demo.kolbase.local");
+  await claire.page.goto(`${BASE}/organisations/demo-org-dentalys/evenements/e2e-r1-ev`);
+  t = await text(claire.page);
+  check("Organisateur : visa Mdeon requis avec sa date limite, plafond dépassé signalé", t.includes("Visa Mdeon requis") && /au plus tard le \d/.test(t) && t.includes("Déjeuner sur place 52 € > 45 €"), t.slice(t.indexOf("Praticiens exerçant en Belgique"), t.indexOf("Praticiens exerçant en Belgique") + 400));
+  await claire.page.fill('input[name="mdeonVisa"]', "V-2026-0042");
+  await claire.page.click('button:has-text("Enregistrer le visa")');
+  await claire.page.waitForTimeout(1200);
+  check("Visa Mdeon enregistré et journalisé", (await q1(`select "mdeonVisa" v from "Event" where id = 'e2e-r1-ev'`)).v === "V-2026-0042" && !!(await q1(`select 1 from "AuditLog" where action = 'event.mdeon_visa' and "entityId" = 'e2e-r1-ev'`)));
+  await sj.page.goto(ev);
+  await sj.page.check('input[name="accept_e2e-r1-b-nuit"]');
+  t = await text(sj.page);
+  check("Belgique : information belge (article 10, visa, betransparent.be)", t.includes("article 10 de la loi sur les médicaments") && t.includes("visa Mdeon n° V-2026-0042") && t.includes("betransparent.be"));
+  await sj.page.check('input[name="ackHcp"]');
+  await sj.page.click('button:has-text("M\'inscrire")');
+  const sjMail = await waitMail(SJ, "Inscription confirmée : « Rencontres implantaires Règles");
+  check("Belgique : le numéro de visa figure dans l'e-mail de confirmation", !!sjMail && sjMail.text.includes("Visa Mdeon n° V-2026-0042"), sjMail?.text.slice(0, 300));
+  await sj.ctx.close();
+
+  // Publication belge : préparation betransparent.be (rôle Conformité).
+  const comp = await session();
+  await login(comp.page, "sophie.bernard@demo.kolbase.local");
+  await comp.page.goto(`${BASE}/organisations/demo-org-dentalys/conformite?onglet=transparence`);
+  check("Conformité : préparation betransparent.be proposée", (await text(comp.page)).includes("Belgique : betransparent.be"));
+  const year = (await q1(`select extract(year from "startsAt" at time zone 'Europe/Brussels')::int y from "Event" where id = 'e2e-r1-ev'`)).y;
+  const csv = await comp.page.request.get(`${BASE}/organisations/demo-org-dentalys/conformite/betransparent?annee=${year}`);
+  const body = await csv.text();
+  check("betransparent.be : nuitée de la praticienne belge, INAMI et visa", csv.ok() && body.includes("JANSSENS") && body.includes("39990000017") && body.includes("Frais d'hébergement") && body.includes("V-2026-0042"), body.split("\n").slice(0, 2).join(" | "));
+  const other = await claire.page.request.get(`${BASE}/organisations/demo-org-dentalys/conformite/betransparent?annee=${year}`);
+  check("betransparent.be : réservé au rôle Conformité", !(await other.text()).includes("JANSSENS"));
+  // Frais d'inscription : seuil d'autorisation propre, réglable à la baisse.
+  await comp.page.goto(`${BASE}/organisations/demo-org-dentalys/conformite?onglet=parametres`);
+  t = await text(comp.page);
+  check("Paramètres : seuil des frais d'inscription (1 000 €)", t.includes("Frais d'inscription pris en charge") && (await comp.page.locator('input[name="registrationFeeMax"]').inputValue()) === "1000");
+  await comp.ctx.close();
+
+  // Expert agent public : l'autorisation de cumul est jointe avant toute démarche auprès de l'Ordre.
+  const nb = await session();
+  await login(nb.page, "nicolas.blanc@demo.kolbase.local");
+  await nb.page.goto(`${BASE}/compte`);
+  await nb.page.check('input[name="publicAgent"]');
+  await nb.page.click('button:has-text("Enregistrer le profil expert")');
+  await nb.page.waitForTimeout(1200);
+  check("Expert : statut d'agent public enregistré", (await q1(`select "publicAgent" a from "PractitionerProfile" where id = 'demo-p-blanc'`)).a === true);
+  await pgc.query(`insert into "Project" (id, "organizationId", title, "typeId", status, "updatedAt") values ('e2e-r1-prj', 'demo-org-dentalys', 'Conférence implants courts Règles', 'pleniere', 'VALIDE', now())`);
+  await pgc.query(`insert into "ProjectExpert" (id, "projectId", "practitionerId", status, "feeCents", days) values ('e2e-r1-prj-x0', 'e2e-r1-prj', 'demo-p-blanc', 'VALIDE', 150000, 1)`);
+  const dossierUrl = `${BASE}/organisations/demo-org-dentalys/dossiers/e2e-r1-prj`;
+  await claire.page.goto(dossierUrl);
+  t = await text(claire.page);
+  check("Agent public : ni déclaration ni demande à l'Ordre sans autorisation de cumul", t.includes("Expert agent public : déposez l'autorisation de cumul") && (await claire.page.locator('button:has-text("Déclaration simple")').count()) === 0 && (await claire.page.locator('button:has-text("Demander l\'autorisation à l\'Ordre")').count()) === 0);
+  await nb.page.goto(`${BASE}/sollicitations/e2e-r1-prj-x0?onglet=documents`);
+  t = await text(nb.page);
+  check("Agent public : l'expert est invité à déposer son autorisation", t.includes("Vous exercez comme agent public : déposez"));
+  const up = 'form:has(input[name="file"])';
+  await nb.page.selectOption(`${up} select[name="kind"]`, "AUTORISATION_CUMUL");
+  await nb.page.setInputFiles(`${up} input[name="file"]`, { name: "autorisation-cumul-chu.pdf", mimeType: "application/pdf", buffer: pdf });
+  await nb.page.click(`${up} button:has-text("Déposer")`);
+  await nb.page.waitForTimeout(1500);
+  check("Autorisation de cumul déposée par l'expert", !!(await q1(`select 1 from "Document" where "projectExpertId" = 'e2e-r1-prj-x0' and kind = 'AUTORISATION_CUMUL'`)));
+  await claire.page.goto(dossierUrl);
+  await claire.page.click('.next-step button:has-text("Déclaration simple")');
+  await claire.page.waitForTimeout(1200);
+  check("Autorisation jointe : la déclaration simple redevient possible", (await q1(`select status from "Project" where id = 'e2e-r1-prj'`)).status === "SIGNATURE");
+  await nb.ctx.close();
+  await claire.ctx.close();
+  // Retour à l'état de départ pour la suite des parcours.
+  await pgc.query(`update "PractitionerProfile" set "publicAgent" = false where id = 'demo-p-blanc'`);
+  await pgc.query(`delete from "Registration" where "eventId" = 'e2e-r1-ev'`);
+  await pgc.query(`delete from "Event" where id = 'e2e-r1-ev'`);
+  await pgc.query(`delete from "Project" where id = 'e2e-r1-prj'`);
+  await pgc.end();
+}
+
+// ── Inscription complète : besoins, adresse, liste d'attente, message aux inscrits ──
+{
+  const pgc = new pg.Client({ connectionString: process.env.DATABASE_URL });
+  await pgc.connect();
+  const q1 = async (sql, args = []) => (await pgc.query(sql, args)).rows[0];
+  await pgc.query(`insert into "Event" (id, "organizationId", title, "typeId", "startsAt", "durationMinutes", format, city, "postalCode", venue, address, capacity, "publishedAt", "updatedAt")
+    values ('e2e-r2-ev', 'demo-org-dentalys', 'Atelier occlusion Inscription', 'travaux-pratiques', now() + interval '30 days', 180, 'PRESENTIEL', 'Lille', '59777', 'Grand Palais (fictif)', '1 boulevard des Cités Unies', 1, now(), now())`);
+  await pgc.query(`insert into "EventBenefit" (id, "eventId", "catalogId", label, "valueCents") values ('e2e-r2-b-cafe', 'e2e-r2-ev', 'cafe', 'Pause café d''accueil', 800)`);
+  const ev = `${BASE}/evenements/e2e-r2-ev`;
+  const EMMA = "emma.simon@demo.kolbase.local", HUGO = "hugo.robert@demo.kolbase.local";
+  const emma = await session();
+  await login(emma.page, EMMA);
+  await emma.page.goto(ev);
+  check("Adresse complète affichée sur la page de l'événement", (await text(emma.page)).includes("1 boulevard des Cités Unies"));
+  // Besoins renseignés sans l'accord : refus ; avec l'accord : enregistrés.
+  await emma.page.locator("details.needs-fields summary").click();
+  await emma.page.selectOption('select[name="diet"]', "vegetarien");
+  await emma.page.fill('input[name="allergies"]', "crustacés");
+  check("Besoins : la case d'accord apparaît dès qu'un champ est rempli", (await emma.page.locator('input[name="needsConsent"]').count()) === 1);
+  await emma.page.check('input[name="needsConsent"]');
+  await emma.page.click('button:has-text("M\'inscrire")');
+  await emma.page.locator("text=Inscription confirmée").first().waitFor({ timeout: 8000 }).catch(() => {});
+  const er = await q1(`select r.diet, r.allergies, r."needsConsentAt" from "Registration" r join "User" u on u.id = r."userId" where u.email = $1 and r."eventId" = 'e2e-r2-ev'`, [EMMA]);
+  check("Besoins enregistrés avec la date de l'accord", er?.diet === "vegetarien" && er?.allergies === "crustacés" && !!er?.needsConsentAt, JSON.stringify(er));
+  const em = await waitMail(EMMA, "Inscription confirmée : « Atelier occlusion Inscription");
+  check("Confirmation : lieu avec l'adresse et le code postal", !!em && em.text.includes("Grand Palais (fictif), 1 boulevard des Cités Unies, 59777 Lille"), em?.text.slice(0, 300));
+
+  // Événement complet : liste d'attente.
+  const hugo = await session();
+  await login(hugo.page, HUGO);
+  await hugo.page.goto(ev);
+  await hugo.page.click('button:has-text("Rejoindre la liste d\'attente")');
+  await hugo.page.waitForTimeout(1000);
+  await hugo.page.goto(ev);
+  check("Liste d'attente : rang affiché", (await text(hugo.page)).includes("Vous êtes sur la liste d'attente (rang 1)"));
+
+  // Organisateur : besoins sans les noms, liste d'attente, message aux inscrits.
+  const claire = await session();
+  await login(claire.page, "claire.morel@demo.kolbase.local");
+  await claire.page.goto(`${BASE}/organisations/demo-org-dentalys/evenements/e2e-r2-ev`);
+  const t = await text(claire.page);
+  check("Organisateur : synthèse des repas et allergies, liste d'attente", t.includes("Synthèse sans les noms") && t.includes("Végétarien : 1") && t.includes("crustacés") && t.includes("Liste d'attente") && t.includes("Hugo Robert"));
+  await claire.page.fill('form:has(textarea[name="body"]) input[name="subject"]', "Changement de salle");
+  await claire.page.fill('textarea[name="body"]', "L'atelier aura lieu en salle 3, au premier étage.");
+  await claire.page.click('button:has-text("Envoyer à l\'inscrit")');
+  const msg = await waitMail(EMMA, "Changement de salle");
+  check("Message aux inscrits : e-mail reçu, historique gardé", !!msg && msg.text.includes("salle 3") && !!(await q1(`select 1 from "EventMessage" where "eventId" = 'e2e-r2-ev' and recipients = 1`)));
+  const csv = await claire.page.request.get(`${BASE}/organisations/demo-org-dentalys/evenements/e2e-r2-ev/export`);
+  const body = await csv.text();
+  check("Export des inscrits : régime et allergies pour l'organisateur", body.includes("Régime") && body.includes("Végétarien") && body.includes("crustacés"));
+
+  // Place libérée : la liste d'attente est prévenue ; l'inscription la retire de la liste.
+  await emma.page.goto(ev);
+  await emma.page.click('button:has-text("Annuler mon inscription")');
+  await emma.page.click('button:has-text("Confirmer : annuler mon inscription")');
+  const offer = await waitMail(HUGO, "Une place s'est libérée : « Atelier occlusion Inscription");
+  check("Place libérée : la première personne en attente est prévenue", !!offer && !!(await q1(`select "notifiedAt" from "WaitlistEntry" w join "User" u on u.id = w."userId" where u.email = $1 and w."eventId" = 'e2e-r2-ev'`, [HUGO]))?.notifiedAt);
+  await hugo.page.goto(ev);
+  await hugo.page.click('button:has-text("M\'inscrire")');
+  await hugo.page.locator("text=Inscription confirmée").first().waitFor({ timeout: 8000 }).catch(() => {});
+  check("Inscrit depuis la liste d'attente : il la quitte", !!(await q1(`select 1 from "Registration" r join "User" u on u.id = r."userId" where u.email = $1 and r."eventId" = 'e2e-r2-ev'`, [HUGO])) && !(await q1(`select 1 from "WaitlistEntry" where "eventId" = 'e2e-r2-ev'`)));
+  await emma.ctx.close();
+  await hugo.ctx.close();
+  await claire.ctx.close();
+  await pgc.query(`delete from "Registration" where "eventId" = 'e2e-r2-ev'`);
+  await pgc.query(`delete from "Event" where id = 'e2e-r2-ev'`);
+  await pgc.end();
+}
+
+// ── Prestataires par métier : capacités, questions de la demande, conditions, nombre définitif ──
+{
+  const pgc = new pg.Client({ connectionString: process.env.DATABASE_URL });
+  await pgc.connect();
+  const q1 = async (sql, args = []) => (await pgc.query(sql, args)).rows[0];
+  const LUD = "ludovic.perrin@demo.kolbase.local";
+  const lud = await session();
+  await login(lud.page, LUD);
+  await lud.page.goto(`${BASE}/organisations/demo-sup-belleville/page-prestataire`);
+  const capCount = (k) => lud.page.locator(`input[name="cap_${k}"]`).count();
+  check("Traiteur : capacités de son métier (couverts, cocktail), ni chambres ni places en théâtre", (await capCount("banquet")) === 1 && (await capCount("cocktail")) === 1 && (await capCount("rooms")) === 0 && (await capCount("seats")) === 0);
+
+  // Demande sans événement, depuis l'interface : date de la prestation et questions propres au traiteur.
+  const claire = await session();
+  await login(claire.page, "claire.morel@demo.kolbase.local");
+  await claire.page.goto(`${BASE}/organisations/demo-org-dentalys/prestataires?onglet=nouvelle&cat=restauration&prestataire=demo-sup-belleville`);
+  await claire.page.fill('textarea[name="needs"]', "Cocktail de clôture d'une journée de formation, 40 personnes.");
+  await claire.page.fill('input[name="serviceStart"]', new Date(Date.now() + 20 * 864e5).toISOString().slice(0, 10));
+  await claire.page.selectOption('select[name="d_format"]', "cocktail");
+  await claire.page.fill('input[name="d_serviceTime"]', "19:30");
+  await claire.page.selectOption('select[name="d_drinks"]', "vins");
+  await Promise.all([claire.page.waitForURL(/\/prestataires\/[a-z0-9]+$/, { timeout: 10000 }), claire.page.click('button:has-text("Enregistrer en brouillon")')]);
+  const rfqId = claire.page.url().split("/").pop();
+  const row = await q1(`select details, "serviceStart" from "Rfq" where id = $1`, [rfqId]);
+  check("Demande : questions du traiteur et date de la prestation enregistrées", row?.details?.format === "cocktail" && row.details.serviceTime === "19:30" && row.details.drinks === "vins" && !!row.serviceStart, JSON.stringify(row));
+  await pgc.query(`update "Rfq" set status = 'sent', "sentAt" = now() where id = $1`, [rfqId]);
+  await lud.page.goto(`${BASE}/organisations/demo-sup-belleville/devis/${rfqId}`);
+  const t = await text(lud.page);
+  check("Prestataire : la demande dit ce qu'il faut pour chiffrer (date, format, heure, boissons)", /dates de la prestation/i.test(t) && t.includes("Cocktail") && t.includes("19:30") && t.includes("Avec vins"));
+  await lud.ctx.close();
+
+  // Devis avec acompte et barème d'annulation, comparé puis retenu ; nombre définitif confirmé au traiteur.
+  await pgc.query(`insert into "Quote" (id, "rfqId", "supplierId", "amountCents", lines, "vatBp", "depositPct", "cancelFreeDays", "cancelMidPct", "cancelFullDays", "updatedAt") values ('e2e-r3-q', $1, 'demo-sup-belleville', 128000, '[]', 1000, 30, 30, 50, 15, now())`, [rfqId]);
+  await claire.page.goto(`${BASE}/organisations/demo-org-dentalys/prestataires/${rfqId}`);
+  const card = claire.page.locator(`section#rfq-${rfqId}`);
+  const ct = await card.innerText();
+  check("Comparaison : acompte et barème d'annulation en clair", ct.includes("acompte de 30 %") && ct.includes("annulation sans frais jusqu'à J-30") && ct.includes("50 % dus de J-30 à J-15") && ct.includes("totalité due à moins de J-15"), ct.slice(0, 400));
+  // Premier devis retenu du traiteur : l'abonnement se déclenche ; l'état de départ est rétabli à la fin.
+  const subBefore = await q1(`select "triggeredAt", "triggeredBy" from "Subscription" where "organizationId" = 'demo-sup-belleville'`);
+  await card.locator('.quote:has-text("Traiteur Belleville") button:has-text("Retenir")').click();
+  await card.locator('.quote:has-text("Traiteur Belleville") button:has-text("Confirmer : retenir le devis")').click();
+  await claire.page.waitForTimeout(1500);
+  await claire.page.goto(`${BASE}/organisations/demo-org-dentalys/prestataires/${rfqId}`);
+  check("Devis retenu : carte « Nombre définitif »", (await claire.page.locator("#nombre-definitif").count()) === 1);
+  await claire.page.fill('#nombre-definitif input[name="finalHeadcount"]', "42");
+  await claire.page.click('#nombre-definitif button:has-text("Confirmer au prestataire")');
+  const mail = await waitMail(LUD, "Nombre définitif : 42");
+  check("Nombre définitif : enregistré et envoyé au traiteur", !!mail && (await q1(`select "finalHeadcount" n from "Rfq" where id = $1`, [rfqId])).n === 42);
+  await claire.ctx.close();
+  await pgc.query(`delete from "Rfq" where id = $1`, [rfqId]);
+  if (!subBefore) await pgc.query(`delete from "Subscription" where "organizationId" = 'demo-sup-belleville'`);
+  else await pgc.query(`update "Subscription" set "triggeredAt" = $1, "triggeredBy" = $2 where "organizationId" = 'demo-sup-belleville'`, [subBefore.triggeredAt, subBefore.triggeredBy]);
+  await pgc.end();
+}
+
+// ── Invitations et logistique : événement sur invitation, congrès d'un tiers, voyages, budget ──
+{
+  const pgc = new pg.Client({ connectionString: process.env.DATABASE_URL });
+  await pgc.connect();
+  const q1 = async (sql, args = []) => (await pgc.query(sql, args)).rows[0];
+  await pgc.query(`insert into "Event" (id, "organizationId", title, "typeId", "startsAt", "durationMinutes", format, city, venue, capacity, "publishedAt", "inviteOnly", "hostedBy", "hostedUrl", "updatedAt")
+    values ('e2e-r4-ev', 'demo-org-dentalys', 'Congrès ADF Invitation', 'pleniere', now() + interval '35 days', 480, 'PRESENTIEL', 'Paris', 'Palais des congrès (fictif)', 30, now(), true, 'ADF', 'https://www.adf.asso.fr', now())`);
+  await pgc.query(`insert into "EventBenefit" (id, "eventId", "catalogId", label, "valueCents") values ('e2e-r4-b-ins', 'e2e-r4-ev', 'inscription', 'Frais d''inscription', 45000), ('e2e-r4-b-nuit', 'e2e-r4-ev', 'nuitee', 'Nuitée d''hôtel', 14000), ('e2e-r4-b-tr', 'e2e-r4-ev', 'transport', 'Transport aller-retour', 9000)`);
+  const ev = `${BASE}/evenements/e2e-r4-ev`;
+  const anon = await session();
+  await anon.page.goto(`${BASE}/evenements`);
+  const agenda = await text(anon.page);
+  const direct = await anon.page.goto(ev);
+  check("Sur invitation : absent de l'agenda, page introuvable sans invitation", !agenda.includes("Congrès ADF Invitation") && direct.status() === 404);
+  await anon.ctx.close();
+
+  // L'organisatrice invite deux personnes ; chacune reçoit un lien personnel.
+  const EMMA = "emma.simon@demo.kolbase.local";
+  const claire = await session();
+  await login(claire.page, "claire.morel@demo.kolbase.local");
+  const ws = `${BASE}/organisations/demo-org-dentalys/evenements/e2e-r4-ev`;
+  await claire.page.goto(ws);
+  await claire.page.fill('textarea[name="people"]', `${EMMA} ; Emma ; Simon\nPaul Externe <paul.externe@exemple.fr>\npas une adresse`);
+  await claire.page.click('button:has-text("Inviter")');
+  await claire.page.waitForTimeout(1500);
+  const n = (await q1(`select count(*)::int n from "EventInvite" where "eventId" = 'e2e-r4-ev'`)).n;
+  check("Invitations : deux ajoutées, la ligne illisible signalée", n === 2 && (await text(claire.page)).includes("1 ligne(s) illisible(s)"));
+  const inv = await waitMail(EMMA, "Invitation : « Congrès ADF Invitation");
+  const link = inv?.text.match(/https?:\/\/\S+invitation=[\w-]+/)?.[0];
+  check("Invitation : e-mail avec lien personnel, organisateur du congrès cité", !!link && inv.text.includes("organisé par ADF"), inv?.text.slice(0, 300));
+
+  // L'invitée s'inscrit depuis le lien, accepte nuitée et transport, donne sa ville de départ.
+  const emma = await session();
+  await login(emma.page, EMMA);
+  await emma.page.goto(link.replace(/^https?:\/\/[^/]+/, BASE));
+  let t = await text(emma.page);
+  check("Invitée : page ouverte, congrès d'un tiers annoncé", t.includes("Événement sur invitation") && t.includes("Organisé par ADF"));
+  await emma.page.check('input[name="accept_e2e-r4-b-nuit"]');
+  await emma.page.check('input[name="accept_e2e-r4-b-tr"]');
+  await emma.page.fill('input[name="departureCity"]', "Montpellier");
+  await emma.page.check('input[name="ackHcp"]');
+  await emma.page.click('button:has-text("M\'inscrire")');
+  await emma.page.locator("text=Inscription confirmée").first().waitFor({ timeout: 8000 }).catch(() => {});
+  const reg = await q1(`select r.id, tr."departureCity" city from "Registration" r join "User" u on u.id = r."userId" left join "RegistrationTravel" tr on tr."registrationId" = r.id where u.email = $1 and r."eventId" = 'e2e-r4-ev'`, [EMMA]);
+  check("Invitée inscrite, ville de départ enregistrée", reg?.city === "Montpellier", JSON.stringify(reg));
+
+  // Organisatrice : réservation, carnet de voyage, liste des chambres, budget.
+  await claire.page.goto(ws);
+  t = await text(claire.page);
+  check("Organisatrice : invitée « Inscrit », voyageuse au départ de Montpellier", t.includes("Inscrit") && t.includes("départ de Montpellier"));
+  const row = claire.page.locator('#voyages li:has-text("Emma Simon")');
+  await row.locator("summary").click();
+  const day = (d) => new Date(Date.now() + d * 864e5).toISOString().slice(0, 10);
+  await row.locator('input[name="hotel"]').fill("Hôtel Rive Gauche (fictif)");
+  await row.locator('input[name="checkIn"]').fill(day(34));
+  await row.locator('input[name="checkOut"]').fill(day(36));
+  await row.locator('select[name="roomType"]').selectOption("single");
+  await row.locator('input[name="outbound"]').fill("TGV 6204 Montpellier 6 h 30 → Paris 9 h 50");
+  await row.locator('button:has-text("Enregistrer")').click();
+  await claire.page.waitForTimeout(1200);
+  await claire.page.goto(ws);
+  await claire.page.click('button:has-text("Envoyer le carnet de voyage")');
+  const book = await waitMail(EMMA, "Votre voyage : « Congrès ADF Invitation");
+  check("Carnet de voyage envoyé : hôtel, chambre et aller", !!book && book.text.includes("Hôtel Rive Gauche (fictif)") && book.text.includes("Individuelle") && book.text.includes("TGV 6204"), book?.text.slice(0, 300));
+  const rooming = await (await claire.page.request.get(`${ws}/chambres`)).text();
+  check("Liste des chambres pour l'hôtel : participante, deux nuits, chambre individuelle", rooming.includes("SIMON") && rooming.includes(";2;") && rooming.includes("Individuelle"));
+  await emma.page.goto(`${BASE}/inscriptions`);
+  check("Mes inscriptions : le voyage de la participante", (await text(emma.page)).includes("hôtel : Hôtel Rive Gauche (fictif)"));
+  await claire.page.goto(ws);
+  await claire.page.locator('#budget select[name="category"]').selectOption("hebergement");
+  await claire.page.fill('#budget input[name="label"]', "Nuitées des invités");
+  await claire.page.fill('#budget input[name="planned"]', "4200");
+  await claire.page.click('#budget button:has-text("Ajouter le poste")');
+  await claire.page.waitForTimeout(1200);
+  await claire.page.goto(ws);
+  check("Budget : poste prévu affiché", (await claire.page.locator("#budget").innerText()).includes("Nuitées des invités"));
+  await emma.ctx.close();
+  await claire.ctx.close();
+  await pgc.query(`delete from "Registration" where "eventId" = 'e2e-r4-ev'`);
+  await pgc.query(`delete from "Event" where id = 'e2e-r4-ev'`);
+  await pgc.end();
+}
+
+// ── Experts : contrat-cadre, voyage réservé, notes de frais, remboursement et déclaration ──
+{
+  const pgc = new pg.Client({ connectionString: process.env.DATABASE_URL });
+  await pgc.connect();
+  const q1 = async (sql, args = []) => (await pgc.query(sql, args)).rows[0];
+  const proof = Buffer.from("%PDF-1.4\n1 0 obj << /Type /Catalog >> endobj\ntrailer << /Root 1 0 R >>\n%%EOF\n");
+  const isoDay = (n) => new Date(Date.now() + n * 86400e3).toISOString().slice(0, 10);
+  const NB = "nicolas.blanc@demo.kolbase.local";
+  await pgc.query(`insert into "Project" (id, "organizationId", title, "typeId", status, "plannedAt", "updatedAt") values ('e2e-r5-prj', 'demo-org-dentalys', 'Board implants Frais', 'advisory', 'ACCORD', now() - interval '2 days', now())`);
+  await pgc.query(`insert into "ProjectExpert" (id, "projectId", "practitionerId", status, "feeCents", days) values ('e2e-r5-x', 'e2e-r5-prj', 'demo-p-blanc', 'ACCORD', 150000, 3)`);
+  const url = `${BASE}/organisations/demo-org-dentalys/dossiers/e2e-r5-prj`;
+  const claire = await session();
+  await login(claire.page, "claire.morel@demo.kolbase.local");
+
+  // Contrat-cadre : période de douze mois au plus, fixée pendant le montage du dossier.
+  await claire.page.goto(url);
+  await claire.page.click('summary:has-text("Modifier l\'objet")');
+  await claire.page.check('input[name="framework"]');
+  await claire.page.fill('input[name="periodEnd"]', isoDay(400));
+  await claire.page.click('button:has-text("Mettre à jour l\'objet")');
+  await claire.page.waitForTimeout(1200);
+  check("Contrat-cadre : plus de douze mois refusé", (await text(claire.page)).includes("douze mois au plus"));
+  await claire.page.fill('input[name="periodEnd"]', isoDay(180));
+  await claire.page.click('button:has-text("Mettre à jour l\'objet")');
+  await claire.page.waitForTimeout(1200);
+  check("Contrat-cadre : période enregistrée", (await q1(`select framework from "Project" where id = 'e2e-r5-prj'`)).framework === true);
+  const conv = await claire.ctx.request.get(`${url}/convention/e2e-r5-x`);
+  check("Convention du contrat-cadre générée", conv.status() === 200 && (conv.headers()["content-type"] ?? "").includes("pdf"));
+  // Convention signée.
+  await pgc.query(`update "Project" set status = 'SIGNE' where id = 'e2e-r5-prj'`);
+  await pgc.query(`update "ProjectExpert" set status = 'SIGNE' where id = 'e2e-r5-x'`);
+
+  // Voyage réservé par l'organisation, envoyé à l'expert.
+  await claire.page.goto(`${url}?onglet=frais`);
+  let t = await text(claire.page);
+  check("Onglet Frais et voyages : expert engagé, aucun voyage", t.includes("Frais et voyages des experts") && t.includes("Aucun voyage réservé"));
+  await claire.page.click('summary:has-text("Réserver le voyage")');
+  const tf = 'form:has(input[name="hotelRef"])';
+  await claire.page.fill(`${tf} input[name="hotel"]`, "Hôtel Lumière (fictif)");
+  await claire.page.fill(`${tf} input[name="hotelRef"]`, "HL-4521");
+  await claire.page.fill(`${tf} input[name="checkIn"]`, isoDay(10));
+  await claire.page.fill(`${tf} input[name="checkOut"]`, isoDay(11));
+  await claire.page.fill(`${tf} input[name="outbound"]`, "TGV 6611 Grenoble 7 h 10 → Paris 10 h 05");
+  await claire.page.click(`${tf} button:has-text("Enregistrer le voyage")`);
+  const tm = await waitMail(NB, "Votre voyage — Board implants Frais");
+  check("Voyage : enregistré et envoyé à l'expert par e-mail", !!tm && tm.text.includes("Hôtel Lumière (fictif)") && tm.text.includes("TGV 6611") && !!(await q1(`select "sentAt" from "ExpertTravel" where "projectExpertId" = 'e2e-r5-x'`))?.sentAt, tm?.text.slice(0, 300));
+
+  // L'expert voit son voyage, le contrat-cadre, et dépose deux notes de frais avec justificatif.
+  const nb = await session();
+  await login(nb.page, NB);
+  await nb.page.goto(`${BASE}/sollicitations/e2e-r5-x`);
+  t = await text(nb.page);
+  check("Expert : voyage signalé, contrat-cadre et unités affichés", t.includes("a réservé votre voyage") && t.includes("Contrat-cadre") && t.includes("0 sur 3"));
+  await nb.page.goto(`${BASE}/sollicitations/e2e-r5-x?onglet=frais`);
+  t = await text(nb.page);
+  check("Expert : détail du voyage visible", t.includes("Hôtel Lumière (fictif)") && t.includes("HL-4521") && t.includes("TGV 6611"));
+  const ef = 'form:has(input[name="proof"])';
+  const expense = async (category, label, amount) => {
+    const before = (await q1(`select count(*)::int n from "ExpertExpense" where "projectExpertId" = 'e2e-r5-x'`)).n;
+    await nb.page.selectOption(`${ef} select[name="category"]`, category);
+    await nb.page.fill(`${ef} input[name="label"]`, label);
+    await nb.page.fill(`${ef} input[name="date"]`, isoDay(-1));
+    await nb.page.fill(`${ef} input[name="amount"]`, amount);
+    await nb.page.setInputFiles(`${ef} input[name="proof"]`, { name: "justificatif.pdf", mimeType: "application/pdf", buffer: proof });
+    await nb.page.click(`${ef} button:has-text("Envoyer la note de frais")`);
+    // Le message de confirmation de la note précédente reste affiché : on attend la nouvelle ligne.
+    for (let i = 0; i < 40 && (await q1(`select count(*)::int n from "ExpertExpense" where "projectExpertId" = 'e2e-r5-x'`)).n === before; i++) await nb.page.waitForTimeout(200);
+  };
+  await expense("repas", "Dîner de travail", "62,50");
+  const sm = await waitMail("claire.morel@demo.kolbase.local", "Note de frais de Dr Nicolas Blanc");
+  const first = await q1(`select status, "documentId", "amountCents" from "ExpertExpense" where "projectExpertId" = 'e2e-r5-x' and label = 'Dîner de travail'`);
+  check("Note de frais déposée avec son justificatif, l'équipe prévenue", first?.status === "submitted" && !!first.documentId && first.amountCents === 6250 && !!sm);
+  if (!(await nb.page.locator(`${ef} input[name="label"]`).isVisible())) await nb.page.click('summary:has-text("Déposer une note de frais")');
+  await expense("transport", "Train Grenoble – Paris", "98");
+  check("Seconde note de frais déposée", !!(await q1(`select 1 from "ExpertExpense" where "projectExpertId" = 'e2e-r5-x' and category = 'transport'`)));
+  check("Justificatifs à part des documents du dossier", !!(await q1(`select 1 from "Document" where "projectExpertId" = 'e2e-r5-x' and kind = 'JUSTIFICATIF'`)));
+
+  // L'organisation examine : plafond signalé, refus motivé, acceptation puis remboursement.
+  await claire.page.goto(`${url}?onglet=frais`);
+  t = await text(claire.page);
+  check("Organisation : notes à examiner, plafond du repas signalé", t.includes("à examiner") && t.includes("au-delà du plafond (50 €)"));
+  const dinner = claire.page.locator('tr:has-text("Dîner de travail")');
+  await dinner.locator('button:has-text("Refuser")').click();
+  await dinner.locator('input[name="note"]').fill("Repas au-delà du plafond de l'entreprise");
+  await dinner.locator('button:has-text("Confirmer le refus")').click();
+  const rm = await waitMail(NB, "Note de frais refusée");
+  check("Refus : motif transmis à l'expert", !!rm && rm.text.includes("au-delà du plafond de l'entreprise"));
+  await claire.page.goto(`${url}?onglet=frais`);
+  await claire.page.locator('tr:has-text("Train Grenoble") button:has-text("Accepter")').click();
+  await waitMail(NB, "Note de frais acceptée");
+  await claire.page.goto(`${url}?onglet=frais`);
+  await claire.page.locator('tr:has-text("Train Grenoble") button:has-text("Marquer remboursée")').click();
+  const pm = await waitMail(NB, "Frais remboursés");
+  check("Remboursement : statut et e-mail à l'expert", (await q1(`select status from "ExpertExpense" where "projectExpertId" = 'e2e-r5-x' and category = 'transport'`)).status === "paid" && !!pm);
+  await claire.page.goto(`${url}?onglet=budget`);
+  check("Budget : frais remboursés comptés", (await text(claire.page)).includes("Frais des experts (TTC)"));
+
+  // Mission du contrat-cadre consignée, dans la limite des unités de la convention.
+  await claire.page.goto(`${url}?onglet=experts`);
+  await claire.page.click('summary:has-text("Consigner une mission")');
+  const mf = 'form:has(button:has-text("Consigner la mission"))';
+  await claire.page.fill(`${mf} input[name="date"]`, isoDay(-1));
+  await claire.page.fill(`${mf} input[name="label"]`, "Webinaire implants courts");
+  await claire.page.fill(`${mf} input[name="units"]`, "2");
+  await claire.page.click(`${mf} button:has-text("Consigner la mission")`);
+  await claire.page.locator("text=Mission consignée.").first().waitFor({ timeout: 8000 }).catch(() => {});
+  check("Mission consignée : unités décomptées", (await q1(`select units from "FrameworkMission" where "projectExpertId" = 'e2e-r5-x'`))?.units === 2);
+  await claire.page.fill(`${mf} input[name="date"]`, isoDay(-1));
+  await claire.page.fill(`${mf} input[name="label"]`, "Relecture du support");
+  await claire.page.fill(`${mf} input[name="units"]`, "2");
+  await claire.page.click(`${mf} button:has-text("Consigner la mission")`);
+  await claire.page.waitForTimeout(1200);
+  check("Au-delà des unités prévues : un avenant est demandé", (await text(claire.page)).includes("un avenant à la convention est nécessaire") && (await q1(`select count(*)::int n from "FrameworkMission" where "projectExpertId" = 'e2e-r5-x'`)).n === 1);
+  await nb.page.goto(`${BASE}/sollicitations/e2e-r5-x`);
+  t = await text(nb.page);
+  check("Expert : missions du contrat-cadre consultables", t.includes("Webinaire implants courts") && t.includes("2 sur 3"));
+  await nb.page.goto(`${BASE}/sollicitations/e2e-r5-x?onglet=frais`);
+  t = await text(nb.page);
+  check("Expert : refus motivé et remboursement visibles", t.includes("Repas au-delà du plafond de l'entreprise") && t.includes("Remboursée"));
+
+  // Les frais remboursés sont déclarés avec la convention de l'expert (Transparence Santé).
+  const sophie = await session();
+  await login(sophie.page, "sophie.bernard@demo.kolbase.local");
+  const csv = await (await sophie.ctx.request.get(`${BASE}/organisations/demo-org-dentalys/conformite/declaration?tout=1`)).text();
+  const line = csv.split("\n").find((l) => l.includes("Frais de transport") && l.includes("KB-F-"));
+  check("Transparence Santé : frais remboursé déclaré, rattaché à la convention", !!line && line.includes("KB-C-E2E-R5-X") && line.includes(";98;"), line);
+  await sophie.ctx.close();
+  await nb.ctx.close();
+  await claire.ctx.close();
+  await pgc.query(`delete from "Project" where id = 'e2e-r5-prj'`);
+  await pgc.end();
+}
+
+// ── Formation : fiche Qualiopi, demi-journées et émargement, acquis, attestation de fin de formation, résultats ──
+{
+  const pgc = new pg.Client({ connectionString: process.env.DATABASE_URL });
+  await pgc.connect();
+  const q1 = async (sql, args = []) => (await pgc.query(sql, args)).rows[0];
+  const EMMA = "emma.simon@demo.kolbase.local", HUGO = "hugo.robert@demo.kolbase.local";
+  await pgc.query(`insert into "Event" (id, "organizationId", title, "typeId", "startsAt", "durationMinutes", format, city, venue, capacity, "publishedAt", "updatedAt")
+    values ('e2e-r6-ev', 'demo-org-academie', 'Implants courts Formation', 'dpc', now() + interval '2 days', 420, 'PRESENTIEL', 'Paris', 'Centre Académie (fictif)', 20, now(), now())`);
+  const ws = `${BASE}/organisations/demo-org-academie/evenements/e2e-r6-ev`;
+  const anne = await session();
+  await login(anne.page, "anne.chevalier@demo.kolbase.local");
+  await anne.page.goto(ws);
+  let t = await text(anne.page);
+  check("Organisme de formation : fiche de formation et émargement proposés", t.includes("Fiche de formation") && t.includes("Demi-journées et émargement"));
+
+  // Fiche de la formation (information du public).
+  const sf = 'form:has(textarea[name="objectives"])';
+  await anne.page.fill(`${sf} textarea[name="objectives"]`, "Indiquer et poser un implant court en secteur postérieur.");
+  await anne.page.fill(`${sf} input[name="audience"]`, "Chirurgiens-dentistes");
+  await anne.page.fill(`${sf} input[name="prerequisites"]`, "Pratique de la chirurgie implantaire");
+  await anne.page.fill(`${sf} input[name="hours"]`, "14");
+  await anne.page.fill(`${sf} textarea[name="methods"]`, "Exposés, cas cliniques, travaux pratiques sur modèles");
+  await anne.page.fill(`${sf} textarea[name="assessment"]`, "Quiz avant et après, évaluation pratique");
+  await anne.page.fill(`${sf} input[name="accessDelay"]`, "Inscription en ligne jusqu'à 7 jours avant");
+  await anne.page.fill(`${sf} input[name="price"]`, "450 € TTC, déjeuner compris");
+  await anne.page.fill(`${sf} input[name="dpcRef"]`, "99992500001");
+  await anne.page.check(`${sf} input[name="funding"][value="dpc"]`);
+  await anne.page.check(`${sf} input[name="funding"][value="fifpl"]`);
+  await anne.page.fill(`${sf} input[name="contact"]`, "formation@academie.example");
+  await anne.page.click(`${sf} button:has-text("Enregistrer la fiche")`);
+  await anne.page.locator("text=Fiche de formation enregistrée").first().waitFor({ timeout: 8000 }).catch(() => {});
+  await anne.page.goto(ws);
+  t = await text(anne.page);
+  check("Fiche enregistrée : ce qui manque est signalé (accessibilité, déclaration d'activité)", !!(await q1(`select 1 from "TrainingSheet" where "eventId" = 'e2e-r6-ev' and 'dpc' = any(funding)`)) && t.includes("À compléter") && t.includes("Accessibilité") && t.includes("Numéro de déclaration d'activité"));
+
+  // Mentions de l'organisme : déclaration d'activité, Qualiopi, référent handicap.
+  await anne.page.goto(`${BASE}/organisations/demo-org-academie/membres?onglet=organisation`);
+  const of = 'form:has(input[name="nda"])';
+  await anne.page.fill(`${of} input[name="nda"]`, "11 75 99999 75");
+  await anne.page.fill(`${of} input[name="qualiopi"]`, "Certificat Q-0000 (fictif)");
+  await anne.page.fill(`${of} input[name="handicapContact"]`, "Mme Leroy, handicap@academie.example");
+  await anne.page.click(`${of} button:has-text("Enregistrer")`);
+  await anne.page.locator("text=Organisation mise à jour").first().waitFor({ timeout: 8000 }).catch(() => {});
+  check("Organisme : déclaration d'activité, Qualiopi et référent handicap enregistrés", (await q1(`select nda from "Organization" where id = 'demo-org-academie'`)).nda === "11 75 99999 75");
+  await anne.page.goto(ws);
+  check("Fiche complète une fois l'organisme renseigné", (await text(anne.page)).includes("Fiche complète."));
+
+  // Deux jours, matin et après-midi : quatre demi-journées.
+  const hf = 'form:has(input[name="firstDay"])';
+  await anne.page.fill(`${hf} input[name="days"]`, "2");
+  await anne.page.click(`${hf} button:has-text("Créer les demi-journées")`);
+  await anne.page.locator("text=4 demi-journées créées").first().waitFor({ timeout: 8000 }).catch(() => {});
+  check("Demi-journées : quatre créées, durée de l'événement étendue", (await q1(`select count(*)::int n from "EventSession" where "eventId" = 'e2e-r6-ev'`)).n === 4 && (await q1(`select "durationMinutes" d from "Event" where id = 'e2e-r6-ev'`)).d > 24 * 60);
+
+  // Page publique : fiche, financements, accessibilité, mentions légales de l'organisme.
+  const emma = await session();
+  await login(emma.page, EMMA);
+  await emma.page.goto(`${BASE}/evenements/e2e-r6-ev`);
+  t = await text(emma.page);
+  check("Page publique : fiche de la formation complète", t.includes("Fiche de la formation") && t.includes("Indiquer et poser un implant court") && t.includes("DPC (ANDPC), FIF-PL") && t.includes("Référent handicap : Mme Leroy") && t.includes("Déclaration d'activité n° 11 75 99999 75") && t.includes("Demi-journées"));
+
+  // La formation commence : première demi-journée en cours, deux inscrits.
+  await pgc.query(`insert into "Registration" (id, "eventId", "userId", profession) select 'e2e-r6-reg', 'e2e-r6-ev', id, 'Chirurgien-dentiste' from "User" where email = $1`, [EMMA]);
+  await pgc.query(`insert into "Registration" (id, "eventId", "userId", profession) select 'e2e-r6-reg2', 'e2e-r6-ev', id, 'Chirurgien-dentiste' from "User" where email = $1`, [HUGO]);
+  const ss = (await pgc.query(`select id from "EventSession" where "eventId" = 'e2e-r6-ev' order by "startsAt"`)).rows.map((r) => r.id);
+  await pgc.query(`update "Event" set "startsAt" = now() - interval '1 hour', "durationMinutes" = 2160 where id = 'e2e-r6-ev'`);
+  for (const [i, id] of ss.entries()) await pgc.query(`update "EventSession" set "startsAt" = now() + ($2 || ' hours')::interval, "endsAt" = now() + ($3 || ' hours')::interval where id = $1`, [id, String(i * 12 - 0.5), String(i * 12 + 3)]);
+  await emma.page.goto(`${BASE}/inscriptions/e2e-r6-reg/badge`);
+  await emma.page.click('button:has-text("Émarger")');
+  await emma.page.locator("text=Émargé à").first().waitFor({ timeout: 8000 }).catch(() => {});
+  const sig = await q1(`select a.method, r."checkedInAt" from "Attendance" a join "Registration" r on r.id = a."registrationId" where a."registrationId" = 'e2e-r6-reg'`);
+  check("Émargement : signé par la participante depuis son badge, présence enregistrée", sig?.method === "self" && !!sig.checkedInAt);
+  check("Émargement : une seule demi-journée ouverte à la signature", (await emma.page.locator('button:has-text("Émarger")').count()) === 0);
+
+  // L'équipe relève la présence du second participant ; la signature de la participante reste.
+  await anne.page.goto(ws);
+  await anne.page.check(`input[name="att_${ss[0]}_e2e-r6-reg2"]`);
+  await anne.page.click('button:has-text("Enregistrer l\'émargement")');
+  await anne.page.locator("text=Émargement enregistré.").first().waitFor({ timeout: 8000 }).catch(() => {});
+  check("Émargement relevé par l'équipe, signature de la participante conservée", (await q1(`select method from "Attendance" where "registrationId" = 'e2e-r6-reg2'`))?.method === "team" && (await q1(`select method from "Attendance" where "registrationId" = 'e2e-r6-reg'`))?.method === "self");
+  const sheet = await anne.ctx.request.get(`${ws}/emargement`);
+  check("Feuilles d'émargement : une par demi-journée (PDF)", sheet.ok() && (await PDFDocument.load(await sheet.body())).getPageCount() === 4);
+
+  // Formation terminée : évaluation des acquis, questionnaire avec auto-positionnement.
+  await pgc.query(`update "Event" set "startsAt" = now() - interval '3 days 1 hour', "durationMinutes" = 2160 where id = 'e2e-r6-ev'`);
+  await pgc.query(`update "EventSession" set "startsAt" = "startsAt" - interval '3 days', "endsAt" = "endsAt" - interval '3 days' where "eventId" = 'e2e-r6-ev'`);
+  await anne.page.goto(ws);
+  await anne.page.selectOption('select[name="assess_e2e-r6-reg"]', "acquis");
+  await anne.page.selectOption('select[name="assess_e2e-r6-reg2"]', "partiel");
+  await anne.page.click('button:has-text("Enregistrer l\'évaluation")');
+  await anne.page.locator("text=Évaluation des acquis enregistrée.").first().waitFor({ timeout: 8000 }).catch(() => {});
+  check("Évaluation des acquis enregistrée", (await q1(`select assessment from "Registration" where id = 'e2e-r6-reg'`)).assessment === "acquis" && (await q1(`select assessment from "Registration" where id = 'e2e-r6-reg2'`)).assessment === "partiel");
+  await emma.page.goto(`${BASE}/evenements/e2e-r6-ev/avis`);
+  check("Questionnaire de formation : auto-positionnement avant et après", (await emma.page.locator(".survey-q").count()) === 5);
+  await emma.page.locator(".survey-q").nth(0).locator(".stars label").nth(4).click();
+  await emma.page.locator(".survey-q").nth(3).locator(".stars label").nth(1).click();
+  await emma.page.locator(".survey-q").nth(4).locator(".stars label").nth(3).click();
+  await emma.page.click('button:has-text("Envoyer mon avis")');
+  await emma.page.locator("text=votre avis est transmis").first().waitFor({ timeout: 8000 }).catch(() => {});
+  const sr = await q1(`select overall, "selfBefore", "selfAfter" from "SurveyResponse" where "registrationId" = 'e2e-r6-reg'`);
+  check("Avis enregistré avec la progression perçue", sr?.overall === 5 && sr.selfBefore === 2 && sr.selfAfter === 4);
+  const att = await emma.ctx.request.get(`${BASE}/inscriptions/e2e-r6-reg/attestation`);
+  check("Attestation de fin de formation (PDF)", att.ok() && (att.headers()["content-disposition"] ?? "").includes("attestation-formation"));
+  await emma.page.goto(`${BASE}/evenements/e2e-r6-ev`);
+  check("Participante : attestation de fin de formation proposée", (await text(emma.page)).includes("Mon attestation de fin de formation"));
+
+  // Résultats publiés avec leur mode de calcul (page de l'organisme et de la formation).
+  await emma.page.goto(`${BASE}/structures/demo-org-academie`);
+  t = await text(emma.page);
+  check("Résultats publiés : satisfaction et acquis, mode de calcul", t.includes("Résultats de nos formations") && t.includes("Taux de satisfaction : 100 %") && t.includes("Acquis validés : 50 %") && t.includes("note globale de 4 ou 5 sur 5"));
+  await anne.page.goto(ws);
+  t = await text(anne.page);
+  check("Organisme : progression perçue affichée", t.includes("Progression perçue") && /2(,0)?\s*→\s*4/.test(t));
+  await emma.ctx.close();
+  await anne.ctx.close();
+  await pgc.query(`delete from "Event" where id = 'e2e-r6-ev'`);
+  await pgc.query(`update "Organization" set nda = null, qualiopi = null, "handicapContact" = null where id = 'demo-org-academie'`);
+  await pgc.end();
+}
+
+// ── Congrès d'une société savante : programme en salles, appel à communications, partenaires ──
+{
+  const pgc = new pg.Client({ connectionString: process.env.DATABASE_URL });
+  await pgc.connect();
+  const q1 = async (sql, args = []) => (await pgc.query(sql, args)).rows[0];
+  const EMMA = "emma.simon@demo.kolbase.local";
+  await pgc.query(`insert into "Event" (id, "organizationId", title, "typeId", "startsAt", "durationMinutes", format, city, venue, capacity, "publishedAt", "updatedAt")
+    values ('e2e-r7-ev', 'demo-org-cdra', 'Congrès annuel Congrès', 'pleniere', now() + interval '60 days', 1980, 'PRESENTIEL', 'Lyon', 'Centre de congrès (fictif)', 400, now(), now())`);
+  const ws = `${BASE}/organisations/demo-org-cdra/evenements/e2e-r7-ev`;
+  const day = (n) => new Date(Date.now() + n * 864e5).toLocaleDateString("sv-SE", { timeZone: "Europe/Paris" });
+  const pierre = await session();
+  await login(pierre.page, "pierre.vidal@demo.kolbase.local");
+  await pierre.page.goto(ws);
+  let t = await text(pierre.page);
+  check("Société savante : programme par séance, appel à communications, partenaires", t.includes("Programme par séance") && t.includes("Appel à communications") && t.includes("Partenaires"));
+
+  // Deux salles, une conférence et un symposium.
+  for (const room of ["Amphithéâtre", "Salle 2"]) {
+    await pierre.page.fill('form:has(button:has-text("Ajouter la salle")) input[name="name"]', room);
+    await pierre.page.click('button:has-text("Ajouter la salle")');
+    await pierre.page.waitForTimeout(800);
+  }
+  check("Salles ajoutées", (await q1(`select count(*)::int n from "EventRoom" where "eventId" = 'e2e-r7-ev'`)).n === 2);
+  const rooms = (await pgc.query(`select id, name from "EventRoom" where "eventId" = 'e2e-r7-ev' order by position`)).rows;
+  await pierre.page.goto(ws);
+  if (!(await pierre.page.locator('form:has(button:has-text("Ajouter la séance")) input[name="title"]').isVisible())) await pierre.page.click('summary:has-text("Ajouter une séance")');
+  const pf = 'form:has(button:has-text("Ajouter la séance"))';
+  await pierre.page.fill(`${pf} input[name="day"]`, day(60));
+  await pierre.page.fill(`${pf} input[name="start"]`, "09:00");
+  await pierre.page.fill(`${pf} input[name="end"]`, "10:30");
+  await pierre.page.selectOption(`${pf} select[name="roomId"]`, rooms[0].id);
+  await pierre.page.fill(`${pf} input[name="title"]`, "Péri-implantite : état des lieux");
+  await pierre.page.fill(`${pf} input[name="speakers"]`, "Dr Nguyen");
+  await pierre.page.click(`${pf} button:has-text("Ajouter la séance")`);
+  await pierre.page.locator("text=Séance ajoutée au programme.").first().waitFor({ timeout: 8000 }).catch(() => {});
+  check("Séance ajoutée au programme", (await q1(`select count(*)::int n from "ProgramItem" where "eventId" = 'e2e-r7-ev'`)).n === 1);
+
+  // Partenaire industriel présent sur KolBase : la convention lui est proposée.
+  await pierre.page.goto(ws);
+  const partF = 'form:has(button:has-text("Ajouter le partenaire"))';
+  if (!(await pierre.page.locator(`${partF} select[name="partnerOrgId"]`).isVisible())) await pierre.page.click('summary:has-text("Ajouter un partenaire")');
+  await pierre.page.selectOption(`${partF} select[name="partnerOrgId"]`, "demo-org-dentalys");
+  await pierre.page.selectOption(`${partF} select[name="level"]`, "or");
+  await pierre.page.fill(`${partF} input[name="amount"]`, "8000");
+  await pierre.page.fill(`${partF} input[name="counterparts"]`, "Stand de 9 m², symposium de 45 minutes");
+  await pierre.page.click(`${partF} button:has-text("Ajouter le partenaire")`);
+  await pierre.page.locator("text=Partenaire ajouté").first().waitFor({ timeout: 8000 }).catch(() => {});
+  await pierre.page.goto(ws);
+  await pierre.page.click('button:has-text("Proposer la convention")');
+  const pm = await waitMail("claire.morel@demo.kolbase.local", "Proposition de partenariat : « Congrès annuel Congrès »");
+  check("Partenariat proposé : l'industriel est prévenu (montant, contreparties)", !!pm && pm.text.includes("8") && pm.text.includes("Stand de 9 m²") && (await q1(`select status from "EventPartner" where "eventId" = 'e2e-r7-ev'`)).status === "proposed");
+
+  // L'industriel (conformité) signe depuis ses partenariats ; l'organisateur est prévenu.
+  const sophie = await session();
+  await login(sophie.page, "sophie.bernard@demo.kolbase.local");
+  await sophie.page.goto(`${BASE}/organisations/demo-org-dentalys/partenariats`);
+  t = await text(sophie.page);
+  check("Industriel : proposition à signer, avec l'organisateur et le montant", t.includes("Congrès annuel Congrès") && t.includes("Collège Dentaire Rhône-Alpes") && t.includes("Partenaire or"));
+  await sophie.page.click('button:has-text("Signer la convention")');
+  const sm = await waitMail("pierre.vidal@demo.kolbase.local", "Partenariat signé par Dentalys Implants");
+  check("Partenariat signé : l'organisateur est prévenu", !!sm && (await q1(`select status from "EventPartner" where "eventId" = 'e2e-r7-ev'`)).status === "signed");
+  const pcsv = await (await sophie.ctx.request.get(`${BASE}/organisations/demo-org-dentalys/partenariats/export`)).text();
+  check("Convention signée exportée pour Transparence Santé (personne morale)", pcsv.includes("Partenariat") && pcsv.includes("Collège Dentaire Rhône-Alpes") && pcsv.includes(";8000;"));
+  await sophie.ctx.close();
+
+  // Appel à communications : ouvert par l'organisateur, une soumission, notée, retenue, placée au programme.
+  await pierre.page.goto(ws);
+  const cf = 'form:has(input[name="deadline"])';
+  if (!(await pierre.page.locator(`${cf} input[name="deadline"]`).isVisible())) await pierre.page.click('summary:has-text("Ouvrir l\'appel")');
+  await pierre.page.fill(`${cf} input[name="deadline"]`, day(30));
+  await pierre.page.fill(`${cf} textarea[name="topics"]`, "Implantologie\nParodontologie");
+  await pierre.page.click(`${cf} button:has-text("Ouvrir l'appel à communications")`);
+  await pierre.page.locator("text=Appel à communications ouvert").first().waitFor({ timeout: 8000 }).catch(() => {});
+  const emma = await session();
+  await login(emma.page, EMMA);
+  await emma.page.goto(`${BASE}/evenements/e2e-r7-ev`);
+  t = await text(emma.page);
+  check("Page publique : programme détaillé, partenaire, appel à communications", t.includes("Programme détaillé") && t.includes("Péri-implantite : état des lieux") && t.includes("Dentalys Implants") && t.includes("Soumettre une communication"));
+  await emma.page.goto(`${BASE}/evenements/e2e-r7-ev/communications`);
+  await emma.page.fill('input[name="title"]', "Implants courts : 5 ans de suivi");
+  await emma.page.fill('input[name="authors"]', "Simon Emma (Montpellier)");
+  await emma.page.selectOption('select[name="topic"]', "Implantologie");
+  await emma.page.selectOption('select[name="format"]', "oral");
+  await emma.page.fill('textarea[name="body"]', "Contexte : implants courts en secteur postérieur. Méthode : 48 patients suivis 5 ans. Résultats : survie de 96 %. Conclusion : alternative fiable.");
+  await emma.page.click('button:has-text("Soumettre la communication")');
+  await emma.page.locator("text=Communication soumise").first().waitFor({ timeout: 8000 }).catch(() => {});
+  const abs = await q1(`select id, status from "Abstract" where "eventId" = 'e2e-r7-ev'`);
+  check("Communication soumise par la praticienne", abs?.status === "submitted");
+  await pierre.page.goto(ws);
+  await pierre.page.selectOption(`form:has(input[name="abstractId"][value="${abs.id}"]) select[name="score"]`, "4");
+  await pierre.page.click(`form:has(input[name="abstractId"][value="${abs.id}"]):has(select[name="score"]) button:has-text("Noter")`);
+  await pierre.page.waitForTimeout(1000);
+  check("Relecture : note du comité enregistrée", (await q1(`select score from "AbstractReview" where "abstractId" = $1`, [abs.id]))?.score === 4);
+  await pierre.page.goto(ws);
+  const df = `form:has(input[name="abstractId"][value="${abs.id}"]):has(button[name="decision"])`;
+  await pierre.page.fill(`${df} input[name="note"]`, "Bravo, 10 minutes de présentation.");
+  await pierre.page.click(`${df} button[name="decision"][value="accept"]`);
+  const am = await waitMail(EMMA, "Communication retenue : « Implants courts : 5 ans de suivi »");
+  check("Communication retenue : l'autrice est prévenue (format, message du comité)", !!am && am.text.includes("communication orale") && am.text.includes("10 minutes"));
+  await pierre.page.goto(ws);
+  const sched = `form:has(input[name="abstractId"][value="${abs.id}"]):has(button:has-text("Placer au programme"))`;
+  await pierre.page.fill(`${sched} input[name="day"]`, day(60));
+  await pierre.page.fill(`${sched} input[name="start"]`, "11:00");
+  await pierre.page.fill(`${sched} input[name="end"]`, "11:10");
+  await pierre.page.selectOption(`${sched} select[name="roomId"]`, rooms[1].id);
+  await pierre.page.click(`${sched} button:has-text("Placer au programme")`);
+  await pierre.page.locator("text=Communication placée au programme.").first().waitFor({ timeout: 8000 }).catch(() => {});
+  check("Communication placée au programme", (await q1(`select kind from "ProgramItem" where "abstractId" = $1`, [abs.id]))?.kind === "communications");
+  await emma.page.goto(`${BASE}/evenements/e2e-r7-ev/communications`);
+  t = await text(emma.page);
+  check("Autrice : statut, message du comité et place au programme", t.includes("Retenue") && t.includes("Bravo, 10 minutes") && t.includes("Au programme") && t.includes("Salle 2"));
+  await emma.ctx.close();
+  await pierre.ctx.close();
+  await pgc.query(`delete from "Event" where id = 'e2e-r7-ev'`);
+  await pgc.end();
+}
+
+// ── Équipe KolBase : signalements, retrait d'un avis, historique des e-mails ──
+{
+  const pgc = new pg.Client({ connectionString: process.env.DATABASE_URL });
+  await pgc.connect();
+  const q1 = async (sql, args = []) => (await pgc.query(sql, args)).rows[0];
+  const EMMA = "emma.simon@demo.kolbase.local", VISITOR = "visiteur.signalement@exemple.fr";
+  const rev = await q1(`select r.id, r."supplierId", r.comment, u.email author from "SupplierReview" r join "User" u on u.id = r."authorId" where r.comment is not null and r."hiddenAt" is null order by r."createdAt" limit 1`);
+  const ev = await q1(`select id, title, description from "Event" where "publishedAt" is not null and "cancelledAt" is null and "inviteOnly" = false and description is not null and "startsAt" > now() order by "startsAt" limit 1`);
+
+  // Une praticienne connectée signale un avis ; l'équipe KolBase est prévenue.
+  const emma = await session();
+  await login(emma.page, EMMA);
+  await emma.page.goto(`${BASE}/structures/${rev.supplierId}`);
+  check("Avis : lien « Signaler cet avis »", (await emma.page.locator(`a[href="/signaler?type=avis&id=${rev.id}"]`).count()) === 1);
+  await emma.page.goto(`${BASE}/signaler?type=avis&id=${rev.id}`);
+  await emma.page.selectOption('select[name="reason"]', "donnees");
+  await emma.page.fill('textarea[name="details"]', "L'avis cite le nom d'un patient.");
+  await emma.page.click('button:has-text("Envoyer le signalement")');
+  await emma.page.locator("text=Signalement transmis").first().waitFor({ timeout: 8000 }).catch(() => {});
+  const rep = await q1(`select id, "reporterId", "targetLabel" from "Report" where "targetId" = $1`, [rev.id]);
+  check("Signalement enregistré, l'équipe KolBase prévenue, sans le nom du client", !!rep?.reporterId && !!(await waitMail("anne.chevalier@demo.kolbase.local", "Signalement : Avis sur")) && rep.targetLabel.startsWith("Avis sur "));
+
+  // Un visiteur sans compte signale un événement, avec son adresse pour la réponse.
+  const anon = await session();
+  await anon.page.goto(`${BASE}/signaler?type=evenement&id=${ev.id}`);
+  check("Sans compte : adresse e-mail demandée", (await anon.page.locator('input[name="email"]').count()) === 1);
+  await anon.page.selectOption('select[name="reason"]', "inexact");
+  await anon.page.fill('textarea[name="details"]', "La date annoncée ne correspond pas au programme.");
+  await anon.page.fill('input[name="email"]', VISITOR);
+  await anon.page.click('button:has-text("Envoyer le signalement")');
+  await anon.page.locator("text=Signalement transmis").first().waitFor({ timeout: 8000 }).catch(() => {});
+  check("Signalement sans compte enregistré avec l'adresse", (await q1(`select "reporterEmail" from "Report" where "targetId" = $1`, [ev.id]))?.reporterEmail === VISITOR);
+  await anon.ctx.close();
+
+  // Registre : l'avis est masqué (décision motivée), l'autre signalement classé sans suite.
+  const anne = await session();
+  await login(anne.page, "anne.chevalier@demo.kolbase.local");
+  await anne.page.goto(`${BASE}/admin/signalements`);
+  check("Registre : deux signalements à traiter", (await text(anne.page)).includes("À traiter (2)"));
+  const c1 = anne.page.locator("li.card", { hasText: "L'avis cite le nom d'un patient" });
+  await c1.locator('input[name="decision"][value="retire"]').check();
+  await c1.locator('textarea[name="note"]').fill("Donnée de santé d'un patient : avis masqué.");
+  await c1.locator('button:has-text("Enregistrer la décision")').click();
+  await anne.page.locator("text=Contenu retiré").first().waitFor({ timeout: 8000 }).catch(() => {});
+  check("Avis masqué, motif enregistré", !!(await q1(`select "hiddenAt" from "SupplierReview" where id = $1`, [rev.id]))?.hiddenAt);
+  check("Décision communiquée : auteur du signalement et auteur de l'avis", !!(await waitMail(EMMA, "Votre signalement")) && !!(await waitMail(rev.author, "Contenu retiré par l'équipe KolBase")));
+  await emma.page.goto(`${BASE}/structures/${rev.supplierId}`);
+  check("Avis masqué : plus affiché sur la page du prestataire", !(await text(emma.page)).includes(rev.comment.slice(0, 40)));
+  await anne.page.goto(`${BASE}/admin/signalements`);
+  const c2 = anne.page.locator("li.card", { hasText: "La date annoncée ne correspond pas" });
+  await c2.locator('textarea[name="note"]').fill("Date vérifiée auprès de l'organisateur.");
+  await c2.locator('button:has-text("Enregistrer la décision")').click();
+  await anne.page.locator("text=classé sans suite").first().waitFor({ timeout: 8000 }).catch(() => {});
+  check("Sans suite : description conservée, le visiteur prévenu", (await q1(`select description from "Event" where id = $1`, [ev.id])).description === ev.description && !!(await waitMail(VISITOR, "Votre signalement")));
+
+  // Contestation fondée : l'avis est rétabli.
+  await anne.page.goto(`${BASE}/admin/signalements?statut=traites`);
+  await anne.page.click('button:has-text("Rétablir l\'avis")');
+  await anne.page.waitForTimeout(1000);
+  check("Avis rétabli après contestation", !(await q1(`select "hiddenAt" from "SupplierReview" where id = $1`, [rev.id])).hiddenAt);
+
+  // Historique des e-mails : par adresse, et sur la fiche du compte.
+  await anne.page.goto(`${BASE}/admin/emails?q=${encodeURIComponent(EMMA)}`);
+  let t = await text(anne.page);
+  check("Historique des e-mails : objet et statut, sans le contenu", t.includes("Votre signalement") && t.includes("Envoyé") && !t.includes("Après examen par l'équipe KolBase"));
+  const emmaId = (await q1(`select id from "User" where email = $1`, [EMMA])).id;
+  await anne.page.goto(`${BASE}/admin/comptes/${emmaId}`);
+  t = await text(anne.page);
+  check("Fiche du compte : derniers e-mails", t.includes("Derniers e-mails") && t.includes("Votre signalement"));
+  await anne.ctx.close();
+  await emma.ctx.close();
+  await pgc.query(`delete from "Report" where "targetId" in ($1, $2)`, [rev.id, ev.id]);
+  await pgc.end();
+}
+
+// ── Groupes et entités : aiguillage des propositions par pays et par sujet, transfert, portail du groupe ──
+{
+  const pgc = new pg.Client({ connectionString: process.env.DATABASE_URL });
+  await pgc.connect();
+  const q1 = async (sql, args = []) => (await pgc.query(sql, args)).rows[0];
+  const EMMA = "emma.simon@demo.kolbase.local", CLAIRE = "claire.morel@demo.kolbase.local";
+  // L'équipe KolBase crée le groupe et y rattache Dentalys, puis OrthoNova.
+  const anne = await session();
+  await login(anne.page, "anne.chevalier@demo.kolbase.local");
+  await anne.page.goto(`${BASE}/admin/organisations/demo-org-dentalys`);
+  await anne.page.selectOption('select[name="groupId"]', "nouveau");
+  await anne.page.fill('input[name="newGroup"]', "Groupe Dentalys International");
+  await anne.page.click('form:has(select[name="groupId"]) button:has-text("Enregistrer")');
+  await anne.page.locator("text=rattachée au groupe").first().waitFor({ timeout: 8000 }).catch(() => {});
+  const gid = (await q1(`select "groupId" from "Organization" where id = 'demo-org-dentalys'`))?.groupId;
+  check("Groupe créé, Dentalys rattachée", !!gid);
+  await anne.page.goto(`${BASE}/admin/organisations/demo-org-orthonova`);
+  await anne.page.selectOption('select[name="groupId"]', gid);
+  await anne.page.click('form:has(select[name="groupId"]) button:has-text("Enregistrer")');
+  await anne.page.locator("text=rattachée au groupe").first().waitFor({ timeout: 8000 }).catch(() => {});
+  check("OrthoNova rattachée au même groupe", (await q1(`select "groupId" from "Organization" where id = 'demo-org-orthonova'`))?.groupId === gid);
+  await anne.ctx.close();
+
+  // Dentalys : entité France, canal Formation (responsable Julien, suppléant Marc, réponse sous 5 jours).
+  const claire = await session();
+  await login(claire.page, CLAIRE);
+  await claire.page.goto(`${BASE}/organisations/demo-org-dentalys/canaux`);
+  await claire.page.fill('input[name="countries"]', "FR");
+  await claire.page.click('button:has-text("Enregistrer le périmètre")');
+  await claire.page.locator("text=Périmètre enregistré").first().waitFor({ timeout: 8000 }).catch(() => {});
+  const cf = 'form:has(button:has-text("Ajouter le canal"))';
+  await claire.page.selectOption(`${cf} select[name="topic"]`, "formation");
+  await claire.page.selectOption(`${cf} select[name="ownerId"]`, "demo-u-julien");
+  await claire.page.selectOption(`${cf} select[name="backupId"]`, "demo-u-marc");
+  await claire.page.fill(`${cf} input[name="responseDays"]`, "5");
+  await claire.page.click(`${cf} button:has-text("Ajouter le canal")`);
+  await claire.page.locator("text=Canal enregistré").first().waitFor({ timeout: 8000 }).catch(() => {});
+  check("Entité France et canal Formation enregistrés", (await q1(`select "coveredCountries" c from "Organization" where id = 'demo-org-dentalys'`)).c.join() === "FR" && (await q1(`select "ownerId", "responseDays" from "ContactChannel" where "organizationId" = 'demo-org-dentalys' and topic = 'formation'`))?.responseDays === 5);
+
+  // Portail du groupe, puis proposition de la praticienne (France) au groupe, sujet Formation.
+  const emma = await session();
+  await login(emma.page, EMMA);
+  await emma.page.goto(`${BASE}/groupes/${gid}`);
+  let t = await text(emma.page);
+  check("Portail du groupe : entités, sujet et délai de réponse", t.includes("Groupe Dentalys International") && t.includes("Formation et enseignement") && t.includes("réponse sous 5 jours") && t.includes("OrthoNova"));
+  const propose = async (title, topic, extra = async () => {}) => {
+    await emma.page.goto(`${BASE}/propositions/nouvelle?groupe=${gid}&sujet=${topic}`);
+    await emma.page.fill('input[name="title"]', title);
+    await emma.page.fill('textarea[name="description"]', "Programme de formation pratique en chirurgie guidée, cas cliniques et ateliers sur modèles.");
+    await extra();
+    await emma.page.check('input[name="attest"]');
+    await Promise.all([emma.page.waitForURL(/\/propositions\?envoyee=/, { timeout: 10000 }).catch(() => {}), emma.page.click('button:has-text("Envoyer la proposition")')]);
+  };
+  check("Proposition au groupe : le groupe est présélectionné", await emma.page.goto(`${BASE}/propositions/nouvelle?groupe=${gid}&sujet=formation`).then(() => emma.page.locator(`input[value="group:${gid}"]`).isChecked()));
+  await propose("Formation e2e : chirurgie guidée Groupe", "formation");
+  const prj = await q1(`select p.id, p."organizationId", p."responseDue", c.topic from "Project" p left join "ContactChannel" c on c.id = p."channelId" where p.title = 'Formation e2e : chirurgie guidée Groupe'`);
+  check("Aiguillage : entité France, canal Formation, réponse attendue sous 5 jours", prj?.organizationId === "demo-org-dentalys" && prj.topic === "formation" && Math.abs(new Date(prj.responseDue).getTime() - Date.now() - 5 * 864e5) < 3600e3, JSON.stringify(prj));
+  const leads = (await pgc.query(`select "userId" from "ProjectLead" where "projectId" = $1 order by "userId"`, [prj.id])).rows.map((r) => r.userId);
+  check("Responsable et suppléant du canal : responsables du dossier", leads.join() === "demo-u-julien,demo-u-marc", leads.join());
+  const pm = await waitMail("julien.faure@demo.kolbase.local", "Projet proposé par Dr Emma Simon : Formation e2e");
+  check("E-mail au responsable du sujet (et pas à toute l'équipe)", !!pm && pm.text.includes("Sujet : Formation et enseignement") && pm.text.includes("Réponse attendue avant le") && !mails.some((m) => m.to === CLAIRE && m.subject.includes("Formation e2e")));
+
+  // L'entité France transmet la proposition au siège (OrthoNova) ; l'expert est prévenu.
+  await claire.page.goto(`${BASE}/organisations/demo-org-dentalys/dossiers/${prj.id}`);
+  t = await text(claire.page);
+  check("Dossier : aiguillage affiché (sujet, réponse attendue)", t.includes("Aiguillage") && t.includes("Sujet : Formation et enseignement") && t.includes("réponse attendue avant le"));
+  await claire.page.click('summary:has-text("Transmettre à un autre interlocuteur")');
+  await claire.page.selectOption('select[name="target"]', "demo-org-orthonova|formation");
+  await claire.page.click('button:has-text("Transmettre la proposition")');
+  await claire.page.locator("text=Proposition transmise à OrthoNova").first().waitFor({ timeout: 8000 }).catch(() => {});
+  check("Transfert : le dossier passe à OrthoNova", (await q1(`select "organizationId" from "Project" where id = $1`, [prj.id]))?.organizationId === "demo-org-orthonova");
+  check("Transfert : l'expert et la nouvelle entité sont prévenus", !!(await waitMail(EMMA, "Votre proposition est transmise")) && !!(await waitMail("thomas.garnier@demo.kolbase.local", "Projet proposé par Dr Emma Simon : Formation e2e")));
+
+  // Idée de produit : conditions de soumission acceptées, accord de confidentialité demandé.
+  await propose("Idée e2e : guide chirurgical Groupe", "innovation", async () => {
+    await emma.page.check('input[name="ipAck"]');
+    await emma.page.check('input[name="nda"]');
+  });
+  const idea = await q1(`select x."ipAckAt", x."ndaRequested", p.id, p."organizationId" from "ExpertProposal" x join "Project" p on p."proposalId" = x.id where x.title = 'Idée e2e : guide chirurgical Groupe'`);
+  check("Idée de produit : conditions acceptées, accord de confidentialité demandé", !!idea?.ipAckAt && idea.ndaRequested === true && idea.organizationId === "demo-org-dentalys");
+  await claire.page.goto(`${BASE}/organisations/demo-org-dentalys/dossiers/${idea.id}`);
+  check("Organisation : demande d'accord de confidentialité signalée", (await text(claire.page)).includes("l'expert demande un accord de confidentialité"));
+  await emma.ctx.close();
+  await claire.ctx.close();
+  await pgc.query(`delete from "Project" where title in ('Formation e2e : chirurgie guidée Groupe', 'Idée e2e : guide chirurgical Groupe')`);
+  await pgc.query(`delete from "ExpertProposal" where title in ('Formation e2e : chirurgie guidée Groupe', 'Idée e2e : guide chirurgical Groupe')`);
+  await pgc.query(`delete from "ContactChannel" where "organizationId" in ('demo-org-dentalys', 'demo-org-orthonova')`);
+  await pgc.query(`update "Organization" set "groupId" = null, "coveredCountries" = '{}', brands = '{}' where id in ('demo-org-dentalys', 'demo-org-orthonova')`);
+  await pgc.query(`delete from "OrgGroup" where id = $1`, [gid]);
+  await pgc.end();
+}
+
 // ── Agences : confier un événement en une seule action ─────────────────────
 {
   const agent = await session();
@@ -4915,10 +5769,10 @@ async function submitNewOrg(page, siren) {
   await page.click(".side-toggle");
   await page.waitForTimeout(300);
 
-  // Fiche dossier : sept onglets, dans l'ordre du circuit ; la messagerie réunit experts et prestataires de l'événement.
+  // Fiche dossier : huit onglets, dans l'ordre du circuit ; la messagerie réunit experts et prestataires de l'événement.
   await page.goto(`${BASE}/organisations/demo-org-dentalys/dossiers/demo-prj-board`);
   const tabsText = (await page.locator("nav.dossier-tabs .dossier-tab").allInnerTexts()).map((x) => x.replace(/\d+/g, "").trim());
-  check("Dossier : sept onglets, dans l'ordre du circuit", JSON.stringify(tabsText) === JSON.stringify(["Vue d'ensemble", "Experts", "Événement", "Conformité", "Documents", "Budget", "Messagerie"]), JSON.stringify(tabsText));
+  check("Dossier : huit onglets, dans l'ordre du circuit", JSON.stringify(tabsText) === JSON.stringify(["Vue d'ensemble", "Experts", "Événement", "Conformité", "Documents", "Budget", "Frais et voyages", "Messagerie"]), JSON.stringify(tabsText));
   check("Vue d'ensemble : un repère par rubrique, chacun mène à son onglet", (await page.locator(".state-grid a.state-tile").count()) === 6 && (await page.locator('.state-grid a.state-tile[href*="onglet=budget"]').count()) === 1);
   await page.goto(`${BASE}/organisations/demo-org-dentalys/dossiers/demo-prj-board?onglet=marketing`);
   check("Ancien onglet Marketing : l'onglet Événement s'ouvre", (await page.locator('.dossier-tab.active:has-text("Événement")').count()) === 1);

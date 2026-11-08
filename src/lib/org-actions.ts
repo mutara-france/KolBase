@@ -83,6 +83,8 @@ export async function updateOrganization(_: FormState, form: FormData): Promise<
       about: str(form, "about") || null,
       policy: str(form, "policy") || null,
       areas: str(form, "areas").split(",").map((a) => a.trim()).filter(Boolean),
+      // Formation : champs présents seulement pour les organisations qui forment.
+      ...(form.has("nda") ? { nda: str(form, "nda", 40) || null, qualiopi: str(form, "qualiopi", 160) || null, handicapContact: str(form, "handicapContact", 200) || null } : {}),
     },
   });
   await audit(user.id, "org.update", "Organization", orgId, renamed ? { renamed: { from: org.name, to: name } } : undefined);
@@ -226,9 +228,11 @@ export async function updateExpertProfile(_: FormState, form: FormData): Promise
       languages: str(form, "languages").split(",").map((l) => l.trim()).filter(Boolean),
       interventionTypes: form.getAll("interventionTypes").map(String),
       dayRateCents: rateNum,
+      // Hors de France, le statut d'agent public français ne s'applique pas.
+      publicAgent: user.practitioner.country === "FR" && form.get("publicAgent") === "1",
     },
   });
-  await audit(user.id, "practitioner.update_expert", "PractitionerProfile", user.practitioner.id);
+  await audit(user.id, "practitioner.update_expert", "PractitionerProfile", user.practitioner.id, form.get("publicAgent") === "1" !== user.practitioner.publicAgent ? { publicAgent: form.get("publicAgent") === "1" } : undefined);
   revalidatePath("/compte");
   return { ok: t("Profil expert enregistré.") };
 }

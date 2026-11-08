@@ -7,7 +7,8 @@ import { requireMembership } from "@/lib/orgs";
 import { EVENT_ORGANIZER_ROLES } from "@/lib/events";
 import { eurToCents, str } from "@/lib/form";
 import { sniffLogo } from "@/lib/logos";
-import { BANNER_MAX_BYTES, EQUIPMENT, OFFER_UNITS, PHOTO_MAX, PHOTO_MAX_BYTES, readCapacities } from "@/lib/supplier-book";
+import { BANNER_MAX_BYTES, OFFER_UNITS, PHOTO_MAX, PHOTO_MAX_BYTES, readCapacities } from "@/lib/supplier-book";
+import { capacityFields, equipmentOptions } from "@/lib/supplier-profiles";
 import { notifySupplierReview } from "@/lib/notifications";
 import { getT } from "@/lib/i18n/server";
 
@@ -27,9 +28,12 @@ const refresh = (orgId: string) => {
 export async function updateSupplierBook(_: FormState, form: FormData): Promise<FormState> {
   const { t } = await getT();
   const orgId = str(form, "orgId");
-  const { user } = await requireSupplierAdmin(orgId);
-  const capacities = readCapacities({ seats: str(form, "seats"), cocktail: str(form, "cocktail"), banquet: str(form, "banquet"), rooms: str(form, "rooms") });
-  const equipment = form.getAll("equipment").map(String).filter((e) => (EQUIPMENT as readonly string[]).includes(e));
+  const { user, org } = await requireSupplierAdmin(orgId);
+  // Capacités et services des métiers du prestataire : un champ d'une autre catégorie est ignoré.
+  const keys = capacityFields(org.supplierCategories).flatMap((g) => g.fields.map((f) => f.key));
+  const capacities = readCapacities(Object.fromEntries(keys.map((k) => [k, str(form, `cap_${k}`)])));
+  const allowed = equipmentOptions(org.supplierCategories).flatMap((g) => g.options);
+  const equipment = form.getAll("equipment").map(String).filter((e) => allowed.includes(e));
   await db.organization.update({
     where: { id: orgId },
     data: { capacities, equipment, accessible: form.get("accessible") === "on", priceHint: str(form, "priceHint").slice(0, 120) || null },

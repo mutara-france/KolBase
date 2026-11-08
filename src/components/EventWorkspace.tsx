@@ -1,5 +1,10 @@
 import { aiEnabled } from "@/lib/ai";
-import { EditEventForm, EventReviewForm, ProgramForm } from "@/components/EventForms";
+import { BudgetLineForm, EditEventForm, EventMessageForm, EventReviewForm, InviteForm, MdeonVisaForm, ProgramForm, TravelForm } from "@/components/EventForms";
+import { removeBudgetLine, remindEventInvites, sendTravelBooks } from "@/lib/event-actions";
+import { hasBooking, nights, TRAVEL_BENEFITS } from "@/lib/travel";
+import { budgetPostLabel, budgetRows } from "@/lib/event-budget";
+import { dietLabel, needsSummary } from "@/lib/registration-needs";
+import { mdeonDeadline, mdeonOverCaps, mdeonRequired } from "@/lib/belgium";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { Bell, Building2, CalendarDays, Pencil, ClipboardCheck, Euro, FileDown, FolderOpen, Gift, ListOrdered, MapPin, Megaphone, QrCode, ShieldCheck, Star, Truck, Users } from "lucide-react";
@@ -7,7 +12,7 @@ import { SectionHead } from "@/components/UI";
 import { StatusPill } from "@/components/ProjectBits";
 import { db } from "@/lib/db";
 import { requireMembership } from "@/lib/orgs";
-import { BENEFIT_CATALOG, COMPLIANCE_ROLES, EVENT_MANAGER_ROLES, EVENT_ORGANIZER_ROLES, EVENT_TYPES, eventScope, eventTypeLabel, FORMAT_LABEL, formatDuration, needsOnlineLink, orgEventStatus, toParisInput } from "@/lib/events";
+import { BENEFIT_CATALOG, COMPLIANCE_ROLES, EVENT_MANAGER_ROLES, EVENT_ORGANIZER_ROLES, EVENT_TYPES, eventPlace, eventScope, eventTypeLabel, FORMAT_LABEL, formatDuration, needsOnlineLink, orgEventStatus, toParisInput } from "@/lib/events";
 import { isSuspendedOrg } from "@/lib/org-roles";
 import { cancelEvent, deleteEventDraft, setEventAgency, setEventFlag, submitEventReview } from "@/lib/event-actions";
 import { needsReview, REVIEW_LABEL, REVIEW_TONE, reviewAllowsPublish, type ReviewStatus } from "@/lib/event-review";
@@ -33,8 +38,14 @@ import { conversion, reportParts } from "@/lib/service-report";
 import { groupOrders, packItemStatus, packSaving, packStatus } from "@/lib/service-pack";
 import { SendNowButton } from "@/components/FollowupForms";
 import { TableWrap } from "@/components/TableWrap";
+import { TrainingSections } from "@/components/TrainingSections";
+import { CongressSections } from "@/components/CongressSections";
 import { getT } from "@/lib/i18n/server";
 import { fmtDate, fmtEur, fmtTime, intlLocale } from "@/lib/i18n";
+
+/** Réponse d'un invité : inscrit, a décliné, sans réponse. */
+const INVITE_LABEL = { inscrit: "Inscrit", decline: "Décliné", attente: "Sans réponse" } as const;
+const INVITE_TONE = { inscrit: "ok", decline: "done", attente: "wait" } as const;
 
 /** Prestations dont le coût par participant se rapproche d'une hospitalité déclarée (repas, nuitée). */
 const HOSPITALITY_CATS = ["restauration", "hebergement"];
@@ -62,9 +73,13 @@ export async function EventWorkspace({ orgId: id, eventId, publie, mode = "page"
         },
       },
       benefits: { include: { _count: { select: { accepted: true } } } },
-      registrations: { include: { user: true, benefits: { include: { benefit: true } } }, orderBy: { createdAt: "asc" } },
+      registrations: { include: { user: { include: { practitioner: { select: { country: true } } } }, benefits: { include: { benefit: true } }, travel: true }, orderBy: { createdAt: "asc" } },
+      invites: { orderBy: { invitedAt: "asc" } },
+      budgetLines: { orderBy: { createdAt: "asc" } },
       _count: { select: { registrations: true, rfqs: true, calls: true, serviceOrders: true } },
       surveys: { orderBy: { createdAt: "desc" } },
+      waitlist: { include: { user: { select: { firstName: true, lastName: true } } }, orderBy: { createdAt: "asc" } },
+      messages: { orderBy: { createdAt: "desc" }, take: 10 },
       serviceOrders: { include: { offer: { select: { kind: true } } }, orderBy: { createdAt: "desc" } },
     },
   });
@@ -119,6 +134,10 @@ export async function EventWorkspace({ orgId: id, eventId, publie, mode = "page"
   const isPast = event.startsAt < now;
   const ended = eventEnded(event, now);
   const canPoint = !event.internal && checkinOpen(event.startsAt, now);
+  // Besoins déclarés (régime, allergies, accessibilité) : l'équipe qui organise et l'agence, pas la conformité seule.
+  const showNeeds = !readOnly && event.registrations.some((r) => r.diet || r.allergies || r.needs);
+  const needsInfo = needsSummary(event.registrations.filter((r) => !r.cancelledAt));
+  const participantsCount = event.registrations.filter((r) => !r.cancelledAt).length;
   const present = event.registrations.filter((r) => r.checkedInAt);
   // Une seule règle de présence (en-tête, bilan, Statistiques) : après l'événement pointé, les absents sont exclus.
   const hosp = eventHospitality(event.registrations, ended);
@@ -421,7 +440,7 @@ export async function EventWorkspace({ orgId: id, eventId, publie, mode = "page"
                 initial={{
                   title: event.title, typeId: event.typeId, therapeuticArea: event.therapeuticArea ?? "", description: event.description ?? "",
                   startsAt: toParisInput(event.startsAt), durationMinutes: event.durationMinutes != null ? String(event.durationMinutes) : "",
-                  format: event.format, capacity: event.capacity != null ? String(event.capacity) : "", city: event.city ?? "", postalCode: event.postalCode ?? "", venue: event.venue ?? "",
+                  format: event.format, capacity: event.capacity != null ? String(event.capacity) : "", city: event.city ?? "", postalCode: event.postalCode ?? "", venue: event.venue ?? "", address: event.address ?? "", inviteOnly: event.inviteOnly, hostedBy: event.hostedBy ?? "", hostedUrl: event.hostedUrl ?? "",
                   onlineUrl: event.onlineUrl ?? "", benefits: event.benefits.map((b) => ({ catalogId: b.catalogId, valueCents: b.valueCents })),
                 }}
               />
@@ -585,6 +604,31 @@ export async function EventWorkspace({ orgId: id, eventId, publie, mode = "page"
                       </p>
                     );
                   })()}
+                  {/* Belgique (article 10, code Mdeon) : visa préalable et plafonds de l'hospitalité raisonnable. */}
+                  {org.kind === "INDUSTRIEL" && (() => {
+                    const required = mdeonRequired({ ...event, organization: { kind: org.kind } });
+                    const over = mdeonOverCaps(event.benefits.map((b) => ({ ...b, label: t(b.label) })));
+                    const belgians = event.registrations.filter((r) => r.user.practitioner?.country === "BE" && !r.cancelledAt).length;
+                    return (
+                      <div className="stack-sm belgium-block" id="belgique">
+                        <h3 className="eyebrow-sm">{t("Praticiens exerçant en Belgique")}</h3>
+                        {required ? (
+                          <p className={event.mdeonVisa ? "hint" : "notice warn"}>
+                            {event.mdeonVisa
+                              ? t("Visa Mdeon n° {visa} : communiqué aux praticiens exerçant en Belgique avec les prestations.", { visa: event.mdeonVisa })
+                              : t("Visa Mdeon requis avant d'offrir ces prestations à un praticien exerçant en Belgique (manifestation de plusieurs jours ou avec nuitée) : à demander au plus tard le {date}, 15e jour ouvrable avant le début. Sans visa, ces praticiens s'inscrivent sans prestation.", { date: fmtDate(locale, mdeonDeadline(event.startsAt)) })}
+                            {belgians > 0 && <> {t(belgians > 1 ? "{n} inscrits exercent en Belgique." : "{n} inscrit exerce en Belgique.", { n: belgians })}</>}
+                          </p>
+                        ) : (
+                          <p className="hint">{t("Pas de visa Mdeon nécessaire : une seule journée, sans nuitée. Les prestations acceptées par ces praticiens se publient sur betransparent.be.")}</p>
+                        )}
+                        {over.length > 0 && (
+                          <p className="notice warn">{t("Au-delà des plafonds Mdeon (hospitalité raisonnable) : {list}. Mdeon refuserait le visa à ces montants.", { list: over.map((o) => t("{label} {value} € > {max} €", { label: t(o.label), value: o.value.toLocaleString(intlLocale(locale)), max: o.max })).join(" ; ") })}</p>
+                        )}
+                        {required && <MdeonVisaForm orgId={id} eventId={eventId} visa={event.mdeonVisa} />}
+                      </div>
+                    );
+                  })()}
                 </>
               )}
             </section>
@@ -598,7 +642,7 @@ export async function EventWorkspace({ orgId: id, eventId, publie, mode = "page"
                 {/* Points examinés : ce que la conformité valide, tel qu'il est aujourd'hui. */}
                 <ul className="review-points">
                   <li><span>{t("Date")}</span> {fmtDate(locale, event.startsAt)} · {fmtTime(locale, event.startsAt)}</li>
-                  <li><span>{t("Lieu")}</span> {event.format === "DISTANCIEL" ? t("À distance") : [event.venue, event.city].filter(Boolean).join(", ") || <em className="warn-text">{t("à préciser")}</em>}</li>
+                  <li><span>{t("Lieu")}</span> {event.format === "DISTANCIEL" ? t("À distance") : eventPlace(event) || <em className="warn-text">{t("à préciser")}</em>}</li>
                   <li><span>{t("Programme")}</span> {event.program ? t("renseigné") : <em className="warn-text">{t("à compléter")}</em>}</li>
                   <li><span>{t("Hospitalités")}</span> {event.benefits.length === 0 ? t("aucune") : <>{t("jusqu'à {amount} TTC par personne", { amount: fmtEur(locale, event.benefits.reduce((s, b) => s + b.valueCents, 0)) })} · {t(REGIME_LABEL[hospitalityRegime(settings, event.benefits).regime])}</>}</li>
                 </ul>
@@ -769,7 +813,7 @@ export async function EventWorkspace({ orgId: id, eventId, publie, mode = "page"
                 ) : (
                   <TableWrap label={t("Inscrits")}>
                     <table className="table">
-                      <thead><tr><th>{t("Nom")}</th><th>{t("Profession")}</th><th>{t("Structure")}</th><th>{t("Prestations acceptées")}</th><th>{t("Valeur TTC")}</th><th>{t("Inscrit le")}</th>{canPoint && <th>{t("Présence")}</th>}</tr></thead>
+                      <thead><tr><th>{t("Nom")}</th><th>{t("Profession")}</th><th>{t("Structure")}</th><th>{t("Prestations acceptées")}</th><th>{t("Valeur TTC")}</th>{showNeeds && <th>{t("Besoins")}</th>}<th>{t("Inscrit le")}</th>{canPoint && <th>{t("Présence")}</th>}</tr></thead>
                       <tbody>
                         {event.registrations.map((r) => (
                           <tr key={r.id}>
@@ -778,6 +822,7 @@ export async function EventWorkspace({ orgId: id, eventId, publie, mode = "page"
                             <td data-label="Structure">{r.structure ?? "—"}</td>
                             <td data-label="Prestations acceptées">{r.benefits.map((b) => t(b.benefit.label)).join(", ") || t("Aucune")}</td>
                             <td data-label="Valeur TTC">{fmtEur(locale, r.benefits.reduce((s, b) => s + b.valueCents, 0))}{" "}{t("TTC")}</td>
+                            {showNeeds && <td data-label="Besoins">{[dietLabel(r.diet) && t(dietLabel(r.diet)!), r.allergies && t("allergies : {list}", { list: r.allergies }), r.needs].filter(Boolean).join(" · ") || "—"}</td>}
                             <td data-label="Inscrit le">{fmtDate(locale, r.createdAt)}</td>
                             {canPoint && <td data-label="Présence">{r.checkedInAt ? <><span className="pill ok">{fmtTime(locale, r.checkedInAt)}</span>{ended && !readOnly && <> <a className="link" href={`/organisations/${id}/evenements/${eventId}/attestations?inscription=${r.id}`}>{t("attestation")}</a></>}</> : ended && pointed ? <span className="pill wait">{t("Absent")}</span> : "—"}</td>}
                           </tr>
@@ -786,7 +831,169 @@ export async function EventWorkspace({ orgId: id, eventId, publie, mode = "page"
                     </table>
                   </TableWrap>
                 )}
+                {showNeeds && needsInfo.total > 0 && (
+                  <div className="stack-sm needs-summary" id="besoins">
+                    <h3 className="eyebrow-sm">{t("Repas et accessibilité")}</h3>
+                    <p className="hint">{t("Synthèse sans les noms, à transmettre au lieu et au traiteur. Ces informations sont effacées 30 jours après l'événement.")}</p>
+                    <ul className="plain stack-xs">
+                      {needsInfo.diets.map((d) => <li key={d.id}>{t(d.label)} : {d.count}</li>)}
+                      {needsInfo.allergies.length > 0 && <li>{t("Allergies ou intolérances : {list}", { list: needsInfo.allergies.join(" ; ") })}</li>}
+                      {needsInfo.needs.length > 0 && <li>{t("Accessibilité ou adaptation : {list}", { list: needsInfo.needs.join(" ; ") })}</li>}
+                    </ul>
+                  </div>
+                )}
               </section>
+        )}
+
+        {!event.internal && event.waitlist.length > 0 && (
+          <section className="card" aria-labelledby="attente-titre">
+            <SectionHead icon={ListOrdered} id="attente-titre" title={t("Liste d'attente")} desc={t(event.waitlist.length > 1 ? "{n} personnes attendent une place : quand une place se libère, la suivante est prévenue par e-mail." : "{n} personne attend une place : quand une place se libère, elle est prévenue par e-mail.", { n: event.waitlist.length })} />
+            <ol className="waitlist-list">
+              {event.waitlist.map((w) => (
+                <li key={w.id}>{w.user.firstName} {w.user.lastName} <span className="muted text-sm">· {t("depuis le {date}", { date: fmtDate(locale, w.createdAt) })}{w.notifiedAt ? ` · ${t("prévenue le {date}", { date: fmtDate(locale, w.notifiedAt) })}` : ""}</span></li>
+              ))}
+            </ol>
+          </section>
+        )}
+
+        {event.inviteOnly && !event.internal && (
+          <section className="card stack-sm" aria-labelledby="invites-titre" id="invitations">
+            <SectionHead icon={Megaphone} id="invites-titre" title={t("Invitations")} desc={t("Événement sur invitation : seules les personnes invitées voient la page et s'inscrivent. Chacune reçoit un lien personnel{draft}.", { draft: event.publishedAt ? "" : t(" à la publication") })} />
+            {!readOnly && !event.cancelledAt && !isPast && <InviteForm orgId={id} eventId={eventId} />}
+            {event.invites.length > 0 && (() => {
+              const registeredUsers = new Set(event.registrations.filter((r) => !r.cancelledAt).map((r) => r.userId));
+              const status = (i: (typeof event.invites)[number]) => (i.userId && registeredUsers.has(i.userId) ? "inscrit" : i.declinedAt ? "decline" : "attente");
+              const counts = { inscrit: 0, decline: 0, attente: 0 };
+              for (const i of event.invites) counts[status(i)]++;
+              return (
+                <>
+                  <p className="text-sm">{t("{n} invités · {a} inscrits · {d} ont décliné · {w} sans réponse", { n: event.invites.length, a: counts.inscrit, d: counts.decline, w: counts.attente })}</p>
+                  <TableWrap label={t("Invitations")}>
+                    <table className="table">
+                      <thead><tr><th>{t("Invité")}</th><th>{t("E-mail")}</th><th>{t("Invité le")}</th><th>{t("Réponse")}</th></tr></thead>
+                      <tbody>
+                        {event.invites.map((i) => (
+                          <tr key={i.id}>
+                            <td data-label="Invité">{[i.firstName, i.lastName].filter(Boolean).join(" ") || "—"}</td>
+                            <td data-label="E-mail">{i.email}</td>
+                            <td data-label="Invité le">{i.sentAt ? fmtDate(locale, i.sentAt) : t("à la publication")}{i.remindedAt ? ` · ${t("relancé le {date}", { date: fmtDate(locale, i.remindedAt) })}` : ""}</td>
+                            <td data-label="Réponse"><span className={`pill ${INVITE_TONE[status(i)]}`}>{t(INVITE_LABEL[status(i)])}</span></td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </TableWrap>
+                  {!readOnly && event.publishedAt && !isPast && counts.attente > 0 && (
+                    <form action={remindEventInvites}>
+                      <input type="hidden" name="orgId" value={id} />
+                      <input type="hidden" name="eventId" value={eventId} />
+                      <button className="btn small ghost">{t("Relancer les invités sans réponse")}</button>
+                      <p className="hint">{t("Une relance au plus toutes les 48 heures par invité, avec un nouveau lien.")}</p>
+                    </form>
+                  )}
+                </>
+              );
+            })()}
+          </section>
+        )}
+
+        {!event.internal && (() => {
+          // Voyages et hébergement : participants qui ont accepté une nuitée ou un transport.
+          const travellers = event.registrations.filter((r) => !r.cancelledAt && r.benefits.some((b) => TRAVEL_BENEFITS.includes(b.benefit.catalogId)));
+          if (travellers.length === 0) return null;
+          const day = (d: Date | null) => (d ? d.toISOString().slice(0, 10) : "");
+          const toSend = travellers.filter((r) => hasBooking(r.travel) && (!r.travel!.sentAt || r.travel!.updatedAt.getTime() > r.travel!.sentAt.getTime() + 1000)).length;
+          return (
+            <section className="card stack-sm" aria-labelledby="voyages-titre" id="voyages">
+              <SectionHead icon={Truck} id="voyages-titre" title={t("Voyages et hébergement")} desc={t("Participants qui ont accepté une nuitée ou un transport : réservez, puis envoyez à chacun son carnet de voyage. La liste des chambres part à l'hôtel.")}>
+                <a className="btn ghost small" href={`/organisations/${id}/evenements/${eventId}/chambres`}>{t("Liste des chambres (CSV)")}</a>
+              </SectionHead>
+              <ul className="plain stack-sm">
+                {travellers.map((r) => {
+                  const tr = r.travel;
+                  const n = tr ? nights(tr) : null;
+                  return (
+                    <li key={r.id} className="travel-row">
+                      <details className="disclosure">
+                        <summary>
+                          <strong>{r.user.firstName} {r.user.lastName}</strong>{" "}
+                          <span className="muted text-sm">
+                            · {r.benefits.filter((b) => TRAVEL_BENEFITS.includes(b.benefit.catalogId)).map((b) => t(b.benefit.label)).join(", ")}
+                            {tr?.departureCity ? ` · ${t("départ de {city}", { city: tr.departureCity })}` : ""}
+                            {tr?.hotel ? ` · ${tr.hotel}` : ""}{n ? ` · ${t(n > 1 ? "{n} nuits" : "{n} nuit", { n })}` : ""}
+                          </span>{" "}
+                          <span className={`pill ${tr?.sentAt ? "ok" : hasBooking(tr) ? "wait" : "done"}`}>{tr?.sentAt ? t("Carnet envoyé") : hasBooking(tr) ? t("À envoyer") : t("À réserver")}</span>
+                        </summary>
+                        {!readOnly && <TravelForm orgId={id} registrationId={r.id} initial={{ checkIn: day(tr?.checkIn ?? null), checkOut: day(tr?.checkOut ?? null), roomType: tr?.roomType ?? "", hotel: tr?.hotel ?? "", hotelRef: tr?.hotelRef ?? "", outbound: tr?.outbound ?? "", returnTrip: tr?.returnTrip ?? "", ticketRef: tr?.ticketRef ?? "", notes: tr?.notes ?? "" }} />}
+                      </details>
+                    </li>
+                  );
+                })}
+              </ul>
+              {!readOnly && toSend > 0 && (
+                <form action={sendTravelBooks}>
+                  <input type="hidden" name="orgId" value={id} />
+                  <input type="hidden" name="eventId" value={eventId} />
+                  <button className="btn small">{t(toSend > 1 ? "Envoyer les {n} carnets de voyage" : "Envoyer le carnet de voyage", { n: toSend })}</button>
+                </form>
+              )}
+            </section>
+          );
+        })()}
+
+        {!event.internal && (() => {
+          const engaged = rfqs.flatMap((r) => r.quotes.filter((q) => q.status === "retained").map((q) => ({ category: r.category, ttcCents: quoteTtc(q) })));
+          const b = budgetRows(event.budgetLines, engaged);
+          if (readOnly && b.rows.length === 0) return null;
+          return (
+            <section className="card stack-sm" aria-labelledby="budget-titre" id="budget">
+              <SectionHead icon={Euro} id="budget-titre" title={t("Budget")} desc={t("Le prévu par poste, face aux devis retenus (TTC).")} />
+              {b.rows.length > 0 && (
+                <TableWrap label={t("Budget")}>
+                  <table className="table">
+                    <thead><tr><th>{t("Poste")}</th><th>{t("Prévu")}</th><th>{t("Engagé")}</th><th>{t("Écart")}</th></tr></thead>
+                    <tbody>
+                      {b.rows.map((r) => (
+                        <tr key={r.category}>
+                          <td data-label="Poste">
+                            {t(budgetPostLabel(r.category))}
+                            {r.lines.map((l) => (
+                              <span key={l.id} className="block text-xs muted">
+                                {l.label || t("sans libellé")} · {fmtEur(locale, l.planned)}
+                                {!readOnly && (
+                                  <form action={removeBudgetLine} className="inline"><input type="hidden" name="orgId" value={id} /><input type="hidden" name="lineId" value={l.id} /> <button className="link danger">{t("retirer")}</button></form>
+                                )}
+                              </span>
+                            ))}
+                          </td>
+                          <td data-label="Prévu">{r.planned ? fmtEur(locale, r.planned) : "—"}</td>
+                          <td data-label="Engagé">{r.engaged ? fmtEur(locale, r.engaged) : "—"}</td>
+                          <td data-label="Écart" className={r.planned && r.engaged > r.planned ? "warn-text" : undefined}>{r.planned ? fmtEur(locale, r.planned - r.engaged) : "—"}</td>
+                        </tr>
+                      ))}
+                      <tr className="total-row"><td><strong>{t("Total")}</strong></td><td><strong>{fmtEur(locale, b.planned)}</strong></td><td><strong>{fmtEur(locale, b.engaged)}</strong></td><td className={b.engaged > b.planned ? "warn-text" : undefined}><strong>{fmtEur(locale, b.planned - b.engaged)}</strong></td></tr>
+                    </tbody>
+                  </table>
+                </TableWrap>
+              )}
+              {!readOnly && <BudgetLineForm orgId={id} eventId={eventId} />}
+            </section>
+          );
+        })()}
+
+        <CongressSections orgId={id} eventId={eventId} readOnly={readOnly} userId={user.id} organizer={isOrganizer} />
+        <TrainingSections orgId={id} eventId={eventId} readOnly={readOnly} />
+
+        {!event.internal && !readOnly && !event.cancelledAt && (
+          <section className="card stack-sm" aria-labelledby="message-titre" id="message">
+            <SectionHead icon={Megaphone} id="message-titre" title={t("Écrire aux inscrits")} desc={t("Un détail pratique, un changement de salle, un document à apporter : le message part par e-mail à chaque inscrit.")} />
+            {participantsCount > 0 ? <EventMessageForm orgId={id} eventId={eventId} count={participantsCount} /> : <p className="muted">{t("Aucun inscrit pour l'instant.")}</p>}
+            {event.messages.length > 0 && (
+              <ul className="plain stack-xs">
+                {event.messages.map((m) => <li key={m.id} className="text-sm"><strong>{m.subject}</strong> <span className="muted">· {fmtDate(locale, m.createdAt)} {fmtTime(locale, m.createdAt)} · {t(m.recipients > 1 ? "{n} destinataires" : "{n} destinataire", { n: m.recipients })}</span></li>)}
+              </ul>
+            )}
+          </section>
         )}
     </>
   );

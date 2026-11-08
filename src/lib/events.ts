@@ -83,6 +83,8 @@ export const BENEFIT_CATALOG = [
   { id: "cocktail", label: "Cocktail dînatoire", typical: 45 },
   { id: "nuitee", label: "Nuitée d'hôtel", typical: 140 },
   { id: "transport", label: "Transport aller-retour", typical: 95 },
+  // Frais d'inscription pris en charge (congrès, formation payante) : seuil d'autorisation propre, hors total.
+  { id: "inscription", label: "Frais d'inscription", typical: 350 },
 ] as const;
 
 export const FORMAT_LABEL = { PRESENTIEL: "Présentiel", DISTANCIEL: "Visioconférence", HYBRIDE: "Hybride" } as const;
@@ -177,12 +179,12 @@ export const needsOnlineLink = (e: { format: string; internal: boolean; onlineUr
   e.format !== "PRESENTIEL" && !e.internal && !e.onlineUrl && e.startsAt > now && e.startsAt.getTime() - now.getTime() <= 2 * 864e5;
 
 export type EventChange = "date" | "lieu" | "format" | "lien";
-type Logistics = { startsAt: Date; durationMinutes?: number | null; city: string | null; venue: string | null; format: string; onlineUrl: string | null };
+type Logistics = { startsAt: Date; durationMinutes?: number | null; city: string | null; venue: string | null; address?: string | null; format: string; onlineUrl: string | null };
 /** Changements qui concernent les inscrits (ils sont prévenus par e-mail) : date ou heure, lieu, format, lien de connexion. */
 export function eventChanges(before: Logistics, after: Logistics): EventChange[] {
   const out: EventChange[] = [];
   if (before.startsAt.getTime() !== after.startsAt.getTime()) out.push("date");
-  if ((before.city ?? "") !== (after.city ?? "") || (before.venue ?? "") !== (after.venue ?? "")) out.push("lieu");
+  if ((before.city ?? "") !== (after.city ?? "") || (before.venue ?? "") !== (after.venue ?? "") || (before.address ?? "") !== (after.address ?? "")) out.push("lieu");
   if (before.format !== after.format) out.push("format");
   if ((before.onlineUrl ?? "") !== (after.onlineUrl ?? "")) out.push("lien");
   return out;
@@ -199,3 +201,7 @@ export const csvEscape = (v: unknown) => {
 
 /** CSV séparé par « ; » avec BOM, lisible directement par Excel en français. */
 export const toCSV = (rows: unknown[][]) => "﻿" + rows.map((r) => r.map(csvEscape).join(";")).join("\r\n");
+
+/** Lieu complet d'un événement : nom du lieu, adresse, code postal et ville (les éléments connus). */
+export const eventPlace = (e: { venue: string | null; address?: string | null; postalCode?: string | null; city: string | null }) =>
+  [e.venue, e.address, [e.postalCode, e.city].filter(Boolean).join(" ")].filter(Boolean).join(", ");

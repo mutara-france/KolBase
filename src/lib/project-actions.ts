@@ -11,7 +11,8 @@ import { storageEnabled } from "@/lib/storage";
 import { fourEyes, projectAuthors } from "@/lib/four-eyes";
 import type { ProjectStatus } from "@/generated/prisma/client";
 import { complianceSettings, projectRegime } from "@/lib/compliance";
-import { missingSignedConventions } from "@/lib/project-documents";
+import { missingCumulAuthorizations, missingSignedConventions } from "@/lib/project-documents";
+import { frameworkPeriodError, frameworkStart } from "@/lib/expert-costs";
 import { dayOrNull, eurToCents, str } from "@/lib/form";
 import { readFeeFields } from "@/lib/fee-fields";
 import { hoursOf } from "@/lib/fees";
@@ -203,6 +204,13 @@ export async function advanceProject(form: FormData) {
     if (storageEnabled() || form.get("attest") !== "1") return;
     attest = true;
   }
+  // Déclaration ou demande d'autorisation à l'Ordre : l'autorisation de cumul de chaque expert agent public est jointe.
+  // Sans stockage de documents, une attestation explicite (conservée hors KolBase) en tient lieu.
+  let attestCumul = false;
+  if ((key === "declaration" || key === "ordre") && (await missingCumulAuthorizations(projectId)).length > 0) {
+    if (storageEnabled() || form.get("attestCumul") !== "1") return;
+    attestCumul = true;
+  }
   // Un dossier au-delà des seuils d'autorisation ne peut pas passer par la déclaration simple ;
   // la voie « hors France » est réservée aux dossiers dont tous les experts exercent à l'étranger.
   const regime = projectRegime(complianceSettings(project.organization.complianceSettings), collabType(project.typeId)?.unit ?? "", project.experts.map((e) => ({ ...e, country: e.practitioner.country })))?.regime;
@@ -247,7 +255,7 @@ export async function advanceProject(form: FormData) {
   if (key === "abandon") await db.projectExpert.updateMany({ where: { projectId, status: "ATT_EXPERTS" }, data: { status: "DECLINE" } });
   // Dossier signé (conventions déposées ou attestées) ou abandonné : plus aucune signature électronique en attente.
   if (key === "signed" || key === "abandon") await closeOpenSignatures({ projectId }, key === "signed" ? "dossier passé « Signé »" : "dossier abandonné");
-  await audit(user.id, `project.${key}`, "Project", projectId, { from: project.status, to: t.to, note: note || undefined, ...(attest ? { attestation: "convention signée conservée hors KolBase" } : {}), ...(selfValidated ? { selfValidated: true } : {}) });
+  await audit(user.id, `project.${key}`, "Project", projectId, { from: project.status, to: t.to, note: note || undefined, ...(attest ? { attestation: "convention signée conservée hors KolBase" } : {}), ...(attestCumul ? { attestationCumul: "autorisation de cumul conservée hors KolBase" } : {}), ...(selfValidated ? { selfValidated: true } : {}) });
   // Proposition déclinée avec un motif : il rejoint les échanges avec l'expert (qui le lit dans sa sollicitation).
   if (key === "decline_proposal" && note && engagedIds[0]) await db.message.create({ data: { projectId, projectExpertId: engagedIds[0], authorId: user.id, body: note } });
   if (key === "submit" || key === "validate" || key === "block") notifyCompliance(projectId, key, user.id);
@@ -348,7 +356,15 @@ export async function updateProjectObject(_: ActionState, form: FormData): Promi
   if (!title) return { error: t("Le titre est obligatoire.") };
   const plannedAt = dayOrNull(str(form, "plannedAt"));
   if (plannedAt === undefined) return { error: t("Date d'intervention invalide.") };
-  const data = { title, therapeuticArea: str(form, "therapeuticArea") || null, description: str(form, "description") || null, plannedAt };
+  // Contrat-cadre : plusieurs prestations de même nature, jusqu'à la fin de période (douze mois au plus).
+  const framework = form.get("framework") === "on";
+  const periodEnd = framework ? dayOrNull(str(form, "periodEnd")) : null;
+  if (periodEnd === undefined) return { error: t("Date de fin de période invalide.") };
+  if (framework) {
+    const err = frameworkPeriodError(frameworkStart({ plannedAt, createdAt: project.createdAt }), periodEnd);
+    if (err) return { error: t(err) };
+  }
+  const data = { title, therapeuticArea: str(form, "therapeuticArea") || null, description: str(form, "description") || null, plannedAt, framework, periodEnd };
   const changed = (Object.keys(data) as (keyof typeof data)[]).filter((k) => String(project[k] ?? null) !== String(data[k] ?? null));
   if (changed.length === 0) return { ok: t("Aucune modification.") };
   await db.project.update({ where: { id: projectId }, data });

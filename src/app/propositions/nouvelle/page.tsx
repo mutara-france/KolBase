@@ -7,6 +7,7 @@ import { COLLAB_TYPES, PROPOSAL_MAX_ORGS, PROPOSALS_PER_MONTH } from "@/lib/proj
 import { orgsAwaitingProposal, proposalRecipients, proposalsThisMonth } from "@/lib/proposals";
 import { ORG_KIND_LABEL } from "@/lib/org-roles";
 import { logoSrc } from "@/lib/logos";
+import { isTopic, pickEntity } from "@/lib/routing";
 import { storageEnabled } from "@/lib/storage";
 import { getT } from "@/lib/i18n/server";
 
@@ -16,13 +17,14 @@ export async function generateMetadata() {
 }
 
 /** Projet proposé par un expert référencé : la fiche du projet et le choix des organisations destinataires. */
-export default async function Page({ searchParams }: { searchParams: Promise<{ organisation?: string | string[] }> }) {
+export default async function Page({ searchParams }: { searchParams: Promise<{ organisation?: string | string[]; groupe?: string; sujet?: string }> }) {
   const user = await requireUser();
   const p = user.practitioner;
   if (!p?.listed) redirect("/compte#referencement");
   const { t } = await getT();
-  const raw = (await searchParams).organisation;
-  const preselected = (Array.isArray(raw) ? raw : raw ? [raw] : []).slice(0, PROPOSAL_MAX_ORGS);
+  const sp = await searchParams;
+  const raw = sp.organisation;
+  const preselected = [...(sp.groupe ? [`group:${sp.groupe}`] : []), ...(Array.isArray(raw) ? raw : raw ? [raw] : [])].slice(0, PROPOSAL_MAX_ORGS);
   const [orgs, awaiting, sent] = await Promise.all([proposalRecipients(), orgsAwaitingProposal(p.id), proposalsThisMonth(p.id)]);
   const remaining = Math.max(0, PROPOSALS_PER_MONTH - sent);
   return (
@@ -42,17 +44,36 @@ export default async function Page({ searchParams }: { searchParams: Promise<{ o
           <>
             <p className="hint">{t(remaining > 1 ? "Encore {n} propositions possibles sur 30 jours." : "Encore {n} proposition possible sur 30 jours.", { n: remaining })}</p>
             <ProposalForm
-              orgs={orgs.map((o) => ({
-                id: o.id,
-                name: o.name,
-                kind: t(ORG_KIND_LABEL[o.kind]),
-                // Secteur et domaines, sans répéter le type (« Société savante · Société savante ») ni un même mot.
-                detail: [...new Map([o.sector ? t(o.sector) : null, ...o.areas.slice(0, 2).map((a) => t(a))].filter((x): x is string => !!x && x.toLowerCase() !== ORG_KIND_LABEL[o.kind].toLowerCase()).map((x) => [x.toLowerCase(), x])).values()].join(" · "),
-                logo: logoSrc(o),
-                pending: awaiting.has(o.id),
-              }))}
+              orgs={[
+                // Groupe (plusieurs entités) : un seul choix ; l'entité de votre pays et le bon interlocuteur la reçoivent.
+                ...[...new Map(orgs.filter((o) => o.group).map((o) => [o.group!.id, o.group!])).values()].map((g) => {
+                  const ents = orgs.filter((o) => o.groupId === g.id);
+                  return {
+                    id: `group:${g.id}`,
+                    name: g.name,
+                    kind: t(ents.length > 1 ? "Groupe · {n} entités" : "Groupe · {n} entité", { n: ents.length }),
+                    detail: t("transmis à l'entité de votre pays"),
+                    logo: logoSrc(ents[0]),
+                    // Une proposition à la fois par entité : celle qui recevrait la nouvelle (pays de l'expert).
+                    pending: (() => { const e = pickEntity(ents, { country: p.country }); return !!e && awaiting.has(e.id); })(),
+                    brands: [...new Set(ents.flatMap((e) => e.brands))],
+                  };
+                }),
+                ...orgs.filter((o) => !o.group).map((o) => ({
+                  id: o.id,
+                  name: o.name,
+                  kind: t(ORG_KIND_LABEL[o.kind]),
+                  // Secteur et domaines, sans répéter le type (« Société savante · Société savante ») ni un même mot.
+                  detail: [...new Map([o.sector ? t(o.sector) : null, ...o.areas.slice(0, 2).map((a) => t(a))].filter((x): x is string => !!x && x.toLowerCase() !== ORG_KIND_LABEL[o.kind].toLowerCase()).map((x) => [x.toLowerCase(), x])).values()].join(" · "),
+                  logo: logoSrc(o),
+                  pending: awaiting.has(o.id),
+                  brands: o.brands,
+                })),
+              ].sort((a, b) => a.name.localeCompare(b.name, "fr"))}
+              defaultTopic={sp.sujet && isTopic(sp.sujet) ? sp.sujet : undefined}
               types={COLLAB_TYPES}
-              preselected={preselected}
+              // Une entité d'un groupe désignée dans l'adresse : c'est le groupe qui est proposé (aiguillage par pays).
+              preselected={[...new Set(preselected.map((id) => { const g = orgs.find((o) => o.id === id)?.groupId; return g ? `group:${g}` : id; }))]}
               defaultFee={p.dayRateCents != null ? String(p.dayRateCents / 100) : ""}
               defaultArea={p.specialty ?? ""}
               upload={storageEnabled()}

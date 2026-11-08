@@ -44,6 +44,7 @@ model User {
   practitioner  PractitionerProfile?
   memberships   Membership[]
   registrations Registration[]
+  waitlist      WaitlistEntry[]
   messages      Message[]
   rfqMessages   RfqMessage[]
   supplierReviews SupplierReview[]
@@ -53,6 +54,8 @@ model User {
   invitationsAccepted Invitation[] @relation("acceptedBy")
   follows             Follow[]
   authTokens          AuthToken[]
+  abstracts           Abstract[]
+  reports             Report[]
 }
 
 enum AuthTokenPurpose {
@@ -121,6 +124,9 @@ model PractitionerProfile {
   // Code postal d'exercice (facultatif) : région dans les statistiques.
   postalCode    String?
   hospital      String?
+  // Agent public (praticien hospitalier, hospitalo-universitaire, autre agent d'un établissement public) : une
+  // collaboration rémunérée suppose l'autorisation de cumul de l'employeur, transmise avec la convention (R.1453-14 CSP).
+  publicAgent   Boolean  @default(false)
   specialty     String?
   subspecialty  String?
   languages     String[]
@@ -204,6 +210,11 @@ model ExpertProposal {
   logistics       String?
   feeCents        Int?                // honoraires souhaités (total HT)
   units           Float?
+  // Sujet (aiguillage vers le bon canal de l'organisation) ; idée de produit : conditions de soumission acceptées,
+  // accord de confidentialité demandé avant de détailler.
+  topic           String?
+  ipAckAt         DateTime?
+  ndaRequested    Boolean             @default(false)
   createdAt       DateTime            @default(now())
 
   projects Project[]
@@ -324,6 +335,11 @@ model Organization {
   dpaVersion         String?
   dpaAcceptedAt      DateTime?
   dpaAcceptedById    String?
+  // Organisme de formation (ou société savante qui forme) : numéro de déclaration d'activité, certificat Qualiopi
+  // (numéro et certificateur), référent handicap. Repris sur les fiches de formation et les attestations.
+  nda                String?
+  qualiopi           String?
+  handicapContact    String?
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
 
@@ -350,6 +366,43 @@ model Organization {
   rfqMessages      RfqMessage[]
   followers        Follow[]
   agencyEvents     Event[]       @relation("agencyEvents")
+  // Partenariats d'événements (congrès d'une société savante, d'une association) proposés à l'organisation.
+  eventPartnerships EventPartner[]
+  // Groupe (plusieurs entités dans le monde) et périmètre de l'entité : pays couverts (vide : siège, tous pays),
+  // marques ; canaux de contact par sujet.
+  groupId          String?
+  group            OrgGroup?        @relation(fields: [groupId], references: [id], onDelete: SetNull)
+  coveredCountries String[]         @default([])
+  brands           String[]         @default([])
+  channels         ContactChannel[]
+}
+
+/** Groupe d'organisations (industriel présent dans plusieurs pays) : ses entités sont rattachées par l'équipe KolBase. */
+model OrgGroup {
+  id        String         @id @default(cuid())
+  name      String
+  about     String?
+  createdAt DateTime       @default(now())
+  entities  Organization[]
+}
+
+/**
+ * Canal d'une organisation pour un sujet (formation, recherche clinique, innovation…) : membre responsable, suppléant,
+ * délai de réponse, conditions de soumission d'une idée. Les propositions des experts y sont aiguillées.
+ */
+model ContactChannel {
+  id             String       @id @default(cuid())
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  topic          String
+  ownerId        String
+  backupId       String?
+  responseDays   Int          @default(10)
+  ipPolicy       String?
+  createdAt      DateTime     @default(now())
+  projects       Project[]
+
+  @@unique([organizationId, topic])
 }
 
 // Invitation d'un membre par lien (jeton à usage unique, stocké haché).
@@ -466,9 +519,17 @@ model Project {
   plannedAt        DateTime?
   submittedAt      DateTime?
   reviewReminderAt DateTime?
+  // Contrat-cadre : plusieurs prestations d'un même type sur une période (douze mois au plus), dans la limite des
+  // unités prévues à la convention ; chaque mission réalisée est consignée.
+  framework       Boolean       @default(false)
+  periodEnd       DateTime?
   // Copie d'un projet proposé par un expert (envoyé à plusieurs organisations, chacune a la sienne).
   proposalId      String?
   proposal        ExpertProposal? @relation(fields: [proposalId], references: [id], onDelete: SetNull)
+  // Canal de l'organisation qui reçoit la proposition (sujet, responsable) et réponse attendue (délai du canal).
+  channelId       String?
+  channel         ContactChannel? @relation(fields: [channelId], references: [id], onDelete: SetNull)
+  responseDue     DateTime?
   createdAt       DateTime      @default(now())
   updatedAt       DateTime      @updatedAt
 
@@ -483,6 +544,61 @@ model Project {
 
   @@index([organizationId])
   @@index([proposalId])
+}
+
+/**
+ * Note de frais d'un expert (frais réels sur justificatif : transport, hôtel, repas) : déposée par l'expert,
+ * acceptée ou refusée par l'organisation, puis remboursée. Les frais remboursés sont des avantages déclarés avec
+ * la convention (Transparence Santé ; betransparent.be pour un expert exerçant en Belgique).
+ */
+model ExpertExpense {
+  id              String        @id @default(cuid())
+  projectExpertId String
+  projectExpert   ProjectExpert @relation(fields: [projectExpertId], references: [id], onDelete: Cascade)
+  category        String        // transport, hebergement, repas, autre
+  label           String
+  date            DateTime
+  amountCents     Int           // TTC
+  documentId      String?       // justificatif (Document de nature JUSTIFICATIF)
+  status          String        @default("submitted") // submitted, approved, rejected, paid
+  decidedById     String?
+  decidedAt       DateTime?
+  decisionNote    String?
+  paidAt          DateTime?
+  createdAt       DateTime      @default(now())
+
+  @@index([projectExpertId])
+}
+
+/** Billets et hébergement d'un expert réservés par l'organisation (visible de l'expert, envoyé par e-mail). */
+model ExpertTravel {
+  projectExpertId String        @id
+  projectExpert   ProjectExpert @relation(fields: [projectExpertId], references: [id], onDelete: Cascade)
+  hotel           String?
+  hotelRef        String?
+  checkIn         DateTime?
+  checkOut        DateTime?
+  roomType        String?
+  outbound        String?
+  returnTrip      String?
+  ticketRef       String?
+  notes           String?
+  sentAt          DateTime?
+  updatedAt       DateTime      @updatedAt
+}
+
+/** Mission réalisée par un expert dans le cadre d'un contrat-cadre (date, objet, unités consommées). */
+model FrameworkMission {
+  id              String        @id @default(cuid())
+  projectExpertId String
+  projectExpert   ProjectExpert @relation(fields: [projectExpertId], references: [id], onDelete: Cascade)
+  date            DateTime
+  label           String
+  units           Float
+  createdById     String?
+  createdAt       DateTime      @default(now())
+
+  @@index([projectExpertId])
 }
 
 // Support (diaporama, article, vidéo…) soumis à relecture médico-réglementaire.
@@ -562,6 +678,9 @@ model ProjectExpert {
   documents Document[]
   signature ConventionSignature?
   feeNote   FeeNote?
+  expenses  ExpertExpense[]
+  travel    ExpertTravel?
+  missions  FrameworkMission[]
 
   @@unique([projectId, practitionerId])
   @@index([practitionerId])
@@ -597,6 +716,10 @@ model ConventionSignature {
 enum DocumentKind {
   CONVENTION_SIGNEE
   PIECE
+  // Autorisation de cumul d'activités (ou accusé de la déclaration) d'un expert agent public.
+  AUTORISATION_CUMUL
+  // Justificatif d'une note de frais d'expert (billet, facture d'hôtel, ticket de repas).
+  JUSTIFICATIF
 }
 
 model Document {
@@ -689,17 +812,41 @@ model Event {
   program          String?      // programme scientifique (déroulé horaire), affiché sur la page publique
   // Lien de connexion (visioconférence, https) des événements en ligne ou hybrides : communiqué aux seuls inscrits.
   onlineUrl        String?
+  // Belgique : visa Mdeon (manifestation de plusieurs jours ou avec nuitée, hospitalité offerte à des praticiens
+  // exerçant en Belgique). Sans numéro, ces praticiens s'inscrivent sans hospitalité.
+  mdeonVisa        String?
+  mdeonVisaAt      DateTime?
+  // Adresse postale du lieu (rue et numéro), en plus du nom du lieu, du code postal et de la ville.
+  address          String?
+  // Sur invitation : hors de l'agenda public, page et inscription réservées aux invités (comité, atelier fermé…).
+  inviteOnly       Boolean      @default(false)
+  // Congrès d'un tiers (ADF, société savante) auquel l'organisation invite des praticiens : son organisateur et sa page.
+  hostedBy         String?
+  hostedUrl        String?
   // Agence prestataire mandatée : ses membres (rôle Prestataire) ne voient que les événements confiés.
   agencyId         String?
   agency           Organization? @relation("agencyEvents", fields: [agencyId], references: [id])
   // Événement annulé (avec des inscrits) : lisible à son adresse avec la mention, hors de l'agenda, sans inscription.
   cancelledAt      DateTime?
   cancelReason     String?
+  // Appel à communications (congrès) : ouvert jusqu'à cette date, thèmes proposés.
+  abstractsDeadline DateTime?
+  abstractTopics    String[]     @default([])
   createdAt        DateTime     @default(now())
   updatedAt        DateTime     @updatedAt
 
   benefits      EventBenefit[]
   registrations Registration[]
+  waitlist      WaitlistEntry[]
+  messages      EventMessage[]
+  invites       EventInvite[]
+  budgetLines   EventBudgetLine[]
+  training      TrainingSheet?
+  sessions      EventSession[]
+  rooms         EventRoom[]
+  programItems  ProgramItem[]
+  partners      EventPartner[]
+  abstracts     Abstract[]
   surveys       SurveyResponse[]
   serviceOrders ServiceOrder[]
   rfqs          Rfq[]
@@ -722,6 +869,15 @@ model Rfq {
   city           String?
   headcount      Int?
   needs          String
+  // Questions propres à la catégorie (format, configuration, nuits, trajets…), voir supplier-profiles.
+  details        Json         @default("{}")
+  // Dates de la prestation (à défaut, celles de l'événement) : une demande sans événement en a besoin pour être chiffrée.
+  serviceStart   DateTime?
+  serviceEnd     DateTime?
+  // Nombre définitif confirmé au prestataire retenu (traiteur, hôtel, transport, lieu), avec la date et l'auteur.
+  finalHeadcount   Int?
+  finalHeadcountAt DateTime?
+  finalHeadcountById String?
   deadline       DateTime?
   status         RfqStatus    @default(draft)
   sentAt         DateTime?
@@ -793,6 +949,12 @@ model Quote {
   ttcCents    Int?
   validUntil  DateTime?
   conditions  String?
+  // Conditions structurées : acompte (% du TTC) et barème d'annulation (sans frais jusqu'à J-x, pourcentage dû
+  // entre J-x et J-y, totalité due à moins de J-y).
+  depositPct     Int?
+  cancelFreeDays Int?
+  cancelMidPct   Int?
+  cancelFullDays Int?
   fileKey     String?
   fileName    String?
   revision    Int          @default(1)
@@ -845,13 +1007,109 @@ model Registration {
   sourceOrder     ServiceOrder? @relation(fields: [sourceOrderId], references: [id], onDelete: SetNull)
   // Inscription annulée par l'annulation de l'événement (l'annulation par la personne inscrite la supprime).
   cancelledAt     DateTime?
+  // Besoins déclarés à l'inscription (facultatifs, avec l'accord explicite de la personne : données de santé ou
+  // révélant des convictions) : régime alimentaire, allergies, accessibilité ou adaptation. Transmis à l'organisateur
+  // et à ses prestataires pour l'événement, effacés 30 jours après sa fin.
+  diet            String?
+  allergies       String?
+  needs           String?
+  needsConsentAt  DateTime?
+  // Évaluation des acquis (formation) par l'organisateur : acquis, partiel, non_acquis.
+  assessment      String?
+  assessedAt      DateTime?
 
-  benefits RegistrationBenefit[]
-  survey   SurveyResponse?
+  benefits    RegistrationBenefit[]
+  survey      SurveyResponse?
+  travel      RegistrationTravel?
+  attendances Attendance[]
 
   @@unique([eventId, userId])
   @@index([userId])
   @@index([sourceOrderId])
+}
+
+/** Liste d'attente d'un événement complet : prévenue dans l'ordre quand une place se libère (place non réservée). */
+model WaitlistEntry {
+  id         String    @id @default(cuid())
+  eventId    String
+  event      Event     @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  userId     String
+  user       User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  createdAt  DateTime  @default(now())
+  notifiedAt DateTime?
+
+  @@unique([eventId, userId])
+  @@index([eventId, createdAt])
+}
+
+/** Invitation nominative à un événement sur invitation : lien à usage personnel (jeton stocké haché), relance, réponse. */
+model EventInvite {
+  id          String    @id @default(cuid())
+  eventId     String
+  event       Event     @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  email       String
+  firstName   String?
+  lastName    String?
+  // Compte rattaché (inscription faite depuis l'invitation, ou adresse d'un compte existant).
+  userId      String?
+  tokenHash   String    @unique
+  invitedAt   DateTime  @default(now())
+  // Envoi de l'invitation (à l'ajout, ou à la publication pour un événement encore en brouillon).
+  sentAt      DateTime?
+  remindedAt  DateTime?
+  declinedAt  DateTime?
+  createdById String?
+
+  @@unique([eventId, email])
+  @@index([eventId])
+}
+
+/**
+ * Voyage et hébergement d'un participant (nuitée, transport acceptés) : demandes du participant, puis réservations
+ * de l'organisateur ou de son agence ; carnet de voyage envoyé au participant, liste des chambres pour l'hôtel.
+ */
+model RegistrationTravel {
+  registrationId String       @id
+  registration   Registration @relation(fields: [registrationId], references: [id], onDelete: Cascade)
+  departureCity  String?
+  checkIn        DateTime?
+  checkOut       DateTime?
+  roomType       String?      // single, double
+  hotel          String?
+  hotelRef       String?
+  outbound       String?
+  returnTrip     String?
+  ticketRef      String?
+  notes          String?
+  sentAt         DateTime?
+  updatedAt      DateTime     @updatedAt
+}
+
+/** Budget d'un événement par poste (catégorie de prestataire ou autre) : prévu, face aux devis retenus. */
+model EventBudgetLine {
+  id           String   @id @default(cuid())
+  eventId      String
+  event        Event    @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  category     String
+  label        String
+  plannedCents Int
+  createdAt    DateTime @default(now())
+
+  @@index([eventId])
+}
+
+/** Message de l'organisateur aux inscrits d'un événement (envoyé par e-mail, gardé en historique). */
+model EventMessage {
+  id         String   @id @default(cuid())
+  eventId    String
+  event      Event    @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  authorId   String
+  subject    String
+  body       String
+  recipients Int
+  createdAt  DateTime @default(now())
+
+  @@index([eventId, createdAt])
 }
 
 model RegistrationBenefit {
@@ -1011,10 +1269,51 @@ model SupplierReview {
   author     User         @relation(fields: [authorId], references: [id])
   rating     Int
   comment    String?
+  // Avis masqué par l'équipe KolBase (signalement fondé) : ni affiché, ni compté ; motif communiqué à son auteur.
+  hiddenAt     DateTime?
+  hiddenReason String?
   createdAt  DateTime     @default(now())
 
   @@index([supplierId])
   @@index([clientId])
+}
+
+/**
+ * Signalement d'un contenu (registre tenu par l'équipe KolBase) : cible, motif, auteur du signalement (compte ou
+ * adresse), décision motivée (contenu retiré ou masqué, sans suite), communiquée à l'auteur du signalement et du contenu.
+ */
+model Report {
+  id            String    @id @default(cuid())
+  targetType    String // expert, organisation, evenement, avis
+  targetId      String
+  targetLabel   String
+  reason        String // illicite, inexact, deontologie, donnees, autre
+  details       String
+  reporterId    String?
+  reporter      User?     @relation(fields: [reporterId], references: [id], onDelete: SetNull)
+  reporterEmail String?
+  status        String    @default("open") // open, closed
+  decision      String? // retire, sans_suite
+  decisionNote  String?
+  handledById   String?
+  handledAt     DateTime?
+  createdAt     DateTime  @default(now())
+
+  @@index([status, createdAt])
+  @@index([targetType, targetId])
+}
+
+/** Journal des e-mails envoyés par KolBase, sans leur contenu : destinataire, objet, statut ; conservé 90 jours. */
+model EmailLog {
+  id        String   @id @default(cuid())
+  to        String
+  subject   String
+  status    String // sent, failed, not_configured, reserved
+  error     String?
+  createdAt DateTime @default(now())
+
+  @@index([to, createdAt])
+  @@index([createdAt])
 }
 
 /** Logo d'une organisation (PNG, JPEG ou WebP, 500 Ko au plus), conservé en base pour ne pas dépendre du stockage S3. */
@@ -1034,6 +1333,157 @@ model OrganizationLogo {
   updatedAt      DateTime     @updatedAt
 }
 
+/**
+ * Fiche d'une action de formation (information du public, Qualiopi) : objectifs, public, prérequis, durée, modalités
+ * pédagogiques et d'évaluation, accès et délai, accessibilité, tarif et financement, référence DPC, contact.
+ */
+model TrainingSheet {
+  eventId       String   @id
+  event         Event    @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  objectives    String
+  audience      String?
+  prerequisites String?
+  hours         Float?
+  methods       String?
+  assessment    String?
+  accessDelay   String?
+  accessibility String?
+  price         String?
+  funding       String[] @default([])
+  fundingNote   String?
+  dpcRef        String?
+  contact       String?
+  updatedAt     DateTime @updatedAt
+}
+
+/** Salle d'un congrès (programme en sessions parallèles). */
+model EventRoom {
+  id       String        @id @default(cuid())
+  eventId  String
+  event    Event         @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  name     String
+  capacity Int?
+  position Int           @default(0)
+  items    ProgramItem[]
+
+  @@index([eventId])
+}
+
+/** Séance du programme : conférence, atelier, symposium d'un partenaire, communications, pause ; salle et horaires. */
+model ProgramItem {
+  id         String        @id @default(cuid())
+  eventId    String
+  event      Event         @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  roomId     String?
+  room       EventRoom?    @relation(fields: [roomId], references: [id], onDelete: SetNull)
+  startsAt   DateTime
+  endsAt     DateTime
+  kind       String
+  title      String
+  speakers   String?
+  partnerId  String?
+  partner    EventPartner? @relation(fields: [partnerId], references: [id], onDelete: SetNull)
+  abstractId String?       @unique
+  abstract   Abstract?     @relation(fields: [abstractId], references: [id], onDelete: SetNull)
+  createdAt  DateTime      @default(now())
+
+  @@index([eventId, startsAt])
+}
+
+/**
+ * Partenaire d'un événement (industriel, autre organisme) : niveau, montant HT, contreparties (stand, symposium,
+ * logo…). Proposé à une organisation présente sur KolBase, il est signé ou décliné par elle ; sinon suivi à la main.
+ */
+model EventPartner {
+  id             String        @id @default(cuid())
+  eventId        String
+  event          Event         @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  organizationId String?
+  organization   Organization? @relation(fields: [organizationId], references: [id], onDelete: SetNull)
+  name           String
+  level          String
+  amountCents    Int?
+  counterparts   String?
+  status         String        @default("draft") // draft, proposed, signed, declined, paid
+  proposedAt     DateTime?
+  signedAt       DateTime?
+  signedById     String?
+  declinedAt     DateTime?
+  declineNote    String?
+  paidAt         DateTime?
+  showLogo       Boolean       @default(true)
+  createdAt      DateTime      @default(now())
+  items          ProgramItem[]
+
+  @@index([eventId])
+  @@index([organizationId])
+}
+
+/** Communication soumise à l'appel d'un congrès (résumé), relue par le comité, retenue ou non. */
+model Abstract {
+  id             String           @id @default(cuid())
+  eventId        String
+  event          Event            @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  userId         String
+  user           User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  title          String
+  authors        String
+  body           String
+  topic          String?
+  format         String // oral, poster, indifferent
+  status         String           @default("submitted") // submitted, accepted, rejected, withdrawn
+  acceptedFormat String?
+  decisionNote   String?
+  decidedAt      DateTime?
+  decidedById    String?
+  createdAt      DateTime         @default(now())
+  reviews        AbstractReview[]
+  item           ProgramItem?
+
+  @@index([eventId])
+  @@index([userId])
+}
+
+/** Avis d'un relecteur du comité sur une communication (note de 1 à 5). */
+model AbstractReview {
+  id         String   @id @default(cuid())
+  abstractId String
+  abstract   Abstract @relation(fields: [abstractId], references: [id], onDelete: Cascade)
+  reviewerId String
+  score      Int
+  comment    String?
+  createdAt  DateTime @default(now())
+
+  @@unique([abstractId, reviewerId])
+}
+
+/** Demi-journée d'un événement de plusieurs séquences : émargement à chacune. */
+model EventSession {
+  id          String       @id @default(cuid())
+  eventId     String
+  event       Event        @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  startsAt    DateTime
+  endsAt      DateTime
+  attendances Attendance[]
+
+  @@index([eventId, startsAt])
+}
+
+/** Émargement d'un participant à une demi-journée : signé par lui (connecté) ou relevé par l'organisateur. */
+model Attendance {
+  id             String       @id @default(cuid())
+  sessionId      String
+  session        EventSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  registrationId String
+  registration   Registration @relation(fields: [registrationId], references: [id], onDelete: Cascade)
+  signedAt       DateTime     @default(now())
+  method         String // self, team
+  byId           String?
+
+  @@unique([sessionId, registrationId])
+  @@index([registrationId])
+}
+
 // Questionnaire de satisfaction d'un participant (une réponse par inscription ; anonyme pour l'organisateur).
 model SurveyResponse {
   id             String       @id @default(cuid())
@@ -1044,6 +1494,9 @@ model SurveyResponse {
   overall        Int          // note globale, 1 à 5
   content        Int?         // contenu scientifique
   logistics      Int?         // organisation et accueil
+  // Formation : auto-positionnement sur les objectifs, avant et après (1 à 5).
+  selfBefore     Int?
+  selfAfter      Int?
   comment        String?
   createdAt      DateTime     @default(now())
 

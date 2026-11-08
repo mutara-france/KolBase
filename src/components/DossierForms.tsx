@@ -84,7 +84,7 @@ export function VersionForm({ materialId }: { materialId: string }) {
 }
 
 /** Dépôt d'un document de dossier (pièce, ou convention signée d'un expert). En signature, « Convention signée » d'office. */
-export function DocumentUploadForm({ projectId, experts, ownLinkId, defaultKind = "PIECE" }: { projectId: string; experts: { id: string; name: string }[]; ownLinkId?: string; defaultKind?: "PIECE" | "CONVENTION_SIGNEE" }) {
+export function DocumentUploadForm({ projectId, experts, ownLinkId, defaultKind = "PIECE", cumul = false }: { projectId: string; experts: { id: string; name: string }[]; ownLinkId?: string; defaultKind?: "PIECE" | "CONVENTION_SIGNEE" | "AUTORISATION_CUMUL"; cumul?: boolean }) {
   const [state, action, pending] = useActionState(uploadDocument, undefined);
   const t = useT();
   return (
@@ -96,6 +96,7 @@ export function DocumentUploadForm({ projectId, experts, ownLinkId, defaultKind 
           <select name="kind" defaultValue={defaultKind}>
             <option value="PIECE">{t("Pièce du dossier")}</option>
             <option value="CONVENTION_SIGNEE">{t("Convention signée")}</option>
+            {cumul && <option value="AUTORISATION_CUMUL">{t("Autorisation de cumul (agent public)")}</option>}
           </select>
         </label>
         {ownLinkId ? <input type="hidden" name="linkId" value={ownLinkId} /> : (
@@ -149,9 +150,10 @@ export function RefreshSignatureForm({ linkId }: { linkId: string }) {
 // ─── Modification du dossier (avant la signature) ──────────────────────────
 
 /** Objet du dossier : titre, domaine thérapeutique, objet et déroulé. */
-export function ProjectObjectForm({ orgId, projectId, title, area, description, planned = "" }: Hidden & { title: string; area: string; description: string; planned?: string }) {
+export function ProjectObjectForm({ orgId, projectId, title, area, description, planned = "", framework = false, periodEnd = "" }: Hidden & { title: string; area: string; description: string; planned?: string; framework?: boolean; periodEnd?: string }) {
   const t = useT();
   const [state, action, pending] = useActionState(updateProjectObject, undefined);
+  const [cadre, setCadre] = useState(framework);
   return (
     <ActionForm action={action} className="form">
       <Notice state={state} />
@@ -162,6 +164,16 @@ export function ProjectObjectForm({ orgId, projectId, title, area, description, 
         <label className="short">{t("Intervention prévue")}<input name="plannedAt" type="date" defaultValue={planned} /></label>
       </div>
       <label>{t("Objet et déroulé")}<textarea name="description" rows={4} defaultValue={description} /></label>
+      <label className="check">
+        <input type="checkbox" name="framework" checked={cadre} onChange={(e) => setCadre(e.target.checked)} />
+        {t("Contrat-cadre : plusieurs prestations de même nature sur une période (douze mois au plus)")}
+      </label>
+      {cadre && (
+        <label className="short">{t("Fin de la période")}
+          <input name="periodEnd" type="date" required defaultValue={periodEnd} />
+          <span className="hint">{t("La période commence à la date d'intervention prévue. Les unités de chaque convention fixent le volume ; chaque mission réalisée est consignée.")}</span>
+        </label>
+      )}
       <button className="btn ghost small" disabled={pending}>{pending ? t("Enregistrement…") : t("Mettre à jour l'objet")}</button>
     </ActionForm>
   );

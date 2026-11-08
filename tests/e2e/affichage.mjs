@@ -50,7 +50,7 @@ const PROFILES = {
   ],
   "anne.chevalier@demo.kolbase.local": [
     "/admin", "/admin/organisations", "/admin/organisations/demo-org-dentalys", "/admin/comptes", "/admin/comptes/demo-u-julien", "/admin/identites",
-    "/admin/journal", "/admin/abonnements", "/admin/services", "/admin/actualites", "/admin/exploitation", "/admin/actualites/nouveau", "/admin/actualites/art-lettre-information", "/admin/services/lettre",
+    "/admin/journal", "/admin/signalements", "/admin/emails", "/admin/abonnements", "/admin/services", "/admin/actualites", "/admin/exploitation", "/admin/actualites/nouveau", "/admin/actualites/art-lettre-information", "/admin/services/lettre",
   ],
 };
 const VIEWPORTS = [

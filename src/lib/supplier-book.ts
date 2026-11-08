@@ -1,21 +1,21 @@
 import "server-only";
 import { db } from "@/lib/db";
 import { quoteTtc } from "@/lib/quotes";
+import { ALL_CAPACITY_KEYS } from "@/lib/supplier-profiles";
 
 export const PHOTO_MAX_BYTES = 800 * 1024;
 /** Réalisations en images de la page d'un prestataire. */
 export const PHOTO_MAX = 12;
 /** Bannière de la page du prestataire : une image large (1 600 × 400 px conseillés). */
 export const BANNER_MAX_BYTES = 1536 * 1024;
-export const EQUIPMENT = ["Vidéoprojecteur et écran", "Sonorisation et micros", "Visioconférence", "Wi-Fi", "Captation vidéo", "Salles de sous-commission", "Restauration sur place", "Parking", "Hébergement sur place"] as const;
 export const OFFER_UNITS = { personne: "par personne", forfait: "forfait", jour: "par jour", nuit: "par nuit" } as const;
-export type Capacities = { seats?: number; cocktail?: number; banquet?: number; rooms?: number };
-export const CAPACITY_LABEL: Record<keyof Capacities, string> = { seats: "places assises (conférence)", cocktail: "personnes en cocktail", banquet: "couverts assis", rooms: "chambres" };
+/** Capacités par métier (voir supplier-profiles) : places, couverts, chambres, véhicules… */
+export type Capacities = Record<string, number>;
 
 export function readCapacities(raw: unknown): Capacities {
   const o = raw && typeof raw === "object" ? (raw as Record<string, unknown>) : {};
   const out: Capacities = {};
-  for (const k of Object.keys(CAPACITY_LABEL) as (keyof Capacities)[]) {
+  for (const k of ALL_CAPACITY_KEYS) {
     const v = Number(o[k]);
     if (Number.isInteger(v) && v > 0 && v < 100000) out[k] = v;
   }
@@ -45,7 +45,8 @@ export async function supplierBook(supplierId: string, withMarket = false) {
       where: { supplierId },
       include: { rfq: { select: { category: true, city: true, headcount: true, sentAt: true, event: { select: { startsAt: true, city: true, typeId: true } } } } },
     }),
-    db.supplierReview.findMany({ where: { supplierId }, include: { client: { select: { name: true } } }, orderBy: { createdAt: "desc" } }),
+    // Avis masqués par l'équipe KolBase (signalement fondé) : ni affichés, ni comptés.
+    db.supplierReview.findMany({ where: { supplierId, hiddenAt: null }, include: { client: { select: { name: true } } }, orderBy: { createdAt: "desc" } }),
   ]);
   const answered = quotes.length;
   const delays = quotes.filter((q) => q.rfq.sentAt).map((q) => (q.createdAt.getTime() - q.rfq.sentAt!.getTime()) / 36e5).filter((h) => h >= 0);

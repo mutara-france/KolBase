@@ -1,6 +1,7 @@
 import { db } from "@/lib/db";
 import { requireMembership } from "@/lib/orgs";
 import { EVENT_MANAGER_ROLES, eventEnded, eventScope, formatDate, formatTime, toCSV } from "@/lib/events";
+import { dietLabel } from "@/lib/registration-needs";
 
 export async function GET(_: Request, { params }: { params: Promise<{ id: string; eventId: string }> }) {
   const { id, eventId } = await params;
@@ -16,7 +17,9 @@ export async function GET(_: Request, { params }: { params: Promise<{ id: string
   const pointed = event.registrations.some((r) => r.checkedInAt);
   const ended = eventEnded(event);
   const presence = (r: (typeof event.registrations)[number]) => (r.checkedInAt ? "présent" : ended && pointed ? "absent" : "");
-  const rows: unknown[][] = [["Nom", "Prénom", "E-mail", "Profession", "Structure", "Prestations acceptées", "Valeur (€)", "Inscrit le", "Présence", "Arrivée", "Déclaré", "Référence"]];
+  // Besoins (régime, allergies, accessibilité) : réservés à l'équipe qui organise, pas à la conformité seule.
+  const withNeeds = !readOnly;
+  const rows: unknown[][] = [["Nom", "Prénom", "E-mail", "Profession", "Structure", "Prestations acceptées", "Valeur (€)", "Inscrit le", "Présence", "Arrivée", "Déclaré", "Référence", ...(withNeeds ? ["Régime", "Allergies", "Accessibilité"] : [])]];
   for (const r of event.registrations) {
     rows.push([
       r.user.lastName, r.user.firstName, r.user.email, r.profession, r.structure,
@@ -24,6 +27,7 @@ export async function GET(_: Request, { params }: { params: Promise<{ id: string
       (r.benefits.reduce((s, b) => s + b.valueCents, 0) / 100).toFixed(2).replace(".", ","),
       formatDate(r.createdAt), presence(r), r.checkedInAt ? `${formatDate(r.checkedInAt)} ${formatTime(r.checkedInAt)}` : "",
       r.declared ? "oui" : "non", r.declarationRef,
+      ...(withNeeds ? [dietLabel(r.diet) ?? "", r.allergies ?? "", r.needs ?? ""] : []),
     ]);
   }
   return new Response(toCSV(rows), {

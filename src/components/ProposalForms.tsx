@@ -9,22 +9,26 @@ import { Avatar } from "@/components/Avatar";
 import { useLocale, useT } from "@/components/I18nProvider";
 import { intlLocale } from "@/lib/i18n/core";
 import { normalize } from "@/lib/search";
+import { DEFAULT_IP_POLICY, defaultTopic, TOPICS } from "@/lib/routing";
 
 type CType = { id: string; label: string; category: string; unit: string; fmv: readonly number[] };
-export type RecipientOrg = { id: string; name: string; kind: string; detail: string; logo: string | null; pending: boolean };
+export type RecipientOrg = { id: string; name: string; kind: string; detail: string; logo: string | null; pending: boolean; brands?: string[] };
 
 /**
  * Projet proposé par l'expert : la fiche (objectif, public, calendrier, honoraires souhaités face aux repères),
  * une pièce jointe si le stockage est configuré, puis une à cinq organisations destinataires.
  */
-export function ProposalForm({ orgs, types, preselected, defaultFee, defaultArea, upload, max }: {
-  orgs: RecipientOrg[]; types: readonly CType[]; preselected: string[]; defaultFee: string; defaultArea: string; upload: boolean; max: number;
+export function ProposalForm({ orgs, types, preselected, defaultFee, defaultArea, upload, max, defaultTopic: topic0 }: {
+  orgs: RecipientOrg[]; types: readonly CType[]; preselected: string[]; defaultFee: string; defaultArea: string; upload: boolean; max: number; defaultTopic?: string;
 }) {
   const [state, action, pending] = useActionState(submitProposal, undefined);
   const t = useT();
   const locale = useLocale();
   const num = (n: number) => n.toLocaleString(intlLocale(locale), { maximumFractionDigits: 0 });
   const [typeId, setTypeId] = useState(types[0].id);
+  // Sujet : suit le type de collaboration tant que l'expert ne l'a pas choisi lui-même.
+  const [topicPicked, setTopicPicked] = useState<string | null>(topic0 ?? null);
+  const topic = topicPicked ?? defaultTopic(types.find((x) => x.id === typeId)!.category);
   const [fee, setFee] = useState(defaultFee);
   const [units, setUnits] = useState("1");
   const [selected, setSelected] = useState<string[]>(preselected.filter((id) => orgs.some((o) => o.id === id && !o.pending)).slice(0, max));
@@ -42,6 +46,8 @@ export function ProposalForm({ orgs, types, preselected, defaultFee, defaultArea
     return orgs.filter((o) => !q || normalize(`${o.name} ${o.kind} ${o.detail}`).includes(q) || selected.includes(o.id));
   }, [orgs, query, selected]);
   const toggle = (id: string, on: boolean) => setSelected((s) => (on ? [...s, id].slice(0, max) : s.filter((x) => x !== id)));
+  // Marques des organisations choisies (groupes) : la proposition va à l'entité de la marque concernée.
+  const brands = [...new Set(orgs.filter((o) => selected.includes(o.id)).flatMap((o) => o.brands ?? []))];
 
   return (
     <ActionForm action={action} className="card form proposal-form">
@@ -119,6 +125,33 @@ export function ProposalForm({ orgs, types, preselected, defaultFee, defaultArea
             );
           })}
         </ul>
+      </fieldset>
+
+      <fieldset className="stack-sm">
+        <legend>{t("Sujet et interlocuteur")}</legend>
+        <div className="row">
+          <label>{t("Sujet")}
+            <select name="topic" value={topic} onChange={(e) => setTopicPicked(e.target.value)}>
+              {TOPICS.map((x) => <option key={x.id} value={x.id}>{t(x.label)}</option>)}
+            </select>
+          </label>
+          {brands.length > 0 && (
+            <label>{t("Marque concernée")}
+              <select name="brand" defaultValue="">
+                <option value="">{t("— toutes —")}</option>
+                {brands.map((b) => <option key={b} value={b}>{b}</option>)}
+              </select>
+            </label>
+          )}
+        </div>
+        <p className="hint" style={{ margin: 0 }}>{t("Chaque organisation transmet votre proposition à la personne en charge de ce sujet ; pour un groupe, à l'entité de votre pays.")}</p>
+        {topic === "innovation" && (
+          <div className="notice stack-xs">
+            <p className="text-sm">{t(DEFAULT_IP_POLICY)}</p>
+            <label className="check text-sm"><input type="checkbox" name="ipAck" value="1" required /> {t("J'ai pris connaissance de ces conditions : ma proposition ne contient pas d'information confidentielle.")}</label>
+            <label className="check text-sm"><input type="checkbox" name="nda" value="1" /> {t("Je demande un accord de confidentialité avant de détailler mon idée.")}</label>
+          </div>
+        )}
       </fieldset>
 
       <label className="check text-sm">

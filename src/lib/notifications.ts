@@ -4,7 +4,7 @@ import { db } from "@/lib/db";
 import { sendMail, type Mail } from "@/lib/mail";
 import { platformAdminEmails } from "@/lib/platform";
 import { drPrefix } from "@/lib/professions";
-import { COMPLIANCE_ROLES, EVENT_ORGANIZER_ROLES, FORMAT_LABEL, formatEUR, type EventChange } from "@/lib/events";
+import { COMPLIANCE_ROLES, EVENT_ORGANIZER_ROLES, eventPlace, FORMAT_LABEL, formatEUR, type EventChange } from "@/lib/events";
 import { de } from "@/lib/elision";
 import { appUrl, eventIcsEntry, toIcs } from "@/lib/ics";
 import { quoteTtc } from "@/lib/quotes";
@@ -12,6 +12,9 @@ import { PLANS } from "@/lib/billing-plans";
 import { rnaAccepted } from "@/lib/org-roles";
 import { supplierCategoryLabel } from "@/lib/suppliers";
 import { fmtDate, fmtEur, intlLocale, isLocale, makeT, type Locale, type T } from "@/lib/i18n";
+import { roomTypeLabel } from "@/lib/travel";
+import { partnerLevelLabel } from "@/lib/congress";
+import { topicLabel } from "@/lib/routing";
 import { collabType, PROJECT_ROLES, SOURCING_ROLES, STATUS_LABEL, type ExpertNotice } from "@/lib/projects";
 import { featuredUntil, orderStats } from "@/lib/services";
 import { conversion, reportParts } from "@/lib/service-report";
@@ -278,6 +281,121 @@ export function notifyConventionDeposited(linkId: string) {
   });
 }
 
+/** Décision du comité sur une communication soumise : l'auteur est prévenu (format retenu, motif éventuel). */
+export function notifyAbstractDecision(abstractId: string) {
+  later(async () => {
+    const a = await db.abstract.findUnique({ where: { id: abstractId }, include: { user: { select: { ...userSelect, firstName: true } }, event: { select: { id: true, title: true, organization: { select: { name: true } } } } } });
+    if (!a || (a.status !== "accepted" && a.status !== "rejected")) return;
+    await send([a.user], (t) => ({
+      subject: a.status === "accepted" ? t("Communication retenue : « {title} »", { title: a.title }) : t("Communication non retenue : « {title} »", { title: a.title }),
+      text: [
+        t("Bonjour {name},", { name: a.user.firstName }),
+        a.status === "accepted"
+          ? t("Le comité de « {event} » ({org}) a retenu votre communication « {title} », en {format}. Le programme précisera le jour, l'heure et la salle.", { event: a.event.title, org: a.event.organization.name, title: a.title, format: a.acceptedFormat === "poster" ? t("poster") : t("communication orale") })
+          : t("Le comité de « {event} » ({org}) n'a pas retenu votre communication « {title} ».", { event: a.event.title, org: a.event.organization.name, title: a.title }),
+        a.decisionNote ? t("Message du comité : {note}", { note: a.decisionNote }) : null,
+      ].filter(Boolean).join("\n\n"),
+      cta: { label: t("Voir mes communications"), href: `/evenements/${a.event.id}/communications` },
+    }));
+  });
+}
+
+/** Convention de partenariat proposée : l'administration et la conformité de l'organisation partenaire répondent. */
+export function notifyPartnershipProposed(partnerId: string) {
+  later(async () => {
+    const p = await db.eventPartner.findUnique({ where: { id: partnerId }, include: { event: { select: { title: true, startsAt: true, organization: { select: { name: true } } } } } });
+    if (!p?.organizationId) return;
+    await send(await members(p.organizationId, ["ADMIN", "CONFORMITE"]), (t, locale) => ({
+      subject: t("Proposition de partenariat : « {title} »", { title: p.event.title }),
+      text: t("Bonjour,\n\n{org} vous propose un partenariat pour « {title} » ({date}) : {level}{amount}.{counterparts}\n\nSignez ou déclinez la convention depuis vos partenariats.", {
+        org: p.event.organization.name, title: p.event.title, date: fmtDate(locale, p.event.startsAt),
+        level: t(partnerLevelLabel(p.level)), amount: p.amountCents != null ? `, ${t("{amount} HT", { amount: fmtEur(locale, p.amountCents) })}` : "",
+        counterparts: p.counterparts ? `\n\n${t("Contreparties : {list}", { list: p.counterparts })}` : "",
+      }),
+      cta: { label: t("Voir la proposition"), href: `/organisations/${p.organizationId}/partenariats` },
+    }));
+  });
+}
+
+/** Réponse du partenaire (signée, déclinée) : l'équipe qui organise l'événement est prévenue. */
+export function notifyPartnershipAnswered(partnerId: string) {
+  later(async () => {
+    const p = await db.eventPartner.findUnique({ where: { id: partnerId }, include: { event: { select: { id: true, title: true, organizationId: true } } } });
+    if (!p || (p.status !== "signed" && p.status !== "declined")) return;
+    await send(await members(p.event.organizationId, EVENT_ORGANIZER_ROLES), (t) => ({
+      subject: p.status === "signed" ? t("Partenariat signé par {name} : « {title} »", { name: p.name, title: p.event.title }) : t("Partenariat décliné par {name} : « {title} »", { name: p.name, title: p.event.title }),
+      text: p.status === "signed"
+        ? t("Bonjour,\n\n{name} a signé la convention de partenariat pour « {title} ».", { name: p.name, title: p.event.title })
+        : `${t("Bonjour,\n\n{name} a décliné la convention de partenariat pour « {title} ».", { name: p.name, title: p.event.title })}${p.declineNote ? `\n\n${t("Motif : {note}", { note: p.declineNote })}` : ""}`,
+      cta: { label: t("Ouvrir l'événement"), href: `/organisations/${p.event.organizationId}/evenements/${p.event.id}#partenaires` },
+    }));
+  });
+}
+
+/** Note de frais déposée par un expert : les interlocuteurs du dossier l'examinent. */
+export function notifyExpertExpenseSubmitted(expenseId: string) {
+  later(async () => {
+    const e = await db.expertExpense.findUnique({ where: { id: expenseId }, include: { projectExpert: { include: linkInclude } } });
+    if (!e) return;
+    const l = e.projectExpert;
+    await send(await projectTeam(l.project), (t, locale) => ({
+      subject: t("Note de frais de {expert} — {project}", { expert: expertName(l.practitioner), project: l.project.title }),
+      text: t("Bonjour,\n\n{expert} a déposé une note de frais pour « {project} » : {label}, {montant} TTC. Examinez-la (justificatif joint) dans l'onglet Frais et voyages du dossier.", { expert: expertName(l.practitioner), project: l.project.title, label: e.label, montant: fmtEur(locale, e.amountCents) }),
+      cta: { label: t("Examiner la note de frais"), href: `/organisations/${l.project.organizationId}/dossiers/${l.projectId}?onglet=frais` },
+    }), l.practitioner.userId);
+  });
+}
+
+/** Note de frais acceptée, refusée (motif) ou remboursée : l'expert est prévenu. */
+export function notifyExpertExpenseDecided(expenseId: string) {
+  later(async () => {
+    const e = await db.expertExpense.findUnique({ where: { id: expenseId }, include: { projectExpert: { include: linkInclude } } });
+    if (!e) return;
+    const l = e.projectExpert;
+    const org = l.project.organization.name;
+    await send([l.practitioner.user], (t, locale) => {
+      const what = { label: e.label, montant: fmtEur(locale, e.amountCents), org, project: l.project.title };
+      return e.status === "paid"
+        ? { subject: t("Frais remboursés — {project}", { project: l.project.title }), text: t("Bonjour,\n\n{org} a remboursé votre note de frais « {label} » ({montant} TTC) pour « {project} ».", what), cta: { label: t("Voir mes frais"), href: `/sollicitations/${l.id}?onglet=frais` } }
+        : e.status === "approved"
+          ? { subject: t("Note de frais acceptée — {project}", { project: l.project.title }), text: t("Bonjour,\n\n{org} a accepté votre note de frais « {label} » ({montant} TTC) pour « {project} » : le remboursement suit.", what), cta: { label: t("Voir mes frais"), href: `/sollicitations/${l.id}?onglet=frais` } }
+          : { subject: t("Note de frais refusée — {project}", { project: l.project.title }), text: `${t("Bonjour,\n\n{org} a refusé votre note de frais « {label} » ({montant} TTC) pour « {project} ».", what)}${e.decisionNote ? `\n\n${t("Motif : {note}", { note: e.decisionNote })}` : ""}`, cta: { label: t("Voir mes frais"), href: `/sollicitations/${l.id}?onglet=frais` } };
+    });
+  });
+}
+
+/** Voyage d'un expert (hôtel, dates, trajets, billets) réservé par l'organisation. */
+export function notifyExpertTravel(linkId: string) {
+  later(async () => {
+    const l = await db.projectExpert.findUnique({ where: { id: linkId }, include: { ...linkInclude, travel: true } });
+    const tr = l?.travel;
+    if (!l || !tr) return;
+    await sendService([l.practitioner.user], (t, locale) => {
+      const day = (d: Date | null) => (d ? d.toLocaleDateString(intlLocale(locale), { timeZone: "Europe/Paris", weekday: "long", day: "numeric", month: "long" }) : null);
+      const lines = [
+        tr.hotel ? t("Hôtel : {hotel}{ref}", { hotel: tr.hotel, ref: tr.hotelRef ? ` (${t("réservation {ref}", { ref: tr.hotelRef })})` : "" }) : null,
+        tr.checkIn ? t("Arrivée : {date}", { date: day(tr.checkIn)! }) : null,
+        tr.checkOut ? t("Départ : {date}", { date: day(tr.checkOut)! }) : null,
+        tr.roomType ? t("Chambre : {type}", { type: t(roomTypeLabel(tr.roomType) ?? tr.roomType) }) : null,
+        tr.outbound ? t("Aller : {trip}", { trip: tr.outbound }) : null,
+        tr.returnTrip ? t("Retour : {trip}", { trip: tr.returnTrip }) : null,
+        tr.ticketRef ? t("Billets : {ref}", { ref: tr.ticketRef }) : null,
+        tr.notes ? tr.notes : null,
+      ].filter(Boolean).join("\n");
+      return {
+        subject: t("Votre voyage — {project}", { project: l.project.title }),
+        text: [
+          t("Bonjour {name},", { name: l.practitioner.user.firstName }),
+          t("{org} a réservé votre voyage pour « {project} » :", { org: l.project.organization.name, project: l.project.title }),
+          lines,
+          t("Vos autres frais (sur justificatif) se déclarent dans l'onglet Frais et voyage de la collaboration."),
+        ].join("\n\n"),
+        cta: { label: t("Voir la collaboration"), href: `/sollicitations/${l.id}?onglet=frais` },
+      };
+    });
+  });
+}
+
 /**
  * Compte d'un expert supprimé : il est retiré des dossiers non signés où il était engagé ou sollicité, et de ses
  * candidatures. L'équipe Projets de chaque organisation concernée est prévenue (nom figé avant l'anonymisation).
@@ -325,11 +443,42 @@ export function notifyCounterAccepted(linkId: string) {
 /** Projet proposé par un expert (une copie par organisation : rien n'indique les autres destinataires). */
 export function notifyProposal(projectId: string) {
   later(async () => {
-    const p = await db.project.findUnique({ where: { id: projectId }, include: { experts: { include: { practitioner: linkInclude.practitioner } } } });
+    const p = await db.project.findUnique({ where: { id: projectId }, include: { experts: { include: { practitioner: linkInclude.practitioner } }, channel: { select: { topic: true } }, _count: { select: { leads: true } } } });
     const e = p?.experts[0];
     if (!p || !e) return;
     const type = collabType(p.typeId)?.label;
-    await send(await members(p.organizationId, SOURCING_ROLES), (t, locale) => ({ subject: t("Projet proposé par {expert} : {title}", { expert: expertName(e.practitioner), title: p.title }), text: [t("Bonjour,"), t("{expert} propose un projet à votre organisation : « {title} »{v}{v2}.", { expert: expertName(e.practitioner), title: p.title, v: type ? ` (${type.toLowerCase()})` : "", v2: e.feeCents != null ? t(", honoraires souhaités : {montant} HT", { montant: fmtEur(locale, e.feeCents) }) : "" }), t("Acceptez-le pour ouvrir le circuit habituel (conformité, convention, signature), ou déclinez-le : l'expert est prévenu de votre réponse.")].join("\n\n"), cta: { label: t("Voir la proposition"), href: `/organisations/${p.organizationId}/dossiers/${p.id}` } }));
+    // Proposition aiguillée vers un canal : son responsable (et son suppléant) ; sinon l'équipe qui sollicite les experts.
+    const to = p._count.leads ? await projectTeam(p) : await members(p.organizationId, SOURCING_ROLES);
+    await send(to, (t, locale) => ({
+      subject: t("Projet proposé par {expert} : {title}", { expert: expertName(e.practitioner), title: p.title }),
+      text: [
+        t("Bonjour,"),
+        t("{expert} propose un projet à votre organisation : « {title} »{v}{v2}.", { expert: expertName(e.practitioner), title: p.title, v: type ? ` (${type.toLowerCase()})` : "", v2: e.feeCents != null ? t(", honoraires souhaités : {montant} HT", { montant: fmtEur(locale, e.feeCents) }) : "" }),
+        p.channel || p.responseDue ? [p.channel ? t("Sujet : {topic}.", { topic: t(topicLabel(p.channel.topic)) }) : null, p.responseDue ? t("Réponse attendue avant le {date}.", { date: fmtDate(locale, p.responseDue) }) : null].filter(Boolean).join(" ") : null,
+        t("Acceptez-le pour ouvrir le circuit habituel (conformité, convention, signature), ou déclinez-le : l'expert est prévenu de votre réponse."),
+      ].filter(Boolean).join("\n\n"),
+      cta: { label: t("Voir la proposition"), href: `/organisations/${p.organizationId}/dossiers/${p.id}` },
+    }));
+  });
+}
+
+/** Proposition transmise à une autre entité du groupe ou à un autre interlocuteur : l'expert est prévenu. */
+export function notifyProposalTransferred(projectId: string, fromOrg: string) {
+  later(async () => {
+    const p = await db.project.findUnique({ where: { id: projectId }, include: { organization: { select: { name: true } }, channel: { select: { topic: true } }, experts: { include: { practitioner: linkInclude.practitioner } } } });
+    const e = p?.experts[0];
+    if (!p || !e) return;
+    await send([e.practitioner.user], (t, locale) => ({
+      subject: t("Votre proposition est transmise : {title}", { title: p.title }),
+      text: [
+        t("Bonjour {name},", { name: e.practitioner.user.firstName }),
+        p.organization.name === fromOrg
+          ? t("{org} a transmis votre proposition « {title} » à la personne en charge de ce sujet{topic}.", { org: fromOrg, title: p.title, topic: p.channel ? ` (${t(topicLabel(p.channel.topic))})` : "" })
+          : t("{from} a transmis votre proposition « {title} » à {org}, l'entité du groupe en charge{topic}.", { from: fromOrg, org: p.organization.name, title: p.title, topic: p.channel ? ` (${t(topicLabel(p.channel.topic))})` : "" }),
+        p.responseDue ? t("Réponse attendue avant le {date}.", { date: fmtDate(locale, p.responseDue) }) : null,
+      ].filter(Boolean).join("\n\n"),
+      cta: { label: t("Voir ma proposition"), href: `/sollicitations/${e.id}` },
+    }));
   });
 }
 
@@ -641,6 +790,20 @@ export function notifyRfqMessage(rfqId: string, supplierId: string, fromSupplier
   });
 }
 
+/** Nombre définitif confirmé au prestataire retenu (traiteur, hôtel, transport, lieu). */
+export function notifyFinalHeadcount(rfqId: string, actorId: string) {
+  later(async () => {
+    const r = await db.rfq.findUnique({ where: { id: rfqId }, include: { organization: { select: { name: true } }, event: { select: { title: true } }, quotes: { where: { status: "retained" }, select: { supplierId: true } } } });
+    const supplierId = r?.quotes[0]?.supplierId;
+    if (!r || !supplierId || r.finalHeadcount == null) return;
+    await send(await supplierTeam(supplierId), (t) => ({
+      subject: t("Nombre définitif : {n} ({org})", { n: r.finalHeadcount!, org: r.organization.name }),
+      text: t("Bonjour,\n\n{org} vous confirme le nombre définitif pour la prestation retenue{event} : {n}.", { org: r.organization.name, event: r.event ? ` (${r.event.title})` : "", n: r.finalHeadcount! }),
+      cta: { label: t("Voir la demande"), href: `/organisations/${supplierId}/devis/${r.id}` },
+    }), actorId);
+  });
+}
+
 // ─── E-mails de service (toujours envoyés) ─────────────────────────────────
 
 /** Invitation à rejoindre une organisation, quand l'adresse est connue : le rôle proposé est annoncé. */
@@ -659,6 +822,37 @@ export function notifyInvitation(email: string, orgName: string, inviterName: st
 export function notifyPlatformAdmins(subject: string, text: string, href: string) {
   later(async () => {
     for (const to of platformAdminEmails()) await sendMail({ to, subject, text: `Bonjour,\n\n${text}`, cta: { label: "Ouvrir l'administration", href } });
+  });
+}
+
+
+/**
+ * Décision sur un signalement : l'auteur du signalement (compte ou adresse) en est informé ; si le contenu est retiré,
+ * son auteur l'est aussi, avec le motif et la possibilité de contester (CGU).
+ */
+export function notifyReportDecision(reportId: string) {
+  later(async () => {
+    const r = await db.report.findUnique({ where: { id: reportId }, include: { reporter: { select: userSelect } } });
+    if (!r || r.status !== "closed") return;
+    const outcome = (t: T) => (r.decision === "retire" ? t("le contenu a été retiré ou masqué") : t("le signalement a été classé sans suite"));
+    const reporterMail = (t: T) => ({
+      subject: t("Votre signalement : « {label} »", { label: r.targetLabel }),
+      text: t("Bonjour,\n\nVous avez signalé « {label} ». Après examen par l'équipe KolBase, {outcome}.\n\nMotif : {note}", { label: r.targetLabel, outcome: outcome(t), note: r.decisionNote ?? "" }),
+    });
+    if (r.reporter) await sendService([r.reporter], reporterMail);
+    else if (r.reporterEmail) await sendMail({ to: r.reporterEmail, ...reporterMail(makeT("fr")) });
+    if (r.decision !== "retire") return;
+    // Auteur du contenu : l'expert, les administrateurs de l'organisation, ou l'auteur de l'avis.
+    const authors =
+      r.targetType === "expert" ? await db.user.findMany({ where: { practitioner: { id: r.targetId } }, select: userSelect })
+      : r.targetType === "organisation" ? await members(r.targetId, ["ADMIN"])
+      : r.targetType === "evenement" ? await (async () => { const e = await db.event.findUnique({ where: { id: r.targetId }, select: { organizationId: true } }); return e ? members(e.organizationId, ["ADMIN", ...EVENT_ORGANIZER_ROLES]) : []; })()
+      : await (async () => { const v = await db.supplierReview.findUnique({ where: { id: r.targetId }, select: { author: { select: userSelect } } }); return v ? [v.author] : []; })();
+    const what: Record<string, string> = { expert: "Votre présentation d'expert", organisation: "La présentation de votre organisation", evenement: "La description de l'événement « {label} »", avis: "Votre avis ({label})" };
+    await sendService(authors, (t) => ({
+      subject: t("Contenu retiré par l'équipe KolBase"),
+      text: t("Bonjour,\n\n{what} a été retiré(e) de KolBase après un signalement.\n\nMotif : {note}\n\nVous pouvez contester cette décision en répondant à l'équipe KolBase, à l'adresse indiquée dans les conditions d'utilisation.", { what: t(what[r.targetType] ?? "Un contenu", { label: r.targetLabel }), note: r.decisionNote ?? "" }),
+    }));
   });
 }
 
@@ -771,7 +965,7 @@ export async function sendEventReminders(eventId: string, now = new Date()) {
       () => db.registration.update({ where: { id: r.id }, data: { reminderSentAt: null } }),
       () => send([r.user], (t, locale) => {
         const when = ev.startsAt.toLocaleString(locale === "en" ? "en-GB" : "fr-FR", { timeZone: "Europe/Paris", weekday: "long", day: "numeric", month: "long", hour: "2-digit", minute: "2-digit" });
-        const place = ev.format === "DISTANCIEL" ? null : t("Lieu : {place}", { place: [ev.venue, ev.city].filter(Boolean).join(", ") || t("à préciser par l'organisateur") });
+        const place = ev.format === "DISTANCIEL" ? null : t("Lieu : {place}", { place: eventPlace(ev) || t("à préciser par l'organisateur") });
         // Lien de connexion (en ligne, hybride) : réservé aux inscrits, donné dans le rappel.
         const online = ev.format === "PRESENTIEL" ? null : ev.onlineUrl ? t("Lien de connexion : {url}", { url: ev.onlineUrl }) : t("En ligne : le lien de connexion vous est communiqué par l'organisateur.");
         return {
@@ -804,7 +998,7 @@ export function notifyRegistration(registrationId: string) {
   later(async () => {
     const r = await db.registration.findUnique({
       where: { id: registrationId },
-      include: { user: { select: { ...userSelect, firstName: true } }, benefits: { include: { benefit: true } }, event: { include: { organization: { select: { name: true } } } } },
+      include: { user: { select: { ...userSelect, firstName: true, practitioner: { select: { country: true } } } }, benefits: { include: { benefit: true } }, event: { include: { organization: { select: { name: true } } } } },
     });
     if (!r) return;
     const ev = r.event;
@@ -818,13 +1012,15 @@ export function notifyRegistration(registrationId: string) {
           t("Votre inscription à « {title} » ({org}) est confirmée.", { title: ev.title, org: ev.organization.name }),
           [
             t("Date : {when}", { when: eventWhen(ev.startsAt, locale) }),
-            inPerson ? t("Lieu : {place}", { place: [ev.venue, ev.city].filter(Boolean).join(", ") || t("à préciser par l'organisateur") }) : null,
+            inPerson ? t("Lieu : {place}", { place: eventPlace(ev) || t("à préciser par l'organisateur") }) : null,
             // Lien de connexion (en ligne, hybride) : réservé aux inscrits.
             ev.format === "PRESENTIEL" ? null : ev.onlineUrl ? t("Lien de connexion : {url}", { url: ev.onlineUrl }) : t("En ligne : le lien de connexion vous est communiqué par l'organisateur."),
           ].filter(Boolean).join("\n"),
           r.benefits.length > 0
             ? t("Prestations acceptées : {list} ({total}).", { list: r.benefits.map((b) => t(b.benefit.label)).join(", "), total: fmtEur(locale, total) })
             : null,
+          // Praticien exerçant en Belgique : le numéro de visa Mdeon figure dans la correspondance (code Mdeon).
+          r.benefits.length > 0 && r.user.practitioner?.country === "BE" && ev.mdeonVisa ? t("Visa Mdeon n° {visa}", { visa: ev.mdeonVisa }) : null,
           inPerson ? t("À l'accueil, présentez votre badge : le lien ci-dessous l'affiche sur votre téléphone.") : null,
           t("L'événement est joint à cet e-mail pour votre agenda (fichier .ics)."),
           t("Un empêchement ? Annulez votre inscription depuis « Mes inscriptions » : {url}", { url: `${appUrl()}/inscriptions` }),
@@ -891,7 +1087,7 @@ export function notifyEventChanged(eventId: string, changes: EventChange[]) {
     for (const r of ev.registrations) {
       await send([r.user], (t, locale) => {
         const when = ev.startsAt.toLocaleString(locale === "en" ? "en-GB" : "fr-FR", { timeZone: "Europe/Paris", weekday: "long", day: "numeric", month: "long", year: "numeric", hour: "2-digit", minute: "2-digit" });
-        const place = [ev.venue, ev.city].filter(Boolean).join(", ");
+        const place = eventPlace(ev);
         const lines = [
           changes.includes("date") ? t("Nouvelle date : {when}.", { when }) : null,
           changes.includes("format") ? t("Nouveau format : {format}.", { format: t(FORMAT_LABEL[ev.format]) }) : null,
@@ -1077,5 +1273,96 @@ export function notifyEventReview(eventId: string, status: "submitted" | "approv
         : t("Bonjour,\n\nLa conformité demande des modifications sur l'événement « {title} » avant sa publication :\n\n« {note} »", { title: ev.title, note: ev.reviewNote ?? "" }),
       cta: { label: t("Ouvrir l'événement"), href },
     }), actorId);
+  });
+}
+
+/** Liste d'attente : une place s'est libérée (non réservée : la première personne qui s'inscrit l'obtient). */
+export function notifyWaitlistPlace(entryId: string) {
+  later(async () => {
+    const w = await db.waitlistEntry.findUnique({ where: { id: entryId }, include: { user: { select: { ...userSelect, firstName: true } }, event: { include: { organization: { select: { name: true } } } } } });
+    if (!w) return;
+    await sendService([w.user], (t, locale) => ({
+      subject: t("Une place s'est libérée : « {title} »", { title: w.event.title }),
+      text: [
+        t("Bonjour {name},", { name: w.user.firstName }),
+        t("Une place s'est libérée pour « {title} » ({org}), le {when}. Vous étiez sur la liste d'attente.", { title: w.event.title, org: w.event.organization.name, when: eventWhen(w.event.startsAt, locale) }),
+        t("La place n'est pas réservée : inscrivez-vous dès maintenant pour l'obtenir."),
+      ].join("\n\n"),
+      cta: { label: t("M'inscrire"), href: `/evenements/${w.event.id}` },
+    }));
+  });
+}
+
+/** Message de l'organisateur à tous les inscrits d'un événement. */
+export function notifyEventMessage(messageId: string) {
+  later(async () => {
+    const m = await db.eventMessage.findUnique({
+      where: { id: messageId },
+      include: { event: { include: { organization: { select: { name: true } }, registrations: { where: { cancelledAt: null }, include: { user: { select: { ...userSelect, firstName: true } } } } } } },
+    });
+    if (!m) return;
+    await sendService(m.event.registrations.map((r) => r.user), (t) => ({
+      subject: t("« {title} » : {subject}", { title: m.event.title, subject: m.subject }),
+      text: [
+        t("Message de {org} aux inscrits de « {title} » :", { org: m.event.organization.name, title: m.event.title }),
+        m.body,
+      ].join("\n\n"),
+      cta: { label: t("Voir l'événement"), href: `/evenements/${m.event.id}` },
+    }));
+  });
+}
+
+/** Invitation nominative à un événement sur invitation (le lien personnel n'est connu que de cet e-mail). */
+export function notifyEventInvite(inviteId: string, token: string, reminder = false) {
+  later(async () => {
+    const inv = await db.eventInvite.findUnique({ where: { id: inviteId }, include: { event: { include: { organization: { select: { name: true } } } } } });
+    if (!inv) return;
+    const ev = inv.event;
+    const user = await db.user.findUnique({ where: { email: inv.email }, select: { ...userSelect, firstName: true } });
+    const to = user ?? { id: `invite-${inv.id}`, email: inv.email, notifyPrefs: {}, locale: "fr" };
+    await sendService([to], (t, locale) => ({
+      subject: reminder ? t("Rappel : invitation à « {title} »", { title: ev.title }) : t("Invitation : « {title} »", { title: ev.title }),
+      text: [
+        t("Bonjour {name},", { name: user?.firstName ?? inv.firstName ?? "" }).replace(" ,", ","),
+        ev.hostedBy
+          ? t("{org} vous invite à « {title} », organisé par {host}, le {when}.", { org: ev.organization.name, title: ev.title, host: ev.hostedBy, when: eventWhen(ev.startsAt, locale) })
+          : t("{org} vous invite à « {title} », le {when}.", { org: ev.organization.name, title: ev.title, when: eventWhen(ev.startsAt, locale) }),
+        ev.format === "DISTANCIEL" ? null : t("Lieu : {place}", { place: eventPlace(ev) || t("à préciser par l'organisateur") }),
+        t("Cette invitation vous est personnelle : le lien ci-dessous ouvre la page de l'événement, où vous vous inscrivez et choisissez ce que vous acceptez."),
+      ].filter(Boolean).join("\n\n"),
+      cta: { label: t("Voir l'invitation"), href: `/evenements/${ev.id}?invitation=${token}` },
+    }));
+  });
+}
+
+/** Carnet de voyage d'un participant : hôtel, dates, chambre, trajets et billets réservés par l'organisateur. */
+export function notifyTravelBook(registrationId: string) {
+  later(async () => {
+    const r = await db.registration.findUnique({ where: { id: registrationId }, include: { travel: true, user: { select: { ...userSelect, firstName: true } }, event: { include: { organization: { select: { name: true } } } } } });
+    const tr = r?.travel;
+    if (!r || !tr) return;
+    await sendService([r.user], (t, locale) => {
+      const day = (d: Date | null) => (d ? d.toLocaleDateString(intlLocale(locale), { timeZone: "Europe/Paris", weekday: "long", day: "numeric", month: "long" }) : null);
+      const lines = [
+        tr.hotel ? t("Hôtel : {hotel}{ref}", { hotel: tr.hotel, ref: tr.hotelRef ? ` (${t("réservation {ref}", { ref: tr.hotelRef })})` : "" }) : null,
+        tr.checkIn ? t("Arrivée : {date}", { date: day(tr.checkIn)! }) : null,
+        tr.checkOut ? t("Départ : {date}", { date: day(tr.checkOut)! }) : null,
+        tr.roomType ? t("Chambre : {type}", { type: t(roomTypeLabel(tr.roomType) ?? tr.roomType) }) : null,
+        tr.outbound ? t("Aller : {trip}", { trip: tr.outbound }) : null,
+        tr.returnTrip ? t("Retour : {trip}", { trip: tr.returnTrip }) : null,
+        tr.ticketRef ? t("Billets : {ref}", { ref: tr.ticketRef }) : null,
+        tr.notes ? tr.notes : null,
+      ].filter(Boolean).join("\n");
+      return {
+        subject: t("Votre voyage : « {title} »", { title: r.event.title }),
+        text: [
+          t("Bonjour {name},", { name: r.user.firstName }),
+          t("Voici votre voyage et votre hébergement pour « {title} » ({org}), le {when}.", { title: r.event.title, org: r.event.organization.name, when: eventWhen(r.event.startsAt, locale) }),
+          lines,
+          t("Une question ou un changement ? Écrivez à l'organisateur en répondant à son message, ou depuis la page de l'événement."),
+        ].join("\n\n"),
+        cta: { label: t("Mes inscriptions"), href: "/inscriptions" },
+      };
+    });
   });
 }

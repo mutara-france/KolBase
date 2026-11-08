@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { Clock, Briefcase, Building2, CalendarDays, Euro, FileSignature, FileText, MapPin, MessagesSquare, Reply, Scale } from "lucide-react";
+import { Clock, Briefcase, Building2, CalendarDays, Euro, FileSignature, FileText, MapPin, MessagesSquare, Receipt, Reply, Scale } from "lucide-react";
+import { ExpertCostsPanel, FrameworkPanel } from "@/components/ExpertCosts";
 import { SectionHead } from "@/components/UI";
 import { SiteHeader } from "@/components/SiteHeader";
 import { PageHero } from "@/components/PageHero";
@@ -13,9 +14,10 @@ import { withdrawProposal } from "@/lib/proposal-actions";
 import { ConfirmButton } from "@/components/ConfirmButton";
 import { orgIsPublic } from "@/lib/org-roles";
 import { DocumentsPanel, ExpertSignatureBlock, MaterialsPanel } from "@/components/DossierSections";
-import { fmtDateTime, fmtEur, intlLocale } from "@/lib/i18n";
+import { fmtDate, fmtDateTime, fmtEur, intlLocale } from "@/lib/i18n";
+import { topicLabel } from "@/lib/routing";
 import { DossierTabs, type DossierTab } from "@/components/DossierTabs";
-import { FORMAT_LABEL, formatDuration } from "@/lib/events";
+import { eventPlace, FORMAT_LABEL, formatDuration } from "@/lib/events";
 import { getT } from "@/lib/i18n/server";
 import { fmtHours, hoursDetail, hoursOf } from "@/lib/fees";
 
@@ -34,6 +36,7 @@ export default async function Page({ params, searchParams }: { params: Promise<{
       project: {
         include: {
           organization: true,
+          channel: { select: { topic: true } },
           // Événement de la collaboration : rattaché au dossier, ou celui de l'opportunité à laquelle l'expert a candidaté.
           events: { where: { cancelledAt: null }, orderBy: { startsAt: "asc" } },
         },
@@ -41,6 +44,9 @@ export default async function Page({ params, searchParams }: { params: Promise<{
       signature: true,
       // Convention signée déposée à la main (la plus récente).
       documents: { where: { kind: "CONVENTION_SIGNEE" }, select: { id: true }, orderBy: { createdAt: "desc" }, take: 1 },
+      // Notes de frais refusées ou remboursées depuis la dernière visite : signalées sur l'onglet.
+      expenses: { select: { status: true } },
+      travel: { select: { sentAt: true } },
       messages: { include: { author: { select: { firstName: true, lastName: true } } }, orderBy: { createdAt: "asc" } },
     },
   });
@@ -88,11 +94,16 @@ export default async function Page({ params, searchParams }: { params: Promise<{
   const events = callEvent && !callEvent.cancelledAt && !p.events.some((x) => x.id === callEvent.id) ? [...p.events, callEvent] : p.events;
   const toAnswer = !!lastMsg && lastMsg.authorId !== user.id && !abandoned && !closed;
   const toSign = engaged && p.status === "SIGNATURE" && !signedHref;
+  // Agent public (France) : son autorisation de cumul est attendue avant la déclaration ou la demande à l'Ordre.
+  const cumulDue = engaged && ["ACCORD", "EN_VALID", "BLOQUE", "VALIDE"].includes(p.status) && (await db.practitionerProfile.count({ where: { userId: user.id, publicAgent: true, country: "FR" } })) > 0
+    && (await db.document.count({ where: { projectExpertId: link.id, kind: "AUTORISATION_CUMUL" } })) === 0;
   const tabs: DossierTab[] = [
     { key: "mission", label: t("Mission"), icon: Briefcase, alert: link.status === "ATT_EXPERTS" && !abandoned && !closed },
     { key: "evenement", label: t("Événement"), icon: CalendarDays, count: events.length > 1 ? events.length : undefined, disabled: events.length ? undefined : t("Aucun événement rattaché") },
-    { key: "documents", label: t("Documents et convention"), icon: FileText, alert: toSign, disabled: engaged ? undefined : t("Après votre accord de principe") },
+    { key: "documents", label: t("Documents et convention"), icon: FileText, alert: toSign || cumulDue, disabled: engaged ? undefined : t("Après votre accord de principe") },
     { key: "messagerie", label: t("Messagerie"), icon: MessagesSquare, count: link.messages.length || undefined, alert: toAnswer },
+    // Voyage réservé par l'organisation et notes de frais (frais réels sur justificatif).
+    { key: "frais", label: t("Frais et voyage"), icon: Receipt, count: link.expenses.length || undefined, alert: link.expenses.some((e) => e.status === "rejected"), disabled: engaged ? undefined : t("Après votre accord de principe") },
   ];
   const active = tabs.find((tb) => tb.key === onglet && !tb.disabled)?.key ?? "mission";
   const href = (k: string) => (k === "mission" ? `/sollicitations/${link.id}` : `/sollicitations/${link.id}?onglet=${k}`);
@@ -135,6 +146,9 @@ export default async function Page({ params, searchParams }: { params: Promise<{
               <span className="eyebrow-sm">{t("Prochaine étape")}</span>
               <p className="next-hint">{next}</p>
               {state === "abandonne" && p.abandonNote && <p className="text-sm">{t("Motif : {note}", { note: p.abandonNote })}</p>}
+              {awaitingOrg && (p.channel || p.responseDue) && (
+                <p className="text-sm">{[p.channel ? t("Transmise à la personne en charge : {topic}", { topic: t(topicLabel(p.channel.topic)) }) : null, p.responseDue ? t("réponse attendue avant le {date}", { date: fmtDate(locale, p.responseDue) }) : null].filter(Boolean).join(" · ")}</p>
+              )}
               {awaitingOrg && (
                 <form action={withdrawProposal}>
                   <input type="hidden" name="linkId" value={link.id} />
@@ -150,6 +164,8 @@ export default async function Page({ params, searchParams }: { params: Promise<{
               )}
             </section>
               {toAnswer && <p className="notice"><Link href={href("messagerie")}>{t("{org} vous a écrit : répondre dans la messagerie", { org: p.organization.name })}</Link></p>}
+              {engaged && link.travel?.sentAt && <p className="notice"><Link href={href("frais")}>{t("{org} a réservé votre voyage : voir le détail", { org: p.organization.name })}</Link></p>}
+              {engaged && p.framework && <FrameworkPanel orgId={p.organizationId} projectId={p.id} canEdit={false} linkId={link.id} />}
             </div>
             <aside className="page-aside">
             <section className="card stack-sm" aria-labelledby="organisation-titre">
@@ -188,6 +204,8 @@ export default async function Page({ params, searchParams }: { params: Promise<{
           </div>
         )}
 
+        {active === "frais" && <ExpertCostsPanel linkId={link.id} />}
+
         {active === "evenement" && (
           <div className="stack">
             {events.map((ev) => (
@@ -195,7 +213,7 @@ export default async function Page({ params, searchParams }: { params: Promise<{
                 <SectionHead icon={CalendarDays} title={ev.title} desc={`${t(FORMAT_LABEL[ev.format])}${ev.internal ? ` · ${t("réunion interne")}` : ""}`} />
                 <ul className="plain stack-sm text-sm">
                   <li><CalendarDays size={14} />{" "}{fmtDateTime(locale, ev.startsAt)}{ev.durationMinutes ? ` · ${formatDuration(ev.durationMinutes, locale)}` : ""}</li>
-                  <li><MapPin size={14} />{" "}{ev.format === "DISTANCIEL" ? t("En ligne") : [ev.venue, ev.city].filter(Boolean).join(", ") || t("Lieu à préciser")}</li>
+                  <li><MapPin size={14} />{" "}{ev.format === "DISTANCIEL" ? t("En ligne") : eventPlace(ev) || t("Lieu à préciser")}</li>
                   {engaged && ev.onlineUrl && ev.format !== "PRESENTIEL" && <li>{t("Lien de connexion :")}{" "}<a href={ev.onlineUrl} target="_blank" rel="noreferrer">{ev.onlineUrl}</a></li>}
                 </ul>
                 {ev.program && <><h3>{t("Programme")}</h3><p className="pre-line text-sm">{ev.program}</p></>}

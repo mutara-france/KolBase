@@ -1570,6 +1570,16 @@ details.fold[open] > summary h2::after { content: " ▾"; }
 .step-trail li.current .step-detail { color: var(--outremer); }
 .hero-facts > div.warn { background: var(--warn-bg); border-color: #f0d9b3; }
 .rfq-needs { margin: 0; white-space: pre-line; font-size: 14.5px; line-height: 1.6; color: var(--ink); }
+.rfq-brief .brief-list { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(200px, 100%), 1fr)); gap: 8px 16px; margin: 0; }
+.rfq-brief .brief-list > div { min-width: 0; }
+.rfq-brief dt { font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.06em; color: var(--ink-soft); }
+.rfq-brief dd { margin: 2px 0 0; overflow-wrap: anywhere; }
+.rfq-details { border: 1px solid var(--line); border-radius: 14px; padding: 12px 14px; }
+.rfq-details .grid-fields { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(220px, 100%), 1fr)); gap: 12px; }
+.rfq-details .span-all { grid-column: 1 / -1; }
+.quote-terms { border: 1px solid var(--line); border-radius: 14px; padding: 12px 14px; }
+.book-group { border: 0; padding: 0; margin: 0 0 8px; }
+.book-group legend { font-weight: 700; margin-bottom: 6px; }
 
 /* Comparaison des devis : une carte par prestataire, côte à côte. */
 .quote-compare { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(290px, 100%), 1fr)); gap: 16px; align-items: start; }
@@ -1720,6 +1730,14 @@ a.chip { display: inline-flex; align-items: center; text-decoration: none; }
 .journal-list li { display: grid; grid-template-columns: 150px minmax(0, 1fr) minmax(120px, 200px); gap: 12px; align-items: baseline; padding: 9px 0; border-bottom: 1px solid var(--line); }
 .journal-list li:last-child { border-bottom: 0; }
 .journal-list .stack-xs { display: flex; flex-direction: column; gap: 3px; min-width: 0; overflow-wrap: anywhere; }
+.stack-xs { display: flex; flex-direction: column; gap: 4px; }
+.needs-summary { margin-top: 16px; padding-top: 12px; border-top: 1px solid var(--line); }
+.needs-summary h3 { margin: 0; }
+.needs-fields .stack-sm { margin-top: 8px; }
+.waitlist-list { margin: 0; padding-left: 20px; display: grid; gap: 4px; }
+.block { display: block; }
+.travel-row summary { cursor: pointer; }
+.total-row td { border-top: 2px solid var(--line); }
 .journal-list .pill { white-space: normal; }
 @media (max-width: 760px) {
   .journal-list li { grid-template-columns: minmax(0, 1fr); gap: 4px; }
@@ -1730,5 +1748,18 @@ a.chip { display: inline-flex; align-items: center; text-decoration: none; }
 /* Données de démonstration : signalées sur la page et sur les cartes. */
 .notice.demo-notice { display: flex; align-items: center; gap: 8px; background: var(--bg-subtle); color: var(--ink); border-color: var(--line); }
 .notice.demo-notice svg { flex: none; color: var(--outremer); }
+.belgium-block { margin-top: 16px; padding-top: 12px; border-top: 1px solid var(--line); }
+.belgium-block h3 { margin: 0; }
 .demo-tag { align-self: flex-start; display: inline-flex; margin-bottom: 6px; padding: 2px 8px; border-radius: 999px; background: var(--bg-subtle); color: var(--ink-soft); font-family: var(--font-mono); font-size: 10.5px; letter-spacing: 0.08em; text-transform: uppercase; }
 :not(.stack) > .notice.demo-notice { margin-bottom: 16px; }
+
+/* Congrès : programme détaillé, partenaires, communications soumises. */
+.program-list > li { padding: 6px 0; border-bottom: 1px solid var(--line); }
+.program-list > li:last-child { border-bottom: 0; }
+.partner-list { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(220px, 100%), 1fr)); gap: 10px 16px; margin: 0; }
+.partner-item { display: flex; align-items: center; gap: 10px; min-width: 0; }
+.partner-logo { width: 40px; height: 40px; object-fit: contain; border-radius: 8px; background: #fff; border: 1px solid var(--line); flex: none; }
+.abstract-item { padding-bottom: 12px; border-bottom: 1px solid var(--line); }
+.abstract-item:last-child { border-bottom: 0; }
+.report-link { margin: 8px 0 0; }
+.report-link a { display: inline-flex; align-items: center; gap: 4px; }

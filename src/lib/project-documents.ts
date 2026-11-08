@@ -19,3 +19,20 @@ export async function missingSignedConventions(projectId: string): Promise<strin
   });
   return links.map((l) => `${drPrefix(l.practitioner.profession)}${l.practitioner.user.firstName} ${l.practitioner.user.lastName}`);
 }
+
+/**
+ * Experts engagés agents publics (exerçant en France) dont l'autorisation de cumul d'activités manque : la déclaration
+ * ou la demande d'autorisation adressée à l'Ordre doit la comporter (article R.1453-14 du Code de la santé publique).
+ */
+export async function missingCumulAuthorizations(projectId: string): Promise<string[]> {
+  const links = await db.projectExpert.findMany({
+    where: {
+      projectId,
+      status: { notIn: ["ATT_EXPERTS", "DECLINE"] },
+      practitioner: { publicAgent: true, country: "FR" },
+      documents: { none: { kind: "AUTORISATION_CUMUL" } },
+    },
+    include: { practitioner: { include: { user: { select: { firstName: true, lastName: true } } } } },
+  });
+  return links.map((l) => `${drPrefix(l.practitioner.profession)}${l.practitioner.user.firstName} ${l.practitioner.user.lastName}`);
+}
