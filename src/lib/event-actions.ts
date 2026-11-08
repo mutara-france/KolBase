@@ -496,7 +496,7 @@ export async function leaveWaitlist(form: FormData) {
 }
 
 /** Messages aux inscrits : trois au plus par événement sur 24 heures. */
-export const EVENT_MESSAGES_PER_DAY = 3;
+const EVENT_MESSAGES_PER_DAY = 3;
 
 /** Message de l'organisateur (ou de son agence) à tous les inscrits, par e-mail ; gardé dans l'historique de l'événement. */
 export async function sendEventMessage(_: ActionState, form: FormData): Promise<ActionState> {
