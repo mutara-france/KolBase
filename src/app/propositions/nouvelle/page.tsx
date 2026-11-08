@@ -7,7 +7,7 @@ import { COLLAB_TYPES, PROPOSAL_MAX_ORGS, PROPOSALS_PER_MONTH } from "@/lib/proj
 import { orgsAwaitingProposal, proposalRecipients, proposalsThisMonth } from "@/lib/proposals";
 import { ORG_KIND_LABEL } from "@/lib/org-roles";
 import { logoSrc } from "@/lib/logos";
-import { isTopic } from "@/lib/routing";
+import { isTopic, pickEntity } from "@/lib/routing";
 import { storageEnabled } from "@/lib/storage";
 import { getT } from "@/lib/i18n/server";
 
@@ -54,7 +54,8 @@ export default async function Page({ searchParams }: { searchParams: Promise<{ o
                     kind: t(ents.length > 1 ? "Groupe · {n} entités" : "Groupe · {n} entité", { n: ents.length }),
                     detail: t("transmis à l'entité de votre pays"),
                     logo: logoSrc(ents[0]),
-                    pending: ents.some((e) => awaiting.has(e.id)),
+                    // Une proposition à la fois par entité : celle qui recevrait la nouvelle (pays de l'expert).
+                    pending: (() => { const e = pickEntity(ents, { country: p.country }); return !!e && awaiting.has(e.id); })(),
                     brands: [...new Set(ents.flatMap((e) => e.brands))],
                   };
                 }),
