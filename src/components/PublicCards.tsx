@@ -1,3 +1,5 @@
+import { isDemoOrgId } from "@/lib/demo";
+import { DemoTag } from "@/components/DemoNotice";
 import type { ElementType } from "react";
 import Link from "next/link";
 import { BadgeCheck, Calendar, ChevronRight, MapPin, Ticket, Video } from "lucide-react";
@@ -29,6 +31,8 @@ export type EventCardData = {
   id: string; title: string; typeId: string; therapeuticArea: string | null; startsAt: Date; durationMinutes: number | null;
   format: "PRESENTIEL" | "DISTANCIEL" | "HYBRIDE"; city: string | null; capacity: number | null; registrationOpen: boolean;
   organization: { name: string }; registrations: number; featured?: boolean; trackedHref?: string;
+  /** Organisation organisatrice : un événement d'une organisation de démonstration est marqué comme tel. */
+  organizationId?: string;
 };
 const FORMAT = { PRESENTIEL: "présentiel", DISTANCIEL: "visioconférence", HYBRIDE: "hybride" } as const;
 export async function EventCard({ ev, compact = false }: { ev: EventCardData; compact?: boolean }) {
@@ -59,6 +63,7 @@ export async function EventCard({ ev, compact = false }: { ev: EventCardData; co
         {ev.featured && <span className="event-featured">{t("À la une")}</span>}
       </Go>
       <div className="event-body">
+        {ev.organizationId && isDemoOrgId(ev.organizationId) && <DemoTag />}
         <h3 className="card-title" style={{ marginBottom: 2 }}><Go href={href} className="ink">{ev.title}</Go></h3>
         <div className="meta-line"><FormatIcon size={14} /> {[ev.city, t(FORMAT[ev.format])].filter(Boolean).join(" · ")} · {get("hour")}:{get("minute")}{dur(ev.durationMinutes)}</div>
         {ev.therapeuticArea && <div className="meta-line">{t(ev.therapeuticArea)}</div>}
@@ -85,6 +90,8 @@ export type KolCardData = {
   verified: boolean; types: string[]; collaborations: number | null; organizations: number | null;
   /** Photo visible de tous (réglage « Photo » public), sinon le monogramme. */
   photo?: string | null;
+  /** Profil fictif (données de démonstration). */
+  demo?: boolean;
 };
 export async function KolCard({ k }: { k: KolCardData }) {
   const { t } = await getT();
@@ -94,6 +101,7 @@ export async function KolCard({ k }: { k: KolCardData }) {
         <Avatar name={k.name} size={60} photo={k.photo} />
         {k.verified && <span className="verif ok small"><BadgeCheck size={13} /> {t("Identité vérifiée")}</span>}
       </div>
+      {k.demo && <DemoTag />}
       <h3 className="kol-name">{k.name}</h3>
       <p className="text-sm">{[t(k.specialty || k.profession), k.subspecialty].filter(Boolean).join(" · ")}</p>
       <div className="meta-line mt-1"><MapPin size={13} /> {[[k.city, k.hospital].filter(Boolean).join(" — "), k.country && k.country !== "France" ? t(k.country) : null].filter(Boolean).join(" · ") || t(k.country || "France")}</div>

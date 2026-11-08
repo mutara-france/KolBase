@@ -12,6 +12,7 @@ import { drPrefix } from "@/lib/professions";
 import { getT } from "@/lib/i18n/server";
 import { currentSourcingOrg } from "@/lib/org-overview";
 import { isDemoEmail } from "@/lib/demo";
+import { DemoNotice } from "@/components/DemoNotice";
 
 /** Titre et description de la fiche (seulement les informations publiques de l'expert). */
 export async function generateMetadata({ params }: { params: Promise<{ id: string }> }): Promise<Metadata> {
@@ -42,12 +43,15 @@ export default async function Page({ params }: { params: Promise<{ id: string }>
   const org = sourcing.find((m) => m.organizationId === current) ?? sourcing[0];
   const profile = await ExpertProfile({ id, viewer, userId: user?.id ?? null, solicitHref: org ? `/organisations/${org.organizationId}/dossiers/nouveau?expert=${id}` : null });
   if (!profile) notFound();
+  const owner = await db.practitionerProfile.findUnique({ where: { id }, select: { user: { select: { email: true } } } });
+  const demo = !!owner && isDemoEmail(owner.user.email);
   return (
     <>
       <SiteHeader variant={user ? "app" : "public"} />
       <main className={user ? "" : "landing"}>
         <div className={user ? "" : "public-section"}>
           <Link href={user ? "/annuaire" : "/experts"} className="back-link"><ArrowLeft size={14} /> {user ? t("Annuaire") : t("Tous les experts")}</Link>
+          {demo && <DemoNotice kind="expert" />}
           {profile}
         </div>
       </main>

@@ -2377,4 +2377,5 @@ export const ORGANISATION: Record<string, string> = {
   "Catégories et zone enregistrées.": "Categories and area saved.",
   "Équipe, page prestataire et devis.": "Team, supplier page and quotes.",
   "Ma page": "My page",
+  "L'envoi d'e-mails n'est pas encore activé sur KolBase : transmettez vous-même ce lien à {email}.": "Email sending is not yet enabled on KolBase: send this link to {email} yourself.",
 };

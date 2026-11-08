@@ -5,7 +5,7 @@ import { avatarColor, initialsOf } from "@/components/Avatar";
 import { accountPhoto, photoPath } from "@/lib/expert-photo";
 import { AppShell } from "@/components/AppShell";
 import { PublicNav } from "@/components/PublicNav";
-import { ORG_KIND_LABEL, roleLabel } from "@/lib/orgs";
+import { orgKindDisplay, roleLabel } from "@/lib/orgs";
 import { adminNavItems, countFor, NAV_COOKIE, orgMenuLinks, orgNavItems, type ShellItem, type ShellSpace } from "@/lib/nav";
 import { adminCounts } from "@/lib/admin-data";
 import { orgOverview } from "@/lib/org-overview";
@@ -84,7 +84,7 @@ export async function SiteHeader({ variant = "app", section }: { variant?: "app"
     spaces.push({
       key: id,
       title: o.name,
-      subtitle: `${t(ORG_KIND_LABEL[o.kind])} · ${o.roles.map((r) => t(roleLabel(r, o.kind))).join(", ")}`,
+      subtitle: `${t(orgKindDisplay(o))} · ${o.roles.map((r) => t(roleLabel(r, o.kind))).join(", ")}`,
       chip: o.name,
       initials: initialsOf(o.name),
       color: avatarColor(o.name),

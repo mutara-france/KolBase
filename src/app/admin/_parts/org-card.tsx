@@ -3,7 +3,7 @@ import { ExternalLink } from "lucide-react";
 import { Avatar } from "@/components/Avatar";
 import { ConfirmButton } from "@/components/ConfirmButton";
 import { logoSrc } from "@/lib/logos";
-import { ORG_KIND_LABEL, VERIFICATION_LABEL } from "@/lib/org-roles";
+import { orgKindDisplay, VERIFICATION_LABEL } from "@/lib/org-roles";
 import { formatDate } from "@/lib/events";
 import { normalize } from "@/lib/search";
 import { recheckSiren, reviewOrganization } from "@/lib/admin-actions";
@@ -26,7 +26,7 @@ export function OrgCard({ o, admins, twins, link = true }: { o: Organization; ad
           <span>
             <strong>{link ? <Link href={`/admin/organisations/${o.id}`}>{o.name}</Link> : o.name}</strong> <span className={`pill ${ORG_TONE[o.verification]}`}>{VERIFICATION_LABEL[o.verification]}</span>
             <br />
-            <span className="muted">{ORG_KIND_LABEL[o.kind]} · créée le {formatDate(o.createdAt)}{o.headquarters ? ` · ${o.headquarters}` : ""}</span>
+            <span className="muted">{orgKindDisplay(o)} · créée le {formatDate(o.createdAt)}{o.headquarters ? ` · ${o.headquarters}` : ""}</span>
           </span>
         </span>
       </div>

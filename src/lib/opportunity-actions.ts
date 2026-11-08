@@ -3,6 +3,7 @@
 import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import { db } from "@/lib/db";
+import { mailEnabled } from "@/lib/mail";
 import { audit, requireUser } from "@/lib/auth";
 import { isVerifiedOrg, notVerified, requireMembership } from "@/lib/orgs";
 import { parseParisDateTime } from "@/lib/events";
@@ -94,7 +95,7 @@ export async function applyToCall(_: ActionState, form: FormData): Promise<Actio
   notifyApplication(callId, user.practitioner.id);
   notifyApplicationSent(app.id);
   revalidatePath(`/opportunites/${callId}`);
-  return { ok: t("Candidature envoyée. Un e-mail de confirmation vous est envoyé.") };
+  return { ok: mailEnabled() ? t("Candidature envoyée. Un e-mail de confirmation vous est envoyé.") : t("Candidature envoyée. Vous la suivez dans « Mes candidatures ».") };
 }
 
 export async function withdrawApplication(form: FormData) {

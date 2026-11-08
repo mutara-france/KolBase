@@ -163,9 +163,17 @@ export function ListingForm({ listed, eligible, idMissing, rpps }: {
 }
 
 /** Adresse non confirmée : rappel et renvoi du lien. */
-export function EmailVerificationNotice({ email, practitioner = true }: { email: string; practitioner?: boolean }) {
+export function EmailVerificationNotice({ email, practitioner = true, mailOn = true }: { email: string; practitioner?: boolean; mailOn?: boolean }) {
   const [state, action, pending] = useActionState(resendVerification, undefined);
   const t = useT();
+  // Envoi d'e-mails pas encore configuré : ne pas annoncer un lien qui n'est jamais parti.
+  if (!mailOn)
+    return (
+      <p className="notice warn">
+        {t("Confirmez votre adresse")} <strong>{email}</strong>{" "}
+        {t(": l'envoi d'e-mails n'est pas encore activé sur KolBase. Vous pourrez demander le lien ici dès qu'il le sera ; le reste de KolBase fonctionne normalement.")}
+      </p>
+    );
   // La lettre d'information n'est donnée comme raison qu'à un praticien (elle leur est réservée).
   return (
     <form action={action} className="notice warn">
@@ -190,7 +198,7 @@ export function ResendVerificationLink() {
 }
 
 /** Notifications ; la lettre d'information n'est proposée qu'à un compte praticien (`practitioner`). */
-export function NotificationsForm({ email, newsletter = false, practitioner = true }: { email: boolean; newsletter?: boolean; practitioner?: boolean }) {
+export function NotificationsForm({ email, newsletter = false, practitioner = true, mailOn = true }: { email: boolean; newsletter?: boolean; practitioner?: boolean; mailOn?: boolean }) {
   const [state, action, pending] = useActionState(updateNotifyPrefs, undefined);
   const t = useT();
   return (
@@ -206,7 +214,9 @@ export function NotificationsForm({ email, newsletter = false, practitioner = tr
         </label>
       )}
       <p className="hint">
-        {practitioner
+        {!mailOn
+          ? t("L'envoi d'e-mails n'est pas encore activé sur KolBase : aucun e-mail ne part pour l'instant. Vos choix s'appliqueront dès qu'il le sera.")
+          : practitioner
           ? t("Les e-mails de service (mot de passe, confirmation d'adresse, invitations) sont toujours envoyés. La lettre d'information peut présenter des événements d'organisations partenaires ; chaque envoi contient un lien de désinscription.")
           : t("Les e-mails de service (mot de passe, confirmation d'adresse, invitations) sont toujours envoyés.")}
       </p>

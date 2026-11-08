@@ -1,4 +1,5 @@
 import type { OrgKind, OrgRole } from "@/generated/prisma/client";
+import { SUPPLIER_CATEGORIES } from "@/lib/suppliers";
 
 export const ORG_KIND_LABEL: Record<OrgKind, string> = {
   INDUSTRIEL: "Industriel",
@@ -7,6 +8,16 @@ export const ORG_KIND_LABEL: Record<OrgKind, string> = {
   ORGANISME_FORMATION: "Organisme de formation",
   PRESTATAIRE: "Prestataire (agence, logistique…)",
 };
+
+/**
+ * Type d'organisation tel qu'affiché (pages publiques, en-têtes, administration) : un prestataire est présenté par sa
+ * catégorie principale (« Restauration et traiteur », « Hébergement »…), sinon « Prestataire ». Le libellé long
+ * (« Prestataire (agence, logistique…) ») reste celui des formulaires, où il aide à choisir.
+ */
+export function orgKindDisplay(o: { kind: OrgKind; supplierCategories?: readonly string[] | null }) {
+  if (o.kind !== "PRESTATAIRE") return ORG_KIND_LABEL[o.kind];
+  return SUPPLIER_CATEGORIES.find((c) => c.id === o.supplierCategories?.[0])?.label ?? "Prestataire";
+}
 
 /** Familles affichées sur la page publique des organisations (les sociétés savantes et associations vont ensemble). */
 export const ORG_FAMILIES = [

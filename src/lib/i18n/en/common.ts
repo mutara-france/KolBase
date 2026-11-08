@@ -340,4 +340,8 @@ export const COMMON: Record<string, string> = {
   "Voir mes inscriptions": "See my registrations",
   "Code postal invalide : 5 chiffres.": "Invalid postcode: 5 digits.",
   "Cet expert est déjà sollicité dans le dossier de l'événement.": "This expert has already been approached in the event's collaboration.",
+  ": l'envoi d'e-mails n'est pas encore activé sur KolBase. Vous pourrez demander le lien ici dès qu'il le sera ; le reste de KolBase fonctionne normalement.": ": email sending is not yet enabled on KolBase. You will be able to request the link here as soon as it is; the rest of KolBase works normally.",
+  "L'envoi d'e-mails n'est pas encore activé sur KolBase : aucun e-mail ne part pour l'instant. Vos choix s'appliqueront dès qu'il le sera.": "Email sending is not yet enabled on KolBase: no emails are sent for now. Your choices will apply as soon as it is.",
+  "Inscription confirmée. Votre badge et l'événement pour votre agenda sont dans « Mes inscriptions ».": "Registration confirmed. Your badge and the event for your calendar are in “My registrations”.",
+  "Candidature envoyée. Vous la suivez dans « Mes candidatures ».": "Application sent. You can follow it in “My applications”.",
 };

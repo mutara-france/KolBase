@@ -1,8 +1,9 @@
+import { isDemoEmail } from "@/lib/demo";
 import "server-only";
 import { cache } from "react";
 import { db } from "@/lib/db";
 import { getCurrentUser } from "@/lib/auth";
-import { ORG_KIND_LABEL } from "@/lib/orgs";
+import { orgKindDisplay } from "@/lib/orgs";
 import { orgFamily } from "@/lib/org-roles";
 import { supplierCategoryLabel } from "@/lib/suppliers";
 import { canSee, companyVisibility, kolVisibility } from "@/lib/visibility";
@@ -48,7 +49,7 @@ export async function publicExperts(take?: number): Promise<KolCardData[]> {
   const ps = await db.practitionerProfile.findMany({
     where: { listed: true },
     // Collaborations : les dossiers signés seulement, comme la fiche expert.
-    include: { user: { select: { firstName: true, lastName: true } }, projectLinks: { where: { status: { in: SIGNED_STATUSES } }, select: { project: { select: { organizationId: true } } } } },
+    include: { user: { select: { firstName: true, lastName: true, email: true } }, projectLinks: { where: { status: { in: SIGNED_STATUSES } }, select: { project: { select: { organizationId: true } } } } },
     // « Réseau vérifié » : les identités vérifiées par KolBase d'abord, puis les plus récemment référencés.
     orderBy: [{ rppsVerified: "desc" }, { listedAt: "desc" }],
     take,
@@ -62,6 +63,7 @@ export async function publicExperts(take?: number): Promise<KolCardData[]> {
       city: contact ? p.city : null, hospital: contact ? p.hospital : null, country: country(p.country).name, verified: p.rppsVerified, types: p.interventionTypes,
       collaborations: activity ? p.projectLinks.length : null,
       photo: expertPhotoSrc(p, "public"),
+      demo: isDemoEmail(p.user.email),
       organizations: activity ? new Set(p.projectLinks.map((l) => l.project.organizationId)).size : null,
     };
   });
@@ -78,7 +80,7 @@ export async function publicOrgs(take?: number): Promise<OrgCardData[]> {
   return os.map((o) => {
     const v = companyVisibility(o.visibility);
     return {
-      id: o.id, name: o.name, logo: logoSrc(o), kind: ORG_KIND_LABEL[o.kind], family: orgFamily(o.kind),
+      id: o.id, name: o.name, logo: logoSrc(o), kind: orgKindDisplay(o), family: orgFamily(o.kind),
       categories: o.supplierCategories.map(supplierCategoryLabel), coverage: o.coverage, sector: o.sector, about: o.about, hq: o.headquarters,
       areas: canSee(v.areas, "public") ? o.areas : [], openCalls: canSee(v.projets, "public") ? o._count.openCalls : 0, collaborations: o._count.projects,
     };

@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import { adminNavItems, bottomBar, itemMatches } from "@/lib/nav";
 import { auditLabel, auditTone, entityHref, JOURNAL_DOMAINS } from "@/lib/admin-labels";
 import { TRANSITIONS } from "@/lib/projects";
+import { orgKindDisplay } from "@/lib/org-roles";
 
 describe("Administration KolBase : navigation", () => {
   const items = adminNavItems({ orgs: 2, identities: 3, services: 0 });
@@ -58,5 +59,13 @@ describe("Administration KolBase : journal d'activité", () => {
     const secu = JOURNAL_DOMAINS.find((d) => d.value === "securite")!;
     expect(secu.prefixes.some((p) => "user.signin_disabled".startsWith(p))).toBe(true);
     expect(secu.prefixes.some((p) => "admin.account_disable".startsWith(p))).toBe(true);
+  });
+});
+
+describe("Type d'organisation affiché", () => {
+  it("un prestataire est présenté par sa catégorie principale", () => {
+    expect(orgKindDisplay({ kind: "PRESTATAIRE", supplierCategories: ["restauration", "salle"] })).toBe("Restauration et traiteur");
+    expect(orgKindDisplay({ kind: "PRESTATAIRE", supplierCategories: [] })).toBe("Prestataire");
+    expect(orgKindDisplay({ kind: "INDUSTRIEL" })).toBe("Industriel");
   });
 });
