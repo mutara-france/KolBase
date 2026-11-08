@@ -11,7 +11,7 @@ import { storageEnabled } from "@/lib/storage";
 import { fourEyes, projectAuthors } from "@/lib/four-eyes";
 import type { ProjectStatus } from "@/generated/prisma/client";
 import { complianceSettings, projectRegime } from "@/lib/compliance";
-import { missingSignedConventions } from "@/lib/project-documents";
+import { missingCumulAuthorizations, missingSignedConventions } from "@/lib/project-documents";
 import { dayOrNull, eurToCents, str } from "@/lib/form";
 import { readFeeFields } from "@/lib/fee-fields";
 import { hoursOf } from "@/lib/fees";
@@ -203,6 +203,13 @@ export async function advanceProject(form: FormData) {
     if (storageEnabled() || form.get("attest") !== "1") return;
     attest = true;
   }
+  // Déclaration ou demande d'autorisation à l'Ordre : l'autorisation de cumul de chaque expert agent public est jointe.
+  // Sans stockage de documents, une attestation explicite (conservée hors KolBase) en tient lieu.
+  let attestCumul = false;
+  if ((key === "declaration" || key === "ordre") && (await missingCumulAuthorizations(projectId)).length > 0) {
+    if (storageEnabled() || form.get("attestCumul") !== "1") return;
+    attestCumul = true;
+  }
   // Un dossier au-delà des seuils d'autorisation ne peut pas passer par la déclaration simple ;
   // la voie « hors France » est réservée aux dossiers dont tous les experts exercent à l'étranger.
   const regime = projectRegime(complianceSettings(project.organization.complianceSettings), collabType(project.typeId)?.unit ?? "", project.experts.map((e) => ({ ...e, country: e.practitioner.country })))?.regime;
@@ -247,7 +254,7 @@ export async function advanceProject(form: FormData) {
   if (key === "abandon") await db.projectExpert.updateMany({ where: { projectId, status: "ATT_EXPERTS" }, data: { status: "DECLINE" } });
   // Dossier signé (conventions déposées ou attestées) ou abandonné : plus aucune signature électronique en attente.
   if (key === "signed" || key === "abandon") await closeOpenSignatures({ projectId }, key === "signed" ? "dossier passé « Signé »" : "dossier abandonné");
-  await audit(user.id, `project.${key}`, "Project", projectId, { from: project.status, to: t.to, note: note || undefined, ...(attest ? { attestation: "convention signée conservée hors KolBase" } : {}), ...(selfValidated ? { selfValidated: true } : {}) });
+  await audit(user.id, `project.${key}`, "Project", projectId, { from: project.status, to: t.to, note: note || undefined, ...(attest ? { attestation: "convention signée conservée hors KolBase" } : {}), ...(attestCumul ? { attestationCumul: "autorisation de cumul conservée hors KolBase" } : {}), ...(selfValidated ? { selfValidated: true } : {}) });
   // Proposition déclinée avec un motif : il rejoint les échanges avec l'expert (qui le lit dans sa sollicitation).
   if (key === "decline_proposal" && note && engagedIds[0]) await db.message.create({ data: { projectId, projectExpertId: engagedIds[0], authorId: user.id, body: note } });
   if (key === "submit" || key === "validate" || key === "block") notifyCompliance(projectId, key, user.id);

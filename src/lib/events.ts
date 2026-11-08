@@ -83,6 +83,8 @@ export const BENEFIT_CATALOG = [
   { id: "cocktail", label: "Cocktail dînatoire", typical: 45 },
   { id: "nuitee", label: "Nuitée d'hôtel", typical: 140 },
   { id: "transport", label: "Transport aller-retour", typical: 95 },
+  // Frais d'inscription pris en charge (congrès, formation payante) : seuil d'autorisation propre, hors total.
+  { id: "inscription", label: "Frais d'inscription", typical: 350 },
 ] as const;
 
 export const FORMAT_LABEL = { PRESENTIEL: "Présentiel", DISTANCIEL: "Visioconférence", HYBRIDE: "Hybride" } as const;

@@ -16,6 +16,7 @@ import { engagementGate } from "@/lib/billing";
 import type { GateLink } from "@/lib/billing-plans";
 import { notifyEventCancelled, notifyEventChanged, notifyEventConfided, notifyEventReview, notifyEventWithdrawn, notifyMandateEnded, notifyRegistration, notifyRegistrationCancelled } from "@/lib/notifications";
 import { activeMandate } from "@/lib/mandates";
+import { hospitalityGate, normalizeVisa } from "@/lib/belgium";
 import { SOURCE_COOKIE } from "@/lib/services";
 import { deletableDraft, DRAFT_COUNTS } from "@/lib/event-drafts";
 import { EVENT_NOT_PUBLISHABLE, eventPublishable } from "@/lib/projects";
@@ -295,7 +296,7 @@ export async function registerToEvent(_: ActionState, form: FormData): Promise<A
   const eventId = str(form, "eventId");
   const event = await db.event.findFirst({
     where: { id: eventId, publishedAt: { not: null }, organization: { verification: "VERIFIED" } },
-    include: { benefits: true, _count: { select: { registrations: true } } },
+    include: { benefits: true, organization: { select: { kind: true } }, _count: { select: { registrations: true } } },
   });
   if (!event) return { error: t("Événement introuvable.") };
   if (!event.registrationOpen) return { error: t("Les inscriptions sont closes.") };
@@ -309,6 +310,12 @@ export async function registerToEvent(_: ActionState, form: FormData): Promise<A
   const source = sourceId ? await db.serviceOrder.findFirst({ where: { id: sourceId, eventId, status: { in: ["planifiee", "realisee"] } }, select: { id: true } }) : null;
 
   const accepted = event.benefits.filter((b) => form.get(`accept_${b.id}`));
+  // Étudiant (hospitalité interdite) ; praticien exerçant en Belgique sans visa Mdeon communiqué : inscription seule.
+  const gate = hospitalityGate(user.practitioner, event);
+  if (accepted.length > 0 && gate === "student")
+    return { error: t("En tant qu'étudiant, vous ne pouvez accepter aucune prestation (l'hospitalité offerte aux étudiants est interdite) : inscrivez-vous sans les cocher.") };
+  if (accepted.length > 0 && gate === "be_no_visa")
+    return { error: t("Vous exercez en Belgique : l'organisateur n'a pas encore communiqué le visa Mdeon de cet événement, préalable à toute prise en charge. Inscrivez-vous sans les prestations.") };
   if (accepted.length > 0 && user.practitioner && !form.get("ackHcp"))
     return { error: t("Merci de confirmer avoir pris connaissance de l'information sur les avantages.") };
 
@@ -424,6 +431,27 @@ export async function saveEventProgram(_: ActionState, form: FormData): Promise<
   revalidatePath(`/organisations/${orgId}/dossiers`, "layout");
   revalidatePath(`/evenements/${eventId}`);
   return { ok: program ? t("Programme enregistré.") : t("Programme retiré.") };
+}
+
+/**
+ * Visa Mdeon de l'événement (praticiens exerçant en Belgique) : saisi par l'organisateur, son agence ou la conformité.
+ * Sans numéro, ces praticiens s'inscrivent sans hospitalité ; le numéro leur est communiqué à l'inscription.
+ */
+export async function setEventMdeonVisa(_: ActionState, form: FormData): Promise<ActionState> {
+  const { t } = await getT();
+  const orgId = str(form, "orgId");
+  const eventId = str(form, "eventId");
+  const { user, roles } = await requireMembership(orgId, [...EVENT_MANAGER_ROLES, ...COMPLIANCE_ROLES]);
+  const visa = normalizeVisa(str(form, "mdeonVisa"));
+  if (visa && !/^[\p{L}\p{N}][\p{L}\p{N} ./_-]{2,}$/u.test(visa)) return { error: t("Numéro de visa invalide : lettres, chiffres, tirets ou barres.") };
+  const scope = roles.some((r) => COMPLIANCE_ROLES.includes(r)) ? {} : eventScope(user, roles);
+  const { count } = await db.event.updateMany({ where: { id: eventId, organizationId: orgId, ...scope }, data: { mdeonVisa: visa || null, mdeonVisaAt: visa ? new Date() : null } });
+  if (!count) return { error: t("Événement introuvable.") };
+  await audit(user.id, visa ? "event.mdeon_visa" : "event.mdeon_visa_remove", "Event", eventId, visa ? { visa } : undefined);
+  revalidatePath(`/organisations/${orgId}/evenements/${eventId}`);
+  revalidatePath(`/organisations/${orgId}/dossiers`, "layout");
+  revalidatePath(`/evenements/${eventId}`);
+  return { ok: visa ? t("Visa Mdeon enregistré : les praticiens exerçant en Belgique peuvent accepter les prestations.") : t("Visa Mdeon retiré.") };
 }
 
 // ─── Validation par la conformité ──────────────────────────────────────────

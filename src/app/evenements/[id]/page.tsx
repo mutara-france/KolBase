@@ -8,6 +8,7 @@ import { RegisterForm } from "@/components/EventForms";
 import { db } from "@/lib/db";
 import { getCurrentUser } from "@/lib/auth";
 import { EVENT_STATE_LABEL, eventState, eventTypeLabel, formatDuration, FORMAT_LABEL, isHcp } from "@/lib/events";
+import { hospitalityGate } from "@/lib/belgium";
 import { cancelRegistration } from "@/lib/event-actions";
 import type { Metadata } from "next";
 import { fmtDate, fmtEur, intlLocale, type Locale } from "@/lib/i18n";
@@ -61,6 +62,8 @@ export default async function Page({ params, searchParams }: { params: Promise<{
     ? await db.registration.findUnique({ where: { eventId_userId: { eventId: id, userId: user.id } }, include: { benefits: { include: { benefit: true } }, survey: { select: { id: true } } } })
     : null;
   const canReview = !!reg && !reg.survey && eventEnded(event) && (await attended(reg));
+  // Hospitalités : interdites aux étudiants ; en Belgique, subordonnées au visa Mdeon quand il est requis.
+  const gate = hospitalityGate(user?.practitioner, event);
   const onlineUrl = reg && event.format !== "PRESENTIEL" ? (await db.event.findUnique({ where: { id }, select: { onlineUrl: true } }))?.onlineUrl ?? null : null;
   // États communs (src/lib/events.ts) : inscriptions closes dès le début, « passé » après la fin.
   const st = eventState(event, event._count.registrations);
@@ -181,6 +184,7 @@ export default async function Page({ params, searchParams }: { params: Promise<{
                       ? t("Vous n'avez accepté aucune prestation.")
                       : t("Prestations acceptées : {list} ({total}).", { list: reg.benefits.map((b) => t(b.benefit.label)).join(", "), total: fmtEur(locale, reg.benefits.reduce((s, b) => s + b.valueCents, 0)) })}
                   </p>
+                  {gate === "be" && event.mdeonVisa && reg.benefits.length > 0 && <p className="muted text-sm">{t("Visa Mdeon n° {visa}", { visa: event.mdeonVisa })}</p>}
                   {!ended && event.format !== "DISTANCIEL" && <Link className="btn secondary" href={`/inscriptions/${reg.id}/badge`}>{t("Mon badge d'accueil")}</Link>}
                   {ended && reg.checkedInAt && <a className="btn secondary" href={`/inscriptions/${reg.id}/attestation`}>{t("Mon attestation de présence")}</a>}
                   {canReview && <Link className="btn ghost" href={`/evenements/${id}/avis`}>{t("Donner mon avis")}</Link>}
@@ -211,6 +215,8 @@ export default async function Page({ params, searchParams }: { params: Promise<{
                 <RegisterForm
                   eventId={id}
                   hcp={isHcp(user)}
+                  gate={gate}
+                  visa={gate === "be" ? event.mdeonVisa : null}
                   defaultStructure={user.practitioner?.hospital ?? ""}
                   benefits={event.benefits.map((b) => ({ id: b.id, label: t(b.label), valueCents: b.valueCents }))}
                 />

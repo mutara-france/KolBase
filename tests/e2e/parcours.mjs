@@ -449,6 +449,116 @@ const linkIn = (mail) => mail?.text.match(/https?:\/\/\S+/g)?.find((u) => !u.end
   await db.end();
 }
 
+// ── Règles : étudiants, Belgique (visa Mdeon, betransparent.be), agents publics, frais d'inscription ──
+{
+  const pgc = new pg.Client({ connectionString: process.env.DATABASE_URL });
+  await pgc.connect();
+  const q1 = async (sql, args = []) => (await pgc.query(sql, args)).rows[0];
+  const pdf = Buffer.from("%PDF-1.4\n1 0 obj << /Type /Catalog >> endobj\ntrailer << /Root 1 0 R >>\n%%EOF\n");
+  // Rencontres d'un industriel sur deux jours, nuitée offerte, déjeuner au-delà du plafond Mdeon (45 €).
+  await pgc.query(`insert into "Event" (id, "organizationId", title, "typeId", "startsAt", "durationMinutes", format, city, venue, capacity, "publishedAt", "updatedAt")
+    values ('e2e-r1-ev', 'demo-org-dentalys', 'Rencontres implantaires Règles', 'pleniere', date_trunc('day', now()) + interval '40 days 8 hours', 1980, 'PRESENTIEL', 'Lille', 'Grand Palais (fictif)', 50, now(), now())`);
+  await pgc.query(`insert into "EventBenefit" (id, "eventId", "catalogId", label, "valueCents") values ('e2e-r1-b-nuit', 'e2e-r1-ev', 'nuitee', 'Nuitée d''hôtel', 14000), ('e2e-r1-b-dej', 'e2e-r1-ev', 'dejeuner', 'Déjeuner sur place', 5200)`);
+  const ev = `${BASE}/evenements/e2e-r1-ev`;
+
+  // Étudiant : l'hospitalité lui est interdite ; il s'inscrit sans.
+  const paul = await session();
+  await login(paul.page, "paul.laurent@demo.kolbase.local");
+  await paul.page.goto(ev);
+  let t = await text(paul.page);
+  check("Étudiant : prestations visibles mais impossibles à accepter", t.includes("En tant qu'étudiant, vous ne pouvez accepter") && (await paul.page.locator('input[name="accept_e2e-r1-b-nuit"]').isDisabled()));
+  await paul.page.evaluate(() => { const c = document.querySelector('input[name="accept_e2e-r1-b-nuit"]'); c.disabled = false; c.checked = true; });
+  await paul.page.click('button:has-text("M\'inscrire")');
+  await paul.page.waitForTimeout(1200);
+  const paulReg = () => q1(`select r.id, (select count(*)::int from "RegistrationBenefit" b where b."registrationId" = r.id) n from "Registration" r join "User" u on u.id = r."userId" where u.email = 'paul.laurent@demo.kolbase.local' and r."eventId" = 'e2e-r1-ev'`);
+  check("Étudiant : une prestation forcée est refusée par le serveur", (await text(paul.page)).includes("vous ne pouvez accepter aucune prestation") && !(await paulReg()));
+  await paul.page.goto(ev);
+  await paul.page.click('button:has-text("M\'inscrire")');
+  await paul.page.locator("text=Inscription confirmée").first().waitFor({ timeout: 8000 }).catch(() => {});
+  const pr = await paulReg();
+  check("Étudiant : inscription possible, sans prestation", !!pr && pr.n === 0);
+  await paul.ctx.close();
+
+  // Praticienne exerçant en Belgique : pas de prestation tant que le visa Mdeon n'est pas communiqué.
+  const SJ = "sophie.janssens@demo.kolbase.local";
+  const sj = await session();
+  await login(sj.page, SJ);
+  await sj.page.goto(ev);
+  t = await text(sj.page);
+  check("Belgique : sans visa Mdeon, prestations indisponibles", t.includes("suppose un visa Mdeon") && (await sj.page.locator('input[name="accept_e2e-r1-b-nuit"]').isDisabled()));
+  const claire = await session();
+  await login(claire.page, "claire.morel@demo.kolbase.local");
+  await claire.page.goto(`${BASE}/organisations/demo-org-dentalys/evenements/e2e-r1-ev`);
+  t = await text(claire.page);
+  check("Organisateur : visa Mdeon requis avec sa date limite, plafond dépassé signalé", t.includes("Visa Mdeon requis") && /au plus tard le \d/.test(t) && t.includes("Déjeuner sur place 52 € > 45 €"), t.slice(t.indexOf("Praticiens exerçant en Belgique"), t.indexOf("Praticiens exerçant en Belgique") + 400));
+  await claire.page.fill('input[name="mdeonVisa"]', "V-2026-0042");
+  await claire.page.click('button:has-text("Enregistrer le visa")');
+  await claire.page.waitForTimeout(1200);
+  check("Visa Mdeon enregistré et journalisé", (await q1(`select "mdeonVisa" v from "Event" where id = 'e2e-r1-ev'`)).v === "V-2026-0042" && !!(await q1(`select 1 from "AuditLog" where action = 'event.mdeon_visa' and "entityId" = 'e2e-r1-ev'`)));
+  await sj.page.goto(ev);
+  await sj.page.check('input[name="accept_e2e-r1-b-nuit"]');
+  t = await text(sj.page);
+  check("Belgique : information belge (article 10, visa, betransparent.be)", t.includes("article 10 de la loi sur les médicaments") && t.includes("visa Mdeon n° V-2026-0042") && t.includes("betransparent.be"));
+  await sj.page.check('input[name="ackHcp"]');
+  await sj.page.click('button:has-text("M\'inscrire")');
+  const sjMail = await waitMail(SJ, "Inscription confirmée : « Rencontres implantaires Règles");
+  check("Belgique : le numéro de visa figure dans l'e-mail de confirmation", !!sjMail && sjMail.text.includes("Visa Mdeon n° V-2026-0042"), sjMail?.text.slice(0, 300));
+  await sj.ctx.close();
+
+  // Publication belge : préparation betransparent.be (rôle Conformité).
+  const comp = await session();
+  await login(comp.page, "sophie.bernard@demo.kolbase.local");
+  await comp.page.goto(`${BASE}/organisations/demo-org-dentalys/conformite?onglet=transparence`);
+  check("Conformité : préparation betransparent.be proposée", (await text(comp.page)).includes("Belgique : betransparent.be"));
+  const year = (await q1(`select extract(year from "startsAt" at time zone 'Europe/Brussels')::int y from "Event" where id = 'e2e-r1-ev'`)).y;
+  const csv = await comp.page.request.get(`${BASE}/organisations/demo-org-dentalys/conformite/betransparent?annee=${year}`);
+  const body = await csv.text();
+  check("betransparent.be : nuitée de la praticienne belge, INAMI et visa", csv.ok() && body.includes("JANSSENS") && body.includes("39990000017") && body.includes("Frais d'hébergement") && body.includes("V-2026-0042"), body.split("\n").slice(0, 2).join(" | "));
+  const other = await claire.page.request.get(`${BASE}/organisations/demo-org-dentalys/conformite/betransparent?annee=${year}`);
+  check("betransparent.be : réservé au rôle Conformité", !(await other.text()).includes("JANSSENS"));
+  // Frais d'inscription : seuil d'autorisation propre, réglable à la baisse.
+  await comp.page.goto(`${BASE}/organisations/demo-org-dentalys/conformite?onglet=parametres`);
+  t = await text(comp.page);
+  check("Paramètres : seuil des frais d'inscription (1 000 €)", t.includes("Frais d'inscription pris en charge") && (await comp.page.locator('input[name="registrationFeeMax"]').inputValue()) === "1000");
+  await comp.ctx.close();
+
+  // Expert agent public : l'autorisation de cumul est jointe avant toute démarche auprès de l'Ordre.
+  const nb = await session();
+  await login(nb.page, "nicolas.blanc@demo.kolbase.local");
+  await nb.page.goto(`${BASE}/compte`);
+  await nb.page.check('input[name="publicAgent"]');
+  await nb.page.click('button:has-text("Enregistrer le profil expert")');
+  await nb.page.waitForTimeout(1200);
+  check("Expert : statut d'agent public enregistré", (await q1(`select "publicAgent" a from "PractitionerProfile" where id = 'demo-p-blanc'`)).a === true);
+  await pgc.query(`insert into "Project" (id, "organizationId", title, "typeId", status, "updatedAt") values ('e2e-r1-prj', 'demo-org-dentalys', 'Conférence implants courts Règles', 'pleniere', 'VALIDE', now())`);
+  await pgc.query(`insert into "ProjectExpert" (id, "projectId", "practitionerId", status, "feeCents", days) values ('e2e-r1-prj-x0', 'e2e-r1-prj', 'demo-p-blanc', 'VALIDE', 150000, 1)`);
+  const dossierUrl = `${BASE}/organisations/demo-org-dentalys/dossiers/e2e-r1-prj`;
+  await claire.page.goto(dossierUrl);
+  t = await text(claire.page);
+  check("Agent public : ni déclaration ni demande à l'Ordre sans autorisation de cumul", t.includes("Expert agent public : déposez l'autorisation de cumul") && (await claire.page.locator('button:has-text("Déclaration simple")').count()) === 0 && (await claire.page.locator('button:has-text("Demander l\'autorisation à l\'Ordre")').count()) === 0);
+  await nb.page.goto(`${BASE}/sollicitations/e2e-r1-prj-x0?onglet=documents`);
+  t = await text(nb.page);
+  check("Agent public : l'expert est invité à déposer son autorisation", t.includes("Vous exercez comme agent public : déposez"));
+  const up = 'form:has(input[name="file"])';
+  await nb.page.selectOption(`${up} select[name="kind"]`, "AUTORISATION_CUMUL");
+  await nb.page.setInputFiles(`${up} input[name="file"]`, { name: "autorisation-cumul-chu.pdf", mimeType: "application/pdf", buffer: pdf });
+  await nb.page.click(`${up} button:has-text("Déposer")`);
+  await nb.page.waitForTimeout(1500);
+  check("Autorisation de cumul déposée par l'expert", !!(await q1(`select 1 from "Document" where "projectExpertId" = 'e2e-r1-prj-x0' and kind = 'AUTORISATION_CUMUL'`)));
+  await claire.page.goto(dossierUrl);
+  await claire.page.click('.next-step button:has-text("Déclaration simple")');
+  await claire.page.waitForTimeout(1200);
+  check("Autorisation jointe : la déclaration simple redevient possible", (await q1(`select status from "Project" where id = 'e2e-r1-prj'`)).status === "SIGNATURE");
+  await nb.ctx.close();
+  await claire.ctx.close();
+  // Retour à l'état de départ pour la suite des parcours.
+  await pgc.query(`update "PractitionerProfile" set "publicAgent" = false where id = 'demo-p-blanc'`);
+  await pgc.query(`delete from "Registration" where "eventId" = 'e2e-r1-ev'`);
+  await pgc.query(`delete from "Event" where id = 'e2e-r1-ev'`);
+  await pgc.query(`delete from "Project" where id = 'e2e-r1-prj'`);
+  await pgc.end();
+}
+
 // ── Agences : confier un événement en une seule action ─────────────────────
 {
   const agent = await session();

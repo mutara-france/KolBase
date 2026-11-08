@@ -804,7 +804,7 @@ export function notifyRegistration(registrationId: string) {
   later(async () => {
     const r = await db.registration.findUnique({
       where: { id: registrationId },
-      include: { user: { select: { ...userSelect, firstName: true } }, benefits: { include: { benefit: true } }, event: { include: { organization: { select: { name: true } } } } },
+      include: { user: { select: { ...userSelect, firstName: true, practitioner: { select: { country: true } } } }, benefits: { include: { benefit: true } }, event: { include: { organization: { select: { name: true } } } } },
     });
     if (!r) return;
     const ev = r.event;
@@ -825,6 +825,8 @@ export function notifyRegistration(registrationId: string) {
           r.benefits.length > 0
             ? t("Prestations acceptées : {list} ({total}).", { list: r.benefits.map((b) => t(b.benefit.label)).join(", "), total: fmtEur(locale, total) })
             : null,
+          // Praticien exerçant en Belgique : le numéro de visa Mdeon figure dans la correspondance (code Mdeon).
+          r.benefits.length > 0 && r.user.practitioner?.country === "BE" && ev.mdeonVisa ? t("Visa Mdeon n° {visa}", { visa: ev.mdeonVisa }) : null,
           inPerson ? t("À l'accueil, présentez votre badge : le lien ci-dessous l'affiche sur votre téléphone.") : null,
           t("L'événement est joint à cet e-mail pour votre agenda (fichier .ics)."),
           t("Un empêchement ? Annulez votre inscription depuis « Mes inscriptions » : {url}", { url: `${appUrl()}/inscriptions` }),

@@ -1,5 +1,6 @@
 import { aiEnabled } from "@/lib/ai";
-import { EditEventForm, EventReviewForm, ProgramForm } from "@/components/EventForms";
+import { EditEventForm, EventReviewForm, MdeonVisaForm, ProgramForm } from "@/components/EventForms";
+import { mdeonDeadline, mdeonOverCaps, mdeonRequired } from "@/lib/belgium";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { Bell, Building2, CalendarDays, Pencil, ClipboardCheck, Euro, FileDown, FolderOpen, Gift, ListOrdered, MapPin, Megaphone, QrCode, ShieldCheck, Star, Truck, Users } from "lucide-react";
@@ -62,7 +63,7 @@ export async function EventWorkspace({ orgId: id, eventId, publie, mode = "page"
         },
       },
       benefits: { include: { _count: { select: { accepted: true } } } },
-      registrations: { include: { user: true, benefits: { include: { benefit: true } } }, orderBy: { createdAt: "asc" } },
+      registrations: { include: { user: { include: { practitioner: { select: { country: true } } } }, benefits: { include: { benefit: true } } }, orderBy: { createdAt: "asc" } },
       _count: { select: { registrations: true, rfqs: true, calls: true, serviceOrders: true } },
       surveys: { orderBy: { createdAt: "desc" } },
       serviceOrders: { include: { offer: { select: { kind: true } } }, orderBy: { createdAt: "desc" } },
@@ -583,6 +584,31 @@ export async function EventWorkspace({ orgId: id, eventId, publie, mode = "page"
                       <p className={all.regime === "autorisation" ? "notice warn" : "hint"}>
                         {t("Participant qui accepte toutes les prestations : convention")}{" "}{all.regime === "autorisation" ? t("soumise à autorisation de l'Ordre ({reason}), à demander au moins {authorizationDays} jours avant l'événement", { reason: regimeReason(all, t, intlLocale(locale)), authorizationDays: settings.authorizationDays }) : t("déclarée à l'Ordre (sous les seuils d'autorisation)")}.
                       </p>
+                    );
+                  })()}
+                  {/* Belgique (article 10, code Mdeon) : visa préalable et plafonds de l'hospitalité raisonnable. */}
+                  {org.kind === "INDUSTRIEL" && (() => {
+                    const required = mdeonRequired({ ...event, organization: { kind: org.kind } });
+                    const over = mdeonOverCaps(event.benefits.map((b) => ({ ...b, label: t(b.label) })));
+                    const belgians = event.registrations.filter((r) => r.user.practitioner?.country === "BE" && !r.cancelledAt).length;
+                    return (
+                      <div className="stack-sm belgium-block" id="belgique">
+                        <h3 className="eyebrow-sm">{t("Praticiens exerçant en Belgique")}</h3>
+                        {required ? (
+                          <p className={event.mdeonVisa ? "hint" : "notice warn"}>
+                            {event.mdeonVisa
+                              ? t("Visa Mdeon n° {visa} : communiqué aux praticiens exerçant en Belgique avec les prestations.", { visa: event.mdeonVisa })
+                              : t("Visa Mdeon requis avant d'offrir ces prestations à un praticien exerçant en Belgique (manifestation de plusieurs jours ou avec nuitée) : à demander au plus tard le {date}, 15e jour ouvrable avant le début. Sans visa, ces praticiens s'inscrivent sans prestation.", { date: fmtDate(locale, mdeonDeadline(event.startsAt)) })}
+                            {belgians > 0 && <> {t(belgians > 1 ? "{n} inscrits exercent en Belgique." : "{n} inscrit exerce en Belgique.", { n: belgians })}</>}
+                          </p>
+                        ) : (
+                          <p className="hint">{t("Pas de visa Mdeon nécessaire : une seule journée, sans nuitée. Les prestations acceptées par ces praticiens se publient sur betransparent.be.")}</p>
+                        )}
+                        {over.length > 0 && (
+                          <p className="notice warn">{t("Au-delà des plafonds Mdeon (hospitalité raisonnable) : {list}. Mdeon refuserait le visa à ces montants.", { list: over.map((o) => t("{label} {value} € > {max} €", { label: t(o.label), value: o.value.toLocaleString(intlLocale(locale)), max: o.max })).join(" ; ") })}</p>
+                        )}
+                        {required && <MdeonVisaForm orgId={id} eventId={eventId} visa={event.mdeonVisa} />}
+                      </div>
                     );
                   })()}
                 </>

@@ -2,7 +2,8 @@
 
 import Link from "next/link";
 import { useActionState, useState } from "react";
-import { createEvent, registerToEvent, reviewEvent, saveEventProgram, updateEvent } from "@/lib/event-actions";
+import { createEvent, registerToEvent, reviewEvent, saveEventProgram, setEventMdeonVisa, updateEvent } from "@/lib/event-actions";
+import { canAcceptHospitality, type HospitalityGate } from "@/lib/belgium";
 import { AiDraft } from "@/components/AiDraft";
 import { Notice } from "@/components/AuthForms";
 import { ActionForm } from "@/components/ActionForm";
@@ -184,12 +185,14 @@ export function EditEventForm({ orgId, eventId, types, formats, catalog, initial
 type Benefit = { id: string; label: string; valueCents: number };
 const eur = (c: number, locale: Locale) => (c / 100).toLocaleString(intlLocale(locale), { style: "currency", currency: "EUR" });
 
-export function RegisterForm({ eventId, benefits, hcp, defaultStructure }: { eventId: string; benefits: Benefit[]; hcp: boolean; defaultStructure: string }) {
+export function RegisterForm({ eventId, benefits, hcp, defaultStructure, gate = "fr", visa = null }: { eventId: string; benefits: Benefit[]; hcp: boolean; defaultStructure: string; gate?: HospitalityGate; visa?: string | null }) {
   const [state, action, pending] = useActionState(registerToEvent, undefined);
   const [accepted, setAccepted] = useState<Record<string, boolean>>({});
   const t = useT();
   const locale = useLocale();
-  const total = benefits.filter((b) => accepted[b.id]).reduce((s, b) => s + b.valueCents, 0);
+  // Étudiant, ou praticien exerçant en Belgique sans visa Mdeon : inscription possible, sans aucune prestation.
+  const closed = !canAcceptHospitality(gate);
+  const total = closed ? 0 : benefits.filter((b) => accepted[b.id]).reduce((s, b) => s + b.valueCents, 0);
   if (state?.ok) return <p className="notice ok">{state.ok} <Link href="/inscriptions">{t("Retrouvez-la dans « Mes inscriptions ».")}</Link></p>;
   return (
     <form action={action} className="form">
@@ -199,10 +202,16 @@ export function RegisterForm({ eventId, benefits, hcp, defaultStructure }: { eve
       {benefits.length > 0 && (
         <fieldset>
           <legend>{t("Prestations proposées")}</legend>
-          <p className="hint">{t("Cochez uniquement ce que vous acceptez. Vous pouvez participer sans rien accepter.")}</p>
+          {gate === "student" ? (
+            <p className="notice warn">{t("En tant qu'étudiant, vous ne pouvez accepter aucune de ces prestations : l'hospitalité offerte aux étudiants par les entreprises de santé est interdite. Vous pouvez vous inscrire sans elles.")}</p>
+          ) : gate === "be_no_visa" ? (
+            <p className="notice warn">{t("Vous exercez en Belgique : la prise en charge de cet événement suppose un visa Mdeon, que l'organisateur n'a pas encore communiqué. Vous pouvez vous inscrire sans les prestations.")}</p>
+          ) : (
+            <p className="hint">{t("Cochez uniquement ce que vous acceptez. Vous pouvez participer sans rien accepter.")}</p>
+          )}
           {benefits.map((b) => (
             <label key={b.id} className="check">
-              <input type="checkbox" name={`accept_${b.id}`} checked={!!accepted[b.id]} onChange={(e) => setAccepted({ ...accepted, [b.id]: e.target.checked })} />
+              <input type="checkbox" name={`accept_${b.id}`} checked={!closed && !!accepted[b.id]} disabled={closed} onChange={(e) => setAccepted({ ...accepted, [b.id]: e.target.checked })} />
               {t(b.label)} — {eur(b.valueCents, locale)}
             </label>
           ))}
@@ -212,7 +221,13 @@ export function RegisterForm({ eventId, benefits, hcp, defaultStructure }: { eve
       {hcp && total > 0 && (
         <div className="notice warn">
           <strong>{t("Information réglementaire.")}</strong>{" "}
-          {t("En tant que professionnel de santé, les prestations acceptées constituent un avantage au sens du Code de la santé publique. Elles feront l'objet d'une convention d'hospitalité et seront publiées à votre nom sur la base Transparence Santé.")}
+          {gate === "be"
+            ? visa
+              ? t("Vous exercez en Belgique : les prestations acceptées constituent un avantage au sens de l'article 10 de la loi sur les médicaments. Elles sont couvertes par le visa Mdeon n° {visa} et seront publiées à votre nom sur betransparent.be.", { visa })
+              : t("Vous exercez en Belgique : les prestations acceptées constituent un avantage au sens de l'article 10 de la loi sur les médicaments et seront publiées à votre nom sur betransparent.be.")
+            : gate === "other"
+              ? t("En tant que professionnel de santé, les prestations acceptées constituent un avantage soumis aux règles de votre pays d'exercice ; l'organisateur peut être tenu de les publier.")
+              : t("En tant que professionnel de santé, les prestations acceptées constituent un avantage au sens du Code de la santé publique. Elles feront l'objet d'une convention d'hospitalité et seront publiées à votre nom sur la base Transparence Santé.")}
           <label className="check"><input type="checkbox" name="ackHcp" required /> {t("J'ai compris et j'accepte.")}</label>
         </div>
       )}
@@ -260,6 +275,24 @@ export function EventReviewForm({ orgId, eventId, justify = false }: { orgId: st
         <button className="btn small" name="decision" value="approve" disabled={pending}>{t("Valider l'événement")}</button>
         <button className="btn ghost small" name="decision" value="changes" disabled={pending}>{t("Demander des modifications")}</button>
       </div>
+    </form>
+  );
+}
+
+/** Visa Mdeon de l'événement (praticiens exerçant en Belgique) : saisie, modification ou retrait du numéro. */
+export function MdeonVisaForm({ orgId, eventId, visa }: { orgId: string; eventId: string; visa: string | null }) {
+  const t = useT();
+  const [state, action, pending] = useActionState(setEventMdeonVisa, undefined);
+  return (
+    <form action={action} className="form stack-sm">
+      <Notice state={state} />
+      <input type="hidden" name="orgId" value={orgId} />
+      <input type="hidden" name="eventId" value={eventId} />
+      <label>{t("Numéro de visa Mdeon")}
+        <input name="mdeonVisa" defaultValue={visa ?? ""} placeholder={t("Numéro attribué par Mdeon")} maxLength={60} />
+      </label>
+      <p className="hint">{t("Laissez vide pour retirer le numéro. Il est communiqué aux praticiens exerçant en Belgique avec les prestations.")}</p>
+      <button className="btn small secondary" disabled={pending}>{pending ? t("Enregistrement…") : t("Enregistrer le visa")}</button>
     </form>
   );
 }
