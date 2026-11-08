@@ -1,6 +1,7 @@
 import "server-only";
 import { db } from "@/lib/db";
 import { collabType } from "@/lib/projects";
+import { EXPENSE_NATURE_FR, isExpenseCategory } from "@/lib/expert-costs";
 import { country } from "@/lib/countries";
 import { BENEFIT_NATURE, COLUMNS, CONVENTION_OBJECT, HOSPITALITY_CONVENTION, semesterRange, THRESHOLD_EUR, type Semester } from "@/lib/transparence-shared";
 
@@ -25,7 +26,11 @@ export async function declarationRows(orgId: string, s: Semester, { includeDecla
   const [links, regs] = await Promise.all([
     db.projectExpert.findMany({
       where: { project: { organizationId: orgId, status: { in: ["SIGNE", "TERMINE"] }, ...(includeDeclared ? {} : { declared: false }) }, status: { notIn: ["DECLINE", "ATT_EXPERTS"] } },
-      include: { project: true, signature: { select: { completedAt: true } }, practitioner: { include: { user: { select: { firstName: true, lastName: true } } } } },
+      include: {
+        project: true, signature: { select: { completedAt: true } }, practitioner: { include: { user: { select: { firstName: true, lastName: true } } } },
+        // Frais remboursés à l'expert (transport, hébergement, repas) : avantages rattachés à sa convention.
+        expenses: { where: { status: "paid", paidAt: range }, orderBy: { paidAt: "asc" } },
+      },
       orderBy: { createdAt: "asc" },
     }),
     db.registration.findMany({
@@ -76,13 +81,27 @@ export async function declarationRows(orgId: string, s: Semester, { includeDecla
       projects.add(l.projectId);
     }
     if (l.paidAt && l.paidCents && inRange(l.paidAt)) {
-      if (l.paidCents / 100 < THRESHOLD_EUR) { report.belowThreshold++; continue; }
+      if (l.paidCents / 100 < THRESHOLD_EUR) report.belowThreshold++;
+      else {
+        rows.push({
+          Action: "C", Déclaration: "Rémunération", "Identifiant unique": idOf("R", l.id), "Convention liée": conventionId, "Date de signature / versement": day(l.paidAt), "Date de fin": "",
+          "Objet convention / nature avantage": "", Autre: "", "Montant des conventions / avantages / rémunération": euros(l.paidCents), "Information convention": "",
+          ...who,
+        });
+        report.remunerations++;
+        projects.add(l.projectId);
+      }
+    }
+    for (const x of l.expenses) {
+      if (x.amountCents / 100 < THRESHOLD_EUR) { report.belowThreshold++; continue; }
+      const nature = isExpenseCategory(x.category) ? EXPENSE_NATURE_FR[x.category] : "Autre";
       rows.push({
-        Action: "C", Déclaration: "Rémunération", "Identifiant unique": idOf("R", l.id), "Convention liée": conventionId, "Date de signature / versement": day(l.paidAt), "Date de fin": "",
-        "Objet convention / nature avantage": "", Autre: "", "Montant des conventions / avantages / rémunération": euros(l.paidCents), "Information convention": "",
+        Action: "C", Déclaration: "Avantage", "Identifiant unique": idOf("F", x.id), "Convention liée": conventionId, "Date de signature / versement": day(x.paidAt!), "Date de fin": "",
+        "Objet convention / nature avantage": nature, Autre: nature === "Autre" ? x.label : "",
+        "Montant des conventions / avantages / rémunération": euros(x.amountCents), "Information convention": "",
         ...who,
       });
-      report.remunerations++;
+      report.advantages++;
       projects.add(l.projectId);
     }
   }

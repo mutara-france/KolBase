@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { Clock, Briefcase, Building2, CalendarDays, Euro, FileSignature, FileText, MapPin, MessagesSquare, Reply, Scale } from "lucide-react";
+import { Clock, Briefcase, Building2, CalendarDays, Euro, FileSignature, FileText, MapPin, MessagesSquare, Receipt, Reply, Scale } from "lucide-react";
+import { ExpertCostsPanel, FrameworkPanel } from "@/components/ExpertCosts";
 import { SectionHead } from "@/components/UI";
 import { SiteHeader } from "@/components/SiteHeader";
 import { PageHero } from "@/components/PageHero";
@@ -41,6 +42,9 @@ export default async function Page({ params, searchParams }: { params: Promise<{
       signature: true,
       // Convention signée déposée à la main (la plus récente).
       documents: { where: { kind: "CONVENTION_SIGNEE" }, select: { id: true }, orderBy: { createdAt: "desc" }, take: 1 },
+      // Notes de frais refusées ou remboursées depuis la dernière visite : signalées sur l'onglet.
+      expenses: { select: { status: true } },
+      travel: { select: { sentAt: true } },
       messages: { include: { author: { select: { firstName: true, lastName: true } } }, orderBy: { createdAt: "asc" } },
     },
   });
@@ -96,6 +100,8 @@ export default async function Page({ params, searchParams }: { params: Promise<{
     { key: "evenement", label: t("Événement"), icon: CalendarDays, count: events.length > 1 ? events.length : undefined, disabled: events.length ? undefined : t("Aucun événement rattaché") },
     { key: "documents", label: t("Documents et convention"), icon: FileText, alert: toSign || cumulDue, disabled: engaged ? undefined : t("Après votre accord de principe") },
     { key: "messagerie", label: t("Messagerie"), icon: MessagesSquare, count: link.messages.length || undefined, alert: toAnswer },
+    // Voyage réservé par l'organisation et notes de frais (frais réels sur justificatif).
+    { key: "frais", label: t("Frais et voyage"), icon: Receipt, count: link.expenses.length || undefined, alert: link.expenses.some((e) => e.status === "rejected"), disabled: engaged ? undefined : t("Après votre accord de principe") },
   ];
   const active = tabs.find((tb) => tb.key === onglet && !tb.disabled)?.key ?? "mission";
   const href = (k: string) => (k === "mission" ? `/sollicitations/${link.id}` : `/sollicitations/${link.id}?onglet=${k}`);
@@ -153,6 +159,8 @@ export default async function Page({ params, searchParams }: { params: Promise<{
               )}
             </section>
               {toAnswer && <p className="notice"><Link href={href("messagerie")}>{t("{org} vous a écrit : répondre dans la messagerie", { org: p.organization.name })}</Link></p>}
+              {engaged && link.travel?.sentAt && <p className="notice"><Link href={href("frais")}>{t("{org} a réservé votre voyage : voir le détail", { org: p.organization.name })}</Link></p>}
+              {engaged && p.framework && <FrameworkPanel orgId={p.organizationId} projectId={p.id} canEdit={false} linkId={link.id} />}
             </div>
             <aside className="page-aside">
             <section className="card stack-sm" aria-labelledby="organisation-titre">
@@ -190,6 +198,8 @@ export default async function Page({ params, searchParams }: { params: Promise<{
             {p.status !== "ATT_IND" && <MaterialsPanel orgId={p.organizationId} projectId={p.id} canSubmit canReview={false} />}
           </div>
         )}
+
+        {active === "frais" && <ExpertCostsPanel linkId={link.id} />}
 
         {active === "evenement" && (
           <div className="stack">

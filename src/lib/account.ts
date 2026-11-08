@@ -21,7 +21,7 @@ export async function exportAccount(userId: string) {
           // Liens d'intérêts déclarés et notes d'honoraires établies (données de l'émetteur figées dans la note).
           declaredInterests: { select: { organization: true, nature: true, startYear: true, endYear: true, createdAt: true } },
           feeNotes: { select: { number: true, issuedAt: true, amountCents: true, vatBp: true, totalCents: true, data: true, organization: { select: { name: true } } }, orderBy: { issuedAt: "asc" } },
-          projectLinks: { include: { project: { select: { title: true, typeId: true, status: true, organization: { select: { name: true } } } }, messages: { select: { body: true, createdAt: true, authorId: true } } } },
+          projectLinks: { include: { project: { select: { title: true, typeId: true, status: true, organization: { select: { name: true } } } }, messages: { select: { body: true, createdAt: true, authorId: true } }, expenses: { select: { category: true, label: true, date: true, amountCents: true, status: true, decisionNote: true, paidAt: true } }, travel: true, missions: { select: { date: true, label: true, units: true } } } },
           applications: { include: { openCall: { select: { title: true, organization: { select: { name: true } }, event: { select: { title: true, startsAt: true } } } } } },
           // Projets proposés aux organisations, avec la réponse de chacune.
           proposals: { include: { projects: { select: { status: true, createdAt: true, organization: { select: { name: true } } } } }, orderBy: { createdAt: "asc" } },

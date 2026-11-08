@@ -18,7 +18,11 @@ export async function practitionerLedger(userId: string, practitionerId: string)
   const [links, regs, declared] = await Promise.all([
     db.projectExpert.findMany({
       where: { practitionerId, status: { notIn: ["ATT_EXPERTS", "DECLINE"] } },
-      include: { project: { include: { organization: { select: { id: true, name: true } } } }, feeNote: { select: { id: true, number: true, issuedAt: true, totalCents: true } } },
+      include: {
+        project: { include: { organization: { select: { id: true, name: true } } } }, feeNote: { select: { id: true, number: true, issuedAt: true, totalCents: true } },
+        // Frais remboursés (avantages déclarés avec la convention).
+        expenses: { where: { status: "paid" }, select: { amountCents: true } },
+      },
       orderBy: { createdAt: "desc" },
     }),
     db.registration.findMany({
@@ -38,6 +42,7 @@ export async function practitionerLedger(userId: string, practitionerId: string)
       type: collabType(l.project.typeId)?.label ?? l.project.typeId, status: l.status, feeCents: l.feeCents ?? 0,
       paidAt: l.paidAt, paidCents: l.paidCents, signed: (SIGNED as readonly string[]).includes(l.status),
       declared: l.project.declared, declarationRef: l.project.declarationRef, note: l.feeNote,
+      expensesCents: l.expenses.reduce((x, e) => x + e.amountCents, 0),
     };
   });
   const hospitality = regs

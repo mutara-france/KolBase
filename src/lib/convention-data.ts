@@ -4,6 +4,8 @@ import { collabType, fmvCheck, STATUS_LABEL } from "@/lib/projects";
 import { eventTypeLabel } from "@/lib/events";
 import { complianceSettings, hospitalityRegime } from "@/lib/compliance";
 import { practicesInFrance } from "@/lib/countries";
+import { MDEON_CAPS } from "@/lib/belgium";
+import { frameworkStart } from "@/lib/expert-costs";
 import type { CollabConventionInput, HospitalityConventionInput } from "@/lib/convention-pdf";
 
 /** Référence d'une convention de collaboration (dossier et expert). */
@@ -42,6 +44,13 @@ export async function loadCollabConvention(linkId: string, where: { organization
     fmv: fmv ? { min: fmv.min, max: fmv.max, perUnit: fmv.perUnit, verdict: fmv.verdict } : null,
     // Langue de l'expert : celle des e-mails et de la page de signature électronique.
     expertLocale: link.practitioner.user.locale,
+    framework: p.framework && p.periodEnd ? { start: frameworkStart(p), end: p.periodEnd } : null,
+    // Plafonds de remboursement des frais : ceux de l'organisation (France), ceux de Mdeon (Belgique).
+    expenseCaps: link.practitioner.country === "BE"
+      ? { night: MDEON_CAPS.nuitee.max, meal: MDEON_CAPS.cocktail.max }
+      : practicesInFrance(link.practitioner.country)
+        ? { night: complianceSettings(p.organization.complianceSettings).hospitalityNightMax, meal: complianceSettings(p.organization.complianceSettings).hospitalityMealMax }
+        : null,
   };
 }
 
