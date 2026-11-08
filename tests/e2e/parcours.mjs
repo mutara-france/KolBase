@@ -656,7 +656,7 @@ const linkIn = (mail) => mail?.text.match(/https?:\/\/\S+/g)?.find((u) => !u.end
   await pgc.query(`update "Rfq" set status = 'sent', "sentAt" = now() where id = $1`, [rfqId]);
   await lud.page.goto(`${BASE}/organisations/demo-sup-belleville/devis/${rfqId}`);
   const t = await text(lud.page);
-  check("Prestataire : la demande dit ce qu'il faut pour chiffrer (date, format, heure, boissons)", t.includes("Dates de la prestation") && t.includes("Cocktail") && t.includes("19:30") && t.includes("Avec vins"));
+  check("Prestataire : la demande dit ce qu'il faut pour chiffrer (date, format, heure, boissons)", /dates de la prestation/i.test(t) && t.includes("Cocktail") && t.includes("19:30") && t.includes("Avec vins"));
   await lud.ctx.close();
 
   // Devis avec acompte et barème d'annulation, comparé puis retenu ; nombre définitif confirmé au traiteur.
@@ -824,13 +824,15 @@ const linkIn = (mail) => mail?.text.match(/https?:\/\/\S+/g)?.find((u) => !u.end
   check("Expert : détail du voyage visible", t.includes("Hôtel Lumière (fictif)") && t.includes("HL-4521") && t.includes("TGV 6611"));
   const ef = 'form:has(input[name="proof"])';
   const expense = async (category, label, amount) => {
+    const before = (await q1(`select count(*)::int n from "ExpertExpense" where "projectExpertId" = 'e2e-r5-x'`)).n;
     await nb.page.selectOption(`${ef} select[name="category"]`, category);
     await nb.page.fill(`${ef} input[name="label"]`, label);
     await nb.page.fill(`${ef} input[name="date"]`, isoDay(-1));
     await nb.page.fill(`${ef} input[name="amount"]`, amount);
     await nb.page.setInputFiles(`${ef} input[name="proof"]`, { name: "justificatif.pdf", mimeType: "application/pdf", buffer: proof });
     await nb.page.click(`${ef} button:has-text("Envoyer la note de frais")`);
-    await nb.page.locator("text=Note de frais envoyée").first().waitFor({ timeout: 8000 }).catch(() => {});
+    // Le message de confirmation de la note précédente reste affiché : on attend la nouvelle ligne.
+    for (let i = 0; i < 40 && (await q1(`select count(*)::int n from "ExpertExpense" where "projectExpertId" = 'e2e-r5-x'`)).n === before; i++) await nb.page.waitForTimeout(200);
   };
   await expense("repas", "Dîner de travail", "62,50");
   const sm = await waitMail("claire.morel@demo.kolbase.local", "Note de frais de Dr Nicolas Blanc");
@@ -5483,10 +5485,10 @@ async function submitNewOrg(page, siren) {
   await page.click(".side-toggle");
   await page.waitForTimeout(300);
 
-  // Fiche dossier : sept onglets, dans l'ordre du circuit ; la messagerie réunit experts et prestataires de l'événement.
+  // Fiche dossier : huit onglets, dans l'ordre du circuit ; la messagerie réunit experts et prestataires de l'événement.
   await page.goto(`${BASE}/organisations/demo-org-dentalys/dossiers/demo-prj-board`);
   const tabsText = (await page.locator("nav.dossier-tabs .dossier-tab").allInnerTexts()).map((x) => x.replace(/\d+/g, "").trim());
-  check("Dossier : sept onglets, dans l'ordre du circuit", JSON.stringify(tabsText) === JSON.stringify(["Vue d'ensemble", "Experts", "Événement", "Conformité", "Documents", "Budget", "Messagerie"]), JSON.stringify(tabsText));
+  check("Dossier : huit onglets, dans l'ordre du circuit", JSON.stringify(tabsText) === JSON.stringify(["Vue d'ensemble", "Experts", "Événement", "Conformité", "Documents", "Budget", "Frais et voyages", "Messagerie"]), JSON.stringify(tabsText));
   check("Vue d'ensemble : un repère par rubrique, chacun mène à son onglet", (await page.locator(".state-grid a.state-tile").count()) === 6 && (await page.locator('.state-grid a.state-tile[href*="onglet=budget"]').count()) === 1);
   await page.goto(`${BASE}/organisations/demo-org-dentalys/dossiers/demo-prj-board?onglet=marketing`);
   check("Ancien onglet Marketing : l'onglet Événement s'ouvre", (await page.locator('.dossier-tab.active:has-text("Événement")').count()) === 1);
