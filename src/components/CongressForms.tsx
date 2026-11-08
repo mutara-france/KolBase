@@ -125,7 +125,7 @@ export function AbstractReviewForm({ ids, abstractId, score, comment }: { ids: I
   const t = useT();
   const [state, action, pending] = useActionState(reviewAbstract, undefined);
   return (
-    <form action={action} className="inline-form">
+    <form action={action} className="form inline-form">
       <Notice state={state?.error ? state : undefined} />
       <H {...ids} />
       <input type="hidden" name="abstractId" value={abstractId} />
@@ -145,7 +145,7 @@ export function AbstractDecisionForm({ ids, abstractId, wished }: { ids: Ids; ab
   const t = useT();
   const [state, action, pending] = useActionState(decideAbstract, undefined);
   return (
-    <form action={action} className="stack-xs">
+    <form action={action} className="form stack-xs">
       <Notice state={state?.error ? state : undefined} />
       <H {...ids} />
       <input type="hidden" name="abstractId" value={abstractId} />
@@ -216,7 +216,7 @@ export function PartnershipAnswerForm({ orgId, partnerId }: { orgId: string; par
   const [declining, setDeclining] = useState(false);
   if (state?.ok) return <p className="notice ok">{state.ok}</p>;
   return (
-    <form action={action} className="stack-xs">
+    <form action={action} className="form stack-xs">
       <Notice state={state} />
       <input type="hidden" name="orgId" value={orgId} />
       <input type="hidden" name="partnerId" value={partnerId} />
