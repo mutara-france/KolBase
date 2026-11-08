@@ -32,6 +32,12 @@ export default async function Page({ searchParams }: { searchParams: Promise<{ a
     orderBy: { event: { startsAt: "asc" } },
   });
   const now = new Date();
+  // Listes d'attente des événements à venir.
+  const waiting = await db.waitlistEntry.findMany({
+    where: { userId: user.id, event: { startsAt: { gt: now }, cancelledAt: null } },
+    include: { event: { select: { id: true, title: true, startsAt: true } } },
+    orderBy: { event: { startsAt: "asc" } },
+  });
   // Absent au pointage d'un événement passé : les prestations acceptées n'ont pas été consommées, ni déclarées.
   const pointed = await pointedPastEvents(regs.map((r) => r.eventId), now);
   const absent = new Set(regs.filter((r) => r.benefits.length > 0 && !r.declared && isAbsent(r, pointed.has(r.eventId))).map((r) => r.id));
@@ -113,7 +119,15 @@ export default async function Page({ searchParams }: { searchParams: Promise<{ a
           <a className="btn ghost small" href="/inscriptions/calendrier">{t("Exporter vers mon agenda (.ics)")}</a>
         </PageHead>
         {annulee && <p className="notice ok">{t("Inscription annulée. Un e-mail vous le confirme.")}</p>}
-        {regs.length === 0 && (
+        {waiting.length > 0 && (
+          <section className="card stack-sm" aria-labelledby="attente-titre">
+            <SectionHead icon={CalendarClock} id="attente-titre" title={t("Listes d'attente")} desc={t("Vous êtes prévenu par e-mail si une place se libère : la première personne qui s'inscrit l'obtient.")} />
+            <ul className="plain stack-xs">
+              {waiting.map((w) => <li key={w.id}><Link href={`/evenements/${w.event.id}`}>{w.event.title}</Link> <span className="muted text-sm">· {formatDateTime(w.event.startsAt)}</span></li>)}
+            </ul>
+          </section>
+        )}
+        {regs.length === 0 && waiting.length === 0 && (
           <div className="card empty">
             <EmptyState icon={CalendarDays} title={t("Aucune inscription.")} action={<Link className="btn secondary small" href="/evenements">{t("Voir l'agenda")}</Link>}>
               {t("Inscrivez-vous aux événements de l'agenda : vos badges, attestations et avantages se retrouvent ici.")}

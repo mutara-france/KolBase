@@ -4,6 +4,8 @@ import { eventEnd, FOLLOWUP_DELAY_MS, FOLLOWUP_MAX_AGE_MS, REMINDER_WINDOW_MS } 
 import { sendEventFollowUps, sendEventReminders, sendOverdueReviews, sendServiceReport } from "@/lib/notifications";
 import { REPORT_DELAY_DAYS } from "@/lib/services";
 import { purgeRateLimits } from "@/lib/rate-limit";
+import { offerFreedPlaces } from "@/lib/waitlist";
+import { NEEDS_RETENTION_DAYS } from "@/lib/registration-needs";
 
 /** Tâches dues : rappels de la veille, puis remerciements (attestation, questionnaire) après les événements. Idempotent. */
 export async function runDueTasks(now = new Date()) {
@@ -37,5 +39,15 @@ export async function runDueTasks(now = new Date()) {
   const clicks = (await db.serviceClick.deleteMany({ where: { createdAt: { lt: new Date(now.getTime() - 395 * 24 * 3600 * 1000) } } })).count;
   // Limiteur de débit : tentatives de plus de 24 h.
   const attempts = await purgeRateLimits(now);
-  return { reminders, followUps, reports, reviewReminders, purged: { sessions, tokens, clicks, attempts } };
+  // Listes d'attente : places encore libres proposées aux suivants (proposition précédente restée sans suite 24 h).
+  const waiting = await db.event.findMany({ where: { startsAt: { gt: now }, cancelledAt: null, waitlist: { some: { notifiedAt: null } } }, select: { id: true } });
+  let offers = 0;
+  for (const e of waiting) offers += await offerFreedPlaces(e.id, now);
+  // Besoins déclarés à l'inscription (régime, allergies, accessibilité) : effacés 30 jours après l'événement.
+  const needsLimit = new Date(now.getTime() - NEEDS_RETENTION_DAYS * 86400e3 - 7 * 86400e3);
+  const needs = (await db.registration.updateMany({
+    where: { event: { startsAt: { lt: needsLimit } }, OR: [{ diet: { not: null } }, { allergies: { not: null } }, { needs: { not: null } }] },
+    data: { diet: null, allergies: null, needs: null },
+  })).count;
+  return { reminders, followUps, reports, reviewReminders, offers, purged: { sessions, tokens, clicks, attempts, needs } };
 }

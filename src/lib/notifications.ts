@@ -4,7 +4,7 @@ import { db } from "@/lib/db";
 import { sendMail, type Mail } from "@/lib/mail";
 import { platformAdminEmails } from "@/lib/platform";
 import { drPrefix } from "@/lib/professions";
-import { COMPLIANCE_ROLES, EVENT_ORGANIZER_ROLES, FORMAT_LABEL, formatEUR, type EventChange } from "@/lib/events";
+import { COMPLIANCE_ROLES, EVENT_ORGANIZER_ROLES, eventPlace, FORMAT_LABEL, formatEUR, type EventChange } from "@/lib/events";
 import { de } from "@/lib/elision";
 import { appUrl, eventIcsEntry, toIcs } from "@/lib/ics";
 import { quoteTtc } from "@/lib/quotes";
@@ -771,7 +771,7 @@ export async function sendEventReminders(eventId: string, now = new Date()) {
       () => db.registration.update({ where: { id: r.id }, data: { reminderSentAt: null } }),
       () => send([r.user], (t, locale) => {
         const when = ev.startsAt.toLocaleString(locale === "en" ? "en-GB" : "fr-FR", { timeZone: "Europe/Paris", weekday: "long", day: "numeric", month: "long", hour: "2-digit", minute: "2-digit" });
-        const place = ev.format === "DISTANCIEL" ? null : t("Lieu : {place}", { place: [ev.venue, ev.city].filter(Boolean).join(", ") || t("à préciser par l'organisateur") });
+        const place = ev.format === "DISTANCIEL" ? null : t("Lieu : {place}", { place: eventPlace(ev) || t("à préciser par l'organisateur") });
         // Lien de connexion (en ligne, hybride) : réservé aux inscrits, donné dans le rappel.
         const online = ev.format === "PRESENTIEL" ? null : ev.onlineUrl ? t("Lien de connexion : {url}", { url: ev.onlineUrl }) : t("En ligne : le lien de connexion vous est communiqué par l'organisateur.");
         return {
@@ -818,7 +818,7 @@ export function notifyRegistration(registrationId: string) {
           t("Votre inscription à « {title} » ({org}) est confirmée.", { title: ev.title, org: ev.organization.name }),
           [
             t("Date : {when}", { when: eventWhen(ev.startsAt, locale) }),
-            inPerson ? t("Lieu : {place}", { place: [ev.venue, ev.city].filter(Boolean).join(", ") || t("à préciser par l'organisateur") }) : null,
+            inPerson ? t("Lieu : {place}", { place: eventPlace(ev) || t("à préciser par l'organisateur") }) : null,
             // Lien de connexion (en ligne, hybride) : réservé aux inscrits.
             ev.format === "PRESENTIEL" ? null : ev.onlineUrl ? t("Lien de connexion : {url}", { url: ev.onlineUrl }) : t("En ligne : le lien de connexion vous est communiqué par l'organisateur."),
           ].filter(Boolean).join("\n"),
@@ -893,7 +893,7 @@ export function notifyEventChanged(eventId: string, changes: EventChange[]) {
     for (const r of ev.registrations) {
       await send([r.user], (t, locale) => {
         const when = ev.startsAt.toLocaleString(locale === "en" ? "en-GB" : "fr-FR", { timeZone: "Europe/Paris", weekday: "long", day: "numeric", month: "long", year: "numeric", hour: "2-digit", minute: "2-digit" });
-        const place = [ev.venue, ev.city].filter(Boolean).join(", ");
+        const place = eventPlace(ev);
         const lines = [
           changes.includes("date") ? t("Nouvelle date : {when}.", { when }) : null,
           changes.includes("format") ? t("Nouveau format : {format}.", { format: t(FORMAT_LABEL[ev.format]) }) : null,
@@ -1079,5 +1079,41 @@ export function notifyEventReview(eventId: string, status: "submitted" | "approv
         : t("Bonjour,\n\nLa conformité demande des modifications sur l'événement « {title} » avant sa publication :\n\n« {note} »", { title: ev.title, note: ev.reviewNote ?? "" }),
       cta: { label: t("Ouvrir l'événement"), href },
     }), actorId);
+  });
+}
+
+/** Liste d'attente : une place s'est libérée (non réservée : la première personne qui s'inscrit l'obtient). */
+export function notifyWaitlistPlace(entryId: string) {
+  later(async () => {
+    const w = await db.waitlistEntry.findUnique({ where: { id: entryId }, include: { user: { select: { ...userSelect, firstName: true } }, event: { include: { organization: { select: { name: true } } } } } });
+    if (!w) return;
+    await sendService([w.user], (t, locale) => ({
+      subject: t("Une place s'est libérée : « {title} »", { title: w.event.title }),
+      text: [
+        t("Bonjour {name},", { name: w.user.firstName }),
+        t("Une place s'est libérée pour « {title} » ({org}), le {when}. Vous étiez sur la liste d'attente.", { title: w.event.title, org: w.event.organization.name, when: eventWhen(w.event.startsAt, locale) }),
+        t("La place n'est pas réservée : inscrivez-vous dès maintenant pour l'obtenir."),
+      ].join("\n\n"),
+      cta: { label: t("M'inscrire"), href: `/evenements/${w.event.id}` },
+    }));
+  });
+}
+
+/** Message de l'organisateur à tous les inscrits d'un événement. */
+export function notifyEventMessage(messageId: string) {
+  later(async () => {
+    const m = await db.eventMessage.findUnique({
+      where: { id: messageId },
+      include: { event: { include: { organization: { select: { name: true } }, registrations: { where: { cancelledAt: null }, include: { user: { select: { ...userSelect, firstName: true } } } } } } },
+    });
+    if (!m) return;
+    await sendService(m.event.registrations.map((r) => r.user), (t) => ({
+      subject: t("« {title} » : {subject}", { title: m.event.title, subject: m.subject }),
+      text: [
+        t("Message de {org} aux inscrits de « {title} » :", { org: m.event.organization.name, title: m.event.title }),
+        m.body,
+      ].join("\n\n"),
+      cta: { label: t("Voir l'événement"), href: `/evenements/${m.event.id}` },
+    }));
   });
 }

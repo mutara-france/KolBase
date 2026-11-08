@@ -1,5 +1,6 @@
 import { aiEnabled } from "@/lib/ai";
-import { EditEventForm, EventReviewForm, MdeonVisaForm, ProgramForm } from "@/components/EventForms";
+import { EditEventForm, EventMessageForm, EventReviewForm, MdeonVisaForm, ProgramForm } from "@/components/EventForms";
+import { dietLabel, needsSummary } from "@/lib/registration-needs";
 import { mdeonDeadline, mdeonOverCaps, mdeonRequired } from "@/lib/belgium";
 import Link from "next/link";
 import { notFound } from "next/navigation";
@@ -8,7 +9,7 @@ import { SectionHead } from "@/components/UI";
 import { StatusPill } from "@/components/ProjectBits";
 import { db } from "@/lib/db";
 import { requireMembership } from "@/lib/orgs";
-import { BENEFIT_CATALOG, COMPLIANCE_ROLES, EVENT_MANAGER_ROLES, EVENT_ORGANIZER_ROLES, EVENT_TYPES, eventScope, eventTypeLabel, FORMAT_LABEL, formatDuration, needsOnlineLink, orgEventStatus, toParisInput } from "@/lib/events";
+import { BENEFIT_CATALOG, COMPLIANCE_ROLES, EVENT_MANAGER_ROLES, EVENT_ORGANIZER_ROLES, EVENT_TYPES, eventPlace, eventScope, eventTypeLabel, FORMAT_LABEL, formatDuration, needsOnlineLink, orgEventStatus, toParisInput } from "@/lib/events";
 import { isSuspendedOrg } from "@/lib/org-roles";
 import { cancelEvent, deleteEventDraft, setEventAgency, setEventFlag, submitEventReview } from "@/lib/event-actions";
 import { needsReview, REVIEW_LABEL, REVIEW_TONE, reviewAllowsPublish, type ReviewStatus } from "@/lib/event-review";
@@ -66,6 +67,8 @@ export async function EventWorkspace({ orgId: id, eventId, publie, mode = "page"
       registrations: { include: { user: { include: { practitioner: { select: { country: true } } } }, benefits: { include: { benefit: true } } }, orderBy: { createdAt: "asc" } },
       _count: { select: { registrations: true, rfqs: true, calls: true, serviceOrders: true } },
       surveys: { orderBy: { createdAt: "desc" } },
+      waitlist: { include: { user: { select: { firstName: true, lastName: true } } }, orderBy: { createdAt: "asc" } },
+      messages: { orderBy: { createdAt: "desc" }, take: 10 },
       serviceOrders: { include: { offer: { select: { kind: true } } }, orderBy: { createdAt: "desc" } },
     },
   });
@@ -120,6 +123,10 @@ export async function EventWorkspace({ orgId: id, eventId, publie, mode = "page"
   const isPast = event.startsAt < now;
   const ended = eventEnded(event, now);
   const canPoint = !event.internal && checkinOpen(event.startsAt, now);
+  // Besoins déclarés (régime, allergies, accessibilité) : l'équipe qui organise et l'agence, pas la conformité seule.
+  const showNeeds = !readOnly && event.registrations.some((r) => r.diet || r.allergies || r.needs);
+  const needsInfo = needsSummary(event.registrations.filter((r) => !r.cancelledAt));
+  const participantsCount = event.registrations.filter((r) => !r.cancelledAt).length;
   const present = event.registrations.filter((r) => r.checkedInAt);
   // Une seule règle de présence (en-tête, bilan, Statistiques) : après l'événement pointé, les absents sont exclus.
   const hosp = eventHospitality(event.registrations, ended);
@@ -422,7 +429,7 @@ export async function EventWorkspace({ orgId: id, eventId, publie, mode = "page"
                 initial={{
                   title: event.title, typeId: event.typeId, therapeuticArea: event.therapeuticArea ?? "", description: event.description ?? "",
                   startsAt: toParisInput(event.startsAt), durationMinutes: event.durationMinutes != null ? String(event.durationMinutes) : "",
-                  format: event.format, capacity: event.capacity != null ? String(event.capacity) : "", city: event.city ?? "", postalCode: event.postalCode ?? "", venue: event.venue ?? "",
+                  format: event.format, capacity: event.capacity != null ? String(event.capacity) : "", city: event.city ?? "", postalCode: event.postalCode ?? "", venue: event.venue ?? "", address: event.address ?? "",
                   onlineUrl: event.onlineUrl ?? "", benefits: event.benefits.map((b) => ({ catalogId: b.catalogId, valueCents: b.valueCents })),
                 }}
               />
@@ -624,7 +631,7 @@ export async function EventWorkspace({ orgId: id, eventId, publie, mode = "page"
                 {/* Points examinés : ce que la conformité valide, tel qu'il est aujourd'hui. */}
                 <ul className="review-points">
                   <li><span>{t("Date")}</span> {fmtDate(locale, event.startsAt)} · {fmtTime(locale, event.startsAt)}</li>
-                  <li><span>{t("Lieu")}</span> {event.format === "DISTANCIEL" ? t("À distance") : [event.venue, event.city].filter(Boolean).join(", ") || <em className="warn-text">{t("à préciser")}</em>}</li>
+                  <li><span>{t("Lieu")}</span> {event.format === "DISTANCIEL" ? t("À distance") : eventPlace(event) || <em className="warn-text">{t("à préciser")}</em>}</li>
                   <li><span>{t("Programme")}</span> {event.program ? t("renseigné") : <em className="warn-text">{t("à compléter")}</em>}</li>
                   <li><span>{t("Hospitalités")}</span> {event.benefits.length === 0 ? t("aucune") : <>{t("jusqu'à {amount} TTC par personne", { amount: fmtEur(locale, event.benefits.reduce((s, b) => s + b.valueCents, 0)) })} · {t(REGIME_LABEL[hospitalityRegime(settings, event.benefits).regime])}</>}</li>
                 </ul>
@@ -795,7 +802,7 @@ export async function EventWorkspace({ orgId: id, eventId, publie, mode = "page"
                 ) : (
                   <TableWrap label={t("Inscrits")}>
                     <table className="table">
-                      <thead><tr><th>{t("Nom")}</th><th>{t("Profession")}</th><th>{t("Structure")}</th><th>{t("Prestations acceptées")}</th><th>{t("Valeur TTC")}</th><th>{t("Inscrit le")}</th>{canPoint && <th>{t("Présence")}</th>}</tr></thead>
+                      <thead><tr><th>{t("Nom")}</th><th>{t("Profession")}</th><th>{t("Structure")}</th><th>{t("Prestations acceptées")}</th><th>{t("Valeur TTC")}</th>{showNeeds && <th>{t("Besoins")}</th>}<th>{t("Inscrit le")}</th>{canPoint && <th>{t("Présence")}</th>}</tr></thead>
                       <tbody>
                         {event.registrations.map((r) => (
                           <tr key={r.id}>
@@ -804,6 +811,7 @@ export async function EventWorkspace({ orgId: id, eventId, publie, mode = "page"
                             <td data-label="Structure">{r.structure ?? "—"}</td>
                             <td data-label="Prestations acceptées">{r.benefits.map((b) => t(b.benefit.label)).join(", ") || t("Aucune")}</td>
                             <td data-label="Valeur TTC">{fmtEur(locale, r.benefits.reduce((s, b) => s + b.valueCents, 0))}{" "}{t("TTC")}</td>
+                            {showNeeds && <td data-label="Besoins">{[dietLabel(r.diet) && t(dietLabel(r.diet)!), r.allergies && t("allergies : {list}", { list: r.allergies }), r.needs].filter(Boolean).join(" · ") || "—"}</td>}
                             <td data-label="Inscrit le">{fmtDate(locale, r.createdAt)}</td>
                             {canPoint && <td data-label="Présence">{r.checkedInAt ? <><span className="pill ok">{fmtTime(locale, r.checkedInAt)}</span>{ended && !readOnly && <> <a className="link" href={`/organisations/${id}/evenements/${eventId}/attestations?inscription=${r.id}`}>{t("attestation")}</a></>}</> : ended && pointed ? <span className="pill wait">{t("Absent")}</span> : "—"}</td>}
                           </tr>
@@ -812,7 +820,41 @@ export async function EventWorkspace({ orgId: id, eventId, publie, mode = "page"
                     </table>
                   </TableWrap>
                 )}
+                {showNeeds && needsInfo.total > 0 && (
+                  <div className="stack-sm needs-summary" id="besoins">
+                    <h3 className="eyebrow-sm">{t("Repas et accessibilité")}</h3>
+                    <p className="hint">{t("Synthèse sans les noms, à transmettre au lieu et au traiteur. Ces informations sont effacées 30 jours après l'événement.")}</p>
+                    <ul className="plain stack-xs">
+                      {needsInfo.diets.map((d) => <li key={d.id}>{t(d.label)} : {d.count}</li>)}
+                      {needsInfo.allergies.length > 0 && <li>{t("Allergies ou intolérances : {list}", { list: needsInfo.allergies.join(" ; ") })}</li>}
+                      {needsInfo.needs.length > 0 && <li>{t("Accessibilité ou adaptation : {list}", { list: needsInfo.needs.join(" ; ") })}</li>}
+                    </ul>
+                  </div>
+                )}
               </section>
+        )}
+
+        {!event.internal && event.waitlist.length > 0 && (
+          <section className="card" aria-labelledby="attente-titre">
+            <SectionHead icon={ListOrdered} id="attente-titre" title={t("Liste d'attente")} desc={t(event.waitlist.length > 1 ? "{n} personnes attendent une place : quand une place se libère, la suivante est prévenue par e-mail." : "{n} personne attend une place : quand une place se libère, elle est prévenue par e-mail.", { n: event.waitlist.length })} />
+            <ol className="waitlist-list">
+              {event.waitlist.map((w) => (
+                <li key={w.id}>{w.user.firstName} {w.user.lastName} <span className="muted text-sm">· {t("depuis le {date}", { date: fmtDate(locale, w.createdAt) })}{w.notifiedAt ? ` · ${t("prévenue le {date}", { date: fmtDate(locale, w.notifiedAt) })}` : ""}</span></li>
+              ))}
+            </ol>
+          </section>
+        )}
+
+        {!event.internal && !readOnly && !event.cancelledAt && (
+          <section className="card stack-sm" aria-labelledby="message-titre" id="message">
+            <SectionHead icon={Megaphone} id="message-titre" title={t("Écrire aux inscrits")} desc={t("Un détail pratique, un changement de salle, un document à apporter : le message part par e-mail à chaque inscrit.")} />
+            {participantsCount > 0 ? <EventMessageForm orgId={id} eventId={eventId} count={participantsCount} /> : <p className="muted">{t("Aucun inscrit pour l'instant.")}</p>}
+            {event.messages.length > 0 && (
+              <ul className="plain stack-xs">
+                {event.messages.map((m) => <li key={m.id} className="text-sm"><strong>{m.subject}</strong> <span className="muted">· {fmtDate(locale, m.createdAt)} {fmtTime(locale, m.createdAt)} · {t(m.recipients > 1 ? "{n} destinataires" : "{n} destinataire", { n: m.recipients })}</span></li>)}
+              </ul>
+            )}
+          </section>
         )}
     </>
   );

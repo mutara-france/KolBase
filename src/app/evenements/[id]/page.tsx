@@ -9,7 +9,8 @@ import { db } from "@/lib/db";
 import { getCurrentUser } from "@/lib/auth";
 import { EVENT_STATE_LABEL, eventState, eventTypeLabel, formatDuration, FORMAT_LABEL, isHcp } from "@/lib/events";
 import { hospitalityGate } from "@/lib/belgium";
-import { cancelRegistration } from "@/lib/event-actions";
+import { waitlistRank } from "@/lib/waitlist";
+import { cancelRegistration, joinWaitlist, leaveWaitlist } from "@/lib/event-actions";
 import type { Metadata } from "next";
 import { fmtDate, fmtEur, intlLocale, type Locale } from "@/lib/i18n";
 import { getT } from "@/lib/i18n/server";
@@ -64,6 +65,8 @@ export default async function Page({ params, searchParams }: { params: Promise<{
   const canReview = !!reg && !reg.survey && eventEnded(event) && (await attended(reg));
   // Hospitalités : interdites aux étudiants ; en Belgique, subordonnées au visa Mdeon quand il est requis.
   const gate = hospitalityGate(user?.practitioner, event);
+  // Liste d'attente : rang de la personne connectée (événement complet).
+  const rank = user && !reg ? await waitlistRank(id, user.id) : null;
   const onlineUrl = reg && event.format !== "PRESENTIEL" ? (await db.event.findUnique({ where: { id }, select: { onlineUrl: true } }))?.onlineUrl ?? null : null;
   // États communs (src/lib/events.ts) : inscriptions closes dès le début, « passé » après la fin.
   const st = eventState(event, event._count.registrations);
@@ -96,7 +99,7 @@ export default async function Page({ params, searchParams }: { params: Promise<{
     eventAttendanceMode: `https://schema.org/${event.format === "DISTANCIEL" ? "Online" : event.format === "HYBRIDE" ? "Mixed" : "Offline"}EventAttendanceMode`,
     location: event.format === "DISTANCIEL"
       ? { "@type": "VirtualLocation", url: `${base}/evenements/${id}` }
-      : { "@type": "Place", name: event.venue ?? event.city ?? undefined, address: { "@type": "PostalAddress", addressLocality: event.city ?? undefined, addressCountry: "FR" } },
+      : { "@type": "Place", name: event.venue ?? event.city ?? undefined, address: { "@type": "PostalAddress", streetAddress: event.address ?? undefined, postalCode: event.postalCode ?? undefined, addressLocality: event.city ?? undefined, addressCountry: "FR" } },
     image: [`${base}/evenements/${id}/opengraph-image`],
     organizer: { "@type": "Organization", name: event.organization.name, url: orgIsPublic(event.organization) ? `${base}/structures/${event.organization.id}` : undefined },
     offers: st.upcoming ? { "@type": "Offer", price: 0, priceCurrency: "EUR", url: `${base}/evenements/${id}`, availability: `https://schema.org/${st.canRegister ? "InStock" : "SoldOut"}`, validFrom: event.publishedAt?.toISOString() } : undefined,
@@ -116,7 +119,7 @@ export default async function Page({ params, searchParams }: { params: Promise<{
           lead={t("Organisé par {name}", { name: event.organization.name })}
           facts={[
             { icon: <CalendarDays size={13} />, label: t("Date"), value: fmtDate(locale, event.startsAt, { day: "numeric", month: "long", year: "numeric" }), sub: `${event.startsAt.toLocaleTimeString(intlLocale(locale), { timeZone: "Europe/Paris", hour: "2-digit", minute: "2-digit" })}${event.durationMinutes ? ` · ${formatDuration(event.durationMinutes, locale)}` : ""}` },
-            { icon: <MapPin size={13} />, label: t("Lieu"), value: event.format === "DISTANCIEL" ? t("En ligne") : event.city ?? t("À préciser"), sub: event.venue ?? undefined },
+            { icon: <MapPin size={13} />, label: t("Lieu"), value: event.format === "DISTANCIEL" ? t("En ligne") : event.city ?? t("À préciser"), sub: [event.venue, event.address, event.postalCode].filter(Boolean).join(", ") || undefined },
             ...(left != null && !cancelled ? [{ icon: <Users size={13} />, label: t("Places"), value: t("{n} restantes", { n: left }), sub: t("sur {capacity}", { capacity: event.capacity! }) }] : []),
             ...(st.upcoming ? [{ icon: <Gift size={13} />, label: t("Prise en charge"), value: event.benefits.length ? t("{amount} par personne", { amount: fmtEur(locale, benefitsTotal) }) : t("Aucune"), sub: event.benefits.length ? t("au plus, selon vos choix") : t("à vos frais") }] : []),
           ]}
@@ -202,7 +205,19 @@ export default async function Page({ params, searchParams }: { params: Promise<{
               ) : !event.registrationOpen ? (
                 <p className="muted">{t("Les inscriptions sont closes.")}</p>
               ) : full ? (
-                <p className="muted">{t("L'événement est complet.")}</p>
+                <>
+                  <p className="muted">{t("L'événement est complet.")}</p>
+                  {!user ? (
+                    <Link className="btn ghost" href={`/connexion?next=${back}`}>{t("Se connecter pour rejoindre la liste d'attente")}</Link>
+                  ) : rank ? (
+                    <>
+                      <p className="notice">{t("Vous êtes sur la liste d'attente (rang {rank}). Si une place se libère, vous êtes prévenu par e-mail : la première personne qui s'inscrit l'obtient.", { rank })}</p>
+                      <form action={leaveWaitlist}><input type="hidden" name="eventId" value={id} /><button className="btn ghost">{t("Quitter la liste d'attente")}</button></form>
+                    </>
+                  ) : (
+                    <form action={joinWaitlist}><input type="hidden" name="eventId" value={id} /><button className="btn secondary">{t("Rejoindre la liste d'attente")}</button></form>
+                  )}
+                </>
               ) : !user ? (
                 <>
                   <p className="next-hint">{t("Inscription réservée aux membres KolBase : elle est nominative, car les hospitalités acceptées sont rattachées à votre nom. Créez votre compte en une minute, vous reviendrez ici pour vous inscrire.")}</p>

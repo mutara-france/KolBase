@@ -2,8 +2,9 @@
 
 import Link from "next/link";
 import { useActionState, useState } from "react";
-import { createEvent, registerToEvent, reviewEvent, saveEventProgram, setEventMdeonVisa, updateEvent } from "@/lib/event-actions";
+import { createEvent, registerToEvent, reviewEvent, saveEventProgram, sendEventMessage, setEventMdeonVisa, updateEvent } from "@/lib/event-actions";
 import { canAcceptHospitality, type HospitalityGate } from "@/lib/belgium";
+import { DIETS } from "@/lib/registration-needs";
 import { AiDraft } from "@/components/AiDraft";
 import { Notice } from "@/components/AuthForms";
 import { ActionForm } from "@/components/ActionForm";
@@ -20,7 +21,7 @@ type CatalogItem = { id: string; label: string; typical: number };
 /** Valeurs d'un événement existant (formulaire de modification). */
 export type EventInitial = {
   title: string; typeId: string; therapeuticArea: string; description: string; startsAt: string; durationMinutes: string;
-  format: string; capacity: string; city: string; postalCode?: string; venue: string; onlineUrl: string; benefits: { catalogId: string; valueCents: number }[];
+  format: string; capacity: string; city: string; postalCode?: string; venue: string; address?: string; onlineUrl: string; benefits: { catalogId: string; valueCents: number }[];
 };
 
 type Frozen = { catalogId: string; label: string; valueCents: number }[];
@@ -94,6 +95,11 @@ function EventFields({ types, formats, catalog, initial, frozen, project, limits
           <label>{t("Ville")}<input name="city" defaultValue={initial?.city} /></label>
           <label>{t("Lieu")}<input name="venue" placeholder={t("Hôtel, salle…")} defaultValue={initial?.venue} /></label>
         </div>
+      )}
+      {format !== "DISTANCIEL" && (
+        <label>{t("Adresse")}<input name="address" autoComplete="street-address" maxLength={200} placeholder={t("Numéro et rue")} defaultValue={initial?.address} />
+          <span className="hint">{t("Affichée sur la page de l'événement, dans la confirmation d'inscription et dans l'agenda des inscrits.")}</span>
+        </label>
       )}
       {format !== "PRESENTIEL" && (
         <label>{t("Lien de connexion")}<input name="onlineUrl" type="url" inputMode="url" placeholder="https://…" defaultValue={initial?.onlineUrl} />
@@ -218,6 +224,7 @@ export function RegisterForm({ eventId, benefits, hcp, defaultStructure, gate = 
           {total > 0 && <p className="muted">{t("Valeur totale acceptée :")} <strong>{eur(total, locale)}</strong></p>}
         </fieldset>
       )}
+      <NeedsFields />
       {hcp && total > 0 && (
         <div className="notice warn">
           <strong>{t("Information réglementaire.")}</strong>{" "}
@@ -293,6 +300,57 @@ export function MdeonVisaForm({ orgId, eventId, visa }: { orgId: string; eventId
       </label>
       <p className="hint">{t("Laissez vide pour retirer le numéro. Il est communiqué aux praticiens exerçant en Belgique avec les prestations.")}</p>
       <button className="btn small secondary" disabled={pending}>{pending ? t("Enregistrement…") : t("Enregistrer le visa")}</button>
+    </form>
+  );
+}
+
+/**
+ * Besoins pour l'événement (facultatifs) : régime, allergies, accessibilité ou adaptation. Données sensibles : la
+ * case d'accord apparaît dès qu'un champ est rempli et conditionne leur enregistrement.
+ */
+function NeedsFields() {
+  const t = useT();
+  const [diet, setDiet] = useState("");
+  const [allergies, setAllergies] = useState("");
+  const [needs, setNeeds] = useState("");
+  const filled = !!(diet || allergies.trim() || needs.trim());
+  return (
+    <details className="disclosure needs-fields">
+      <summary>{t("Repas, allergies, accessibilité (facultatif)")}</summary>
+      <div className="stack-sm">
+        <div className="row">
+          <label>{t("Régime alimentaire")}
+            <select name="diet" value={diet} onChange={(e) => setDiet(e.target.value)}>
+              <option value="">{t("Aucun en particulier")}</option>
+              {DIETS.map((d) => <option key={d.id} value={d.id}>{t(d.label)}</option>)}
+            </select>
+          </label>
+          <label>{t("Allergies ou intolérances")}<input name="allergies" maxLength={300} value={allergies} onChange={(e) => setAllergies(e.target.value)} placeholder={t("Arachide, crustacés…")} /></label>
+        </div>
+        <label>{t("Accessibilité ou adaptation")}<textarea name="needs" rows={2} maxLength={500} value={needs} onChange={(e) => setNeeds(e.target.value)} placeholder={t("Accès en fauteuil, boucle magnétique, place réservée…")} /></label>
+        {filled && (
+          <label className="check text-sm">
+            <input type="checkbox" name="needsConsent" value="1" required />{" "}
+            {t("J'accepte que ces informations soient transmises à l'organisateur et, sans mon nom, au lieu et au traiteur, pour préparer l'événement. Elles sont effacées 30 jours après.")}
+          </label>
+        )}
+      </div>
+    </details>
+  );
+}
+
+/** Message aux inscrits (e-mail à chacun) : objet et texte. */
+export function EventMessageForm({ orgId, eventId, count }: { orgId: string; eventId: string; count: number }) {
+  const t = useT();
+  const [state, action, pending] = useActionState(sendEventMessage, undefined);
+  return (
+    <form action={action} className="form stack-sm" key={state?.ok ? Date.now() : "message"}>
+      <Notice state={state} />
+      <input type="hidden" name="orgId" value={orgId} />
+      <input type="hidden" name="eventId" value={eventId} />
+      <label>{t("Objet")}<input name="subject" maxLength={120} required placeholder={t("Changement de salle, informations pratiques…")} /></label>
+      <label>{t("Message")}<textarea name="body" rows={4} maxLength={4000} required /></label>
+      <button className="btn small" disabled={pending}>{pending ? t("Envoi…") : t(count > 1 ? "Envoyer aux {n} inscrits" : "Envoyer à l'inscrit", { n: count })}</button>
     </form>
   );
 }
