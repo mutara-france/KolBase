@@ -1136,6 +1136,81 @@ const linkIn = (mail) => mail?.text.match(/https?:\/\/\S+/g)?.find((u) => !u.end
   await pgc.end();
 }
 
+// ── Équipe KolBase : signalements, retrait d'un avis, historique des e-mails ──
+{
+  const pgc = new pg.Client({ connectionString: process.env.DATABASE_URL });
+  await pgc.connect();
+  const q1 = async (sql, args = []) => (await pgc.query(sql, args)).rows[0];
+  const EMMA = "emma.simon@demo.kolbase.local", VISITOR = "visiteur.signalement@exemple.fr";
+  const rev = await q1(`select r.id, r."supplierId", r.comment, u.email author from "SupplierReview" r join "User" u on u.id = r."authorId" where r.comment is not null and r."hiddenAt" is null order by r."createdAt" limit 1`);
+  const ev = await q1(`select id, title, description from "Event" where "publishedAt" is not null and "cancelledAt" is null and "inviteOnly" = false and description is not null and "startsAt" > now() order by "startsAt" limit 1`);
+
+  // Une praticienne connectée signale un avis ; l'équipe KolBase est prévenue.
+  const emma = await session();
+  await login(emma.page, EMMA);
+  await emma.page.goto(`${BASE}/structures/${rev.supplierId}`);
+  check("Avis : lien « Signaler cet avis »", (await emma.page.locator(`a[href="/signaler?type=avis&id=${rev.id}"]`).count()) === 1);
+  await emma.page.goto(`${BASE}/signaler?type=avis&id=${rev.id}`);
+  await emma.page.selectOption('select[name="reason"]', "donnees");
+  await emma.page.fill('textarea[name="details"]', "L'avis cite le nom d'un patient.");
+  await emma.page.click('button:has-text("Envoyer le signalement")');
+  await emma.page.locator("text=Signalement transmis").first().waitFor({ timeout: 8000 }).catch(() => {});
+  const rep = await q1(`select id, "reporterId", "targetLabel" from "Report" where "targetId" = $1`, [rev.id]);
+  check("Signalement enregistré, l'équipe KolBase prévenue, sans le nom du client", !!rep?.reporterId && !!(await waitMail("anne.chevalier@demo.kolbase.local", "Signalement : Avis sur")) && rep.targetLabel.startsWith("Avis sur "));
+
+  // Un visiteur sans compte signale un événement, avec son adresse pour la réponse.
+  const anon = await session();
+  await anon.page.goto(`${BASE}/signaler?type=evenement&id=${ev.id}`);
+  check("Sans compte : adresse e-mail demandée", (await anon.page.locator('input[name="email"]').count()) === 1);
+  await anon.page.selectOption('select[name="reason"]', "inexact");
+  await anon.page.fill('textarea[name="details"]', "La date annoncée ne correspond pas au programme.");
+  await anon.page.fill('input[name="email"]', VISITOR);
+  await anon.page.click('button:has-text("Envoyer le signalement")');
+  await anon.page.locator("text=Signalement transmis").first().waitFor({ timeout: 8000 }).catch(() => {});
+  check("Signalement sans compte enregistré avec l'adresse", (await q1(`select "reporterEmail" from "Report" where "targetId" = $1`, [ev.id]))?.reporterEmail === VISITOR);
+  await anon.ctx.close();
+
+  // Registre : l'avis est masqué (décision motivée), l'autre signalement classé sans suite.
+  const anne = await session();
+  await login(anne.page, "anne.chevalier@demo.kolbase.local");
+  await anne.page.goto(`${BASE}/admin/signalements`);
+  check("Registre : deux signalements à traiter", (await text(anne.page)).includes("À traiter (2)"));
+  const c1 = anne.page.locator("li.card", { hasText: "L'avis cite le nom d'un patient" });
+  await c1.locator('input[name="decision"][value="retire"]').check();
+  await c1.locator('textarea[name="note"]').fill("Donnée de santé d'un patient : avis masqué.");
+  await c1.locator('button:has-text("Enregistrer la décision")').click();
+  await anne.page.locator("text=Contenu retiré").first().waitFor({ timeout: 8000 }).catch(() => {});
+  check("Avis masqué, motif enregistré", !!(await q1(`select "hiddenAt" from "SupplierReview" where id = $1`, [rev.id]))?.hiddenAt);
+  check("Décision communiquée : auteur du signalement et auteur de l'avis", !!(await waitMail(EMMA, "Votre signalement")) && !!(await waitMail(rev.author, "Contenu retiré par l'équipe KolBase")));
+  await emma.page.goto(`${BASE}/structures/${rev.supplierId}`);
+  check("Avis masqué : plus affiché sur la page du prestataire", !(await text(emma.page)).includes(rev.comment.slice(0, 40)));
+  await anne.page.goto(`${BASE}/admin/signalements`);
+  const c2 = anne.page.locator("li.card", { hasText: "La date annoncée ne correspond pas" });
+  await c2.locator('textarea[name="note"]').fill("Date vérifiée auprès de l'organisateur.");
+  await c2.locator('button:has-text("Enregistrer la décision")').click();
+  await anne.page.locator("text=classé sans suite").first().waitFor({ timeout: 8000 }).catch(() => {});
+  check("Sans suite : description conservée, le visiteur prévenu", (await q1(`select description from "Event" where id = $1`, [ev.id])).description === ev.description && !!(await waitMail(VISITOR, "Votre signalement")));
+
+  // Contestation fondée : l'avis est rétabli.
+  await anne.page.goto(`${BASE}/admin/signalements?statut=traites`);
+  await anne.page.click('button:has-text("Rétablir l\'avis")');
+  await anne.page.waitForTimeout(1000);
+  check("Avis rétabli après contestation", !(await q1(`select "hiddenAt" from "SupplierReview" where id = $1`, [rev.id])).hiddenAt);
+
+  // Historique des e-mails : par adresse, et sur la fiche du compte.
+  await anne.page.goto(`${BASE}/admin/emails?q=${encodeURIComponent(EMMA)}`);
+  let t = await text(anne.page);
+  check("Historique des e-mails : objet et statut, sans le contenu", t.includes("Votre signalement") && t.includes("Envoyé") && !t.includes("Après examen par l'équipe KolBase"));
+  const emmaId = (await q1(`select id from "User" where email = $1`, [EMMA])).id;
+  await anne.page.goto(`${BASE}/admin/comptes/${emmaId}`);
+  t = await text(anne.page);
+  check("Fiche du compte : derniers e-mails", t.includes("Derniers e-mails") && t.includes("Votre signalement"));
+  await anne.ctx.close();
+  await emma.ctx.close();
+  await pgc.query(`delete from "Report" where "targetId" in ($1, $2)`, [rev.id, ev.id]);
+  await pgc.end();
+}
+
 // ── Agences : confier un événement en une seule action ─────────────────────
 {
   const agent = await session();

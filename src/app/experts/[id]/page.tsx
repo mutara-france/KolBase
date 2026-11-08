@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { ReportLink } from "@/components/ReportLink";
 import { notFound } from "next/navigation";
 import { ArrowLeft } from "lucide-react";
 import { SiteHeader } from "@/components/SiteHeader";
@@ -53,6 +54,7 @@ export default async function Page({ params }: { params: Promise<{ id: string }>
           <Link href={user ? "/annuaire" : "/experts"} className="back-link"><ArrowLeft size={14} /> {user ? t("Annuaire") : t("Tous les experts")}</Link>
           {demo && <DemoNotice kind="expert" />}
           {profile}
+          <ReportLink type="expert" id={id} />
         </div>
       </main>
     </>

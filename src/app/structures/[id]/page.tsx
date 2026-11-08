@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { ReportLink } from "@/components/ReportLink";
 import { logoSrc } from "@/lib/logos";
 import { notFound } from "next/navigation";
 import { ArrowLeft, Award, Clock, Images, Info, Lock, Mail, MapPin, Receipt, ShieldCheck, Star, Tag } from "lucide-react";
@@ -180,6 +181,7 @@ export default async function Page({ params }: { params: Promise<{ id: string }>
                   <div key={r.id} className="review">
                     <span><span className="rating">{Array.from({ length: r.rating }, (_, i) => <Star key={i} size={14} />)}</span> <strong>{t("Organisation cliente")}</strong> <span className="muted text-xs">{r.createdAt.toLocaleDateString(locale === "en" ? "en-GB" : "fr-FR", { month: "long", year: "numeric", timeZone: "Europe/Paris" })}</span></span>
                     {r.comment && <p className="text-sm">{r.comment}</p>}
+                    {r.comment && <ReportLink type="avis" id={r.id} label={t("Signaler cet avis")} />}
                   </div>
                 ))}
               </section>
@@ -240,6 +242,7 @@ export default async function Page({ params }: { params: Promise<{ id: string }>
               </>
             )}
           </section>}
+          <ReportLink type="organisation" id={id} />
         </div>
       </main>
     </>

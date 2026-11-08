@@ -4,6 +4,7 @@ import { eventEnd, FOLLOWUP_DELAY_MS, FOLLOWUP_MAX_AGE_MS, REMINDER_WINDOW_MS } 
 import { sendEventFollowUps, sendEventReminders, sendOverdueReviews, sendServiceReport } from "@/lib/notifications";
 import { REPORT_DELAY_DAYS } from "@/lib/services";
 import { purgeRateLimits } from "@/lib/rate-limit";
+import { purgeEmailLog } from "@/lib/email-log";
 import { offerFreedPlaces } from "@/lib/waitlist";
 import { NEEDS_RETENTION_DAYS } from "@/lib/registration-needs";
 
@@ -49,5 +50,7 @@ export async function runDueTasks(now = new Date()) {
     where: { event: { startsAt: { lt: needsLimit } }, OR: [{ diet: { not: null } }, { allergies: { not: null } }, { needs: { not: null } }] },
     data: { diet: null, allergies: null, needs: null },
   })).count;
-  return { reminders, followUps, reports, reviewReminders, offers, purged: { sessions, tokens, clicks, attempts, needs } };
+  // Journal des e-mails : 90 jours.
+  const emails = await purgeEmailLog(now);
+  return { reminders, followUps, reports, reviewReminders, offers, purged: { sessions, tokens, clicks, attempts, needs, emails } };
 }

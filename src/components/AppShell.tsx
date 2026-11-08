@@ -4,14 +4,14 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 import {
-  Activity, BadgeCheck, BarChart3, Bell, CalendarDays, Check, ChevronDown, ExternalLink, FileText, Folder, House, LogOut, Megaphone, Newspaper, PanelLeftClose, PanelLeftOpen, Plug, Receipt, ScrollText, Send, ShieldCheck, Store, UserRound, Users, Building2, Wallet,
+  Activity, BadgeCheck, BarChart3, Bell, CalendarDays, Check, ChevronDown, ExternalLink, FileText, Flag, Folder, House, LogOut, Mail, Megaphone, Newspaper, PanelLeftClose, PanelLeftOpen, Plug, Receipt, ScrollText, Send, ShieldCheck, Store, UserRound, Users, Building2, Wallet,
 } from "lucide-react";
 import { Logo } from "@/components/Logo";
 import { signOut } from "@/lib/auth-actions";
 import { bottomBar, itemMatches, NAV_COOKIE, type ShellIcon, type ShellItem, type ShellSpace } from "@/lib/nav";
 import { useT } from "@/components/I18nProvider";
 
-const ICONS: Record<ShellIcon, typeof House> = { House, Users, Folder, FileText, CalendarDays, ShieldCheck, Send, Megaphone, UserRound, Receipt, Plug, ExternalLink, Wallet, BarChart3, Store, Building2, BadgeCheck, ScrollText, Newspaper, Activity };
+const ICONS: Record<ShellIcon, typeof House> = { House, Users, Folder, FileText, CalendarDays, ShieldCheck, Send, Megaphone, UserRound, Receipt, Plug, ExternalLink, Wallet, BarChart3, Store, Building2, BadgeCheck, ScrollText, Newspaper, Activity, Flag, Mail };
 const COOKIE = "kb_espace";
 
 const spaceMatches = (s: ShellSpace, path: string) => path === s.home || path.startsWith(s.home + "/") || s.items.some((i) => itemMatches(i, path));
