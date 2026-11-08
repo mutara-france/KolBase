@@ -262,6 +262,12 @@ function SelectAll({ count, all, onAll }: { count: number; all: boolean; onAll: 
 export function SupplierProfileForm({ orgId, categories, current, canEdit }: { orgId: string; categories: Cat[]; current: { categories: string[]; coverage: string; listed: boolean }; canEdit: boolean }) {
   const t = useT();
   const [state, action, pending] = useActionState(updateSupplierProfile, undefined);
+  // Catégories cochées, et la principale (enregistrée en tête) : titre, couleur et icône de la page du prestataire.
+  const [checked, setChecked] = useState<string[]>(current.categories);
+  const [main, setMain] = useState<string>(current.categories[0] ?? "");
+  const chosen = categories.filter((c) => checked.includes(c.id));
+  const principal = checked.includes(main) ? main : (chosen[0]?.id ?? "");
+  const toggle = (id: string, on: boolean) => setChecked((l) => (on ? [...l.filter((x) => x !== id), id] : l.filter((x) => x !== id)));
   // ActionForm : la saisie (catégories, zone) reste après une erreur.
   return (
     <ActionForm action={action} className="card form">
@@ -271,9 +277,20 @@ export function SupplierProfileForm({ orgId, categories, current, canEdit }: { o
       <span className="label">{t("Catégories de prestation")}</span>
       <div className="checks">
         {categories.map((c) => (
-          <label key={c.id} className="check"><input type="checkbox" name="categories" value={c.id} defaultChecked={current.categories.includes(c.id)} disabled={!canEdit} /> {c.label}</label>
+          <label key={c.id} className="check"><input type="checkbox" name="categories" value={c.id} checked={checked.includes(c.id)} onChange={(e) => toggle(c.id, e.target.checked)} disabled={!canEdit} /> {c.label}</label>
         ))}
       </div>
+      {chosen.length > 1 ? (
+        <label>
+          {t("Catégorie principale")}
+          <select name="main" value={principal} onChange={(e) => setMain(e.target.value)} disabled={!canEdit}>
+            {chosen.map((c) => <option key={c.id} value={c.id}>{c.label}</option>)}
+          </select>
+          <span className="hint">{t("Elle présente votre activité : titre de votre page, couleur et icône. Vous apparaissez dans l'annuaire sous chacune de vos catégories.")}</span>
+        </label>
+      ) : (
+        <input type="hidden" name="main" value={principal} />
+      )}
       <label>{t("Zone couverte")}<input name="coverage" defaultValue={current.coverage} placeholder={t("France entière, Grand Ouest…")} disabled={!canEdit} /></label>
       <label className="check"><input type="checkbox" name="listed" defaultChecked={current.listed} disabled={!canEdit} />{" "}{t("Apparaître dans l'annuaire des prestataires")}</label>
       {canEdit && <button className="btn" disabled={pending}>{pending ? t("Enregistrement…") : t("Enregistrer")}</button>}

@@ -2378,4 +2378,6 @@ export const ORGANISATION: Record<string, string> = {
   "Équipe, page prestataire et devis.": "Team, supplier page and quotes.",
   "Ma page": "My page",
   "L'envoi d'e-mails n'est pas encore activé sur KolBase : transmettez vous-même ce lien à {email}.": "Email sending is not yet enabled on KolBase: send this link to {email} yourself.",
+  "Catégorie principale": "Main category",
+  "Elle présente votre activité : titre de votre page, couleur et icône. Vous apparaissez dans l'annuaire sous chacune de vos catégories.": "It presents your business: your page title, colour and icon. You appear in the directory under each of your categories.",
 };
