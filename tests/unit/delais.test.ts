@@ -47,3 +47,15 @@ describe("jours fériés français", () => {
     expect(shiftDays(d("2026-11-18"), -8, isFrenchBusinessDay).toISOString().slice(0, 10)).toBe("2026-11-07");
   });
 });
+
+describe("échéance de la démarche EPS", () => {
+  it("déclaration : 8 jours ouvrables avant l'intervention, fériés exclus", async () => {
+    const { epsDue } = await import("@/lib/deadlines");
+    const s = { declarationDays: 8, authorizationDays: 60 };
+    expect(epsDue(d("2026-11-18"), "declaration", s)?.toISOString().slice(0, 10)).toBe("2026-11-07");
+    expect(epsDue(d("2026-11-18"), "autorisation", s)?.toISOString().slice(0, 10)).toBe("2026-09-19");
+    expect(epsDue(d("2026-11-18"), "hors_france", s)).toBeNull();
+    expect(epsDue(null, "declaration", s)).toBeNull();
+    expect(epsDue(d("2026-11-18"), null, s)).toBeNull();
+  });
+});

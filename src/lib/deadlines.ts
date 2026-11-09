@@ -4,7 +4,7 @@
  * conformité et les actions à faire ; un examen en retard est relancé une fois par jour.
  */
 
-import { isFrenchWorkingDay, shiftDays } from "@/lib/holidays";
+import { isFrenchBusinessDay, isFrenchWorkingDay, shiftDays } from "@/lib/holidays";
 
 const DAY = 86400e3;
 
@@ -30,3 +30,14 @@ export function reviewDue(submittedAt: Date | null, s: { reviewDays: number }) {
 
 /** Jours de retard (entiers, 0 si l'échéance n'est pas passée). */
 export const daysLate = (due: Date | null, now = new Date()) => (due && now > due ? Math.ceil((now.getTime() - due.getTime()) / DAY) : 0);
+
+/**
+ * Dernier jour pour la démarche EPS d'un dossier (décret n° 2020-730, articles R.1453-3 et R.1453-9) : déclaration au
+ * plus tard N jours ouvrables (lundi à samedi, hors fériés) avant l'exécution, demande d'autorisation au moins N jours
+ * avant. Null sans date d'intervention ou pour un dossier hors du dispositif (experts exerçant hors de France).
+ */
+export function epsDue(planned: Date | null, regime: "declaration" | "autorisation" | "hors_france" | null | undefined, s: { declarationDays: number; authorizationDays: number }): Date | null {
+  if (!planned || !regime || regime === "hors_france") return null;
+  if (regime === "declaration") return shiftDays(planned, -s.declarationDays, isFrenchBusinessDay);
+  return new Date(planned.getTime() - s.authorizationDays * DAY);
+}

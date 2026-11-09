@@ -41,7 +41,7 @@ import { getT } from "@/lib/i18n/server";
 import { fmtDate, fmtEur, intlLocale } from "@/lib/i18n";
 import { feeLevels } from "@/lib/fee-fields";
 import { fmtHours, hoursDetail, hoursOf } from "@/lib/fees";
-import { daysLate, plannedDate, reviewDue, submissionDue } from "@/lib/deadlines";
+import { daysLate, epsDue, plannedDate, reviewDue, submissionDue } from "@/lib/deadlines";
 
 export async function generateMetadata() {
   const { t } = await getT();
@@ -210,6 +210,9 @@ export default async function Page({ params, searchParams }: { params: Promise<{
   const subLate = daysLate(subDue);
   const revLate = daysLate(revDue);
   const regime = projectRegime(settings, type?.unit ?? "", project.experts.map((e) => ({ ...e, country: e.practitioner.country })));
+  // Démarche EPS à faire (dossier validé) : dernier jour pour déclarer ou demander l'autorisation, retard signalé.
+  const epsDeadline = project.status === "VALIDE" ? epsDue(planned, regime?.regime, settings) : null;
+  const epsLate = daysLate(epsDeadline);
   const foreignExperts = project.experts.filter((e) => e.status !== "DECLINE" && !practicesInFrance(e.practitioner.country));
   const unsigned = project.status === "SIGNATURE" ? await missingSignedConventions(projectId) : [];
   // Sans stockage de documents, la convention signée ne peut pas être déposée : une attestation explicite est demandée.
@@ -253,8 +256,8 @@ export default async function Page({ params, searchParams }: { params: Promise<{
     if (k === "back_to_accord" && signStarted) return false;
     return (t.from as readonly string[]).includes(project.status) && (t.roles === "compliance" ? isCompliance : isProject);
   }).sort((a, b) => Number(DANGER.includes(a)) - Number(DANGER.includes(b)));
-  const needsNote = (k: TransitionKey) => k === "block" || k === "validate" || k === "ordre" || k === "abandon" || k === "decline_proposal";
-  const notePlaceholder = (k: TransitionKey) => (k === "ordre" ? "Référence de la demande" : k === "validate" && fourEyesRule === "justify" ? "Justification (obligatoire)" : k === "block" ? "Motif du blocage (obligatoire)" : k === "abandon" ? "Motif de l'abandon (obligatoire)" : k === "decline_proposal" ? "Motif, transmis à l'expert (facultatif)" : "Commentaire (facultatif)");
+  const needsNote = (k: TransitionKey) => k === "block" || k === "validate" || k === "ordre" || k === "declaration" || k === "abandon" || k === "decline_proposal";
+  const notePlaceholder = (k: TransitionKey) => (k === "ordre" ? "Référence de la demande" : k === "declaration" ? "Référence de la déclaration EPS (facultatif)" : k === "validate" && fourEyesRule === "justify" ? "Justification (obligatoire)" : k === "block" ? "Motif du blocage (obligatoire)" : k === "abandon" ? "Motif de l'abandon (obligatoire)" : k === "decline_proposal" ? "Motif, transmis à l'expert (facultatif)" : "Commentaire (facultatif)");
   // Libellés français ci-dessus, traduits à l'affichage.
 
   // Engagé = experts ayant accepté ; les honoraires proposés sans réponse sont indiqués à part (même définition
@@ -851,8 +854,27 @@ export default async function Page({ params, searchParams }: { params: Promise<{
                         : t("Déclaration à effectuer au moins {declarationDays} jours ouvrables avant l'exécution. Si une hospitalité dépasse les seuils, demandez l'autorisation.", { declarationDays: settings.declarationDays })}
                   </p>
                 )}
+                {epsDeadline && (
+                  <p className={`notice ${epsLate ? "error" : "warn"}`}>
+                    {epsLate
+                      ? t("Délai EPS dépassé de {n} j : la démarche devait être faite avant le {date} (intervention le {planned}).", { n: epsLate, date: fmtDate(locale, epsDeadline), planned: fmtDate(locale, planned!) })
+                      : t("Démarche EPS à faire avant le {date} (intervention le {planned}).", { date: fmtDate(locale, epsDeadline), planned: fmtDate(locale, planned!) })}
+                  </p>
+                )}
+                {project.status === "VALIDE" && !planned && regime && regime.regime !== "hors_france" && (
+                  <p className="muted text-sm">{t("Renseignez la date d'intervention du dossier pour connaître le dernier jour de la démarche EPS.")}</p>
+                )}
                 {project.complianceNote && <p className={`notice ${project.status === "BLOQUE" ? "error" : "ok"}`}>{t("Conformité : {complianceNote}", { complianceNote: project.complianceNote })}</p>}
-                {project.ordreRef && <p className="muted text-sm">{t("Demande à l'Ordre : {ordreRef}", { ordreRef: project.ordreRef })}</p>}
+                {project.epsDeclaredAt && (
+                  <p className="muted text-sm">
+                    {t("Déclaration EPS faite le {date}", { date: fmtDate(locale, project.epsDeclaredAt) })}{project.epsRef ? ` · ${t("réf. {ref}", { ref: project.epsRef })}` : ""}
+                  </p>
+                )}
+                {project.ordreRef && (
+                  <p className="muted text-sm">
+                    {t("Demande à l'Ordre : {ordreRef}", { ordreRef: project.ordreRef })}{project.ordreRequestedAt ? ` · ${t("le {date}", { date: fmtDate(locale, project.ordreRequestedAt) })}` : ""}
+                  </p>
+                )}
                 {project.signatureAttestedAt && (
                   <p className="notice warn">
                     {t("Signature attestée par")}{" "}{attester ? `${attester.firstName} ${attester.lastName}` : t("un membre de l'organisation")}{" "}{t("le {date} : convention signée conservée hors de KolBase, non déposée.", { date: project.signatureAttestedAt ? fmtDate(locale, project.signatureAttestedAt) : "" })}

@@ -243,7 +243,9 @@ export async function advanceProject(form: FormData) {
       status: t.to,
       ...(key === "block" || key === "validate" ? { complianceNote: note || null } : {}),
       ...(key === "abandon" ? { abandonNote: note } : {}),
-      ...(key === "ordre" ? { ordreRef: note || null } : {}),
+      // Démarche EPS : date (et référence) de la déclaration, date de la demande à l'Ordre — preuve du respect des délais.
+      ...(key === "ordre" ? { ordreRef: note || null, ordreRequestedAt: new Date() } : {}),
+      ...(key === "declaration" ? { epsDeclaredAt: new Date(), epsRef: note || null } : {}),
       ...(attest ? { signatureAttestedAt: new Date(), signatureAttestedById: user.id } : {}),
       // Soumission à la conformité : point de départ du délai d'examen (relance si elle est dépassée).
       ...(key === "submit" ? { submittedAt: new Date(), reviewReminderAt: null } : {}),
