@@ -1,6 +1,7 @@
 import { db } from "@/lib/db";
 import { getCurrentUser } from "@/lib/auth";
 import { isPlatformAdmin } from "@/lib/platform";
+import { hasMemberRole } from "@/lib/org-roles";
 import { LOGO_TYPES } from "@/lib/logos";
 
 /**
@@ -14,7 +15,8 @@ export async function GET(_: Request, { params }: { params: Promise<{ id: string
   const verified = logo.organization.verification === "VERIFIED";
   if (!verified) {
     const user = await getCurrentUser();
-    const allowed = !!user && (user.memberships.some((m) => m.organizationId === id) || isPlatformAdmin(user));
+    // hasMemberRole : un membre d'une organisation qui exige la double authentification ne voit rien tant qu'il ne l'a pas activée.
+    const allowed = !!user && (hasMemberRole(user, id) || isPlatformAdmin(user));
     if (!allowed) return new Response("Logo introuvable.", { status: 404 });
   }
   return new Response(Buffer.from(logo.data), {

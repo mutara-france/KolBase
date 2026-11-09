@@ -1,6 +1,7 @@
 import { db } from "@/lib/db";
 import { getCurrentUser } from "@/lib/auth";
 import { isPlatformAdmin } from "@/lib/platform";
+import { memberRoles } from "@/lib/org-roles";
 
 /**
  * Photo d'un compte sans profil praticien (vignette WebP) : visible de la personne, des membres d'une organisation
@@ -13,7 +14,9 @@ export async function GET(_: Request, { params }: { params: Promise<{ id: string
   const allowed =
     viewer.id === id ||
     isPlatformAdmin(viewer) ||
-    !!(await db.membership.findFirst({ where: { userId: id, organizationId: { in: viewer.memberships.map((m) => m.organizationId) } }, select: { id: true } }));
+    // Organisations où le lecteur a effectivement accès (memberRoles : pas celles qui exigent une double authentification
+    // qu'il n'a pas activée).
+    !!(await db.membership.findFirst({ where: { userId: id, organizationId: { in: viewer.memberships.map((m) => m.organizationId).filter((o) => memberRoles(viewer, o).length > 0) } }, select: { id: true } }));
   const photo = allowed ? await db.userPhoto.findUnique({ where: { userId: id }, select: { thumb: true } }) : null;
   if (!photo) return new Response("Photo introuvable.", { status: 404 });
   return new Response(Buffer.from(photo.thumb), {
