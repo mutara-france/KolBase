@@ -6,7 +6,7 @@ import { ArticleBody, NewsCard } from "@/components/News";
 import { NewsletterCta } from "@/components/NewsletterCta";
 import { EtudePromo } from "@/components/EtudePromo";
 import { appUrl } from "@/lib/ics";
-import { jsonLd } from "@/lib/jsonld";
+import { JsonLd } from "@/components/JsonLd";
 import { db } from "@/lib/db";
 import { getCurrentUser } from "@/lib/auth";
 import { isPlatformAdmin } from "@/lib/platform";
@@ -58,7 +58,7 @@ export default async function Page({ params }: { params: Promise<{ slug: string 
   return (
     <>
       <SiteHeader variant="public" />
-      {structured && <script type="application/ld+json" dangerouslySetInnerHTML={jsonLd(structured)} />}
+      {structured && <JsonLd data={structured} />}
       <main className="landing">
         <article className="article">
           <p className="muted"><Link href="/actualites">← {t("Toutes les actualités")}</Link></p>
