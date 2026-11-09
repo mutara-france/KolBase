@@ -16,6 +16,7 @@ export async function SiteFooter() {
         </div>
         {/* Premier niveau : contenus et aide ; les informations légales sont à part, en bas. */}
         <nav className="footer-links" aria-label={t("Pied de page")}>
+          <Link href="/qui-sommes-nous" className="footer-link">{t("Qui sommes-nous")}</Link>
           <Link href="/actualites" className="footer-link">{t("Actualités")}</Link>
           <Link href="/aide" className="footer-link">{t("Aide")}</Link>
         </nav>
