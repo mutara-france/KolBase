@@ -1,6 +1,7 @@
 import { db } from "@/lib/db";
 import { getCurrentUser } from "@/lib/auth";
 import { isPlatformAdmin } from "@/lib/platform";
+import { hasMemberRole } from "@/lib/org-roles";
 import { LOGO_TYPES } from "@/lib/logos";
 
 /** Bannière de la page d'un prestataire : publique si l'organisation est validée et référencée, sinon réservée à ses membres. */
@@ -11,7 +12,8 @@ export async function GET(_: Request, { params }: { params: Promise<{ id: string
   const open = banner.organization.verification === "VERIFIED" && banner.organization.listed;
   if (!open) {
     const user = await getCurrentUser();
-    if (!user || !(user.memberships.some((m) => m.organizationId === id) || isPlatformAdmin(user))) return new Response("Bannière introuvable.", { status: 404 });
+    // hasMemberRole : un membre d'une organisation qui exige la double authentification ne voit rien tant qu'il ne l'a pas activée.
+    if (!user || !(hasMemberRole(user, id) || isPlatformAdmin(user))) return new Response("Bannière introuvable.", { status: 404 });
   }
   return new Response(Buffer.from(banner.data), {
     headers: {
