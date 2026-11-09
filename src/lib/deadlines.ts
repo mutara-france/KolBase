@@ -4,6 +4,8 @@
  * conformité et les actions à faire ; un examen en retard est relancé une fois par jour.
  */
 
+import { isFrenchWorkingDay, shiftDays } from "@/lib/holidays";
+
 const DAY = 86400e3;
 
 /** Date d'intervention d'un dossier : celle saisie, sinon le premier événement du dossier. */
@@ -13,17 +15,8 @@ export function plannedDate(p: { plannedAt: Date | null; events?: { startsAt: Da
   return next[0] ?? null;
 }
 
-/** Ajoute des jours ouvrés (lundi à vendredi, jours fériés non comptés à part). */
-export function addWorkingDays(d: Date, n: number): Date {
-  const out = new Date(d);
-  let left = Math.max(0, Math.round(n));
-  while (left > 0) {
-    out.setUTCDate(out.getUTCDate() + 1);
-    const wd = out.getUTCDay();
-    if (wd !== 0 && wd !== 6) left--;
-  }
-  return out;
-}
+/** Ajoute des jours ouvrés (lundi à vendredi, hors jours fériés français : voir lib/holidays). */
+export const addWorkingDays = (d: Date, n: number): Date => shiftDays(d, Math.max(0, n), isFrenchWorkingDay);
 
 /** Échéance de soumission à la conformité (null sans date d'intervention ou sans délai réglé). */
 export function submissionDue(planned: Date | null, s: { submissionLeadDays: number }) {
