@@ -26,3 +26,24 @@ describe("délais internes de la conformité", () => {
     expect(plannedDate({ plannedAt: null })).toBeNull();
   });
 });
+
+describe("jours fériés français", () => {
+  it("liste les onze jours fériés, fêtes mobiles comprises", async () => {
+    const { frenchHolidays } = await import("@/lib/holidays");
+    const days = frenchHolidays(2026).map((x) => x.toISOString().slice(0, 10));
+    expect(days).toEqual(["2026-01-01", "2026-04-06", "2026-05-01", "2026-05-08", "2026-05-14", "2026-05-25", "2026-07-14", "2026-08-15", "2026-11-01", "2026-11-11", "2026-12-25"]);
+  });
+  it("les jours ouvrés sautent les fériés (11 novembre 2026, un mercredi)", () => {
+    expect(addWorkingDays(d("2026-11-10"), 1).toISOString().slice(0, 10)).toBe("2026-11-12");
+    expect(reviewDue(d("2026-11-09"), { reviewDays: 5 })?.toISOString().slice(0, 10)).toBe("2026-11-17");
+  });
+  it("jours ouvrables (lundi à samedi, hors fériés) et recul dans le temps", async () => {
+    const { isFrenchBusinessDay, isFrenchWorkingDay, shiftDays } = await import("@/lib/holidays");
+    expect(isFrenchBusinessDay(d("2026-11-14"))).toBe(true); // samedi
+    expect(isFrenchWorkingDay(d("2026-11-14"))).toBe(false);
+    expect(isFrenchBusinessDay(d("2026-11-15"))).toBe(false); // dimanche
+    expect(isFrenchBusinessDay(d("2026-11-11"))).toBe(false); // férié
+    // 8 jours ouvrables avant le mercredi 18 novembre 2026 : 17, 16, 14, 13, 12, 10, 9, 7 → samedi 7 novembre.
+    expect(shiftDays(d("2026-11-18"), -8, isFrenchBusinessDay).toISOString().slice(0, 10)).toBe("2026-11-07");
+  });
+});
