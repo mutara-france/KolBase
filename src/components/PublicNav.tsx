@@ -5,6 +5,7 @@ import { usePathname } from "next/navigation";
 import { Logo } from "@/components/Logo";
 import { LocaleSwitch } from "@/components/LocaleSwitch";
 import { useT } from "@/components/I18nProvider";
+import { ResourcesMenu } from "@/components/ResourcesMenu";
 import { authLink, originOf } from "@/lib/safe-redirect";
 
 const LINKS = [
@@ -12,7 +13,6 @@ const LINKS = [
   { href: "/evenements", label: "Événements" },
   { href: "/appels", label: "Opportunités" },
   { href: "/structures", label: "Organisations" },
-  { href: "/actualites", label: "Actualités" },
 ];
 
 export function PublicNav({ loggedIn }: { loggedIn: boolean }) {
@@ -31,6 +31,8 @@ export function PublicNav({ loggedIn }: { loggedIn: boolean }) {
         {LINKS.map((l) => (
           <Link key={l.href} href={l.href} className={`nav-link${path === l.href || path.startsWith(l.href + "/") ? " on" : ""}`}>{t(l.label)}</Link>
         ))}
+        {/* Actualités, baromètre et base de connaissances, regroupés sous « Ressources ». */}
+        <ResourcesMenu />
       </nav>
       <div className="nav-actions">
         {/* Langue : choix du visiteur ; une fois connecté, elle se règle dans « Mon compte ». */}
