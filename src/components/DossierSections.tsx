@@ -14,6 +14,7 @@ import { BudgetForm, DocumentUploadForm, ExpenseForm, MaterialForm, RefreshSigna
 import { deleteDocument } from "@/lib/document-actions";
 import { storageEnabled } from "@/lib/storage";
 import { drPrefix } from "@/lib/professions";
+import { linkPayee, payeeEntity } from "@/lib/structures";
 import { fmtDate, fmtEur, type Locale, type T } from "@/lib/i18n";
 import { getT } from "@/lib/i18n/server";
 import { canSendAgain, SIGNATURE_LABEL, signatureEnabled } from "@/lib/yousign";
@@ -53,7 +54,7 @@ export async function BudgetTab({ orgId, projectId, canEdit }: { orgId: string; 
       experts: {
         where: { status: { notIn: ["DECLINE"] } },
         include: {
-          practitioner: { select: { profession: true, user: { select: { firstName: true, lastName: true } } } },
+          practitioner: { select: { profession: true, user: { select: { firstName: true, lastName: true } }, structures: { select: { id: true, name: true, legalForm: true, siren: true, isPayee: true } } } },
           feeNote: { select: { id: true, number: true, totalCents: true, vatBp: true } },
         },
         orderBy: { createdAt: "asc" },
@@ -82,6 +83,10 @@ export async function BudgetTab({ orgId, projectId, canEdit }: { orgId: string; 
   const over = budget != null && total > budget;
   const share = (n: number) => (total > 0 ? `${Math.round((n / total) * 100)} %` : "");
   const name = (e: (typeof project.experts)[number]) => `${drPrefix(e.practitioner.profession)}${e.practitioner.user.firstName} ${e.practitioner.user.lastName}`;
+  const payeeLine = (e: (typeof project.experts)[number]) => {
+    const s = linkPayee(e, e.practitioner.structures);
+    return s ? t("Facturation : {name}{siren}", { name: payeeEntity(s)!, siren: s.siren ? ` · SIREN ${s.siren}` : "" }) : t("Facturation : en nom propre");
+  };
   const engaged = project.experts.filter((e) => e.status !== "ATT_EXPERTS");
   const pending = open ? project.experts.filter((e) => e.status === "ATT_EXPERTS") : [];
   const today = parisToday();
@@ -101,7 +106,11 @@ export async function BudgetTab({ orgId, projectId, canEdit }: { orgId: string; 
                     const payable = ["SIGNE", "TERMINE"].includes(e.status);
                     return (
                       <tr key={e.id}>
-                        <td data-label="Expert"><strong>{name(e)}</strong></td>
+                        <td data-label="Expert">
+                          <strong>{name(e)}</strong>
+                          {/* Au nom de qui la convention et la note d'honoraires sont établies (choix de l'expert). */}
+                          <div className="text-xs muted">{payeeLine(e)}</div>
+                        </td>
                         <td data-label="Honoraires HT" className="num">{e.feeCents != null ? fmtEur(locale, e.feeCents) : "—"}</td>
                         <td data-label="Note d'honoraires">
                           {e.feeNote

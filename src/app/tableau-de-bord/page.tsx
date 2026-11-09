@@ -76,14 +76,16 @@ export default async function Page({ searchParams }: { searchParams: Promise<{ a
     ...toSign.map((l) => ({ href: `/sollicitations/${l.id}`, title: t("Convention à signer"), detail: `${l.project.title} · ${l.project.organization.name}`, icon: "FileSignature" as const, tone: "warn" as const })),
   ];
   const pid = professionalId(p);
+  const defaultPayee = p.listed ? await db.practitionerStructure.findFirst({ where: { practitionerId: p.id, isPayee: true } }) : null;
   const profileTodos: TodoItem[] = p.listed
     ? [
         ...(!p.bio ? [{ href: "/compte", title: t("Ajouter une présentation"), detail: t("Les organisations la lisent en premier."), icon: "UserRound" as const }] : []),
         ...(!p.photoUpdatedAt ? [{ href: "/compte#photo", title: t("Ajouter votre photo"), detail: t("Un organisateur choisit plus volontiers un intervenant qu'il reconnaît."), icon: "UserRound" as const }] : []),
         // Hors de France : l'identifiant du pays d'exercice (INAMI, NPI…), pas le RPPS.
         ...(!pid.value ? [{ href: "/compte", title: t("Renseigner votre {id}", { id: t(pid.short) }), detail: t("Nécessaire aux conventions et au badge « Identité vérifiée »."), icon: "ShieldCheck" as const }] : []),
-        // Coordonnées de facturation (structure éventuelle, adresse, TVA) : reprises par les conventions et les notes d'honoraires.
-        ...(!billingComplete(p) ? [{ href: "/revenus?onglet=facturation#coordonnees", title: t("Compléter vos coordonnées de facturation"), detail: t("Structure de facturation éventuelle, adresse et TVA : reprises sur vos conventions et vos notes d'honoraires."), icon: "FileSignature" as const }] : []),
+        // Coordonnées de facturation du compte proposé par défaut (nom propre ou structure) : reprises par les conventions
+        // et les notes d'honoraires.
+        ...(!billingComplete(defaultPayee ?? p) ? [{ href: "/revenus?onglet=facturation#coordonnees", title: t("Compléter vos coordonnées de facturation"), detail: t("Nom propre ou structure (cabinet, association), adresse et TVA : reprises sur vos conventions et vos notes d'honoraires."), icon: "FileSignature" as const }] : []),
         ...(pubCount === 0 ? [{ href: "/compte", title: t("Ajouter vos publications"), detail: t("Elles apparaissent sur votre fiche publique."), icon: "CircleDot" as const }] : []),
       ]
     : [];

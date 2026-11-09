@@ -38,7 +38,7 @@ export default async function Page({ searchParams }: { searchParams: Promise<{ q
                   <td data-label="Date" className="nowrap">{time(m.createdAt)}</td>
                   <td data-label="Destinataire">{m.to}</td>
                   <td data-label="Objet">{m.subject}</td>
-                  <td data-label="Statut"><span className={`pill ${STATUS[m.status]?.tone ?? ""}`}>{STATUS[m.status]?.label ?? m.status}</span>{m.error && <div className="text-xs muted">{m.error}</div>}</td>
+                  <td data-label="Statut"><span className={`pill ${STATUS[m.status]?.tone ?? ""}`}>{STATUS[m.status]?.label ?? m.status}</span>{m.error && <div className="text-xs muted mt-1">{m.error}</div>}</td>
                 </tr>
               ))}
             </tbody>

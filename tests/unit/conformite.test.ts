@@ -6,7 +6,7 @@ import { benefitLimit, complianceSettings, hospitalityRegime } from "@/lib/compl
 import { hospitalityRegimeClause } from "@/lib/convention-pdf";
 import { makeT } from "@/lib/i18n";
 import { cancelSignatureRequest, signatureOpen } from "@/lib/yousign";
-import { payeeEntity, sirenOf } from "@/lib/structures";
+import { billingEditable, choiceValue, linkPayee, payeeEntity, sirenOf } from "@/lib/structures";
 import { PAYMENT_TERMS } from "@/lib/fee-notes";
 import { professionalId } from "@/lib/countries";
 import { costPerHead, eventHospitality, expertSplit, feeTotals, isAbsent, speakerConfirmed, toDeclare } from "@/lib/indicators";
@@ -154,7 +154,7 @@ describe("signature électronique close quand la convention est signée autremen
   });
 });
 
-describe("une seule structure de facturation, un seul délai de paiement", () => {
+describe("facturation par structure, un seul délai de paiement", () => {
   it("SIREN déduit du SIRET ; nom de la société d'exercice sur la note", () => {
     expect(sirenOf("73282932000074")).toBe("732829320");
     expect(sirenOf("123")).toBeNull();
@@ -162,6 +162,28 @@ describe("une seule structure de facturation, un seul délai de paiement", () =>
     expect(payeeEntity({ name: "SELARL Dr Dupont", legalForm: "SELARL" })).toBe("SELARL Dr Dupont");
     expect(payeeEntity({ name: "Cabinet Dupont", legalForm: "SELAS" })).toBe("Cabinet Dupont (SELAS)");
     expect(payeeEntity(null)).toBeNull();
+  });
+
+  it("convention facturée au nom de la structure choisie, du nom propre, ou de la structure par défaut", () => {
+    const cabinet = { id: "s1", isPayee: true };
+    const asso = { id: "s2", isPayee: false };
+    const all = [cabinet, asso];
+    expect(linkPayee({ billingStructureId: null, billingSelf: false }, all)).toBe(cabinet);
+    expect(linkPayee({ billingStructureId: "s2", billingSelf: false }, all)).toBe(asso);
+    expect(linkPayee({ billingStructureId: null, billingSelf: true }, all)).toBeNull();
+    // Sans structure par défaut : nom propre.
+    expect(linkPayee({ billingStructureId: null, billingSelf: false }, [asso])).toBeNull();
+    expect(choiceValue(asso)).toBe("s2");
+    expect(choiceValue(null)).toBe("self");
+  });
+
+  it("choix modifiable pendant le recrutement, figé dès la soumission à la conformité", () => {
+    expect(billingEditable("ACCORD", "ACCORD")).toBe(true);
+    expect(billingEditable("ATT_IND", "ACCORD")).toBe(true);
+    expect(billingEditable("ATT_EXPERTS", "ATT_EXPERTS")).toBe(true);
+    expect(billingEditable("EN_VALID", "EN_VALID")).toBe(false);
+    expect(billingEditable("SIGNE", "SIGNE")).toBe(false);
+    expect(billingEditable("ACCORD", "DECLINE")).toBe(false);
   });
 
   it("note d'honoraires et convention : paiement à 30 jours (même texte, traduit dans la convention)", () => {

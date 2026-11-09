@@ -43,6 +43,8 @@ export async function practitionerLedger(userId: string, practitionerId: string)
       paidAt: l.paidAt, paidCents: l.paidCents, signed: (SIGNED as readonly string[]).includes(l.status),
       declared: l.project.declared, declarationRef: l.project.declarationRef, note: l.feeNote,
       expensesCents: l.expenses.reduce((x, e) => x + e.amountCents, 0),
+      // Au nom de qui la convention est facturée (voir linkPayee).
+      billing: { billingStructureId: l.billingStructureId, billingSelf: l.billingSelf },
     };
   });
   const hospitality = regs

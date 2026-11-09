@@ -5,6 +5,7 @@ import { eventTypeLabel } from "@/lib/events";
 import { complianceSettings, hospitalityRegime } from "@/lib/compliance";
 import { practicesInFrance } from "@/lib/countries";
 import { MDEON_CAPS } from "@/lib/belgium";
+import { linkPayee } from "@/lib/structures";
 import { frameworkStart } from "@/lib/expert-costs";
 import type { CollabConventionInput, HospitalityConventionInput } from "@/lib/convention-pdf";
 
@@ -21,14 +22,15 @@ export async function loadCollabConvention(linkId: string, where: { organization
     },
     include: {
       project: { include: { organization: true } },
-      practitioner: { include: { user: true, structures: { where: { isPayee: true }, take: 1 } } },
+      practitioner: { include: { user: true, structures: true } },
     },
   });
   if (!link || link.status === "ATT_EXPERTS" || link.status === "DECLINE") return null;
   const p = link.project;
   const type = collabType(p.typeId);
   const fmv = fmvCheck(p.typeId, link.feeCents, link.days);
-  const s = link.practitioner.structures[0];
+  // Au nom de qui la convention est facturée : la structure choisie par l'expert (ou par défaut), sinon son nom propre.
+  const s = linkPayee(link, link.practitioner.structures);
   return {
     ref: conventionRef(p.id, link.id),
     statusLabel: STATUS_LABEL[p.status],
