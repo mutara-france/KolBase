@@ -1303,7 +1303,7 @@ const linkIn = (mail) => mail?.text.match(/https?:\/\/\S+/g)?.find((u) => !u.end
   await pgc.end();
 }
 
-// ── Qui sommes-nous : lien du pied de page, fondateur, société ─────────────
+// ── Qui sommes-nous : lien du pied de page, fondateur, photo ───────────────
 {
   const { ctx, page } = await session();
   await page.goto(`${BASE}/aide`);
@@ -1311,7 +1311,7 @@ const linkIn = (mail) => mail?.text.match(/https?:\/\/\S+/g)?.find((u) => !u.end
   await page.waitForURL(/\/qui-sommes-nous$/);
   const t = (await page.locator("main").innerText()).replace(/\s/g, " ");
   check("Qui sommes-nous : accessible depuis le pied de page", (await page.locator("h1").innerText()).includes("Une plateforme née du secteur dentaire"));
-  check("Qui sommes-nous : fondateur et société", t.includes("Kévin Peyrotte") && t.includes("Fondateur et CEO de KolBase") && /éditée et exploitée par Mutara/i.test(t) && t.includes("927 839 134"));
+  check("Qui sommes-nous : fondateur, sans les informations de la société", t.includes("Kévin Peyrotte") && t.includes("Fondateur et CEO de KolBase") && !t.includes("927 839 134"));
   const photo = await page.locator('.about-photo img[alt="Kévin Peyrotte"]').evaluate((img) => img.complete && img.naturalWidth > 0);
   check("Qui sommes-nous : photo du fondateur chargée", photo);
   await ctx.close();

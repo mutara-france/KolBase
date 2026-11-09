@@ -11,7 +11,7 @@ export async function generateMetadata() {
   const { t } = await getT();
   return publicPage({
     title: t("Qui sommes-nous — KolBase"),
-    description: t("KolBase, fondée par Kévin Peyrotte et éditée par Mutara : la plateforme qui met en relation les chirurgiens-dentistes et les organisations du secteur dentaire."),
+    description: t("KolBase, fondée par Kévin Peyrotte : la plateforme qui met en relation les chirurgiens-dentistes et les organisations du secteur dentaire."),
     path: "/qui-sommes-nous",
   });
 }
@@ -20,7 +20,7 @@ export const dynamic = "force-dynamic";
 /** Le fondateur : nom, photo (public/equipe), fonction. */
 const FOUNDER = { name: "Kévin Peyrotte", photo: "/equipe/kevin-peyrotte.webp" };
 
-/** Qui sommes-nous : la plateforme, son fondateur, ce qui la guide, la société qui l'édite. */
+/** Qui sommes-nous : la plateforme, son fondateur, ce qui la guide. Les informations sur la société éditrice restent dans les mentions légales. */
 export default async function Page() {
   const { t } = await getT();
   const contact = legal("contactEmail");
@@ -41,7 +41,6 @@ export default async function Page() {
       url: base,
       logo: `${base}/brand/kolbase-logo-outremer.svg`,
       founder: { "@type": "Person", name: FOUNDER.name, jobTitle: "Fondateur et CEO", image: `${base}${FOUNDER.photo}` },
-      parentOrganization: { "@type": "Organization", name: LEGAL.editor, legalName: LEGAL.editor, ...(LEGAL.vatNumber ? { vatID: LEGAL.vatNumber } : {}) },
       ...(LEGAL.contactEmail ? { email: LEGAL.contactEmail } : {}),
     },
   };
@@ -82,23 +81,6 @@ export default async function Page() {
                 <p>{p.text}</p>
               </article>
             ))}
-          </div>
-        </section>
-
-        <section className="public-section pt-0" aria-labelledby="societe">
-          <div className="about-company">
-            <div>
-              <span className="kicker">{t("La société")}</span>
-              <h2 id="societe">{t("KolBase, une plateforme Mutara")}</h2>
-              <p>{t("KolBase est éditée et exploitée par Mutara, société par actions simplifiée française, qui détient la marque KolBase, déposée au niveau européen.")}</p>
-              <p><Link href="/mentions-legales">{t("Mentions légales")}</Link></p>
-            </div>
-            <dl className="about-facts">
-              <div><dt>{t("Société")}</dt><dd>{LEGAL.editor} (SAS)</dd></div>
-              <div><dt>{t("Siège")}</dt><dd>{legal("address")}</dd></div>
-              <div><dt>{t("Immatriculation")}</dt><dd>{legal("registration").replace(/^au /, "")}</dd></div>
-              <div><dt>{t("Président")}</dt><dd>{FOUNDER.name}</dd></div>
-            </dl>
           </div>
         </section>
 
