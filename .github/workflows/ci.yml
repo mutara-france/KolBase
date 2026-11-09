@@ -227,7 +227,9 @@ jobs:
   # noté sur son dernier commit, pour que le commit de main qui lui sera identique ne repasse pas la suite.
   arbre-verifie:
     needs: [verifier, montee-de-version]
-    if: github.event_name == 'pull_request' && !github.event.pull_request.draft
+    # Condition explicite : sur une pull request, « deja-teste » (dont dépendent les deux jobs) est sauté, ce qui
+    # suffirait à faire sauter ce job avec la condition implicite success().
+    if: ${{ !cancelled() && github.event_name == 'pull_request' && !github.event.pull_request.draft && needs.verifier.result == 'success' && needs.montee-de-version.result == 'success' }}
     runs-on: ubuntu-latest
     timeout-minutes: 5
     permissions:
