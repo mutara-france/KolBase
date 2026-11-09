@@ -1,17 +1,56 @@
 # Vérifications automatiques de chaque pull request et de chaque commit sur main.
+#
+# Minutes de GitHub Actions (comptées sur un dépôt privé) : la suite complète (navigateur : mise en page, accessibilité,
+# parcours) passe une fois par pull request prête ; une pull request en brouillon ne passe que les vérifications
+# rapides. À la fusion, un commit de main identique (même arbre) à ce que la pull request a vérifié ne repasse pas la
+# suite (job « deja-teste ») : Render, qui attend des vérifications réussies, compte les jobs sautés comme réussis.
 name: CI
 
 on:
   pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
+    paths-ignore: ["docs/**", "README.md", "CLAUDE.md"]
   push:
     branches: [main]
+    paths-ignore: ["docs/**", "README.md", "CLAUDE.md"]
 
 concurrency:
   group: ci-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
+  # Commit poussé sur main : son arbre a-t-il déjà été vérifié en entier dans sa pull request (fusion de la pull request
+  # dans main, notée par le job « arbre-verifie » sur son dernier commit) ? Oui si main n'a pas bougé entre la dernière
+  # vérification et la fusion ; sinon (autre fusion entre-temps, commit poussé à la main), tout repasse.
+  deja-teste:
+    if: github.event_name == 'push'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      pull-requests: read
+      statuses: read
+    outputs:
+      verifie: ${{ steps.arbre.outputs.verifie }}
+    steps:
+      - uses: actions/checkout@v7
+      - name: Arbre déjà vérifié dans la pull request ?
+        id: arbre
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          arbre=$(git rev-parse 'HEAD^{tree}')
+          verifie=false
+          for tete in $(gh api "repos/$GITHUB_REPOSITORY/commits/$GITHUB_SHA/pulls" --jq '.[] | select(.merged_at != null) | .head.sha'); do
+            teste=$(gh api "repos/$GITHUB_REPOSITORY/commits/$tete/statuses" --jq '[.[] | select(.context == "CI / arbre vérifié")][0].description // ""')
+            echo "Pull request (dernier commit $tete) : arbre vérifié « $teste » ; main : « $arbre »"
+            if [ -n "$teste" ] && [ "$teste" = "$arbre" ]; then verifie=true; fi
+          done
+          echo "verifie=$verifie" >> "$GITHUB_OUTPUT"
+
   verifier:
+    needs: deja-teste
+    if: ${{ !cancelled() && needs.deja-teste.outputs.verifie != 'true' }}
     runs-on: ubuntu-latest
     # Environ 15 minutes d'habitude ; marge pour une installation lente du navigateur de test (14 minutes le 6 novembre).
     timeout-minutes: 30
@@ -58,6 +97,8 @@ jobs:
       STRIPE_API_URL: http://localhost:3993
       # Double authentification facultative pour l'administrateur de test (obligatoire par défaut).
       PLATFORM_ADMIN_2FA: optional
+      # Suite complète (navigateur) : partout sauf sur une pull request en brouillon.
+      COMPLET: ${{ github.event_name != 'pull_request' || !github.event.pull_request.draft }}
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-node@v7
@@ -98,15 +139,18 @@ jobs:
         run: npm audit --omit=dev --audit-level=high
 
       - name: Navigateur de test
+        if: env.COMPLET == 'true'
         run: npx playwright install --with-deps chromium
       - name: Application lancée
         id: app
+        if: env.COMPLET == 'true'
         run: |
           npm start > next.log 2>&1 &
           for i in $(seq 1 60); do curl -sf http://localhost:3000/api/health && break; sleep 1; done
           curl -sf http://localhost:3000/api/health > /dev/null
       # Mise en page (débordements, blocs collés, champs sans style) sur la démo intacte, avant le parcours.
       - name: Mise en page
+        if: env.COMPLET == 'true'
         run: BASE=http://localhost:3000 npm run test:affichage
       # Accessibilité (axe-core, WCAG 2.1 A et AA) des pages publiques, praticien, organisation et administration :
       # échec sur une violation critique ou grave. Avant le parcours, qui modifie les comptes de démonstration.
@@ -125,6 +169,8 @@ jobs:
   # avec le même script que Render (scripts/predeploy.sh). Le job « verifier » part d'une base vide : il n'aurait pas
   # vu l'échec du 4 novembre (calcul TVA en entiers 32 bits, « integer out of range » sur des montants réels).
   montee-de-version:
+    needs: deja-teste
+    if: ${{ !cancelled() && needs.deja-teste.outputs.verifie != 'true' }}
     runs-on: ubuntu-latest
     timeout-minutes: 20
     services:
@@ -176,3 +222,24 @@ jobs:
           sh scripts/predeploy.sh
       - name: Base conforme au schéma Prisma
         run: npx prisma migrate diff --from-config-datasource --to-schema prisma/schema.prisma --exit-code
+
+  # Pull request prête, vérifiée en entier (les deux jobs) : l'arbre vérifié (fusion de la pull request dans main) est
+  # noté sur son dernier commit, pour que le commit de main qui lui sera identique ne repasse pas la suite.
+  arbre-verifie:
+    needs: [verifier, montee-de-version]
+    if: github.event_name == 'pull_request' && !github.event.pull_request.draft
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      statuses: write
+    steps:
+      - uses: actions/checkout@v7
+      - name: Arbre vérifié, noté sur le dernier commit de la pull request
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TETE: ${{ github.event.pull_request.head.sha }}
+        run: |
+          arbre=$(git rev-parse 'HEAD^{tree}')
+          gh api "repos/$GITHUB_REPOSITORY/statuses/$TETE" -f state=success -f context="CI / arbre vérifié" -f description="$arbre" --silent
+          echo "Arbre vérifié : $arbre"

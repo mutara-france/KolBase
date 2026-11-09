@@ -28,6 +28,15 @@ La CI (`.github/workflows/ci.yml`) fait référence. Dans un bac à sable où le
 `PRISMA_SCHEMA_ENGINE_BINARY` pointé vers un exécutable factice suffit à `prisma generate` ; les migrations s'appliquent
 alors avec `psql`, et `prisma migrate diff` est vérifié par la CI.
 
+Minutes de GitHub Actions (comptées : dépôt privé, environ 20 minutes par passage complet) :
+- Une PR en **brouillon** ne passe que les vérifications rapides (types, lint, tests unitaires, migrations, build) ;
+  la suite complète (mise en page, accessibilité, parcours) tourne quand elle passe « prête », puis à chaque poussée.
+  Ouvrir en brouillon tant que des correctifs sont à venir ; passer « prête » une fois la suite locale verte.
+- À la fusion, si `main` n'a pas bougé depuis la dernière vérification complète de la PR, le commit de `main` ne
+  repasse pas la suite (job `deja-teste`) et part en production aussitôt ; sinon tout repasse. Dans une pile de PR,
+  chaque fusion après la première repasse donc la suite.
+- Une modification limitée à `docs/`, `README.md` ou `CLAUDE.md` ne déclenche pas la CI (ni de déploiement).
+
 ## Base de données
 
 - Nouvelle migration : horodatage **après la dernière migration existante** (certaines sont datées dans le futur ;
