@@ -11,7 +11,7 @@ import { notifyFeeNote, notifyFeePaid, notifyTransparencyIssue } from "@/lib/not
 import { licenseRule, practicesInFrance } from "@/lib/countries";
 import { billingComplete, formatIban, nextNumber, validIban, validSiret, vatBpOf, type FeeNoteData } from "@/lib/fee-notes";
 import { drPrefix } from "@/lib/professions";
-import { LEGAL_FORMS, payeeEntity, sirenOf } from "@/lib/structures";
+import { billingEditable, LEGAL_FORMS, linkPayee, payeeEntity, sirenOf } from "@/lib/structures";
 import { blockedFor, hit } from "@/lib/rate-limit";
 import { getT } from "@/lib/i18n/server";
 
@@ -76,7 +76,11 @@ export async function reportTransparencyIssue(_: FormState, form: FormData): Pro
   return { ok: t("Signalement envoyé à l'équipe conformité de l'organisation.") };
 }
 
-/** Coordonnées de facturation de l'expert (notes d'honoraires). */
+/**
+ * Coordonnées de facturation : en nom propre (target « self »), d'une structure existante (son identifiant) ou d'une
+ * nouvelle structure (target « new », avec son nom et sa forme juridique). Reprises par les conventions et les notes
+ * d'honoraires facturées à ce nom.
+ */
 export async function updateBilling(_: FormState, form: FormData): Promise<FormState> {
   const user = await requireUser();
   const { t } = await getT();
@@ -87,28 +91,74 @@ export async function updateBilling(_: FormState, form: FormData): Promise<FormS
   const iban = str(form, "iban").replace(/\s/g, "").toUpperCase();
   const vatRegime = str(form, "vatRegime") === "assujetti" ? "assujetti" : "franchise";
   const vatNumber = str(form, "vatNumber").replace(/\s/g, "").toUpperCase().slice(0, 20);
-  if (!billingAddress) return { error: t("Indiquez votre adresse de facturation.") };
+  if (!billingAddress) return { error: t("Indiquez l'adresse de facturation.") };
   if (siret && !validSiret(siret)) return { error: t("Numéro SIRET invalide (14 chiffres).") };
   if (iban && !validIban(iban)) return { error: t("IBAN invalide.") };
-  if (vatRegime === "assujetti" && !/^[A-Z]{2}[A-Z0-9]{8,14}$/.test(vatNumber)) return { error: t("Indiquez votre numéro de TVA intracommunautaire.") };
-  // Structure de facturation (société d'exercice) : la structure juridique « de facturation », seule source,
-  // reprise par les conventions et les notes d'honoraires. Vide : facturation en nom propre.
-  const entity = str(form, "billingEntity", 120);
-  const legalForm = LEGAL_FORMS.includes(str(form, "billingLegalForm")) ? str(form, "billingLegalForm") : "Société d'exercice";
-  const payee = await db.practitionerStructure.findFirst({ where: { practitionerId: p.id, isPayee: true } });
-  await db.$transaction(async (tx) => {
-    await tx.practitionerProfile.update({
-      where: { id: p.id },
-      data: { billingAddress, siret: siret || null, iban: iban || null, vatRegime, vatNumber: vatRegime === "assujetti" ? vatNumber : null },
-    });
-    if (!entity) await tx.practitionerStructure.updateMany({ where: { practitionerId: p.id, isPayee: true }, data: { isPayee: false } });
-    else if (payee) await tx.practitionerStructure.update({ where: { id: payee.id }, data: { name: entity, legalForm, siren: sirenOf(siret) ?? payee.siren } });
-    else await tx.practitionerStructure.create({ data: { practitionerId: p.id, name: entity, legalForm, siren: sirenOf(siret), isPayee: true } });
-  });
-  await audit(user.id, "practitioner.billing", "PractitionerProfile", p.id);
+  if (vatRegime === "assujetti" && !/^[A-Z]{2}[A-Z0-9]{8,14}$/.test(vatNumber)) return { error: t("Indiquez le numéro de TVA intracommunautaire.") };
+  const coords = { billingAddress, siret: siret || null, iban: iban || null, vatRegime, vatNumber: vatRegime === "assujetti" ? vatNumber : null };
+  const target = str(form, "target") || "self";
+  if (target === "self") {
+    await db.practitionerProfile.update({ where: { id: p.id }, data: coords });
+    await audit(user.id, "practitioner.billing", "PractitionerProfile", p.id);
+  } else {
+    const name = str(form, "name", 120);
+    const legalForm = str(form, "legalForm");
+    if (!name || !LEGAL_FORMS.includes(legalForm)) return { error: t("Nom et forme juridique sont obligatoires.") };
+    if (target === "new") {
+      if ((await db.practitionerStructure.count({ where: { practitionerId: p.id } })) >= 20) return { error: t("Vous avez déjà 20 structures.") };
+      // Première structure de facturation, sans coordonnées en nom propre : proposée par défaut pour les conventions.
+      const isPayee = (await db.practitionerStructure.count({ where: { practitionerId: p.id, isPayee: true } })) === 0 && !billingComplete(p);
+      const s = await db.practitionerStructure.create({ data: { practitionerId: p.id, name, legalForm, siren: sirenOf(siret), isPayee, ...coords } });
+      await audit(user.id, "practitioner.structure_add", "PractitionerStructure", s.id);
+    } else {
+      const s = await db.practitionerStructure.findFirst({ where: { id: target, practitionerId: p.id } });
+      if (!s) return { error: t("Structure introuvable.") };
+      await db.practitionerStructure.update({ where: { id: s.id }, data: { name, legalForm, siren: sirenOf(siret) ?? s.siren, ...coords } });
+      await audit(user.id, "practitioner.billing", "PractitionerStructure", s.id);
+    }
+  }
   revalidatePath("/revenus");
   revalidatePath("/compte");
   return { ok: t("Coordonnées de facturation enregistrées.") };
+}
+
+/** Au nom de qui facturer par défaut les nouvelles conventions : nom propre (« self ») ou une structure. */
+export async function setDefaultBilling(_: FormState, form: FormData): Promise<FormState> {
+  const user = await requireUser();
+  const { t } = await getT();
+  const p = user.practitioner;
+  if (!p) return { error: t("Réservé aux praticiens.") };
+  const value = str(form, "payee");
+  const s = value === "self" ? null : await db.practitionerStructure.findFirst({ where: { id: value, practitionerId: p.id } });
+  if (value !== "self" && !s) return { error: t("Structure introuvable.") };
+  await db.$transaction([
+    db.practitionerStructure.updateMany({ where: { practitionerId: p.id, isPayee: true }, data: { isPayee: false } }),
+    ...(s ? [db.practitionerStructure.update({ where: { id: s.id }, data: { isPayee: true } })] : []),
+  ]);
+  await audit(user.id, "practitioner.billing_default", "PractitionerProfile", p.id, { structureId: s?.id ?? null });
+  revalidatePath("/revenus");
+  revalidatePath("/compte");
+  return { ok: t("Choix par défaut enregistré.") };
+}
+
+/** Au nom de qui facturer une convention : modifiable pendant le recrutement, figé à la soumission à la conformité. */
+export async function chooseLinkBilling(_: FormState, form: FormData): Promise<FormState> {
+  const user = await requireUser();
+  const { t } = await getT();
+  const p = user.practitioner;
+  if (!p) return { error: t("Réservé aux praticiens.") };
+  const link = await db.projectExpert.findFirst({ where: { id: str(form, "linkId"), practitionerId: p.id }, include: { project: { select: { status: true, organizationId: true } } } });
+  if (!link) return { error: t("Convention introuvable.") };
+  if (!billingEditable(link.project.status, link.status)) return { error: t("Le dossier a été soumis à la conformité : la facturation de la convention ne change plus.") };
+  const value = str(form, "payee");
+  const s = value === "self" ? null : await db.practitionerStructure.findFirst({ where: { id: value, practitionerId: p.id } });
+  if (value !== "self" && !s) return { error: t("Structure introuvable.") };
+  await db.projectExpert.update({ where: { id: link.id }, data: s ? { billingStructureId: s.id, billingSelf: false } : { billingStructureId: null, billingSelf: true } });
+  await audit(user.id, "expert.billing_choice", "ProjectExpert", link.id, { structureId: s?.id ?? null });
+  revalidatePath(`/sollicitations/${link.id}`);
+  revalidatePath("/revenus");
+  revalidatePath(`/organisations/${link.project.organizationId}/dossiers/${link.projectId}`);
+  return { ok: s ? t("La convention sera facturée au nom de {name}.", { name: s.name }) : t("La convention sera facturée en votre nom propre.") };
 }
 
 /** Note d'honoraires pour une convention signée : numérotée, figée, transmise à l'organisation. */
@@ -117,28 +167,31 @@ export async function issueFeeNote(_: FormState, form: FormData): Promise<FormSt
   const { t } = await getT();
   const p = user.practitioner;
   if (!p) return { error: t("Réservé aux praticiens.") };
-  const prof = await db.practitionerProfile.findUnique({ where: { id: p.id }, include: { structures: { where: { isPayee: true }, take: 1 } } });
-  if (!prof || !billingComplete(prof)) return { error: t("Complétez d'abord vos coordonnées de facturation.") };
+  const prof = await db.practitionerProfile.findUnique({ where: { id: p.id }, include: { structures: true } });
   const link = await db.projectExpert.findFirst({
     where: { id: str(form, "linkId"), practitionerId: p.id, status: { in: ["SIGNE", "TERMINE"] } },
     include: { project: { include: { organization: true } }, signature: { select: { completedAt: true } }, feeNote: { select: { id: true } } },
   });
-  if (!link) return { error: t("Convention signée introuvable.") };
+  if (!prof || !link) return { error: t("Convention signée introuvable.") };
+  // Au nom de qui la convention est facturée : la structure choisie (ses coordonnées) ou le nom propre (le profil).
+  const payee = linkPayee(link, prof.structures);
+  const coords = payee ?? prof;
+  if (!billingComplete(coords)) return { error: payee ? t("Complétez d'abord les coordonnées de facturation de {name}.", { name: payee.name }) : t("Complétez d'abord vos coordonnées de facturation.") };
   if (link.feeNote) return { ok: t("La note d'honoraires est déjà établie.") };
   if (!link.feeCents) return { error: t("Aucun montant d'honoraires dans la convention.") };
   const signedLog = await db.auditLog.findFirst({ where: { entityType: "Project", entityId: link.projectId, action: { in: ["project.signed", "project.attest"] } }, orderBy: { createdAt: "desc" } });
   const signedAt = link.signature?.completedAt ?? link.project.signatureAttestedAt ?? signedLog?.createdAt ?? null;
   const type = collabType(link.project.typeId);
   const data: FeeNoteData = {
-    issuer: { name: `${drPrefix(prof.profession)}${user.firstName} ${user.lastName}`, entity: payeeEntity(prof.structures[0]), address: prof.billingAddress!, siret: prof.siret, vatNumber: prof.vatNumber,
+    issuer: { name: `${drPrefix(prof.profession)}${user.firstName} ${user.lastName}`, entity: payeeEntity(payee), address: coords.billingAddress!, siret: coords.siret, vatNumber: coords.vatNumber,
       // Hors de France, l'identifiant du pays d'exercice (INAMI…), comme la convention.
       rpps: practicesInFrance(prof.country) ? prof.rpps : null,
       license: !practicesInFrance(prof.country) && prof.licenseNumber ? `${licenseRule(prof.country).label} ${prof.licenseNumber}` : null,
-      iban: prof.iban ? formatIban(prof.iban) : null, vatRegime: prof.vatRegime },
+      iban: coords.iban ? formatIban(coords.iban) : null, vatRegime: coords.vatRegime },
     recipient: { name: link.project.organization.name, siren: link.project.organization.siren, address: link.project.organization.headquarters },
     object: { title: link.project.title, type: type?.label ?? link.project.typeId, unit: type?.unit ?? null, units: link.days, signedAt: signedAt ? signedAt.toLocaleDateString("fr-FR", { timeZone: "Europe/Paris", day: "numeric", month: "long", year: "numeric" }) : null, projectRef: link.projectId.slice(-8).toUpperCase() },
   };
-  const vatBp = vatBpOf(prof.vatRegime);
+  const vatBp = vatBpOf(coords.vatRegime);
   const year = new Date().getFullYear();
   let note: Awaited<ReturnType<typeof db.feeNote.create>> | undefined;
   for (let attempt = 0; attempt < 3 && !note; attempt++) {

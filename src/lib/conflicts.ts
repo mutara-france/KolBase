@@ -2,6 +2,7 @@ import "server-only";
 import { db } from "@/lib/db";
 import { complianceSettings } from "@/lib/compliance";
 import { fmtEur, makeT, type Locale, type T } from "@/lib/i18n";
+import { linkPayee, NON_PROFIT_FORMS } from "@/lib/structures";
 
 export type Conflict = { kind: "concurrent" | "beneficiaire" | "structure" | "cumul"; who: string; detail: string; severity: "warn" | "danger" | "info" };
 
@@ -58,9 +59,13 @@ export async function detectConflicts(projectId: string, t: T = makeT("fr"), loc
         });
     }
 
-    // 2. Structure bénéficiaire détenue majoritairement par le praticien.
-    for (const s of e.practitioner.structures.filter((s) => s.isPayee && (s.sharePercent ?? 0) >= 50))
-      out.push({ kind: "beneficiaire", who: name, severity: "info", detail: t("Rémunération versée à {name} ({form}), détenue à {share} % par le praticien.", { name: s.name, form: t(s.legalForm), share: s.sharePercent ?? 0 }) });
+    // 2. Structure au nom de laquelle la convention est facturée : détenue majoritairement par le praticien, ou
+    // association, société savante ou fondation (rémunération versée à un tiers plutôt qu'au praticien).
+    const payee = linkPayee(e, e.practitioner.structures);
+    if (payee && NON_PROFIT_FORMS.includes(payee.legalForm))
+      out.push({ kind: "beneficiaire", who: name, severity: "info", detail: t("Rémunération versée à {name} ({form}) plutôt qu'au praticien : vérifiez avec la conformité qui est le bénéficiaire à déclarer.", { name: payee.name, form: t(payee.legalForm) }) });
+    else if (payee && (payee.sharePercent ?? 0) >= 50)
+      out.push({ kind: "beneficiaire", who: name, severity: "info", detail: t("Rémunération versée à {name} ({form}), détenue à {share} % par le praticien.", { name: payee.name, form: t(payee.legalForm), share: payee.sharePercent ?? 0 }) });
 
     // 3. Cumul annuel avec la même organisation.
     const total = links.reduce((s, l) => s + (l.feeCents ?? 0), 0) + (links.some((l) => l.projectId === project.id) ? 0 : e.feeCents ?? 0);

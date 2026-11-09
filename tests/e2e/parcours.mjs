@@ -2409,8 +2409,8 @@ async function submitNewOrg(page, siren) {
   await page.goto(`${BASE}/revenus?onglet=facturation`);
   const t = await text(page);
   check("Notes d'honoraires : note existante et convention à facturer", /NH-\d{4}-001/.test(t) && t.includes("Comité scientifique aligneurs"));
-  await page.fill('input[name="siret"]', "12345678901234");
-  await page.click('form:has(textarea[name="billingAddress"]) button:has-text("Enregistrer")');
+  await page.fill('#facturation-self input[name="siret"]', "12345678901234");
+  await page.click('#facturation-self button:has-text("Enregistrer")');
   await page.waitForTimeout(800);
   check("Facturation : SIRET invalide refusé", (await text(page)).includes("Numéro SIRET invalide"));
   await page.goto(`${BASE}/revenus?onglet=facturation`);
@@ -3735,7 +3735,7 @@ async function submitNewOrg(page, siren) {
     check("Suppression : IBAN, adresse, SIRET, TVA et liens déclarés effacés ; nom et RPPS gardés pour la convention", after.iban === null && after.billingAddress === null && after.siret === null && after.vatNumber === null && after.interests === 0 && after.firstName === "Paul" && !!after.rpps, JSON.stringify(after));
   }
 
-  // 6. Une seule structure de facturation (conventions et notes d'honoraires), un seul formulaire ; 30 jours partout.
+  // 6. Facturation : coordonnées propres à chaque structure, structure par défaut, note au nom de la structure.
   {
     await pgc.query(`insert into "Project" (id, "organizationId", title, "typeId", status, "updatedAt") values ('e2e-lot2-prj-durand', 'demo-org-orthonova', 'Comité lot 2 signé', 'advisory', 'SIGNE', now())`);
     await pgc.query(`insert into "ProjectExpert" (id, "projectId", "practitionerId", status, "feeCents", days) values ('e2e-lot2-pd-1', 'e2e-lot2-prj-durand', 'demo-p-durand', 'SIGNE', 180000, 1)`);
@@ -3748,30 +3748,106 @@ async function submitNewOrg(page, siren) {
     await mo.ctx.close();
     const d = await session();
     await login(d.page, "helene.durand@demo.kolbase.local");
+    await d.page.goto(`${BASE}/tableau-de-bord`);
+    check("Accueil : tâche de facturation tant que la structure par défaut n'a pas ses coordonnées", (await d.page.locator('a:has-text("Compléter vos coordonnées de facturation")').count()) === 1);
     await d.page.goto(`${BASE}/revenus?onglet=facturation`);
-    const bill = 'form:has(textarea[name="billingAddress"])';
-    check("Coordonnées de facturation : la structure de facturation déclarée y est reprise", (await d.page.inputValue(`${bill} input[name="billingEntity"]`)) === "SELARL Dr Durand" && (await d.page.inputValue(`${bill} select[name="billingLegalForm"]`)) === "SELARL");
-    await d.page.fill(`${bill} input[name="billingEntity"]`, "Durand Implantologie");
-    await d.page.selectOption(`${bill} select[name="billingLegalForm"]`, "SELAS");
-    await d.page.fill(`${bill} textarea[name="billingAddress"]`, "8 quai Claude Bernard\n69007 Lyon");
-    await d.page.fill(`${bill} input[name="siret"]`, "73282932000074");
-    await d.page.click(`${bill} button:has-text("Enregistrer")`);
+    const acc = "#facturation-demo-struct-durand";
+    check("Coordonnées de facturation : un volet par structure, celle par défaut à compléter", (await d.page.inputValue(`${acc} input[name="name"]`)) === "SELARL Dr Durand" && (await d.page.inputValue(`${acc} select[name="legalForm"]`)) === "SELARL" && /à compléter/i.test(await d.page.locator(`${acc} > summary`).innerText()) && /par défaut/i.test(await d.page.locator(`${acc} > summary`).innerText()));
+    await d.page.fill(`${acc} input[name="name"]`, "Durand Implantologie");
+    await d.page.selectOption(`${acc} select[name="legalForm"]`, "SELAS");
+    await d.page.fill(`${acc} textarea[name="billingAddress"]`, "8 quai Claude Bernard\n69007 Lyon");
+    await d.page.fill(`${acc} input[name="siret"]`, "73282932000074");
+    await d.page.click(`${acc} button:has-text("Enregistrer")`);
     await d.page.waitForTimeout(1200);
-    const payees = (await pgc.query(`select name, "legalForm", siren from "PractitionerStructure" where "practitionerId" = 'demo-p-durand' and "isPayee"`)).rows;
-    check("Un seul formulaire : la structure de facturation est mise à jour (une seule, SIREN repris du SIRET)", payees.length === 1 && payees[0].name === "Durand Implantologie" && payees[0].legalForm === "SELAS" && payees[0].siren === "732829320", JSON.stringify(payees));
+    const payees = (await pgc.query(`select name, "legalForm", siren, siret, "billingAddress" from "PractitionerStructure" where "practitionerId" = 'demo-p-durand' and "isPayee"`)).rows;
+    const self = await q1(`select "billingAddress", siret from "PractitionerProfile" where id = 'demo-p-durand'`);
+    check("Coordonnées enregistrées sur la structure (SIREN repris du SIRET), pas sur le nom propre", payees.length === 1 && payees[0].name === "Durand Implantologie" && payees[0].legalForm === "SELAS" && payees[0].siren === "732829320" && payees[0].siret === "73282932000074" && !!payees[0].billingAddress && !self.billingAddress && !self.siret, JSON.stringify({ payees, self }));
     await d.page.goto(`${BASE}/compte`);
     const structs = await d.page.locator('section.card:has(h2:has-text("Structures juridiques"))').innerText();
-    check("Structures juridiques : plus de case « structure de facturation », lien vers les coordonnées", (await d.page.locator('input[name="isPayee"]').count()) === 0 && structs.includes("Durand Implantologie") && structs.includes("structure de facturation") && (await d.page.locator('a[href="/revenus?onglet=facturation#coordonnees"]').count()) >= 1);
+    check("Structures juridiques : structure par défaut signalée, lien vers les coordonnées", (await d.page.locator('input[name="isPayee"]').count()) === 0 && structs.includes("Durand Implantologie") && structs.includes("facturation par défaut") && (await d.page.locator('a[href="/revenus?onglet=facturation#coordonnees"]').count()) >= 1);
     await d.page.goto(`${BASE}/tableau-de-bord`);
     check("Accueil : plus de tâche de facturation une fois les coordonnées complètes", (await d.page.locator('a:has-text("Compléter vos coordonnées de facturation")').count()) === 0);
     await d.page.goto(`${BASE}/revenus?onglet=facturation`);
+    check("À établir : la convention signée, au nom de la structure par défaut", (await d.page.locator('li:has-text("Comité lot 2 signé")').innerText()).includes("au nom de Durand Implantologie (SELAS)"));
     await d.page.locator('li:has-text("Comité lot 2 signé") button:has-text("Établir la note")').click();
     await d.page.waitForTimeout(1500);
     const note = await q1(`select data from "FeeNote" where "projectExpertId" = 'e2e-lot2-pd-1'`);
-    check("Note d'honoraires : même structure de facturation que la convention", note?.data?.issuer?.entity === "Durand Implantologie (SELAS)" && note?.data?.issuer?.siret === "73282932000074", JSON.stringify(note?.data?.issuer));
+    check("Note d'honoraires : au nom et avec les coordonnées de la structure", note?.data?.issuer?.entity === "Durand Implantologie (SELAS)" && note?.data?.issuer?.siret === "73282932000074" && note?.data?.issuer?.address?.includes("quai Claude Bernard"), JSON.stringify(note?.data?.issuer));
     const conv = await d.page.request.get(`${BASE}/sollicitations/e2e-lot2-pd-1/convention`);
     check("Convention : disponible avec la structure de facturation", conv.status() === 200);
+
+    // 6 bis. Une autre structure (association) choisie pour une convention : modifiable pendant le recrutement, figée à
+    // la soumission à la conformité, reprise par le budget du dossier, les points d'attention et la note d'honoraires.
+    await d.page.goto(`${BASE}/revenus?onglet=facturation`);
+    const nw = "#facturation-new";
+    await d.page.click(`${nw} > summary`);
+    await d.page.fill(`${nw} input[name="name"]`, "Association Implantologie Lyon");
+    await d.page.selectOption(`${nw} select[name="legalForm"]`, "Association loi 1901");
+    await d.page.fill(`${nw} textarea[name="billingAddress"]`, "2 place Bellecour\n69002 Lyon");
+    await d.page.fill(`${nw} input[name="iban"]`, "FR7630006000011234567890189");
+    await d.page.click(`${nw} button:has-text("Ajouter la structure")`);
+    let asso = null;
+    for (let i = 0; i < 40 && !asso; i++) {
+      asso = await q1(`select id, "isPayee", iban from "PractitionerStructure" where "practitionerId" = 'demo-p-durand' and name = 'Association Implantologie Lyon'`);
+      if (!asso) await d.page.waitForTimeout(150);
+    }
+    check("Nouvelle structure (association) avec ses coordonnées, sans remplacer la structure par défaut", !!asso && asso.isPayee === false && asso.iban === "FR7630006000011234567890189", JSON.stringify(asso));
+    await pgc.query(`insert into "Project" (id, "organizationId", title, "typeId", status, "updatedAt") values ('e2e-fact-prj', 'demo-org-dentalys', 'Conférence facturée à une association', 'pleniere', 'ACCORD', now())`);
+    await pgc.query(`insert into "ProjectExpert" (id, "projectId", "practitionerId", status, "feeCents", days, "respondedAt") values
+      ('e2e-fact-l-durand', 'e2e-fact-prj', 'demo-p-durand', 'ACCORD', 120000, 1, now()), ('e2e-fact-l-moreau', 'e2e-fact-prj', 'demo-p-moreau', 'ACCORD', 120000, 1, now())`);
+    await d.page.goto(`${BASE}/sollicitations/e2e-fact-l-durand?onglet=documents`);
+    const fc = "#facturation";
+    check("Convention en accord de principe : la structure par défaut est proposée", (await d.page.inputValue(`${fc} select[name="payee"]`)) === "demo-struct-durand");
+    await d.page.selectOption(`${fc} select[name="payee"]`, asso.id);
+    await d.page.click(`${fc} button:has-text("Enregistrer")`);
+    await d.page.waitForTimeout(1200);
+    const chosen = await q1(`select "billingStructureId", "billingSelf" from "ProjectExpert" where id = 'e2e-fact-l-durand'`);
+    check("Choix de l'expert : convention facturée au nom de l'association", chosen.billingStructureId === asso.id && !chosen.billingSelf && (await d.page.locator(fc).innerText()).includes("La convention sera facturée au nom de Association Implantologie Lyon."), JSON.stringify(chosen));
+    const o = await session();
+    await login(o.page, "claire.morel@demo.kolbase.local");
+    const dossier = `${BASE}/organisations/demo-org-dentalys/dossiers/e2e-fact-prj`;
+    await o.page.goto(`${dossier}?onglet=budget`);
+    const budget = await o.page.locator("section:has(#honoraires-titre)").innerText();
+    check("Organisation : au nom de qui chaque expert facture, dans le budget du dossier", budget.includes("Facturation : Association Implantologie Lyon (Association loi 1901)") && budget.includes("Facturation : en nom propre"), budget.replace(/\s+/g, " ").slice(0, 400));
+    await o.page.goto(`${dossier}?onglet=conformite`);
+    check("Points d'attention : rémunération versée à une association plutôt qu'au praticien", (await text(o.page)).includes("Rémunération versée à Association Implantologie Lyon (Association loi 1901) plutôt qu'au praticien"));
+    // Soumission à la conformité : choix figés (Moreau, sans structure : nom propre).
+    await o.page.goto(dossier);
+    await o.page.locator('form:has(input[value="submit"]) button:has-text("Soumettre à la conformité")').first().click();
+    // Confirmation demandée seulement si un expert sollicité n'a pas répondu (le recrutement se clôt).
+    const confirm = o.page.locator('form:has(input[value="submit"]) button:has-text("Confirmer")').first();
+    if (await confirm.waitFor({ timeout: 1500 }).then(() => true, () => false)) await confirm.click();
+    let frozen = null;
+    for (let i = 0; i < 40; i++) {
+      frozen = await q1(`select p.status, (select "billingSelf" from "ProjectExpert" where id = 'e2e-fact-l-moreau') moreau, (select "billingStructureId" from "ProjectExpert" where id = 'e2e-fact-l-durand') durand from "Project" p where p.id = 'e2e-fact-prj'`);
+      if (frozen.status === "EN_VALID") break;
+      await o.page.waitForTimeout(150);
+    }
+    check("Soumission à la conformité : facturation figée (nom propre sans structure, choix de l'expert gardé)", frozen.status === "EN_VALID" && frozen.moreau === true && frozen.durand === asso.id, JSON.stringify(frozen));
+    await o.ctx.close();
+    await d.page.goto(`${BASE}/sollicitations/e2e-fact-l-durand?onglet=documents`);
+    const locked = await d.page.locator(fc).innerText();
+    check("Dossier soumis : le choix ne se modifie plus", (await d.page.locator(`${fc} select`).count()) === 0 && locked.includes("Convention facturée au nom de Association Implantologie Lyon (Association loi 1901)."), locked);
+    await d.page.goto(`${BASE}/compte`);
+    const assoRow = await d.page.locator('.pub-list li:has-text("Association Implantologie Lyon")').innerText();
+    check("Structure choisie pour une convention : elle ne peut pas être retirée", assoRow.includes("Choisie pour une convention") && (await d.page.locator('.pub-list li:has-text("Association Implantologie Lyon") button:has-text("Retirer")').count()) === 0, assoRow);
+    await pgc.query(`update "Project" set status = 'SIGNE' where id = 'e2e-fact-prj'`);
+    await pgc.query(`update "ProjectExpert" set status = 'SIGNE' where "projectId" = 'e2e-fact-prj'`);
+    await d.page.goto(`${BASE}/revenus?onglet=facturation`);
+    const row = await d.page.locator('li:has-text("Conférence facturée à une association")').innerText();
+    check("À établir : au nom de l'association", row.includes("au nom de Association Implantologie Lyon (Association loi 1901)"), row);
+    await d.page.locator('li:has-text("Conférence facturée à une association") button:has-text("Établir la note")').click();
+    let assoNote = null;
+    for (let i = 0; i < 40 && !assoNote; i++) {
+      assoNote = await q1(`select data, "vatBp" from "FeeNote" where "projectExpertId" = 'e2e-fact-l-durand'`);
+      if (!assoNote) await d.page.waitForTimeout(150);
+    }
+    const iss = assoNote?.data?.issuer;
+    check("Note d'honoraires : au nom de l'association, avec son adresse et son IBAN", iss?.entity === "Association Implantologie Lyon (Association loi 1901)" && iss?.address?.includes("place Bellecour") && iss?.iban === "FR76 3000 6000 0112 3456 7890 189" && !iss?.siret && assoNote.vatBp === 0, JSON.stringify(iss));
     await d.ctx.close();
+    await pgc.query(`delete from "FeeNote" where "projectExpertId" in ('e2e-fact-l-durand', 'e2e-fact-l-moreau')`);
+    await pgc.query(`delete from "Project" where id = 'e2e-fact-prj'`);
+    await pgc.query(`delete from "PractitionerStructure" where id = $1`, [asso.id]);
   }
 
   // 8. Professions non éligibles (pas de référencement, ni Revenus, Publications, Structures) et praticiens hors de France.

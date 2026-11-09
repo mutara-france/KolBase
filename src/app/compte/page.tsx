@@ -61,7 +61,8 @@ export default async function Page({ searchParams }: { searchParams: Promise<{ a
   const [pubs, structs] = p
     ? await Promise.all([
         db.publication.findMany({ where: { practitionerId: p.id }, orderBy: [{ year: "desc" }, { createdAt: "desc" }] }),
-        db.practitionerStructure.findMany({ where: { practitionerId: p.id } }),
+        // Structure choisie pour une convention pas encore facturée : elle ne peut pas être retirée.
+        db.practitionerStructure.findMany({ where: { practitionerId: p.id }, include: { _count: { select: { billedLinks: { where: { status: { not: "DECLINE" }, feeNote: { is: null } } } } } } }),
       ])
     : [[], []];
   return (
@@ -162,15 +163,17 @@ export default async function Page({ searchParams }: { searchParams: Promise<{ a
             <SectionHead icon={Building2} title={t("Structures juridiques ({n})", { n: structs.length })} />
             <p className="muted">
               {t("Sociétés d'exercice, associations, fonctions déclarées.")}{" "}
-              {t("La structure de facturation, reprise par vos conventions et vos notes d'honoraires, se règle avec vos coordonnées de facturation :")}{" "}
+              {t("Vous pouvez facturer vos conventions au nom de l'une d'elles : coordonnées de facturation et choix par défaut dans")}{" "}
               <Link href="/revenus?onglet=facturation#coordonnees">{t("Mes revenus › Notes d'honoraires")}</Link>
             </p>
             {structs.length > 0 && (
               <ul className="pub-list">
                 {structs.map((x) => (
                   <li key={x.id} className="flex-between">
-                    <span><strong>{x.name}</strong><br /><span className="text-xs">{t(x.legalForm)}{x.siren ? ` · SIREN ${x.siren}` : ""}{x.role ? ` · ${t(x.role)}` : ""}{x.isPayee ? ` · ${t("structure de facturation")}` : ""}</span></span>
-                    <form action={removeStructure}><input type="hidden" name="id" value={x.id} /><button className="link danger">{t("Retirer")}</button></form>
+                    <span><strong>{x.name}</strong><br /><span className="text-xs">{t(x.legalForm)}{x.siren ? ` · SIREN ${x.siren}` : ""}{x.role ? ` · ${t(x.role)}` : ""}{x.isPayee ? ` · ${t("facturation par défaut")}` : ""}</span></span>
+                    {x._count.billedLinks > 0
+                      ? <span className="text-xs muted">{t("Choisie pour une convention")}</span>
+                      : <form action={removeStructure}><input type="hidden" name="id" value={x.id} /><button className="link danger">{t("Retirer")}</button></form>}
                   </li>
                 ))}
               </ul>

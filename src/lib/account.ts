@@ -80,7 +80,7 @@ export async function soleAdminOrgs(userId: string) {
  * Suppression du compte par anonymisation : connexion impossible, profil retiré, données personnelles effacées
  * (dont coordonnées de facturation : IBAN, adresse, SIRET, TVA, et liens d'intérêts déclarés).
  * Restent, si le compte en a, les éléments liés aux conventions et aux hospitalités déclarées (nom, profession,
- * RPPS, ville, structure de facturation), que les organisations doivent conserver ; les notes d'honoraires déjà
+ * RPPS, ville, structures au nom desquelles elles sont facturées), que les organisations doivent conserver ; les notes d'honoraires déjà
  * établies gardent les données figées à leur émission.
  */
 export async function anonymizeAccount(userId: string) {
@@ -116,7 +116,10 @@ export async function anonymizeAccount(userId: string) {
           // Propositions : les copies reçues par les organisations restent leurs dossiers (texte envoyé).
           db.expertProposal.deleteMany({ where: { practitionerId: p.id } }),
           db.declaredInterest.deleteMany({ where: { practitionerId: p.id } }),
-          db.practitionerStructure.deleteMany({ where: { practitionerId: p.id, ...(keep ? { isPayee: false } : {}) } }),
+          // Structures : gardées celles au nom desquelles une convention est facturée (ou la structure par défaut,
+          // qui facture les conventions sans choix), sans leurs coordonnées bancaires et fiscales.
+          db.practitionerStructure.deleteMany({ where: { practitionerId: p.id, ...(keep ? { isPayee: false, billedLinks: { none: {} } } : {}) } }),
+          db.practitionerStructure.updateMany({ where: { practitionerId: p.id }, data: { iban: null, billingAddress: null, siret: null, vatNumber: null, vatRegime: "franchise" } }),
           db.application.deleteMany({ where: { practitionerId: p.id, status: "pending" } }),
           db.application.updateMany({ where: { practitionerId: p.id, status: "retained" }, data: { status: "declined" } }),
           db.projectExpert.updateMany({ where: { practitionerId: p.id, status: "ATT_EXPERTS" }, data: { status: "DECLINE", respondedAt: now, responseNote: ACCOUNT_DELETED } }),

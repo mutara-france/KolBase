@@ -110,7 +110,7 @@ export async function addStructure(_: ActionState, form: FormData): Promise<Acti
   const siren = str(form, "siren").replace(/\s/g, "");
   if (siren && !/^\d{9}$/.test(siren)) return { error: t("Le SIREN comporte 9 chiffres.") };
   const share = str(form, "sharePercent") ? Math.min(100, Math.max(0, Math.round(Number(str(form, "sharePercent"))))) : null;
-  // La structure de facturation se règle avec les coordonnées de facturation (Mes revenus), seule source.
+  // Coordonnées de facturation et choix par défaut : Mes revenus › Notes d'honoraires.
   const s = await db.practitionerStructure.create({
     data: { practitionerId: user.practitioner.id, name, legalForm, siren: siren || null, role: str(form, "role") || null, sharePercent: share },
   });
@@ -122,8 +122,10 @@ export async function addStructure(_: ActionState, form: FormData): Promise<Acti
 export async function removeStructure(form: FormData) {
   const user = await requireUser();
   if (!user.practitioner) return;
-  await db.practitionerStructure.deleteMany({ where: { id: str(form, "id"), practitionerId: user.practitioner.id } });
+  // Structure choisie pour une convention pas encore facturée : gardée (la convention et sa note la reprennent).
+  await db.practitionerStructure.deleteMany({ where: { id: str(form, "id"), practitionerId: user.practitioner.id, billedLinks: { none: { status: { not: "DECLINE" }, feeNote: { is: null } } } } });
   revalidatePath("/compte");
+  revalidatePath("/revenus");
 }
 
 // ─── Photo du praticien ────────────────────────────────────────────────────

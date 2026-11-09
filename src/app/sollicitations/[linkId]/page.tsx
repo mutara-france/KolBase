@@ -1,12 +1,16 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { Clock, Briefcase, Building2, CalendarDays, Euro, FileSignature, FileText, MapPin, MessagesSquare, Receipt, Reply, Scale } from "lucide-react";
+import { Clock, Briefcase, Building2, CalendarDays, Euro, FileSignature, FileText, Landmark, MapPin, MessagesSquare, Receipt, Reply, Scale } from "lucide-react";
 import { ExpertCostsPanel, FrameworkPanel } from "@/components/ExpertCosts";
 import { SectionHead } from "@/components/UI";
 import { SiteHeader } from "@/components/SiteHeader";
 import { PageHero } from "@/components/PageHero";
 import { ExpertLinkPill, Pipeline, Thread } from "@/components/ProjectBits";
 import { MessageForm, RespondForm } from "@/components/ProjectForms";
+import { PayeeChoiceForm } from "@/components/RevenueForms";
+import { billingComplete } from "@/lib/fee-notes";
+import { practitionerStructures } from "@/lib/expert-billing";
+import { billingEditable, choiceValue, linkPayee, payeeEntity } from "@/lib/structures";
 import { db } from "@/lib/db";
 import { requireUser } from "@/lib/auth";
 import { collabType, expertLinkState, PROPOSAL_ORIGIN, unitCount } from "@/lib/projects";
@@ -106,6 +110,13 @@ export default async function Page({ params, searchParams }: { params: Promise<{
     { key: "frais", label: t("Frais et voyage"), icon: Receipt, count: link.expenses.length || undefined, alert: link.expenses.some((e) => e.status === "rejected"), disabled: engaged ? undefined : t("Après votre accord de principe") },
   ];
   const active = tabs.find((tb) => tb.key === onglet && !tb.disabled)?.key ?? "mission";
+  // Facturation de la convention : nom propre ou une structure de l'expert, choisi jusqu'à la soumission à la conformité.
+  const practitioner = user.practitioner!;
+  const structures = active === "documents" ? await practitionerStructures(practitioner.id) : [];
+  const payee = linkPayee(link, structures);
+  const payeeComplete = billingComplete(payee ?? practitioner);
+  const canChoose = billingEditable(p.status, link.status) && !abandoned;
+  const payeeOptions = [{ value: "self", label: t("En mon nom propre") }, ...structures.map((x) => ({ value: x.id, label: t("Au nom de {name}", { name: payeeEntity(x)! }) }))];
   const href = (k: string) => (k === "mission" ? `/sollicitations/${link.id}` : `/sollicitations/${link.id}?onglet=${k}`);
 
   return (
@@ -192,6 +203,14 @@ export default async function Page({ params, searchParams }: { params: Promise<{
         {active === "documents" && (
           <div className="stack">
             <ExpertSignatureBlock linkId={link.id} signature={link.signature} email={user.email} projectStatus={p.status} signedDocId={signedDocId} />
+            <section className="card stack-sm" aria-labelledby="facturation-titre" id="facturation">
+              <SectionHead icon={Landmark} id="facturation-titre" title={t("Facturation")} desc={canChoose ? t("Au nom de qui la convention et la note d'honoraires sont établies : modifiable jusqu'à la soumission du dossier à la conformité.") : t("Au nom de qui la convention et la note d'honoraires sont établies.")} />
+              {canChoose && structures.length > 0
+                ? <PayeeChoiceForm linkId={link.id} options={payeeOptions} current={choiceValue(payee)} />
+                : <p>{payee ? t("Convention facturée au nom de {name}.", { name: payeeEntity(payee)! }) : t("Convention facturée en votre nom propre.")}</p>}
+              {canChoose && structures.length === 0 && <p className="text-xs muted">{t("Vous facturez par un cabinet, une société d'exercice ou une association ?")} <Link href="/revenus?onglet=facturation#facturation-new">{t("Déclarez la structure et ses coordonnées")}</Link></p>}
+              {!payeeComplete && <p className="notice warn"><Link href={`/revenus?onglet=facturation#facturation-${choiceValue(payee)}`}>{payee ? t("Compléter les coordonnées de facturation de {name}", { name: payee.name }) : t("Compléter vos coordonnées de facturation")}</Link></p>}
+            </section>
             <section className="card stack-sm" aria-labelledby="convention-titre">
               <SectionHead icon={FileSignature} id="convention-titre" title={t("Convention")} desc={signedHref ? t("Signée par les deux parties.") : t("Le projet de convention, tel que l'organisation vous le propose.")} tone={signedHref ? "ok" : "brand"} />
               <div className="actions">

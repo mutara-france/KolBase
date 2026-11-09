@@ -1,7 +1,7 @@
 "use client";
 
 import { useActionState } from "react";
-import { addDeclaredInterest, issueFeeNote, reportTransparencyIssue, updateBilling } from "@/lib/revenue-actions";
+import { addDeclaredInterest, chooseLinkBilling, issueFeeNote, reportTransparencyIssue, setDefaultBilling, updateBilling } from "@/lib/revenue-actions";
 import { Notice } from "@/components/AuthForms";
 import { useT } from "@/components/I18nProvider";
 import { LEGAL_FORMS } from "@/lib/structures";
@@ -46,22 +46,27 @@ export function ReportForm({ kind, id }: { kind: "convention" | "hospitalite"; i
   );
 }
 
-/** Coordonnées de facturation (notes d'honoraires). */
+export type BillingCoords = { billingAddress: string; siret: string; vatRegime: string; vatNumber: string; iban: string };
+
 /**
- * Coordonnées de facturation : seul formulaire de la structure de facturation (société d'exercice), reprise par
- * les conventions et par les notes d'honoraires, avec l'adresse, le SIRET, la TVA et l'IBAN.
+ * Coordonnées de facturation d'un compte : le nom propre (target « self »), une structure (son identifiant, avec son
+ * nom et sa forme juridique) ou une nouvelle structure (target « new »). Reprises par les conventions et les notes
+ * d'honoraires facturées à ce nom.
  */
-export function BillingForm({ current }: { current: { billingEntity: string; billingLegalForm: string; billingAddress: string; siret: string; vatRegime: string; vatNumber: string; iban: string } }) {
+export function BillingForm({ target, structure, current }: { target: string; structure: { name: string; legalForm: string } | null; current: BillingCoords }) {
   const [state, action, pending] = useActionState(updateBilling, undefined);
   const t = useT();
+  const isNew = target === "new";
   return (
-    <form action={action} className="form">
+    <form action={action} className="form" key={isNew && state?.ok ? Date.now() : target}>
       <Notice state={state} />
-      <div className="row">
-        <label>{t("Structure de facturation (facultatif)")}<input name="billingEntity" maxLength={120} defaultValue={current.billingEntity} placeholder={t("SELARL Dr Dupont… si vous facturez par une société")} /></label>
-        <label>{t("Forme juridique")}<select name="billingLegalForm" defaultValue={current.billingLegalForm || "SELARL"}>{LEGAL_FORMS.map((f) => <option key={f} value={f}>{t(f)}</option>)}</select></label>
-      </div>
-      <p className="hint">{t("Elle figure sur vos conventions et vos notes d'honoraires. Laissez vide si vous facturez en votre nom propre.")}</p>
+      <input type="hidden" name="target" value={target} />
+      {structure && (
+        <div className="row">
+          <label>{t("Nom de la structure")}<input name="name" required maxLength={120} defaultValue={structure.name} placeholder={t("SELARL Dr Dupont, Association…")} /></label>
+          <label>{t("Forme juridique")}<select name="legalForm" defaultValue={structure.legalForm || "SELARL"}>{LEGAL_FORMS.map((f) => <option key={f} value={f}>{t(f)}</option>)}</select></label>
+        </div>
+      )}
       <label>{t("Adresse de facturation")}<textarea name="billingAddress" rows={3} maxLength={300} required defaultValue={current.billingAddress} /></label>
       <div className="row">
         <label>{t("SIRET (facultatif)")}<input name="siret" inputMode="numeric" maxLength={17} defaultValue={current.siret} /></label>
@@ -74,7 +79,44 @@ export function BillingForm({ current }: { current: { billingEntity: string; bil
         <label>{t("N° de TVA intracommunautaire")}<input name="vatNumber" maxLength={20} defaultValue={current.vatNumber} placeholder="FR…" /></label>
       </div>
       <label>{t("IBAN (facultatif, imprimé sur la note)")}<input name="iban" maxLength={42} defaultValue={current.iban} autoComplete="off" /></label>
-      <button className="btn small" disabled={pending}>{pending ? t("Enregistrement…") : t("Enregistrer")}</button>
+      <button className="btn small" disabled={pending}>{pending ? t("Enregistrement…") : isNew ? t("Ajouter la structure") : t("Enregistrer")}</button>
+    </form>
+  );
+}
+
+type PayeeOption = { value: string; label: string };
+
+/** Au nom de qui facturer par défaut les nouvelles conventions. */
+export function DefaultPayeeForm({ options, current }: { options: PayeeOption[]; current: string }) {
+  const [state, action, pending] = useActionState(setDefaultBilling, undefined);
+  const t = useT();
+  return (
+    <form action={action} className="form">
+      <Notice state={state} />
+      <div className="payee-row">
+        <label>{t("Par défaut, facturer les nouvelles conventions")}
+          <select name="payee" defaultValue={current}>{options.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}</select>
+        </label>
+        <button className="btn small secondary" disabled={pending}>{pending ? t("Enregistrement…") : t("Enregistrer")}</button>
+      </div>
+    </form>
+  );
+}
+
+/** Au nom de qui facturer cette convention (pendant le recrutement). */
+export function PayeeChoiceForm({ linkId, options, current }: { linkId: string; options: PayeeOption[]; current: string }) {
+  const [state, action, pending] = useActionState(chooseLinkBilling, undefined);
+  const t = useT();
+  return (
+    <form action={action} className="form">
+      <Notice state={state} />
+      <input type="hidden" name="linkId" value={linkId} />
+      <div className="payee-row">
+        <label>{t("Facturer cette convention")}
+          <select name="payee" defaultValue={current}>{options.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}</select>
+        </label>
+        <button className="btn small secondary" disabled={pending}>{pending ? t("Enregistrement…") : t("Enregistrer")}</button>
+      </div>
     </form>
   );
 }

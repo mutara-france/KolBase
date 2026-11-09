@@ -28,7 +28,8 @@ export async function ExpertProfile({ id, viewer, solicitHref, userId = null }: 
     include: {
       user: { select: { firstName: true, lastName: true } },
       publications: { orderBy: [{ year: "desc" }, { createdAt: "desc" }] },
-      structures: true,
+      // Sans leurs coordonnées de facturation (adresse, SIRET, TVA, IBAN), réservées à l'expert.
+      structures: { select: { id: true, name: true, legalForm: true, role: true, sharePercent: true, isPayee: true } },
       // Collaborations : conventions signées seulement (même définition partout).
       projectLinks: { where: { status: { in: SIGNED_STATUSES } }, include: { project: { include: { organization: { select: { id: true, name: true } } } } } },
     },
@@ -144,7 +145,7 @@ export async function ExpertProfile({ id, viewer, solicitHref, userId = null }: 
             p.structures.length === 0 ? <p className="muted">{t("Aucune structure déclarée.")}</p> : (
               <ul className="pub-list">
                 {p.structures.map((s) => (
-                  <li key={s.id}><strong>{s.name}</strong><span className="text-xs">{s.legalForm}{s.role ? ` · ${s.role}` : ""}{s.sharePercent != null ? ` · ${t("{n} %", { n: s.sharePercent })}` : ""}{s.isPayee ? ` · ${t("structure de facturation")}` : ""}</span></li>
+                  <li key={s.id}><strong>{s.name}</strong><span className="text-xs">{s.legalForm}{s.role ? ` · ${s.role}` : ""}{s.sharePercent != null ? ` · ${t("{n} %", { n: s.sharePercent })}` : ""}{s.isPayee ? ` · ${t("facturation par défaut")}` : ""}</span></li>
                 ))}
               </ul>
             )

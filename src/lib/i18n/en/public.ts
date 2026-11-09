@@ -151,7 +151,6 @@ export const PUBLIC: Record<string, string> = {
   "Structures juridiques": "Legal entities",
   "Aucune structure déclarée.": "No legal entities declared.",
   "{n} %": "{n}%",
-  "structure de facturation": "billing entity",
   "Tarif non renseigné.": "Rate not provided.",
 
   // Bouton « Suivre »

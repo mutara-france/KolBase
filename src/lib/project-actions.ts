@@ -19,6 +19,7 @@ import { hoursOf } from "@/lib/fees";
 import { notifyCompliance, notifyCounterAccepted, notifyExpertAnswer, notifyExpertCounter, notifyExpertNotice, notifyMessage, notifyNewProposal, notifyProjectLead, notifySolicitations } from "@/lib/notifications";
 import { signatureEnabled } from "@/lib/yousign";
 import { engagementBlock, engagementGate } from "@/lib/billing";
+import { freezeBilling } from "@/lib/expert-billing";
 import type { GateLink } from "@/lib/billing-plans";
 import { getT } from "@/lib/i18n/server";
 import { closeOpenSignatures } from "@/lib/signature";
@@ -252,6 +253,8 @@ export async function advanceProject(form: FormData) {
   if (t.roles !== "compliance" && key !== "decline_proposal" && key !== "abandon") await claimIfUnassigned(projectId, user.id);
   // Les experts ayant donné leur accord suivent le statut du dossier.
   await db.projectExpert.updateMany({ where: { projectId, status: { notIn: ["DECLINE", "ATT_EXPERTS"] } }, data: { status: t.to } });
+  // Soumission à la conformité : la facturation de chaque expert (nom propre ou structure) est figée.
+  if (key === "submit") await freezeBilling(projectId);
   if (key === "abandon") await db.projectExpert.updateMany({ where: { projectId, status: "ATT_EXPERTS" }, data: { status: "DECLINE" } });
   // Dossier signé (conventions déposées ou attestées) ou abandonné : plus aucune signature électronique en attente.
   if (key === "signed" || key === "abandon") await closeOpenSignatures({ projectId }, key === "signed" ? "dossier passé « Signé »" : "dossier abandonné");

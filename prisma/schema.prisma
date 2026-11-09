@@ -151,8 +151,8 @@ model PractitionerProfile {
   orcidVerified Boolean   @default(false) // iD obtenu par connexion au compte ORCID
   rppsCheckedAt DateTime? // contrôle du RPPS par un administrateur KolBase (validé ou refusé)
   rppsCheckNote String?   // motif d'un refus
-  // Coordonnées de facturation (conventions et notes d'honoraires) : adresse, SIRET, TVA, IBAN. La société
-  // d'exercice éventuelle est la structure de facturation (PractitionerStructure.isPayee), seule source.
+  // Coordonnées de facturation en nom propre (conventions et notes d'honoraires) : adresse, SIRET, TVA, IBAN. Une
+  // convention facturée au nom d'une structure (cabinet, association…) reprend les coordonnées de cette structure.
   billingAddress String?
   // Ancienne « société d'exercice », reprise dans les structures : plus lue. Exclue du client Prisma (@ignore) mais
   // gardée en base le temps d'un déploiement, pour que l'ancienne version encore en service ne lise pas une colonne
@@ -238,7 +238,7 @@ model Publication {
   @@index([practitionerId])
 }
 
-// Structure d'exercice / de facturation du praticien (SELARL, SCM…).
+// Structure d'exercice / de facturation du praticien (SELARL, SCM, association…).
 model PractitionerStructure {
   id             String              @id @default(cuid())
   practitionerId String
@@ -248,8 +248,16 @@ model PractitionerStructure {
   siren          String?
   role           String?
   sharePercent   Int?
+  // Structure proposée par défaut pour facturer une nouvelle convention (une au plus) ; sinon, le nom propre.
   isPayee        Boolean             @default(false)
   since          DateTime?
+  // Coordonnées de facturation de la structure (conventions et notes d'honoraires établies à son nom).
+  billingAddress String?
+  siret          String?
+  vatRegime      String              @default("franchise")
+  vatNumber      String?
+  iban           String?
+  billedLinks    ProjectExpert[]
 
   @@index([practitionerId])
 }
@@ -672,6 +680,12 @@ model ProjectExpert {
   // Paiement des honoraires, indiqué par l'organisation (visible de l'expert dans « Mes revenus »).
   paidAt         DateTime?
   paidCents      Int?
+  // Au nom de qui la convention est facturée, choisi par l'expert pendant le recrutement : une de ses structures
+  // (billingStructureId) ou son nom propre (billingSelf). Sans choix, sa structure par défaut ; figé à la soumission
+  // du dossier à la conformité (lib/expert-billing).
+  billingStructureId String?
+  billingStructure   PractitionerStructure? @relation(fields: [billingStructureId], references: [id], onDelete: SetNull)
+  billingSelf        Boolean                @default(false)
   createdAt      DateTime            @default(now())
 
   messages  Message[]

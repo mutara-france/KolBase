@@ -1,13 +1,12 @@
 import { SectionHead, PageHead } from "@/components/UI";
 import Link from "next/link";
 import { redirect } from "next/navigation";
-import { Building2, Euro, FileClock, FileText, Gift, Hourglass, Landmark, Link2, Presentation } from "lucide-react";
+import { Building2, Euro, FileClock, FileText, Gift, Hourglass, Landmark, Link2, Plus, Presentation } from "lucide-react";
 import { SiteHeader } from "@/components/SiteHeader";
 import { TableWrap } from "@/components/TableWrap";
-import { BillingForm, InterestForm, IssueNoteButton, ReportForm } from "@/components/RevenueForms";
+import { BillingForm, DefaultPayeeForm, InterestForm, IssueNoteButton, ReportForm } from "@/components/RevenueForms";
 import { billingComplete } from "@/lib/fee-notes";
 import { requireUser } from "@/lib/auth";
-import { db } from "@/lib/db";
 import { INTEREST_YEARS, interestLines, practitionerLedger } from "@/lib/revenues";
 import { removeDeclaredInterest } from "@/lib/revenue-actions";
 import { statusLabel } from "@/lib/projects";
@@ -15,6 +14,8 @@ import { feeTotals } from "@/lib/indicators";
 import { canBeExpert } from "@/lib/professions";
 import { fmtDate, fmtEur } from "@/lib/i18n";
 import { getT } from "@/lib/i18n/server";
+import { practitionerStructures } from "@/lib/expert-billing";
+import { choiceValue, linkPayee, payeeEntity } from "@/lib/structures";
 
 export async function generateMetadata() {
   const { t } = await getT();
@@ -31,8 +32,8 @@ export default async function Page({ searchParams }: { searchParams: Promise<{ o
   const onglet = sp.onglet === "liens" ? "liens" : sp.onglet === "transparence" ? "transparence" : sp.onglet === "facturation" ? "facturation" : "revenus";
   const { t, locale } = await getT();
   const ledger = await practitionerLedger(user.id, p.id);
-  // Structure de facturation : seule source de la société d'exercice (conventions et notes d'honoraires).
-  const payee = onglet === "facturation" ? await db.practitionerStructure.findFirst({ where: { practitionerId: p.id, isPayee: true } }) : null;
+  // Structures du praticien : chaque convention est facturée en son nom propre ou au nom de l'une d'elles.
+  const structures = await practitionerStructures(p.id);
   const years = [...new Set([...ledger.fees.map((f) => f.year), ...ledger.hospitality.map((h) => h.year), new Date().getFullYear()])].sort((a, b) => b - a);
   const year = years.includes(Number(sp.annee)) ? Number(sp.annee) : years[0];
   const fees = ledger.fees.filter((f) => f.year === year);
@@ -44,14 +45,29 @@ export default async function Page({ searchParams }: { searchParams: Promise<{ o
   const orgs = new Set([...fees.map((f) => f.org.id), ...hosp.filter((h) => !h.absent).map((h) => h.org.id)]).size;
   const interests = interestLines(ledger, t);
   const tabs = [["revenus", t("Honoraires et avantages")], ["facturation", t("Notes d'honoraires")], ["liens", t("Liens d'intérêts")], ["transparence", t("Transparence Santé")]] as const;
-  const billingOk = billingComplete(p);
+  // Au nom de qui chaque convention est facturée, et si les coordonnées de ce nom sont complètes.
+  const payeeOf = (f: (typeof ledger.fees)[number]) => linkPayee(f.billing, structures);
+  const billingOk = (f: (typeof ledger.fees)[number]) => billingComplete(payeeOf(f) ?? p);
+  const payeeLabel = (f: (typeof ledger.fees)[number]) => {
+    const s = payeeOf(f);
+    return s ? t("au nom de {name}", { name: payeeEntity(s)! }) : t("en votre nom propre");
+  };
+  // Comptes de facturation : le nom propre, puis chaque structure (la structure par défaut en tête).
+  const coordsOf = (c: { billingAddress: string | null; siret: string | null; vatRegime: string; vatNumber: string | null; iban: string | null }) =>
+    ({ billingAddress: c.billingAddress ?? "", siret: c.siret ?? "", vatRegime: c.vatRegime, vatNumber: c.vatNumber ?? "", iban: c.iban ?? "" });
+  const defaultPayee = structures.find((x) => x.isPayee) ?? null;
+  const accounts = [
+    { key: "self", label: t("En votre nom propre"), structure: null, isDefault: !defaultPayee, complete: billingComplete(p), coords: coordsOf(p) },
+    ...structures.map((x) => ({ key: x.id, label: payeeEntity(x)!, structure: { name: x.name, legalForm: x.legalForm }, isDefault: x.isPayee, complete: billingComplete(x), coords: coordsOf(x) })),
+  ];
+  const payeeOptions = [{ value: "self", label: t("En mon nom propre") }, ...structures.map((x) => ({ value: x.id, label: t("Au nom de {name}", { name: payeeEntity(x)! }) }))];
   const notes = ledger.fees.filter((f) => f.note).sort((a, b) => b.note!.issuedAt.getTime() - a.note!.issuedAt.getTime());
   const toInvoice = ledger.fees.filter((f) => f.signed && !f.note && f.feeCents > 0);
   const NoteCell = ({ f }: { f: (typeof ledger.fees)[number] }) =>
     f.note ? <a href={`/notes-honoraires/${f.note.id}`}>{f.note.number}</a>
       : !f.signed || !f.feeCents ? <span className="muted">—</span>
-      : billingOk ? <IssueNoteButton linkId={f.id} />
-      : <Link className="text-xs" href="?onglet=facturation">{t("Compléter la facturation")}</Link>;
+      : billingOk(f) ? <IssueNoteButton linkId={f.id} />
+      : <Link className="text-xs" href={`?onglet=facturation#facturation-${choiceValue(payeeOf(f))}`}>{t("Compléter la facturation")}</Link>;
   const feeStatus = (f: (typeof ledger.fees)[number]) =>
     f.paidAt ? t("Payé le {date}", { date: fmtDate(locale, f.paidAt) }) : f.signed ? t("Convention signée, paiement à venir") : t(statusLabel(f.status, "expert"));
 
@@ -89,7 +105,7 @@ export default async function Page({ searchParams }: { searchParams: Promise<{ o
                       {fees.map((f) => (
                         <tr key={f.id}>
                           <td className="nowrap" data-label={t("Date")}>{fmtDate(locale, f.date)}</td>
-                          <td data-label={t("Collaboration")}><Link href={`/sollicitations/${f.id}`}>{f.title}</Link><div className="text-xs muted">{t(f.type)}{f.expensesCents > 0 ? ` · ${t("frais remboursés : {montant} TTC", { montant: fmtEur(locale, f.expensesCents) })}` : ""}</div></td>
+                          <td data-label={t("Collaboration")}><Link href={`/sollicitations/${f.id}`}>{f.title}</Link><div className="text-xs muted">{t(f.type)}{payeeOf(f) ? ` · ${payeeLabel(f)}` : ""}{f.expensesCents > 0 ? ` · ${t("frais remboursés : {montant} TTC", { montant: fmtEur(locale, f.expensesCents) })}` : ""}</div></td>
                           <td data-label={t("Organisation")}>{f.org.name}</td>
                           <td className="num" data-label={t("Montant HT")}>{fmtEur(locale, f.paidCents ?? f.feeCents)}</td>
                           <td data-label={t("Statut")}><span className={`pill ${f.paidAt ? "ok" : f.signed ? "wait" : ""}`}>{feeStatus(f)}</span></td>
@@ -138,7 +154,7 @@ export default async function Page({ searchParams }: { searchParams: Promise<{ o
                       <li key={f.id} className="flex-between">
                         <span className="grow">
                           <strong>{f.title}</strong>
-                          <span className="text-xs muted"> · {f.org.name} · {fmtEur(locale, f.feeCents)} {t("HT")}</span>
+                          <span className="text-xs muted"> · {f.org.name} · {fmtEur(locale, f.feeCents)} {t("HT")} · {payeeLabel(f)}</span>
                         </span>
                         <NoteCell f={f} />
                       </li>
@@ -167,8 +183,26 @@ export default async function Page({ searchParams }: { searchParams: Promise<{ o
               )}
             </section>
             <section className="card stack-sm">
-              <SectionHead icon={Landmark} id="coordonnees" title={t("Coordonnées de facturation")} desc={t("Reprises par vos conventions et vos notes d'honoraires. Vérifiez les mentions applicables à votre situation avec votre comptable.")} />
-              <BillingForm current={{ billingEntity: payee?.name ?? "", billingLegalForm: payee?.legalForm ?? "", billingAddress: p.billingAddress ?? "", siret: p.siret ?? "", vatRegime: p.vatRegime, vatNumber: p.vatNumber ?? "", iban: p.iban ?? "" }} />
+              <SectionHead icon={Landmark} id="coordonnees" title={t("Coordonnées de facturation")} desc={t("Facturez chaque convention en votre nom propre ou au nom de l'une de vos structures (cabinet, société d'exercice, association) : ses coordonnées sont reprises par la convention et la note d'honoraires. Vérifiez les mentions applicables à votre situation avec votre comptable.")} />
+              {structures.length > 0 && <DefaultPayeeForm options={payeeOptions} current={choiceValue(defaultPayee)} />}
+              {structures.length > 0 && <p className="hint">{t("Proposé pour chaque nouvelle convention ; vous le changez convention par convention, dans « Documents et convention », jusqu'à la soumission du dossier à la conformité.")}</p>}
+              <div className="billing-accounts">
+                {accounts.map((a) => (
+                  // Ouvert : le compte par défaut à compléter, ou le seul compte. Un compte qui ne sert pas peut rester vide.
+                  <details key={a.key} id={`facturation-${a.key}`} className="billing-account" open={(a.isDefault && !a.complete) || accounts.length === 1}>
+                    <summary>
+                      <strong>{a.label}</strong>
+                      {a.isDefault && structures.length > 0 && <span className="pill">{t("par défaut")}</span>}
+                      <span className={`pill ${a.complete ? "ok" : a.isDefault ? "wait" : ""}`}>{a.complete ? t("Coordonnées complètes") : a.isDefault ? t("À compléter") : t("Non renseignées")}</span>
+                    </summary>
+                    <BillingForm target={a.key} structure={a.structure} current={a.coords} />
+                  </details>
+                ))}
+                <details id="facturation-new" className="billing-account">
+                  <summary><Plus size={16} aria-hidden /><strong>{t("Ajouter une structure de facturation")}</strong><span className="text-xs muted">{t("Cabinet, société d'exercice, association…")}</span></summary>
+                  <BillingForm target="new" structure={{ name: "", legalForm: "SELARL" }} current={{ billingAddress: "", siret: "", vatRegime: "franchise", vatNumber: "", iban: "" }} />
+                </details>
+              </div>
             </section>
           </>
         )}

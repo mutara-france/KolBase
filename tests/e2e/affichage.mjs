@@ -217,7 +217,8 @@ function inspect() {
  */
 async function fixedBars() {
   const out = [];
-  const shown = (el) => { const r = el.getBoundingClientRect(); const s = getComputedStyle(el); return r.width > 0 && r.height > 0 && s.display !== "none" && s.visibility !== "hidden"; };
+  // Contenu d'un volet replié (<details> fermé) : mis en page mais pas affiché (checkVisibility le dit).
+  const shown = (el) => { const r = el.getBoundingClientRect(); const s = getComputedStyle(el); return r.width > 0 && r.height > 0 && s.display !== "none" && s.visibility !== "hidden" && el.checkVisibility({ visibilityProperty: true, contentVisibilityAuto: true }); };
   const label = (el) => `${el.tagName.toLowerCase()}.${[...el.classList].slice(0, 2).join(".")}`;
   const all = [...document.body.querySelectorAll("*")];
   const bottomBars = all.filter((el) => getComputedStyle(el).position === "fixed" && shown(el) && Math.abs(el.getBoundingClientRect().bottom - innerHeight) < 2 && el.getBoundingClientRect().height < 140 && !el.closest(".cookie-banner"));
