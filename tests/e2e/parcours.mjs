@@ -2938,7 +2938,7 @@ async function submitNewOrg(page, siren) {
 {
   const html = await (await fetch(`${BASE}/evenements/demo-ev-soiree-implanto`)).text();
   const meta = (p) => html.match(new RegExp(`<meta property="${p}" content="([^"]*)"`))?.[1];
-  const ld = JSON.parse(html.match(/<script type="application\/ld\+json">([^<]*)<\/script>/)?.[1] ?? "null");
+  const ld = JSON.parse(html.match(/<script type="application\/ld\+json"[^>]*>([^<]*)<\/script>/)?.[1] ?? "null");
   check("Événement : aperçu de partage (titre, image, lien)", (meta("og:title") ?? "").startsWith("Soirée implantologie") && /\/evenements\/demo-ev-soiree-implanto\/opengraph-image/.test(meta("og:image") ?? "") && /<link rel="canonical" href="[^"]*\/evenements\/demo-ev-soiree-implanto"/.test(html));
   check("Événement : données structurées schema.org", ld?.["@type"] === "Event" && ld.location?.address?.addressLocality === "Lyon" && ld.organizer?.name === "Dentalys Implants" && ld.offers?.price === 0 && !!ld.startDate);
   const img = await fetch(`${BASE}/evenements/demo-ev-soiree-implanto/opengraph-image`);
@@ -3213,7 +3213,7 @@ async function submitNewOrg(page, siren) {
     // Page publique de l'organisation masquée : pas de lien vers elle, bandeau dans l'aperçu.
     await pgc.query(`update "Organization" set listed = false where id = 'demo-org-cdra'`);
     const hidden = await (await fetch(`${BASE}/evenements/${evId}`)).text();
-    const ld = JSON.parse(hidden.match(/<script type="application\/ld\+json">([^<]*)<\/script>/)?.[1] ?? "null");
+    const ld = JSON.parse(hidden.match(/<script type="application\/ld\+json"[^>]*>([^<]*)<\/script>/)?.[1] ?? "null");
     check("Organisation non visible : ni lien vers sa page, ni url dans les données structurées", !hidden.includes('href="/structures/demo-org-cdra"') && ld?.organizer?.name === "Collège Dentaire Rhône-Alpes" && !ld?.organizer?.url);
     await org.page.goto(`${BASE}/structures/demo-org-cdra`);
     check("Aperçu de la page publique : « Cette page n'est pas visible du public »", (await text(org.page)).includes("Cette page n'est pas visible du public"));
