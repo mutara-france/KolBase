@@ -4,7 +4,7 @@ import { Download } from "lucide-react";
 import { SiteHeader } from "@/components/SiteHeader";
 import { NewsCard } from "@/components/News";
 import { appUrl } from "@/lib/ics";
-import { jsonLd } from "@/lib/jsonld";
+import { JsonLd } from "@/components/JsonLd";
 import { db } from "@/lib/db";
 import { BAROMETRE_PDF } from "@/lib/etudes";
 import { fmtDate } from "@/lib/i18n";
@@ -68,7 +68,7 @@ export default async function Page() {
   return (
     <>
       <SiteHeader variant="public" />
-      <script type="application/ld+json" dangerouslySetInnerHTML={jsonLd(structured)} />
+      <JsonLd data={structured} />
       <main className="landing">
         <section className="home-hero etude-hero" aria-labelledby="etude-titre">
           <div className="home-wrap etude-hero-inner">

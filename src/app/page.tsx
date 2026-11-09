@@ -12,7 +12,7 @@ import { getT } from "@/lib/i18n/server";
 import { NewsCard } from "@/components/News";
 import { publishedArticles } from "@/lib/news";
 import { appUrl } from "@/lib/ics";
-import { jsonLd } from "@/lib/jsonld";
+import { JsonLd } from "@/components/JsonLd";
 import { getCurrentUser } from "@/lib/auth";
 import { orgJoinHref } from "@/lib/nav";
 
@@ -48,7 +48,7 @@ export default async function Home({ searchParams }: { searchParams: Promise<{ c
   return (
     <>
       <SiteHeader variant="public" />
-      <script type="application/ld+json" dangerouslySetInnerHTML={jsonLd(structured)} />
+      <JsonLd data={structured} />
       <main className="landing home">
         {deleted && <p className="notice ok" role="status" style={{ margin: "16px auto", maxWidth: 1180 }}>{t("Votre compte a été supprimé. Merci d'avoir utilisé KolBase.")}</p>}
         <section className="home-hero" aria-labelledby="home-titre">

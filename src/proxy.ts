@@ -51,8 +51,11 @@ export function proxy(request: NextRequest) {
   url.searchParams.delete("_rsc");
   const headers = new Headers(request.headers);
   headers.set("x-kb-path", `${url.pathname}${url.search}`.slice(0, 2000));
-  const csp = cspFor(btoa(crypto.randomUUID()));
+  const nonce = btoa(crypto.randomUUID());
+  const csp = cspFor(nonce);
   headers.set("content-security-policy-report-only", csp);
+  // Nonce lu par les pages pour leurs propres scripts inline (données structurées : composant JsonLd).
+  headers.set("x-kb-nonce", nonce);
   const response = NextResponse.next({ request: { headers } });
   response.headers.set("Content-Security-Policy-Report-Only", csp);
   return response;

@@ -19,7 +19,7 @@ import type { Metadata } from "next";
 import { fmtDate, fmtEur, intlLocale, type Locale } from "@/lib/i18n";
 import { getT } from "@/lib/i18n/server";
 import { appUrl } from "@/lib/ics";
-import { jsonLd } from "@/lib/jsonld";
+import { JsonLd } from "@/components/JsonLd";
 import { orgIsPublic } from "@/lib/org-roles";
 import { ConfirmButton } from "@/components/ConfirmButton";
 import { isDemoOrgId } from "@/lib/demo";
@@ -118,7 +118,7 @@ export default async function Page({ params, searchParams }: { params: Promise<{
   return (
     <>
       <SiteHeader variant="public" />
-      <script type="application/ld+json" dangerouslySetInnerHTML={jsonLd(structured)} />
+      <JsonLd data={structured} />
       <main className="stack">
         {isDemoOrgId(event.organizationId) && <DemoNotice kind="event" />}
         <PageHero
