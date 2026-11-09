@@ -25,7 +25,7 @@ const PROFILES = {
   public: [
     "/", "/experts", "/experts/demo-p-martin", "/evenements", "/evenements/demo-ev-soiree-implanto", "/appels", "/opportunites",
     "/opportunites/demo-call-bordeaux", "/structures", "/structures/demo-org-dentalys", "/structures/demo-sup-belleville", "/annuaire",
-    "/actualites", "/actualites/attestations-de-presence-et-questionnaire", "/aide", "/qui-sommes-nous", "/cgu", "/conditions-de-vente",
+    "/actualites", "/actualites/attestations-de-presence-et-questionnaire", "/aide", "/cgu", "/conditions-de-vente",
     "/confidentialite", "/mentions-legales", "/sous-traitance", "/connexion", "/inscription", "/mot-de-passe-oublie",
   ],
   "antoine.martin@demo.kolbase.local": [
