@@ -2581,7 +2581,9 @@ async function submitNewOrg(page, siren) {
   check("Actualités : filtre par rubrique", (await anon.page.locator('.news-filters a[aria-current="page"]').innerText()).includes("Réglementation") && filtered.includes("Transparence Santé") && !filtered.includes("Attestations de présence vérifiables"));
   // Menu « Ressources » de la barre publique : actualités, baromètre, base de connaissances.
   await anon.page.click('button:has-text("Ressources")');
-  check("Barre publique : menu Ressources", (await anon.page.locator('.nav-panel a[href="/aide"]').isVisible()) && (await anon.page.locator('.nav-panel a[href="/barometre"]').count()) === 1 && (await anon.page.locator('.nav-panel a[href="/actualites"]').getAttribute("aria-current")) === "page");
+  // Le panneau est rendu après la mesure de la barre (effet) : attendre son apparition plutôt que tester aussitôt.
+  const panelShown = await anon.page.locator('.nav-panel a[href="/aide"]').waitFor({ timeout: 3000 }).then(() => true, () => false);
+  check("Barre publique : menu Ressources", panelShown && (await anon.page.locator('.nav-panel a[href="/barometre"]').count()) === 1 && (await anon.page.locator('.nav-panel a[href="/actualites"]').getAttribute("aria-current")) === "page");
   const { ctx, page } = await session();
   await login(page, "anne.chevalier@demo.kolbase.local");
   await page.goto(`${BASE}/admin?onglet=actualites`);
