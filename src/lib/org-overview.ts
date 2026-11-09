@@ -4,7 +4,7 @@ import type { TodoItem } from "@/components/Todo";
 import { getCurrentUser } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { COMPLIANCE_ROLES, EVENT_MANAGER_ROLES, EVENT_ORGANIZER_ROLES, eventEnded, eventScope, needsOnlineLink } from "@/lib/events";
-import { PROJECT_ROLES, PROJECT_VIEW_ROLES, recruitmentOpen, REVIEW_ROLES, SOURCING_ROLES } from "@/lib/projects";
+import { collabType, PROJECT_ROLES, PROJECT_VIEW_ROLES, recruitmentOpen, REVIEW_ROLES, SOURCING_ROLES } from "@/lib/projects";
 import { orgSectionTabs, tabCount, type OrgSectionKey, type SectionTab } from "@/lib/nav";
 import type { OrgRole } from "@/generated/prisma/client";
 import { billingBlocked } from "@/lib/billing";
@@ -17,9 +17,9 @@ import { rfqConflict } from "@/lib/suppliers";
 import { FINAL_COUNT_CATEGORIES, FINAL_COUNT_DAYS } from "@/lib/supplier-profiles";
 import { getT } from "@/lib/i18n/server";
 import { fmtDate } from "@/lib/i18n";
-import { complianceSettings, hospitalityRegime } from "@/lib/compliance";
+import { complianceSettings, hospitalityRegime, projectRegime } from "@/lib/compliance";
 import { practicesInFrance } from "@/lib/countries";
-import { daysLate, plannedDate, reviewDue, submissionDue } from "@/lib/deadlines";
+import { daysLate, epsDue, plannedDate, reviewDue, submissionDue } from "@/lib/deadlines";
 import { needsReview } from "@/lib/event-review";
 
 
@@ -68,7 +68,7 @@ export const orgOverview = cache(async (orgId: string) => {
     can.view
       ? db.project.findMany({
           where: { organizationId: orgId, OR: [{ status: { notIn: ["TERMINE", "DECLINE"] } }, { status: "TERMINE", declared: false }] },
-          include: { experts: true, events: { select: { startsAt: true, cancelledAt: true } } },
+          include: { experts: { include: { practitioner: { select: { country: true } } } }, events: { select: { startsAt: true, cancelledAt: true } } },
           orderBy: { updatedAt: "desc" },
         })
       : Promise.resolve([]),
@@ -149,7 +149,17 @@ export const orgOverview = cache(async (orgId: string) => {
         });
       }
       if (p.status === "BLOQUE") todos.push({ href: dossier(p), title: t("Reprendre le dossier : {title}", { title: p.title }), detail: p.complianceNote ?? t("Bloqué par la conformité"), icon: "AlertTriangle", tone: "danger" });
-      if (p.status === "VALIDE") todos.push({ href: dossier(p), title: t("Choisir le régime : {title}", { title: p.title }), detail: t("Déclaration simple ou autorisation de l'Ordre"), icon: "CircleDot" });
+      if (p.status === "VALIDE") {
+        // Dernier jour de la démarche EPS (déclaration : jours ouvrables ; autorisation : deux mois) ; retard signalé.
+        const regime = projectRegime(limits, collabType(p.typeId)?.unit ?? "", p.experts.map((e) => ({ ...e, country: e.practitioner.country })))?.regime;
+        const due = epsDue(plannedDate(p), regime, limits);
+        const late = daysLate(due, now);
+        todos.push({
+          href: dossier(p), title: t("Choisir le régime : {title}", { title: p.title }),
+          detail: due ? (late ? t("Délai EPS dépassé de {n} j (au plus tard le {date})", { n: late, date: day(due) }) : t("Démarche EPS au plus tard le {date}", { date: day(due) })) : t("Déclaration simple ou autorisation de l'Ordre"),
+          icon: "CircleDot", ...(late ? { tone: "danger" as const } : due ? { tone: "warn" as const } : {}),
+        });
+      }
       if (p.status === "ORDRE") todos.push({ href: dossier(p), title: t("Réponse de l'Ordre attendue : {title}", { title: p.title }), detail: p.ordreRef ?? undefined, icon: "CalendarClock", tone: "warn" });
       if (p.status === "SIGNATURE") todos.push({ href: dossier(p, "experts"), title: t("Convention à faire signer : {title}", { title: p.title }), icon: "FileSignature", tone: "warn" });
       // Contre-proposition d'un expert : accepter ses honoraires ou lui renvoyer une proposition.
