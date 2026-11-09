@@ -512,6 +512,26 @@ body:has(.sidebar) .site-footer { padding: 24px 32px; }
 .help-contact .btn { background: #fff; color: var(--outremer); }
 .help-contact .btn.secondary { background: transparent; color: #fff; border-color: rgba(255, 255, 255, 0.6); }
 @media (prefers-reduced-motion: reduce) { .faq-chevron { transition: none; } }
+/* ─── Qui sommes-nous : fondateur, principes, société (reprend les cartes et le contact de l'aide) ─── */
+.about-hero { padding-bottom: 28px; }
+.about-founder { display: grid; grid-template-columns: minmax(0, 380px) minmax(0, 1fr); gap: 40px; align-items: center; padding: 28px; border: 1px solid var(--line); border-radius: 28px; background: var(--card); }
+.about-photo { margin: 0; border-radius: 22px; overflow: hidden; aspect-ratio: 4 / 5; background: var(--outremer-deep); }
+.about-photo img { display: block; width: 100%; height: 100%; object-fit: cover; }
+.about-founder-text h2 { margin: 14px 0 4px; font-family: var(--font-display); font-size: clamp(26px, 2.6vw, 36px); font-weight: 700; letter-spacing: -0.03em; color: var(--ink); }
+.about-role { margin: 0 0 18px; font-weight: 600; color: var(--outremer); }
+.about-founder-text p:not(.about-role) { margin: 0 0 12px; max-width: 620px; font-size: 16px; line-height: 1.65; color: var(--ink-soft); }
+.about-principles { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(240px, 100%), 1fr)); gap: 20px; }
+.about-principles .help-card p { margin: 0; font-size: 14.5px; line-height: 1.55; color: var(--ink-soft); }
+.about-company { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 24px 40px; align-items: start; padding: 28px; border: 1px solid var(--line); border-radius: 22px; background: var(--card); }
+.about-company h2 { margin: 12px 0 10px; font-family: var(--font-display); font-size: 22px; letter-spacing: -0.02em; color: var(--ink); }
+.about-company p { margin: 0 0 10px; font-size: 15px; line-height: 1.6; color: var(--ink-soft); }
+.about-facts { margin: 0; display: grid; gap: 14px; }
+.about-facts dt { font-family: var(--font-mono); font-size: 11.5px; letter-spacing: 0.1em; text-transform: uppercase; color: var(--ink-soft); }
+.about-facts dd { margin: 2px 0 0; font-size: 15px; color: var(--ink); }
+@media (max-width: 860px) {
+  .about-founder, .about-company { grid-template-columns: 1fr; padding: 20px; gap: 24px; }
+  .about-photo { max-width: 360px; }
+}
 /* utilitaires */
 /* Part extensible d'une rangée : passe à la ligne sous 240 px, sans jamais dépasser de son conteneur. */
 .grow { flex: 1 1 240px; min-width: 0; }

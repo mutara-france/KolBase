@@ -12,7 +12,7 @@ const PW = process.env.DEMO_PASSWORD;
 if (!PW) throw new Error("DEMO_PASSWORD est nécessaire.");
 
 const PAGES = {
-  public: ["/", "/annuaire", "/evenements", "/evenements/demo-ev-soiree-implanto", "/experts/demo-p-durand", "/structures/demo-sup-belleville", "/actualites", "/connexion", "/inscription", "/mot-de-passe-oublie", "/mentions-legales"],
+  public: ["/", "/annuaire", "/evenements", "/evenements/demo-ev-soiree-implanto", "/experts/demo-p-durand", "/structures/demo-sup-belleville", "/actualites", "/connexion", "/inscription", "/mot-de-passe-oublie", "/mentions-legales", "/qui-sommes-nous"],
   "helene.durand@demo.kolbase.local": ["/tableau-de-bord", "/sollicitations", "/sollicitations/demo-prj-board-x1", "/sollicitations/demo-prj-board-x1?onglet=messagerie", "/sollicitations/demo-prj-board-x1?onglet=evenement", "/propositions", "/inscriptions", "/compte", "/revenus"],
   "julien.faure@demo.kolbase.local": [
     "/organisations/demo-org-dentalys",
