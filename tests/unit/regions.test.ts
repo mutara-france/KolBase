@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { cityKey, cityLabel, regionOf } from "@/lib/regions";
+import { cityKey, cityLabel, regionOf, coversRegion, REGIONS } from "@/lib/regions";
 
 describe("régions des statistiques", () => {
   it("se déduisent du code postal", () => {
@@ -19,5 +19,21 @@ describe("régions des statistiques", () => {
     expect(cityKey("Lyon 3e")).toBe(cityKey("lyon"));
     expect(cityLabel("lyon 7")).toBe("Lyon");
     expect(cityKey("")).toBeNull();
+  });
+});
+
+describe("zone d'intervention des prestataires", () => {
+  it("France entière couvre tout ; sans zone déclarée, on ne sait pas", () => {
+    expect(coversRegion({ coverageRegions: [], coverageNational: true }, "Bretagne")).toBe(true);
+    expect(coversRegion({ coverageRegions: [], coverageNational: false }, "Bretagne")).toBeNull();
+    expect(coversRegion({ coverageRegions: ["Bretagne"], coverageNational: false }, null)).toBeNull();
+  });
+  it("régions déclarées : couverte ou hors zone", () => {
+    expect(coversRegion({ coverageRegions: ["Bretagne", "Pays de la Loire"], coverageNational: false }, "Bretagne")).toBe(true);
+    expect(coversRegion({ coverageRegions: ["Bretagne"], coverageNational: false }, "Occitanie")).toBe(false);
+  });
+  it("la liste des régions suit la table des départements", () => {
+    expect(REGIONS).toContain("Île-de-France");
+    expect(REGIONS.length).toBe(18);
   });
 });
