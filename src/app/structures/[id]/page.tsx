@@ -182,6 +182,7 @@ export default async function Page({ params }: { params: Promise<{ id: string }>
                   <div key={r.id} className="review">
                     <span><span className="rating">{Array.from({ length: r.rating }, (_, i) => <Star key={i} size={14} />)}</span> <strong>{t("Organisation cliente")}</strong> <span className="muted text-xs">{r.createdAt.toLocaleDateString(locale === "en" ? "en-GB" : "fr-FR", { month: "long", year: "numeric", timeZone: "Europe/Paris" })}</span></span>
                     {r.comment && <p className="text-sm">{r.comment}</p>}
+                    {r.reply && <p className="text-sm review-reply"><strong>{t("Réponse de {supplier}", { supplier: o.name })}</strong> {r.reply}</p>}
                     {r.comment && <ReportLink type="avis" id={r.id} label={t("Signaler cet avis")} />}
                   </div>
                 ))}

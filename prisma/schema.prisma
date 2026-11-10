@@ -673,6 +673,10 @@ model ProjectExpert {
   days           Float?              // nombre d'unités (journées, interventions…)
   responseNote   String?
   respondedAt    DateTime?
+  // Relance de la sollicitation restée sans réponse (une seule, à l'échéance du délai interne de l'organisation),
+  // puis date à laquelle l'organisation a été prévenue du silence (double du délai : « sans réponse »).
+  reminderSentAt DateTime?
+  unansweredAt   DateTime?
   // Contre-proposition de l'expert (€ HT, en centimes) : la sollicitation reste ouverte, l'organisation répond.
   desiredFeeCents Int?
   // Honoraires précédents, quand l'organisation en a proposé d'autres ou a accepté ceux de l'expert.
@@ -732,6 +736,9 @@ model ConventionSignature {
   sentAt          DateTime?
   completedAt     DateTime?
   note            String?         // motif d'un refus, échec de l'envoi
+  // Rappels aux signataires en retard (J+3, J+7 après l'envoi) : nombre envoyés et date du dernier.
+  reminders       Int             @default(0)
+  reminderSentAt  DateTime?
   updatedAt       DateTime        @updatedAt
 }
 
@@ -1295,6 +1302,9 @@ model SupplierReview {
   // Avis masqué par l'équipe KolBase (signalement fondé) : ni affiché, ni compté ; motif communiqué à son auteur.
   hiddenAt     DateTime?
   hiddenReason String?
+  // Droit de réponse du prestataire, publié sous l'avis (une seule réponse, modifiable).
+  reply     String?
+  repliedAt DateTime?
   createdAt  DateTime     @default(now())
 
   @@index([supplierId])

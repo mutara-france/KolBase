@@ -1,7 +1,7 @@
 import "server-only";
 import { db } from "@/lib/db";
 import { eventEnd, FOLLOWUP_DELAY_MS, FOLLOWUP_MAX_AGE_MS, REMINDER_WINDOW_MS } from "@/lib/event-followup";
-import { sendEventFollowUps, sendEventReminders, sendOverdueReviews, sendServiceReport } from "@/lib/notifications";
+import { sendEventFollowUps, sendEventReminders, sendOverdueReviews, sendServiceReport, sendSignatureReminders, sendSolicitationReminders } from "@/lib/notifications";
 import { REPORT_DELAY_DAYS } from "@/lib/services";
 import { purgeRateLimits } from "@/lib/rate-limit";
 import { purgeEmailLog } from "@/lib/email-log";
@@ -32,6 +32,9 @@ export async function runDueTasks(now = new Date()) {
   for (const o of due) if (await sendServiceReport(o.id, now).catch((e) => { console.error("[bilan du service]", o.id, e); return false; })) reports++;
   // Délais internes : examens de la conformité en retard, relancés une fois par jour.
   const reviewReminders = await sendOverdueReviews(now);
+  // Passages de main en attente : experts sollicités sans réponse (relance, puis organisation prévenue), signataires en retard.
+  const solicitationReminders = await sendSolicitationReminders(now);
+  const signatureReminders = await sendSignatureReminders(now);
   // Conservation : sessions et liens de connexion expirés depuis plus de 30 jours.
   const old = new Date(now.getTime() - 30 * 24 * 3600 * 1000);
   const sessions = (await db.session.deleteMany({ where: { expiresAt: { lt: old } } })).count;
@@ -52,5 +55,5 @@ export async function runDueTasks(now = new Date()) {
   })).count;
   // Journal des e-mails : 90 jours.
   const emails = await purgeEmailLog(now);
-  return { reminders, followUps, reports, reviewReminders, offers, purged: { sessions, tokens, clicks, attempts, needs, emails } };
+  return { reminders, followUps, reports, reviewReminders, solicitationReminders, signatureReminders, offers, purged: { sessions, tokens, clicks, attempts, needs, emails } };
 }

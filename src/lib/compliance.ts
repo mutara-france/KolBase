@@ -25,6 +25,7 @@ export type ComplianceSettings = {
   submissionLeadDays: number; // délai interne : soumission à la conformité au plus tard N jours avant l'intervention
   reviewDays: number; // délai interne : examen par la conformité en N jours ouvrés
   secondValidationAbove: number; // € HT d'honoraires par dossier au-delà desquels une seconde validation (autre membre Conformité) est requise ; 0 = désactivé
+  answerDays: number; // délai interne : réponse attendue d'un expert sollicité (relance à l'échéance, « sans réponse » au double)
 };
 
 export const DEFAULT_COMPLIANCE: ComplianceSettings = {
@@ -42,6 +43,7 @@ export const DEFAULT_COMPLIANCE: ComplianceSettings = {
   submissionLeadDays: 30,
   reviewDays: 5,
   secondValidationAbove: 0,
+  answerDays: 7,
 };
 
 export const SETTING_FIELDS: { key: keyof ComplianceSettings; label: string; unit: string; group: string }[] = [
@@ -59,6 +61,7 @@ export const SETTING_FIELDS: { key: keyof ComplianceSettings; label: string; uni
   { key: "submissionLeadDays", label: "Soumission à la conformité, au plus tard avant l'intervention", unit: "jours", group: "Délais internes" },
   { key: "reviewDays", label: "Examen d'un dossier par la conformité", unit: "jours ouvrés", group: "Délais internes" },
   { key: "secondValidationAbove", label: "Seconde validation (autre membre Conformité) au-delà de — 0 : désactivée", unit: "€ HT par dossier", group: "Contrôles" },
+  { key: "answerDays", label: "Réponse attendue d'un expert sollicité (relance à l'échéance)", unit: "jours", group: "Délais internes" },
 ];
 
 /**
