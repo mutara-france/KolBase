@@ -10,8 +10,8 @@ import { eventMoment } from "@/lib/events";
 import { supplierCategoryLabel } from "@/lib/suppliers";
 import { orgBillingLine, orgOnboarding } from "@/lib/onboarding";
 import { CalendarClock, CheckCircle2, Circle, ListChecks, Rocket } from "lucide-react";
-import { rnaAccepted, roleLabel } from "@/lib/org-roles";
-import type { OrgKind } from "@/generated/prisma/client";
+import { rnaAccepted, ROLE_LABEL, roleLabel } from "@/lib/org-roles";
+import type { OrgKind, OrgRole } from "@/generated/prisma/client";
 import { de, inSentence } from "@/lib/elision";
 import { getT } from "@/lib/i18n/server";
 import { fmtEur, intlLocale, type T } from "@/lib/i18n";
@@ -32,11 +32,16 @@ const identityLink = (org: { verification: string; siren: string | null; rna: st
 };
 
 /** Accueil d'une organisation : ce qui attend une action, puis ce qui arrive. Le reste est dans les rubriques. */
-export default async function Page({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: Promise<{ acces?: string }> }) {
+export default async function Page({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: Promise<{ acces?: string; roles?: string }> }) {
   const { t, locale } = await getT();
   const { id } = await params;
-  const { acces } = await searchParams;
+  const { acces, roles: wantedRaw } = await searchParams;
+  // Rôles qui ouvrent la page refusée (posés par requireMembership) : le message dit lesquels et qui les détient.
+  const wanted = (wantedRaw ?? "").split(",").filter((r): r is OrgRole => (Object.keys(ROLE_LABEL) as string[]).includes(r));
   const { user, isAdmin, roles } = await requireMembership(id);
+  const holders = acces === "refuse" && wanted.length > 0
+    ? await db.membership.findMany({ where: { organizationId: id, role: { in: wanted }, userId: { not: user.id } }, select: { user: { select: { firstName: true, lastName: true } } }, distinct: ["userId"], take: 5 })
+    : [];
   const o = await orgOverview(id);
   if (!o) notFound();
   const { org, can, todos, projects, events, calls, hosp, rfqs } = o;
@@ -143,7 +148,10 @@ export default async function Page({ params, searchParams }: { params: Promise<{
         <DashHead title={t("Bonjour {firstName}.", { firstName: user.firstName })} lede={lede} action={<CreateMenu items={create} />} />
         {acces === "refuse" && (
           <p className="notice warn" role="alert">
-            {t("La page demandée est réservée à d'autres rôles {de} (vos rôles : {join}).", { de: de(org.name), join: roles.map((r) => t(roleLabel(r, org.kind))).join(", ") })}
+            {wanted.length > 0
+              ? t("La page demandée est réservée au rôle {roles} {de} (vos rôles : {join}).", { roles: wanted.map((r) => t(roleLabel(r, org.kind))).join(` ${t("ou")} `), de: de(org.name), join: roles.map((r) => t(roleLabel(r, org.kind))).join(", ") })
+              : t("La page demandée est réservée à d'autres rôles {de} (vos rôles : {join}).", { de: de(org.name), join: roles.map((r) => t(roleLabel(r, org.kind))).join(", ") })}{" "}
+            {holders.length > 0 && <>{t("Dans l'organisation, ce rôle est tenu par {names}.", { names: holders.map((h) => `${h.user.firstName} ${h.user.lastName}`).join(", ") })}{" "}</>}
             {isAdmin ? <>{t("Vous pouvez ajuster les rôles dans")}{" "}<Link href={`${base}/membres`}>{t("Membres et réglages")}</Link>.</> : t("Un administrateur de l'organisation peut vous donner le rôle nécessaire.")}
           </p>
         )}
