@@ -3,7 +3,7 @@ import { SectionHead } from "@/components/UI";
 
 import { useActionState, useState } from "react";
 import { Star, Warehouse } from "lucide-react";
-import { addSupplierOffer, addSupplierPhoto, setSupplierBanner, reviewSupplier, updateSupplierBook } from "@/lib/book-actions";
+import { addSupplierOffer, addSupplierPhoto, replyToReview, setSupplierBanner, reviewSupplier, updateSupplierBook } from "@/lib/book-actions";
 import { Notice } from "@/components/AuthForms";
 import { useT } from "@/components/I18nProvider";
 
@@ -130,6 +130,22 @@ export function ReviewForm({ orgId, rfqId, supplier }: { orgId: string; rfqId: s
       <textarea name="comment" rows={2} maxLength={1000} placeholder={t("Qualité de la prestation, ponctualité, échanges…")} aria-label={t("Commentaire")} />
       <p className="hint">{t("Votre avis sera publié avec le nom de votre organisation sur la page du prestataire.")}</p>
       <button className="btn small" disabled={pending}>{pending ? t("Envoi…") : t("Publier l'avis")}</button>
+    </form>
+  );
+}
+
+/** Droit de réponse du prestataire sous un avis : une réponse publique, modifiable, vide pour la retirer. */
+export function ReviewReplyForm({ orgId, reviewId, current }: { orgId: string; reviewId: string; current: string | null }) {
+  const t = useT();
+  const [state, action, pending] = useActionState(replyToReview, undefined);
+  return (
+    <form action={action} className="form stack-xs">
+      <Notice state={state} />
+      <input type="hidden" name="orgId" value={orgId} />
+      <input type="hidden" name="reviewId" value={reviewId} />
+      <textarea name="reply" rows={2} maxLength={1000} defaultValue={current ?? ""} placeholder={t("Merci pour votre retour…")} aria-label={t("Réponse du prestataire")} />
+      <p className="hint">{t("Votre réponse est publiée sous l'avis, avec le nom de votre organisation ; laissez vide pour la retirer.")}</p>
+      <button className="btn small secondary" disabled={pending}>{pending ? t("Envoi…") : current ? t("Mettre à jour la réponse") : t("Répondre")}</button>
     </form>
   );
 }

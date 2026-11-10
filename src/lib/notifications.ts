@@ -15,12 +15,14 @@ import { fmtDate, fmtEur, intlLocale, isLocale, makeT, type Locale, type T } fro
 import { roomTypeLabel } from "@/lib/travel";
 import { partnerLevelLabel } from "@/lib/congress";
 import { topicLabel } from "@/lib/routing";
-import { collabType, PROJECT_ROLES, SOURCING_ROLES, STATUS_LABEL, type ExpertNotice } from "@/lib/projects";
+import { collabType, PROJECT_ROLES, RECRUITING_STATUSES, SOURCING_ROLES, STATUS_LABEL, type ExpertNotice } from "@/lib/projects";
 import { featuredUntil, orderStats } from "@/lib/services";
 import { conversion, reportParts } from "@/lib/service-report";
 import type { OrgRole } from "@/generated/prisma/client";
-import { daysLate, reviewDue } from "@/lib/deadlines";
+import { answerDue, daysLate, reviewDue, unanswered } from "@/lib/deadlines";
 import { complianceSettings } from "@/lib/compliance";
+import { remindPendingSigners } from "@/lib/yousign";
+import { isPendingRequest } from "@/lib/signature";
 
 /**
  * Notifications par e-mail des étapes qui attendent une action de quelqu'un.
@@ -566,6 +568,17 @@ export function notifySupplierReview(reviewId: string) {
     const r = await db.supplierReview.findUnique({ where: { id: reviewId }, include: { client: { select: { name: true } } } });
     if (!r) return;
     await send(await supplierTeam(r.supplierId), (t) => ({ subject: t("Nouvel avis {de_org} : {rating}/5", { de_org: de(r.client.name), rating: r.rating }), text: t("Bonjour,\n\n{client} a évalué votre prestation : {rating}/5.{v}", { client: r.client.name, rating: r.rating, v: r.comment ? `\n\n« ${r.comment} »` : "" }), cta: { label: t("Voir ma page publique"), href: `/structures/${r.supplierId}` } }));
+  });
+}
+
+/** Le prestataire a répondu à un avis : l'auteur de l'avis (s'il est encore membre) en est informé. */
+export function notifySupplierReviewReply(reviewId: string) {
+  later(async () => {
+    const r = await db.supplierReview.findUnique({ where: { id: reviewId }, include: { supplier: { select: { name: true } }, author: { select: userSelect } } });
+    if (!r?.reply) return;
+    const still = await db.membership.findFirst({ where: { organizationId: r.clientId, userId: r.authorId }, select: { id: true } });
+    if (!still) return;
+    await send([r.author], (t) => ({ subject: t("{supplier} a répondu à votre avis", { supplier: r.supplier.name }), text: t("Bonjour,\n\n{supplier} a répondu à l'avis que vous avez laissé sur sa page :\n\n« {reply} »", { supplier: r.supplier.name, reply: r.reply }), cta: { label: t("Voir la page du prestataire"), href: `/structures/${r.supplierId}` } }));
   });
 }
 
@@ -1220,6 +1233,83 @@ export async function sendServiceReport(orderId: string, now = new Date()) {
  * Examens en retard (délai interne de la conformité dépassé) : relance des membres Conformité, une fois par jour et
  * par dossier (date posée avant l'envoi, comme les rappels d'événements). Sans membre Conformité, les administrateurs.
  */
+/**
+ * Sollicitations restées sans réponse à l'échéance du délai interne (answerDays) : une relance à l'expert, une seule,
+ * puis l'organisation est prévenue quand le silence atteint le double du délai (« sans réponse », solliciter un autre
+ * expert). Dossiers en recrutement seulement.
+ */
+export async function sendSolicitationReminders(now = new Date()) {
+  const links = await db.projectExpert.findMany({
+    where: { status: "ATT_EXPERTS", reminderSentAt: null, project: { status: { in: RECRUITING_STATUSES } } },
+    include: { ...linkInclude, project: { include: { organization: { select: { name: true, complianceSettings: true } } } } },
+  });
+  let sent = 0;
+  for (const l of links) {
+    const settings = complianceSettings(l.project.organization.complianceSettings);
+    const due = answerDue(l.createdAt, settings);
+    if (!due || due > now) continue;
+    await sendOnce(
+      () => db.projectExpert.updateMany({ where: { id: l.id, reminderSentAt: null }, data: { reminderSentAt: now } }),
+      () => db.projectExpert.update({ where: { id: l.id }, data: { reminderSentAt: null } }),
+      async () => {
+        const org = l.project.organization.name;
+        await send([l.practitioner.user], (t, locale) => ({
+          subject: t("Rappel : {org} attend votre réponse", { org }),
+          text: `${t("Bonjour,")}\n\n${t("{org} vous a sollicité le {date} pour « {titre} » et attend votre réponse.", { org, date: fmtDate(locale, l.createdAt), titre: l.project.title })}${l.feeCents != null ? ` ${t("Honoraires proposés : {montant} HT.", { montant: fmtEur(locale, l.feeCents) })}` : ""}\n\n${t("Vous pouvez accepter, proposer d'autres honoraires, décliner ou poser vos questions sur KolBase. Sans réponse, l'organisation pourra solliciter un autre expert.")}`,
+          cta: { label: t("Répondre"), href: `/sollicitations/${l.id}` },
+        }));
+        sent++;
+      },
+    );
+  }
+  // Sans réponse (double du délai) : l'équipe du dossier est prévenue une fois, à la relance déjà faite.
+  const silent = await db.projectExpert.findMany({
+    where: { status: "ATT_EXPERTS", reminderSentAt: { not: null }, unansweredAt: null, project: { status: { in: RECRUITING_STATUSES } } },
+    include: { ...linkInclude, project: { include: { organization: { select: { name: true, complianceSettings: true } } } } },
+  });
+  for (const l of silent) {
+    const settings = complianceSettings(l.project.organization.complianceSettings);
+    if (!unanswered(l.createdAt, settings, now)) continue;
+    const { count } = await db.projectExpert.updateMany({ where: { id: l.id, unansweredAt: null }, data: { unansweredAt: now } });
+    if (!count) continue;
+    const name = expertName(l.practitioner);
+    await send(await projectTeam(l.project), (t) => ({
+      subject: t("Sans réponse : {name} — {title}", { name, title: l.project.title }),
+      text: `${t("Bonjour,")}\n\n${t("{name} n'a pas répondu à la sollicitation « {title} » malgré une relance : vous pouvez solliciter un autre expert ou lui écrire depuis le dossier.", { name, title: l.project.title })}`,
+      cta: { label: t("Ouvrir le dossier"), href: `/organisations/${l.project.organizationId}/dossiers/${l.project.id}?onglet=experts` },
+    }));
+    sent++;
+  }
+  return sent;
+}
+
+/**
+ * Signatures électroniques en attente : rappel aux signataires qui n'ont pas signé, à J+3 puis J+7 après l'envoi
+ * (par Yousign, qui renvoie son invitation). Deux rappels au plus ; la date du dernier est gardée pour le dossier.
+ */
+export async function sendSignatureReminders(now = new Date(), remind: (requestId: string) => Promise<number> = remindPendingSigners) {
+  const sigs = await db.conventionSignature.findMany({
+    where: { status: "ongoing", sentAt: { not: null }, reminders: { lt: 2 } },
+    select: { id: true, requestId: true, sentAt: true, reminders: true, projectExpertId: true, projectExpert: { select: { projectId: true } } },
+  });
+  let sent = 0;
+  for (const s of sigs) {
+    if (isPendingRequest(s.requestId)) continue;
+    const dueAt = new Date(s.sentAt!.getTime() + (s.reminders === 0 ? 3 : 7) * 86400e3);
+    if (dueAt > now) continue;
+    const { count } = await db.conventionSignature.updateMany({ where: { id: s.id, reminders: s.reminders }, data: { reminders: s.reminders + 1, reminderSentAt: now } });
+    if (!count) continue;
+    try {
+      const n = await remind(s.requestId);
+      await db.auditLog.create({ data: { actorId: null, action: "signature.reminder", entityType: "ProjectExpert", entityId: s.projectExpertId, data: { projectId: s.projectExpert.projectId, signers: n, nth: s.reminders + 1 } } });
+      sent++;
+    } catch (e) {
+      console.error("[rappel de signature]", s.requestId, e);
+    }
+  }
+  return sent;
+}
+
 export async function sendOverdueReviews(now = new Date()) {
   const projects = await db.project.findMany({
     where: { status: "EN_VALID", submittedAt: { not: null }, OR: [{ reviewReminderAt: null }, { reviewReminderAt: { lt: new Date(now.getTime() - 86400e3) } }] },

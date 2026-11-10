@@ -24,6 +24,7 @@ export type ComplianceSettings = {
   authorizationDays: number; // délai de demande d'autorisation avant exécution
   submissionLeadDays: number; // délai interne : soumission à la conformité au plus tard N jours avant l'intervention
   reviewDays: number; // délai interne : examen par la conformité en N jours ouvrés
+  answerDays: number; // délai interne : réponse attendue d'un expert sollicité (relance à l'échéance, « sans réponse » au double)
 };
 
 export const DEFAULT_COMPLIANCE: ComplianceSettings = {
@@ -40,6 +41,7 @@ export const DEFAULT_COMPLIANCE: ComplianceSettings = {
   authorizationDays: 60,
   submissionLeadDays: 30,
   reviewDays: 5,
+  answerDays: 7,
 };
 
 export const SETTING_FIELDS: { key: keyof ComplianceSettings; label: string; unit: string; group: string }[] = [
@@ -56,6 +58,7 @@ export const SETTING_FIELDS: { key: keyof ComplianceSettings; label: string; uni
   { key: "authorizationDays", label: "Délai de demande d'autorisation avant exécution", unit: "jours", group: "Délais" },
   { key: "submissionLeadDays", label: "Soumission à la conformité, au plus tard avant l'intervention", unit: "jours", group: "Délais internes" },
   { key: "reviewDays", label: "Examen d'un dossier par la conformité", unit: "jours ouvrés", group: "Délais internes" },
+  { key: "answerDays", label: "Réponse attendue d'un expert sollicité (relance à l'échéance)", unit: "jours", group: "Délais internes" },
 ];
 
 /**

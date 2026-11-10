@@ -9,7 +9,7 @@ import { eurToCents, str } from "@/lib/form";
 import { sniffLogo } from "@/lib/logos";
 import { BANNER_MAX_BYTES, OFFER_UNITS, PHOTO_MAX, PHOTO_MAX_BYTES, readCapacities } from "@/lib/supplier-book";
 import { capacityFields, equipmentOptions } from "@/lib/supplier-profiles";
-import { notifySupplierReview } from "@/lib/notifications";
+import { notifySupplierReview, notifySupplierReviewReply } from "@/lib/notifications";
 import { getT } from "@/lib/i18n/server";
 
 export type FormState = { error?: string; ok?: string } | undefined;
@@ -149,4 +149,21 @@ export async function reviewSupplier(_: FormState, form: FormData): Promise<Form
   revalidatePath(`/organisations/${orgId}/prestataires`, "layout");
   revalidatePath(`/structures/${kept.supplierId}`);
   return { ok: t("Merci : votre avis est publié sur la page du prestataire.") };
+}
+
+/**
+ * Droit de réponse : l'administrateur du prestataire répond publiquement à un avis le concernant
+ * (une réponse par avis, modifiable ; vide pour la retirer). L'auteur de l'avis en est informé.
+ */
+export async function replyToReview(_: FormState, form: FormData): Promise<FormState> {
+  const { t } = await getT();
+  const orgId = str(form, "orgId");
+  const { user } = await requireSupplierAdmin(orgId);
+  const reply = str(form, "reply").slice(0, 1000).trim();
+  const { count } = await db.supplierReview.updateMany({ where: { id: str(form, "reviewId"), supplierId: orgId, hiddenAt: null }, data: { reply: reply || null, repliedAt: reply ? new Date() : null } });
+  if (!count) return { error: t("Avis introuvable.") };
+  await audit(user.id, reply ? "supplier.review_reply" : "supplier.review_reply_remove", "SupplierReview", str(form, "reviewId"));
+  if (reply) notifySupplierReviewReply(str(form, "reviewId"));
+  refresh(orgId);
+  return { ok: reply ? t("Votre réponse est publiée sous l'avis.") : t("Réponse retirée.") };
 }

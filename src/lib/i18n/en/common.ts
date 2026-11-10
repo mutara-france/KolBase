@@ -275,6 +275,7 @@ export const COMMON: Record<string, string> = {
   "Proposition envoyée : la sollicitation reste ouverte. L'organisation peut accepter ces honoraires ou vous renvoyer une proposition.": "Proposal sent: the request stays open. The organisation can accept this fee or send you a new offer.",
   ": un lien vous a été envoyé. C'est à cette adresse que KolBase vous écrit (invitations, demandes, factures).": ": a link has been sent to you. This is the address KolBase writes to (invitations, requests, invoices).",
   "Organisation cliente": "Client organisation",
+  "Réponse de {supplier}": "Reply from {supplier}",
   "Avis laissés uniquement par les organisations qui ont retenu ce prestataire, après la prestation ; le nom des clients n'est pas affiché.": "Reviews left only by organisations that hired this supplier, after the service; client names are not shown.",
   "Événement momentanément indisponible": "Event temporarily unavailable",
   "La page de l'événement est momentanément masquée sur KolBase. Votre inscription est conservée ; l'organisateur vous écrira si l'événement change.": "The event page is temporarily hidden on KolBase. Your registration is kept; the organiser will write to you if the event changes.",
