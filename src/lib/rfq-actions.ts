@@ -13,7 +13,7 @@ import { MAX_UPLOAD_BYTES, putObject, safeFileName, storageEnabled } from "@/lib
 import { engagementGate, gateMessage, markSupplierTriggered, stripeEnabled, supplierCanQuote } from "@/lib/billing";
 import type { GateLink } from "@/lib/billing-plans";
 import { awardRight } from "@/lib/mandates";
-import { notifyAward, notifyFinalHeadcount, notifyProposalWithdrawn, notifyQuote, notifyRfqDeclined, notifyQuoteProposed, notifyRfqCancelled, notifyRfqMessage, notifyRfqSent, notifySupplierBilling } from "@/lib/notifications";
+import { notifyAward, notifyFinalHeadcount, notifyInvoice, notifyInvoicePaid, notifyProposalWithdrawn, notifyQuote, notifyRfqDeclined, notifyQuoteProposed, notifyRfqCancelled, notifyRfqMessage, notifyRfqSent, notifySupplierBilling } from "@/lib/notifications";
 import { getT } from "@/lib/i18n/server";
 import { FINAL_COUNT_CATEGORIES, readDetails, readQuoteTerms } from "@/lib/supplier-profiles";
 
@@ -420,4 +420,51 @@ export async function confirmFinalHeadcount(_: ActionState, form: FormData): Pro
   notifyFinalHeadcount(rfqId, user.id);
   revalidatePath(`/organisations/${orgId}/prestataires/${rfqId}`);
   return { ok: t("Nombre définitif transmis au prestataire : {n}.", { n }) };
+}
+
+/**
+ * Facture du prestataire retenu, après la prestation : montant TTC et PDF, rapprochés du devis par l'organisation.
+ * Une seule facture par devis retenu (remplaçable tant qu'elle n'est pas marquée payée).
+ */
+export async function submitInvoice(_: ActionState, form: FormData): Promise<ActionState> {
+  const { t } = await getT();
+  const orgId = str(form, "orgId"); const rfqId = str(form, "rfqId");
+  const { user } = await requireMembership(orgId, undefined, { allowSupplier: true });
+  const quote = await db.quote.findUnique({ where: { rfqId_supplierId: { rfqId, supplierId: orgId } }, select: { id: true, status: true, invoicePaidAt: true } });
+  if (!quote || quote.status !== "retained") return { error: t("Aucun devis retenu sur cette demande.") };
+  if (quote.invoicePaidAt) return { error: t("La facture est déjà marquée payée par l'organisation.") };
+  const cents = eurToCents(str(form, "amount"));
+  if (cents === null || cents <= 0) return { error: t("Montant TTC invalide.") };
+  const file = form.get("file");
+  let upload: { bytes: Uint8Array; name: string } | null = null;
+  if (file instanceof File && file.size > 0) {
+    if (!storageEnabled()) return { error: t("Le dépôt de fichiers n'est pas encore activé : indiquez le montant, la facture suit par e-mail.") };
+    if (file.size > MAX_UPLOAD_BYTES) return { error: t("Fichier trop lourd : 10 Mo au maximum.") };
+    const bytes = new Uint8Array(await file.arrayBuffer());
+    if (String.fromCharCode(...bytes.subarray(0, 5)) !== "%PDF-") return { error: t("Joignez la facture au format PDF.") };
+    upload = { bytes, name: safeFileName(file.name || "facture.pdf") };
+  }
+  let key: string | null = null;
+  if (upload) {
+    key = `devis/${quote.id}/facture-${Date.now()}-${upload.name}`;
+    await putObject(key, upload.bytes, "application/pdf");
+  }
+  await db.quote.update({ where: { id: quote.id }, data: { invoiceCents: cents, invoicedAt: new Date(), ...(key ? { invoiceKey: key, invoiceName: upload!.name } : {}) } });
+  await audit(user.id, "quote.invoice", "Quote", quote.id, { rfqId, invoiceCents: cents, file: !!key });
+  notifyInvoice(rfqId, orgId);
+  revalidatePath(`/organisations/${orgId}/devis/${rfqId}`);
+  return { ok: t("Facture transmise à l'organisation.") };
+}
+
+/** L'organisation note le paiement de la facture du prestataire retenu ; il en est prévenu. */
+export async function markInvoicePaid(form: FormData) {
+  const orgId = str(form, "orgId");
+  const { user, roles } = await requireMembership(orgId, EVENT_MANAGER_ROLES);
+  const quote = await db.quote.findFirst({ where: { id: str(form, "quoteId"), status: "retained", invoicedAt: { not: null }, rfq: { organizationId: orgId, ...rfqScope(user, roles) } }, select: { id: true, rfqId: true, supplierId: true, invoiceCents: true } });
+  if (!quote) return;
+  const undo = str(form, "undo") === "1";
+  await db.quote.update({ where: { id: quote.id }, data: { invoicePaidAt: undo ? null : new Date() } });
+  await audit(user.id, undo ? "quote.invoice_unpaid" : "quote.invoice_paid", "Quote", quote.id, { rfqId: quote.rfqId, invoiceCents: quote.invoiceCents });
+  if (!undo) notifyInvoicePaid(quote.rfqId, quote.supplierId, user.id);
+  revalidatePath(`/organisations/${orgId}/prestataires/${quote.rfqId}`);
 }

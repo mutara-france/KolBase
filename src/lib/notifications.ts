@@ -646,6 +646,37 @@ export function notifyQuote(rfqId: string, supplierId: string, revised = false) 
   });
 }
 
+/** Facture déposée par le prestataire retenu : l'équipe de la demande la rapproche du devis. */
+export function notifyInvoice(rfqId: string, supplierId: string) {
+  later(async () => {
+    const [r, supplier, q] = await Promise.all([
+      db.rfq.findUnique({ where: { id: rfqId }, include: { event: { select: { organizationId: true, agencyId: true, title: true } } } }),
+      db.organization.findUnique({ where: { id: supplierId }, select: { name: true } }),
+      db.quote.findUnique({ where: { rfqId_supplierId: { rfqId, supplierId } }, select: { invoiceCents: true, amountCents: true, vatBp: true, lines: true, ttcCents: true } }),
+    ]);
+    if (!r || !supplier || !q?.invoiceCents) return;
+    const devis = quoteTtc(q);
+    await send(await rfqContacts(r), (t, locale) => ({
+      subject: t("Facture reçue {de_org} : {amount} TTC", { de_org: de(supplier.name), amount: fmtEur(locale, q.invoiceCents!) }),
+      text: `${t("Bonjour,")}\n\n${t("{name} a transmis sa facture pour la prestation{event} : {amount} TTC, pour un devis retenu de {quote} TTC{gap}.", { name: supplier.name, event: r.event ? ` (${r.event.title})` : "", amount: fmtEur(locale, q.invoiceCents!), quote: fmtEur(locale, devis), gap: q.invoiceCents! === devis ? "" : q.invoiceCents! > devis ? ` — ${t("écart de {d} en plus", { d: fmtEur(locale, q.invoiceCents! - devis) })}` : ` — ${t("écart de {d} en moins", { d: fmtEur(locale, devis - q.invoiceCents!) })}` })}`,
+      cta: { label: t("Voir la demande"), href: `/organisations/${r.organizationId}/prestataires/${r.id}` },
+    }));
+  });
+}
+
+/** Paiement de la facture noté par l'organisation : le prestataire est prévenu. */
+export function notifyInvoicePaid(rfqId: string, supplierId: string, actorId: string) {
+  later(async () => {
+    const r = await db.rfq.findUnique({ where: { id: rfqId }, include: { organization: { select: { name: true } }, event: { select: { title: true } } } });
+    if (!r) return;
+    await send(await supplierTeam(supplierId), (t) => ({
+      subject: t("Facture payée ({org})", { org: r.organization.name }),
+      text: `${t("Bonjour,")}\n\n${t("{org} indique avoir réglé votre facture pour la prestation retenue{event}.", { org: r.organization.name, event: r.event ? ` (${r.event.title})` : "" })}`,
+      cta: { label: t("Voir la demande"), href: `/organisations/${supplierId}/devis/${r.id}` },
+    }), actorId);
+  });
+}
+
 async function supplierTeam(supplierId: string) {
   const ms = await db.membership.findMany({ where: { organizationId: supplierId }, include: { user: { select: userSelect } } });
   return ms.map((m) => m.user);

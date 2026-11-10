@@ -994,6 +994,12 @@ model Quote {
   cancelFullDays Int?
   fileKey     String?
   fileName    String?
+  // Après la prestation : facture du prestataire (PDF, montant TTC) rapprochée du devis, et son paiement noté par l'organisation.
+  invoiceKey    String?
+  invoiceName   String?
+  invoiceCents  Int?
+  invoicedAt    DateTime?
+  invoicePaidAt DateTime?
   revision    Int          @default(1)
   status      QuoteStatus  @default(submitted)
   authorId    String?

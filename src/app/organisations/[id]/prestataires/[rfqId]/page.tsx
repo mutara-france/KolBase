@@ -2,7 +2,7 @@ import Link from "next/link";
 import { RfqBrief } from "@/components/RfqBrief";
 import { FINAL_COUNT_BENEFITS, FINAL_COUNT_CATEGORIES, FINAL_COUNT_DAYS, termsParts } from "@/lib/supplier-profiles";
 import { notFound } from "next/navigation";
-import { ArrowLeft, BellRing, CalendarClock, Check, Clock, FileSignature, FileText, Info, MessageSquare, Plus, Send, Star, UserPlus, Users, X } from "lucide-react";
+import { ArrowLeft, BellRing, CalendarClock, Check, Clock, FileSignature, FileText, Info, MessageSquare, Plus, Receipt, Send, Star, UserPlus, Users, X } from "lucide-react";
 import { SiteHeader } from "@/components/SiteHeader";
 import { SectionNav } from "@/components/SectionNav";
 import { SectionHead } from "@/components/UI";
@@ -17,7 +17,7 @@ import { orgTabs } from "@/lib/org-overview";
 import { requireMembership } from "@/lib/orgs";
 import { EVENT_MANAGER_ROLES, eventEnded } from "@/lib/events";
 import { canCancelRfq, QUOTE_STATUS, RFQ_STATUS, rfqDisplayStatus, remindable, supplierCategoryLabel, rfqTitle } from "@/lib/suppliers";
-import { addRfqSuppliers, awardQuote, cancelRfq, proposeQuote, remindRfqSuppliers, requestQuoteUpdate, sendRfq } from "@/lib/rfq-actions";
+import { addRfqSuppliers, awardQuote, cancelRfq, markInvoicePaid, proposeQuote, remindRfqSuppliers, requestQuoteUpdate, sendRfq } from "@/lib/rfq-actions";
 import { lineTotal, lineVat, perHeadLabel, perParticipant, quoteTtc, quoteVatLabel, readLines, vatLabel } from "@/lib/quotes";
 import { costPerHead } from "@/lib/indicators";
 import { complianceSettings } from "@/lib/compliance";
@@ -242,6 +242,28 @@ export default async function Page({ params }: { params: Promise<{ id: string; r
               <SectionHead icon={Users} title={t("Nombre définitif")} desc={t("{name} facture sur ce nombre : il le demande en général 7 à 15 jours avant la prestation.", { name: kept!.supplier.name })} tone={r.finalHeadcount == null && finalCount.soon ? "warn" : undefined} />
               {r.finalHeadcount != null && r.finalHeadcountAt && <p className="text-sm">{t("Confirmé : {n}, le {date}.", { n: r.finalHeadcount, date: fmtDate(locale, r.finalHeadcountAt) })}</p>}
               <FinalHeadcountForm orgId={id} rfqId={r.id} current={r.finalHeadcount} suggested={finalCount.suggested} basis={finalCount.basis} />
+            </section>
+          )}
+
+          {kept && r.status === "awarded" && (
+            <section className="card stack-sm" id="facture">
+              <SectionHead icon={Receipt} title={t("Facture de {name}", { name: kept.supplier.name })} desc={t("Rapprochée du devis retenu ({amount} TTC).", { amount: fmtEur(locale, quoteTtc(kept)) })} />
+              {kept.invoicedAt ? (
+                <>
+                  <p className="text-sm">
+                    {t("Transmise le {date} : {amount} TTC", { date: fmtDate(locale, kept.invoicedAt), amount: fmtEur(locale, kept.invoiceCents ?? 0) })}
+                    {kept.invoiceCents != null && kept.invoiceCents !== quoteTtc(kept) ? <> · <span className="warn-text">{kept.invoiceCents > quoteTtc(kept) ? t("{d} de plus que le devis", { d: fmtEur(locale, kept.invoiceCents - quoteTtc(kept)) }) : t("{d} de moins que le devis", { d: fmtEur(locale, quoteTtc(kept) - kept.invoiceCents) })}</span></> : <> · <span className="ok-text">{t("conforme au devis")}</span></>}
+                    {kept.invoiceKey && <> · <a href={`/devis/${kept.id}?facture=1`}>{t("Télécharger (PDF)")}</a></>}
+                  </p>
+                  {kept.invoicePaidAt ? <p className="notice ok">{t("Payée le {date}.", { date: fmtDate(locale, kept.invoicePaidAt) })}</p> : isOrganizer && (
+                    <form action={markInvoicePaid} className="inline">
+                      <input type="hidden" name="orgId" value={id} />
+                      <input type="hidden" name="quoteId" value={kept.id} />
+                      <button className="btn small">{t("Marquer la facture payée")}</button>
+                    </form>
+                  )}
+                </>
+              ) : <p className="muted">{t("Aucune facture transmise pour l'instant : le prestataire la dépose depuis sa page de la demande après la prestation.")}</p>}
             </section>
           )}
 

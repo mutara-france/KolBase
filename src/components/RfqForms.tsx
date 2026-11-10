@@ -5,7 +5,7 @@ import { SectionHead } from "@/components/UI";
 import { useActionState, useState } from "react";
 import { Check, Plus, Send, Star, Store } from "lucide-react";
 import { CategoryIcon } from "@/components/SupplierBits";
-import { createRfq, postRfqMessage, submitQuote, updateSupplierProfile, confirmFinalHeadcount } from "@/lib/rfq-actions";
+import { createRfq, postRfqMessage, submitQuote, submitInvoice, updateSupplierProfile, confirmFinalHeadcount } from "@/lib/rfq-actions";
 import { Notice } from "@/components/AuthForms";
 import { ActionForm } from "@/components/ActionForm";
 import { BLOCKED_UNTIL, type Blocked } from "@/lib/billing-plans";
@@ -384,6 +384,25 @@ export function FinalHeadcountForm({ orgId, rfqId, current, suggested, basis }: 
       </div>
       {basis && <p className="hint">{basis}</p>}
       <button className="btn small" disabled={pending}>{pending ? t("Envoi…") : current != null ? t("Mettre à jour et prévenir le prestataire") : t("Confirmer au prestataire")}</button>
+    </form>
+  );
+}
+
+/** Facture du prestataire retenu : montant TTC, PDF facultatif (si le dépôt de fichiers est activé). */
+export function InvoiceForm({ orgId, rfqId, current, uploads }: { orgId: string; rfqId: string; current: { cents: number | null; name: string | null } | null; uploads: boolean }) {
+  const t = useT();
+  const [state, action, pending] = useActionState(submitInvoice, undefined);
+  return (
+    <form action={action} className="form stack-sm">
+      <Notice state={state} />
+      <input type="hidden" name="orgId" value={orgId} />
+      <input type="hidden" name="rfqId" value={rfqId} />
+      <div className="row">
+        <label>{t("Montant TTC facturé (€)")}<input name="amount" inputMode="decimal" required defaultValue={current?.cents != null ? String(current.cents / 100) : ""} /></label>
+        {uploads && <label>{t("Facture (PDF)")}<input type="file" name="file" accept="application/pdf" /></label>}
+      </div>
+      {current?.name && <p className="hint">{t("Déposée : {name}. Un nouveau dépôt la remplace.", { name: current.name })}</p>}
+      <button className="btn small" disabled={pending}>{pending ? t("Envoi…") : current ? t("Mettre à jour la facture") : t("Transmettre la facture")}</button>
     </form>
   );
 }
