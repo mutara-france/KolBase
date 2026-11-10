@@ -1291,6 +1291,9 @@ model SupplierReview {
   // Avis masqué par l'équipe KolBase (signalement fondé) : ni affiché, ni compté ; motif communiqué à son auteur.
   hiddenAt     DateTime?
   hiddenReason String?
+  // Droit de réponse du prestataire, publié sous l'avis (une seule réponse, modifiable).
+  reply     String?
+  repliedAt DateTime?
   createdAt  DateTime     @default(now())
 
   @@index([supplierId])

@@ -569,6 +569,17 @@ export function notifySupplierReview(reviewId: string) {
   });
 }
 
+/** Le prestataire a répondu à un avis : l'auteur de l'avis (s'il est encore membre) en est informé. */
+export function notifySupplierReviewReply(reviewId: string) {
+  later(async () => {
+    const r = await db.supplierReview.findUnique({ where: { id: reviewId }, include: { supplier: { select: { name: true } }, author: { select: userSelect } } });
+    if (!r?.reply) return;
+    const still = await db.membership.findFirst({ where: { organizationId: r.clientId, userId: r.authorId }, select: { id: true } });
+    if (!still) return;
+    await send([r.author], (t) => ({ subject: t("{supplier} a répondu à votre avis", { supplier: r.supplier.name }), text: t("Bonjour,\n\n{supplier} a répondu à l'avis que vous avez laissé sur sa page :\n\n« {reply} »", { supplier: r.supplier.name, reply: r.reply }), cta: { label: t("Voir la page du prestataire"), href: `/structures/${r.supplierId}` } }));
+  });
+}
+
 /** Circuit de conformité : dossier soumis (→ conformité), validé ou bloqué (→ équipe projet). */
 export function notifyCompliance(projectId: string, step: "submit" | "validate" | "block", actorId: string) {
   later(async () => {
