@@ -33,8 +33,11 @@ export async function setBudget(_: ActionState, form: FormData): Promise<ActionS
   await loadProjectForOrg(orgId, projectId);
   const cents = eurToCents(str(form, "budget"));
   if (str(form, "budget") && cents === null) return { error: t("Montant invalide.") };
-  await db.project.update({ where: { id: projectId }, data: { budgetCents: cents } });
-  await audit(user.id, "project.budget", "Project", projectId, { budgetCents: cents });
+  // Références achats (facultatives) : bon de commande et centre de coûts, repris sur la note d'honoraires et l'export comptable.
+  const purchaseOrder = str(form, "purchaseOrder").slice(0, 60) || null;
+  const costCenter = str(form, "costCenter").slice(0, 60) || null;
+  await db.project.update({ where: { id: projectId }, data: { budgetCents: cents, purchaseOrder, costCenter } });
+  await audit(user.id, "project.budget", "Project", projectId, { budgetCents: cents, purchaseOrder: purchaseOrder ?? undefined, costCenter: costCenter ?? undefined });
   refresh(orgId, projectId);
   return { ok: t("Budget enregistré.") };
 }

@@ -16,13 +16,16 @@ import type { FeeLevelOpt } from "@/lib/fees";
 type Hidden = { orgId: string; projectId: string };
 const H = ({ orgId, projectId }: Hidden) => (<><input type="hidden" name="orgId" value={orgId} /><input type="hidden" name="projectId" value={projectId} /></>);
 
-export function BudgetForm({ orgId, projectId, budgetCents }: Hidden & { budgetCents: number | null }) {
+export function BudgetForm({ orgId, projectId, budgetCents, purchaseOrder, costCenter }: Hidden & { budgetCents: number | null; purchaseOrder?: string | null; costCenter?: string | null }) {
   const t = useT();
   const [state, action, pending] = useActionState(setBudget, undefined);
   return (
     <form action={action} className="inline wrap">
       <H orgId={orgId} projectId={projectId} />
       <input name="budget" inputMode="decimal" defaultValue={budgetCents != null ? String(budgetCents / 100) : ""} placeholder={t("Budget total € HT")} aria-label={t("Budget")} />
+      {/* Références du service achats : reprises sur la note d'honoraires de l'expert et dans l'export comptable. */}
+      <input name="purchaseOrder" defaultValue={purchaseOrder ?? ""} maxLength={60} placeholder={t("N° de bon de commande")} aria-label={t("Bon de commande")} />
+      <input name="costCenter" defaultValue={costCenter ?? ""} maxLength={60} placeholder={t("Centre de coûts")} aria-label={t("Centre de coûts")} />
       <button className="btn ghost small" disabled={pending}>{t("Enregistrer")}</button>
       {state?.error && <span className="text-xs" style={{ color: "var(--danger)" }}>{state.error}</span>}
     </form>

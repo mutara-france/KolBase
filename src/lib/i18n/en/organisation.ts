@@ -4,6 +4,14 @@
  * prestataire → supplier, Ordre → French Dental Council, HT/TTC → excl./incl. VAT, pointage → check-in.
  */
 export const ORGANISATION: Record<string, string> = {
+  "N° de bon de commande": "Purchase order no.",
+  "Bon de commande": "Purchase order",
+  "Centre de coûts": "Cost centre",
+  "Bon de commande {po}": "Purchase order {po}",
+  "centre de coûts {cc}": "cost centre {cc}",
+  "repris sur les notes d'honoraires des experts": "carried onto the experts' fee notes",
+  "Export comptable {year} (CSV)": "Accounting export {year} (CSV)",
+  "Une ligne par engagement : honoraires (bon de commande, centre de coûts, structure facturée, note, paiement) et devis retenus.": "One line per commitment: fees (purchase order, cost centre, billing entity, fee note, payment) and retained quotes.",
   "Réponse attendue d'un expert sollicité (relance à l'échéance)": "Answer expected from a solicited expert (reminder at the deadline)",
   "Sollicité le {date}, relancé{reminded}, sans réponse : sollicitez un autre expert ou écrivez-lui.": "Solicited on {date}, reminded{reminded}, no answer: solicit another expert or write to them.",
   "Sollicité le {date}, relancé le {reminded}.": "Solicited on {date}, reminded on {reminded}.",
