@@ -1,5 +1,5 @@
 import { SectionHead, PageHead } from "@/components/UI";
-import { BannerForm, BookForm, OfferForm, PhotoForm } from "@/components/BookForms";
+import { BannerForm, BookForm, OfferForm, PhotoForm, ReviewReplyForm } from "@/components/BookForms";
 import { removeSupplierBanner, removeSupplierOffer, removeSupplierPhoto } from "@/lib/book-actions";
 import { bannerSrc, delayLabel, OFFER_UNITS, PHOTO_MAX, photoSrc, readCapacities, supplierBook } from "@/lib/supplier-book";
 import { capacityFields, equipmentOptions } from "@/lib/supplier-profiles";
@@ -115,6 +115,18 @@ export default async function Page({ params }: { params: Promise<{ id: string }>
               )}
               <OfferForm orgId={id} units={OFFER_UNITS} />
             </section>
+            {book.reviews.length > 0 && (
+              <section className="card stack-sm">
+                <SectionHead icon={Star} title={t("Avis reçus")} desc={t("Les avis laissés par vos clients après une prestation. Vous pouvez répondre publiquement à chacun : la réponse s'affiche sous l'avis, sur votre page.")} />
+                {book.reviews.map((r) => (
+                  <div key={r.id} className="review stack-xs">
+                    <span><span className="rating">{Array.from({ length: r.rating }, (_, i) => <Star key={i} size={14} />)}</span> <strong>{r.client.name}</strong> <span className="muted text-xs">{r.createdAt.toLocaleDateString(loc, { month: "long", year: "numeric", timeZone: "Europe/Paris" })}</span></span>
+                    {r.comment ? <p className="text-sm">{r.comment}</p> : <p className="muted text-sm">{t("Sans commentaire.")}</p>}
+                    <ReviewReplyForm orgId={id} reviewId={r.id} current={r.reply} />
+                  </div>
+                ))}
+              </section>
+            )}
           </>
         )}
       </main>
