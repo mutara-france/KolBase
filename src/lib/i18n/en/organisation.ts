@@ -9,6 +9,11 @@ export const ORGANISATION: Record<string, string> = {
   "Sollicité le {date}, relancé le {reminded}.": "Solicited on {date}, reminded on {reminded}.",
   "Sollicité le {date} · réponse attendue avant le {due} (relance automatique ensuite).": "Solicited on {date} · answer expected by {due} (automatic reminder afterwards).",
   "Rappel envoyé aux signataires en retard": "Reminder sent to late signers",
+  "repas": "meal",
+  "Repère de votre client : la réglementation des avantages plafonne l'hospitalité à {max} TTC par {label} et par participant. {name} compare les devis sur ce coût par participant.": "Your client's benchmark: the regulation on benefits caps hospitality at {max} incl. VAT per {label} and per participant. {name} compares quotes on this cost per participant.",
+  "Pour {headcount} participants, cela correspond à {total} TTC au plus pour cette prestation.": "For {headcount} participants, that is at most {total} incl. VAT for this service.",
+  "Votre devis dépasse ce repère ({each} TTC par participant).": "Your quote exceeds this benchmark ({each} incl. VAT per participant).",
+  "Votre devis respecte ce repère ({each} TTC par participant).": "Your quote stays within this benchmark ({each} incl. VAT per participant).",
   // Courriels (notifications)
   "\n\nCommentaire : {complianceNote}": "\n\nComment: {complianceNote}",
   "\n\nMotif : {declineNote}": "\n\nReason: {declineNote}",

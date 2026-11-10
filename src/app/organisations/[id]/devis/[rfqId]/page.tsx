@@ -2,7 +2,7 @@ import Link from "next/link";
 import { RfqBrief } from "@/components/RfqBrief";
 import { termsParts } from "@/lib/supplier-profiles";
 import { notFound, redirect } from "next/navigation";
-import { ArrowLeft, Building2, CalendarClock, Clock, FileSignature, FileText, MapPin, MessageSquare, Users } from "lucide-react";
+import { ArrowLeft, Building2, CalendarClock, Clock, FileSignature, FileText, MapPin, MessageSquare, Scale, Users } from "lucide-react";
 import { SiteHeader } from "@/components/SiteHeader";
 import { SectionHead } from "@/components/UI";
 import { CategoryIcon, StepTrail, type Step } from "@/components/SupplierBits";
@@ -17,7 +17,8 @@ import { storageEnabled } from "@/lib/storage";
 import { billingBlocked } from "@/lib/billing";
 import { declineRfq } from "@/lib/rfq-actions";
 import { QUOTE_STATUS, supplierCategoryLabel, rfqTitle } from "@/lib/suppliers";
-import { lineTotal, lineVat, quoteTtc, quoteVatLabel, readLines, vatLabel } from "@/lib/quotes";
+import { lineTotal, lineVat, perParticipant, quoteTtc, quoteVatLabel, readLines, vatLabel } from "@/lib/quotes";
+import { complianceSettings } from "@/lib/compliance";
 import { getT } from "@/lib/i18n/server";
 import { fmtDate, fmtEur, intlLocale } from "@/lib/i18n";
 
@@ -37,7 +38,7 @@ export default async function Page({ params }: { params: Promise<{ id: string; r
     include: {
       rfq: {
         include: {
-          organization: { select: { id: true, name: true, listed: true, verification: true } },
+          organization: { select: { id: true, name: true, listed: true, verification: true, complianceSettings: true } },
           event: { select: { title: true, startsAt: true, venue: true, city: true } },
           quotes: { where: { supplierId: id } },
           messages: { where: { supplierId: id }, include: { author: { select: { firstName: true, lastName: true } } }, orderBy: { createdAt: "asc" } },
@@ -48,6 +49,10 @@ export default async function Page({ params }: { params: Promise<{ id: string; r
   if (!invite || invite.rfq.status === "draft") notFound();
   const r = invite.rfq;
   const declined = invite.declined;
+  // Repère réglementaire du client : seuil d'hospitalité par participant (repas, nuitée) qui pèse sur sa décision.
+  // Le prestataire qui le connaît chiffre juste du premier coup ; le devis déjà envoyé est situé par rapport à lui.
+  const settings = complianceSettings(r.organization.complianceSettings);
+  const limit = r.category === "restauration" ? { max: settings.hospitalityMealMax, label: "repas" } : r.category === "hebergement" ? { max: settings.hospitalityNightMax, label: "nuitée" } : null;
   const q = r.quotes[0];
   const open = r.status === "sent";
   const loc = intlLocale(locale);
@@ -113,6 +118,13 @@ export default async function Page({ params }: { params: Promise<{ id: string; r
                 <div><dt><Users size={13} /> {t("Participants")}</dt><dd>{r.headcount ?? "—"}<small>{r.category === "restauration" ? t("couverts à prévoir") : t("attendus")}</small></dd></div>
                 <div><dt><MapPin size={13} /> {t("Lieu")}</dt><dd>{r.event?.city ?? r.city ?? "—"}<small>{r.event?.venue ?? t("à préciser")}</small></dd></div>
               </dl>
+              {limit && (
+                <p className="notice" role="note">
+                  <Scale size={14} aria-hidden /> {t("Repère de votre client : la réglementation des avantages plafonne l'hospitalité à {max} TTC par {label} et par participant. {name} compare les devis sur ce coût par participant.", { max: fmtEur(locale, limit.max * 100), label: t(limit.label), name: r.organization.name })}
+                  {r.headcount ? ` ${t("Pour {headcount} participants, cela correspond à {total} TTC au plus pour cette prestation.", { headcount: r.headcount, total: fmtEur(locale, limit.max * 100 * r.headcount) })}` : ""}
+                  {q && r.headcount ? ` ${perParticipant(r.category, quoteTtc(q), r.headcount, settings)?.over ? t("Votre devis dépasse ce repère ({each} TTC par participant).", { each: fmtEur(locale, Math.round(quoteTtc(q) / r.headcount)) }) : t("Votre devis respecte ce repère ({each} TTC par participant).", { each: fmtEur(locale, Math.round(quoteTtc(q) / r.headcount)) })}` : ""}
+                </p>
+              )}
               <p className="text-sm muted"><Building2 size={13} /> {t("Client :")} {r.organization.listed && r.organization.verification === "VERIFIED" ? <Link href={`/structures/${r.organization.id}`}>{r.organization.name}</Link> : r.organization.name}</p>
             </section>
             <section className="card stack-sm rfq-talk">
