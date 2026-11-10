@@ -15,11 +15,14 @@ import type { FeeLevelOpt } from "@/lib/fees";
 type CType = { id: string; label: string; category: string; unit: string; fmv: readonly number[] };
 type Expert = { id: string; name: string; detail: string; dayRateCents: number | null };
 
-export function NewProjectForm({ orgId, types, experts, preselected, ai = false, blocked = null, levels = [], hourlyMax = 200 }: { orgId: string; types: readonly CType[]; experts: Expert[]; preselected: string[]; ai?: boolean; blocked?: Blocked; levels?: FeeLevelOpt[]; hourlyMax?: number }) {
+/** Valeurs reprises d'un dossier existant (« Dupliquer ») : le même cadre, de nouveaux experts et une nouvelle date. */
+export type ProjectModel = { title: string; typeId: string; therapeuticArea: string; description: string };
+
+export function NewProjectForm({ orgId, types, experts, preselected, ai = false, blocked = null, levels = [], hourlyMax = 200, model = null }: { orgId: string; types: readonly CType[]; experts: Expert[]; preselected: string[]; ai?: boolean; blocked?: Blocked; levels?: FeeLevelOpt[]; hourlyMax?: number; model?: ProjectModel | null }) {
   const t = useT();
   const locale = useLocale();
   const [state, action, pending] = useActionState(createProject, undefined);
-  const [typeId, setTypeId] = useState(types[0].id);
+  const [typeId, setTypeId] = useState(model && types.some((x) => x.id === model.typeId) ? model.typeId : types[0].id);
   const [selected, setSelected] = useState<string[]>(preselected);
   const [filter, setFilter] = useState("");
   const [extra, setExtra] = useState<Expert[]>([]);
@@ -37,7 +40,7 @@ export function NewProjectForm({ orgId, types, experts, preselected, ai = false,
       <p className="muted">{t("Sollicitez un ou plusieurs experts. Chacun reçoit la proposition dans son espace et y répond.")}</p>
       <Notice state={state} />
       <input type="hidden" name="orgId" value={orgId} />
-      <label>{t("Titre du dossier")}<input name="title" required placeholder={t("Ex. : Board implantologie — printemps")} /></label>
+      <label>{t("Titre du dossier")}<input name="title" required defaultValue={model?.title ?? ""} placeholder={t("Ex. : Board implantologie — printemps")} /></label>
       <div className="row">
         <label>{t("Type de collaboration")}
           <select name="typeId" value={typeId} onChange={(e) => setTypeId(e.target.value)}>
@@ -46,11 +49,11 @@ export function NewProjectForm({ orgId, types, experts, preselected, ai = false,
             ))}
           </select>
         </label>
-        <label>{t("Domaine thérapeutique")}<input name="therapeuticArea" /></label>
+        <label>{t("Domaine thérapeutique")}<input name="therapeuticArea" defaultValue={model?.therapeuticArea ?? ""} /></label>
         <label className="short">{t("Intervention prévue")}<input name="plannedAt" type="date" /></label>
       </div>
       <p className="hint">{t("Repère indicatif KolBase (non réglementaire) : {toLocaleString} à {toLocaleString2} € HT par {unit}. La juste contrepartie reste à documenter par votre organisation.", { toLocaleString: type.fmv[0].toLocaleString(intlLocale(locale)), toLocaleString2: type.fmv[1].toLocaleString(intlLocale(locale)), unit: t(type.unit) })}</p>
-      <label>{t("Objet et déroulé")}<textarea name="description" rows={ai ? 6 : 4} placeholder={t("Contexte, livrables attendus, dates…")} /></label>
+      <label>{t("Objet et déroulé")}<textarea name="description" rows={ai ? 6 : 4} defaultValue={model?.description ?? ""} placeholder={t("Contexte, livrables attendus, dates…")} /></label>
       {ai && <AiDraft kind="objet" target="description" label={t("Rédiger l'objet avec l'IA")} />}
 
       <fieldset>
