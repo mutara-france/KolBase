@@ -281,7 +281,7 @@ export default async function Page({ params, searchParams }: { params: Promise<{
     const flagsOf = (p: (typeof toValidate)[number], c: (typeof conflicts)[number]) => {
       const r = regimeOf(p);
       const out: string[] = [];
-      if (p.experts.some((e) => fmvCheck(p.typeId, e.feeCents, e.days)?.verdict === "above")) out.push(t("honoraires au-dessus de la fourchette"));
+      if (p.experts.some((e) => fmvCheck(p.typeId, e.feeCents, e.days)?.verdict === "above")) out.push(p.fmvJustification ? t("honoraires au-dessus de la fourchette, justifiés : « {note} »", { note: p.fmvJustification.length > 80 ? `${p.fmvJustification.slice(0, 80)}…` : p.fmvJustification }) : t("honoraires au-dessus de la fourchette"));
       if (r.regime === "autorisation") out.push(t("autorisation de l'Ordre requise"));
       if (p.experts.some((e) => !practicesInFrance(e.practitioner.country))) out.push(t("expert exerçant hors de France"));
       if (c.length) out.push(t(c.length > 1 ? "{n} conflits d'intérêts" : "{n} conflit d'intérêts", { n: c.length }));

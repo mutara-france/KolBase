@@ -6,7 +6,7 @@ import { db } from "@/lib/db";
 import { audit, requireUser } from "@/lib/auth";
 import { isVerifiedOrg, notVerified, requireMembership } from "@/lib/orgs";
 import { COMPLIANCE_ROLES } from "@/lib/events";
-import { collabType, expertNotices, PROJECT_ROLES, projectEditable, RECRUITING_STATUSES, recruitmentOpen, SOURCING_ROLES, PROJECT_VIEW_ROLES, termsChanged, TRANSITIONS, type TransitionKey } from "@/lib/projects";
+import { collabType, expertNotices, fmvCheck, PROJECT_ROLES, projectEditable, RECRUITING_STATUSES, recruitmentOpen, SOURCING_ROLES, PROJECT_VIEW_ROLES, termsChanged, TRANSITIONS, type TransitionKey } from "@/lib/projects";
 import { storageEnabled } from "@/lib/storage";
 import { fourEyes, projectAuthors } from "@/lib/four-eyes";
 import type { ProjectStatus } from "@/generated/prisma/client";
@@ -226,6 +226,9 @@ export async function advanceProject(form: FormData) {
   if (key === "submit" && !plannedDate({ plannedAt: project.plannedAt, events: await db.event.findMany({ where: { projectId, cancelledAt: null }, select: { startsAt: true, cancelledAt: true } }) })) {
     redirect(`/organisations/${orgId}/dossiers/${projectId}?soumission=date`);
   }
+  // Honoraires au-dessus du repère de marché : la soumission exige une justification écrite, archivée avec le dossier.
+  const fmvOver = project.experts.some((e) => e.status !== "DECLINE" && e.status !== "ATT_EXPERTS" && fmvCheck(project.typeId, e.feeCents, e.days)?.verdict === "above");
+  if (key === "submit" && fmvOver && !note) redirect(`/organisations/${orgId}/dossiers/${projectId}?soumission=justification`);
   // Abandon : le motif est obligatoire (il figure dans l'historique du dossier).
   if (key === "abandon" && !note) return;
   // Accepter la proposition d'un expert l'engage : organisation validée, contrat de sous-traitance, abonnement.
@@ -257,7 +260,7 @@ export async function advanceProject(form: FormData) {
       ...(key === "declaration" ? { epsDeclaredAt: new Date(), epsRef: note || null } : {}),
       ...(attest ? { signatureAttestedAt: new Date(), signatureAttestedById: user.id } : {}),
       // Soumission à la conformité : point de départ du délai d'examen (relance si elle est dépassée).
-      ...(key === "submit" ? { submittedAt: new Date(), reviewReminderAt: null } : {}),
+      ...(key === "submit" ? { submittedAt: new Date(), reviewReminderAt: null, fmvJustification: fmvOver ? note : null } : {}),
     },
   });
   // Les experts ayant donné leur accord suivent le statut du dossier.

@@ -513,6 +513,9 @@ model Project {
   declared        Boolean       @default(false)
   complianceNote  String?
   ordreRef        String?
+  // Honoraires au-dessus du repère de marché : justification écrite par l'équipe à la soumission, archivée avec le
+  // dossier (la conformité d'un industriel la demande ; sans elle, l'écart n'était noté nulle part).
+  fmvJustification String?
   // Démarche EPS (dispositif anti-cadeaux) : date de la déclaration simple et sa référence, date de la demande
   // d'autorisation à l'Ordre. Preuve du respect des délais (8 jours ouvrables, 2 mois avant l'exécution).
   epsDeclaredAt    DateTime?
