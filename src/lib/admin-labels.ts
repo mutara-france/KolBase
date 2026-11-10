@@ -109,6 +109,7 @@ const AUDIT_ACTIONS: Record<string, string> = {
   "signature.send": "Convention envoyée en signature électronique",
   "signature.done": "Convention signée électroniquement",
   "signature.declined": "Signature électronique refusée",
+  "project.validate_first": "Première validation d'un dossier (seconde requise)",
   "signature.expired": "Signature électronique expirée",
   "signature.canceled": "Signature électronique annulée",
   "expert.paid": "Honoraires marqués payés",

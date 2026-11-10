@@ -1,5 +1,8 @@
 /** E-mails adressés aux praticiens. */
 export const EMAILS: Record<string, string> = {
+  "Seconde validation attendue : {title}": "Second validation expected: {title}",
+  "{name} a validé le dossier « {title} », dont les honoraires dépassent le seuil de seconde validation de votre organisation. Une seconde validation, par un autre membre de la conformité, est nécessaire.": "{name} validated the file “{title}”, whose fees exceed your organisation's second-validation threshold. A second validation, by another compliance member, is required.",
+  "Un membre de la conformité": "A compliance member",
   "KolBase — praticiens × organisations du secteur dentaire.": "KolBase — dentists × organisations in the dental sector.",
   "Gérer vos notifications": "Manage your notifications",
   "Bonjour,": "Hello,",

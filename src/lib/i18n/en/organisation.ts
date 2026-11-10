@@ -4,6 +4,16 @@
  * prestataire → supplier, Ordre → French Dental Council, HT/TTC → excl./incl. VAT, pointage → check-in.
  */
 export const ORGANISATION: Record<string, string> = {
+  "Seconde validation (autre membre Conformité) au-delà de — 0 : désactivée": "Second validation (another Compliance member) above — 0: disabled",
+  "€ HT par dossier": "€ excl. VAT per file",
+  "Contrôles": "Controls",
+  "Première validation par {name} le {date}.": "First validation by {name} on {date}.",
+  "La seconde validation doit venir d'un autre membre de la conformité.": "The second validation must come from another compliance member.",
+  "Votre validation sera la seconde : le dossier passera « Validé ».": "Your validation will be the second: the file will become “Validated”.",
+  "Honoraires au-delà de {max} HT : deux validations, par deux membres de la conformité, sont requises. La vôtre sera la première.": "Fees above {max} excl. VAT: two validations, by two compliance members, are required. Yours will be the first.",
+  "un membre de la conformité": "a compliance member",
+  "Première validation (seconde requise)": "First validation (second required)",
+  "1re validation faite": "1st validation done",
   // Courriels (notifications)
   "\n\nCommentaire : {complianceNote}": "\n\nComment: {complianceNote}",
   "\n\nMotif : {declineNote}": "\n\nReason: {declineNote}",
