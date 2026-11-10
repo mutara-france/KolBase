@@ -4,6 +4,10 @@
  * prestataire → supplier, Ordre → French Dental Council, HT/TTC → excl./incl. VAT, pointage → check-in.
  */
 export const ORGANISATION: Record<string, string> = {
+  "Dupliquer le dossier": "Duplicate the file",
+  "même cadre, nouveaux experts et nouvelle date": "same framework, new experts and new date",
+  "{title} (copie)": "{title} (copy)",
+  "Nouveau dossier à partir de « {title} » : cadre repris, experts et date à choisir.": "New file based on “{title}”: framework carried over, experts and date to choose.",
   "honoraires au-dessus de la fourchette": "fees above the range",
   "autorisation de l'Ordre requise": "Council authorisation required",
   "expert exerçant hors de France": "expert practising outside France",
