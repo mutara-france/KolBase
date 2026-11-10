@@ -1,5 +1,7 @@
 /** Espace praticien (accueil, compte, sollicitations, opportunités, agenda, suivis) et pages de connexion. */
 export const PRATICIEN: Record<string, string> = {
+  "Réponse attendue depuis le {date} : sans réponse, {org} pourra solliciter un autre expert.": "Answer expected since {date}: without one, {org} may solicit another expert.",
+  "Réponse attendue avant le {date}.": "Answer expected by {date}.",
   // ─── Connexion, inscription, mot de passe ───────────────────────────────
   "Connexion": "Sign in",
   "Connexion…": "Signing in…",

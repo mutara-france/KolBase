@@ -41,7 +41,7 @@ import { getT } from "@/lib/i18n/server";
 import { fmtDate, fmtEur, intlLocale } from "@/lib/i18n";
 import { feeLevels } from "@/lib/fee-fields";
 import { fmtHours, hoursDetail, hoursOf } from "@/lib/fees";
-import { daysLate, epsDue, plannedDate, reviewDue, submissionDue } from "@/lib/deadlines";
+import { answerDue, daysLate, epsDue, plannedDate, reviewDue, submissionDue, unanswered } from "@/lib/deadlines";
 
 export async function generateMetadata() {
   const { t } = await getT();
@@ -68,6 +68,7 @@ const ACTION_LABEL: Record<string, string> = {
   "signature.declined": "Signature électronique refusée",
   "signature.expired": "Demande de signature électronique expirée",
   "signature.canceled": "Demande de signature électronique annulée",
+  "signature.reminder": "Rappel envoyé aux signataires en retard",
   "project.submit": "Soumis à la conformité",
   "project.validate": "Validé par la conformité",
   "project.block": "Bloqué par la conformité",
@@ -293,7 +294,7 @@ export default async function Page({ params, searchParams }: { params: Promise<{
   const base = `/organisations/${id}/dossiers/${projectId}`;
   const tabHref = (k: string, extra: Record<string, string> = {}) => (k === "apercu" && !Object.keys(extra).length ? base : `${base}?${new URLSearchParams({ onglet: k, ...extra })}`);
   const expertState = (e: (typeof project.experts)[number]) =>
-    e.status === "ATT_EXPERTS" ? (closed ? t("Sans réponse, recrutement clos") : e.desiredFeeCents != null ? t("Contre-proposition") : t("Réponse attendue"))
+    e.status === "ATT_EXPERTS" ? (closed ? t("Sans réponse, recrutement clos") : e.desiredFeeCents != null ? t("Contre-proposition") : unanswered(e.createdAt, settings) ? t("Sans réponse") : t("Réponse attendue"))
     : e.status === "DECLINE" ? (e.responseNote === ACCOUNT_DELETED ? t("Retiré : compte supprimé") : e.responseNote === PROPOSAL_WITHDRAWN ? t("Proposition retirée par l'expert") : project.origin === PROPOSAL_ORIGIN ? t("Dossier clos") : t("A décliné"))
     : t(STATUS_LABEL[e.status]);
   const nameOf = (e: (typeof project.experts)[number]) => `${drPrefix(e.practitioner.profession)}${e.practitioner.user.firstName} ${e.practitioner.user.lastName}`;
@@ -546,6 +547,15 @@ export default async function Page({ params, searchParams }: { params: Promise<{
           </div>
           <span className={`pill ${e.status === "DECLINE" ? "done" : e.status === "ATT_EXPERTS" ? "wait" : "ok"}`}>{expertState(e)}</span>
         </div>
+        {e.status === "ATT_EXPERTS" && !closed && e.desiredFeeCents == null && (
+          <p className={`hint${unanswered(e.createdAt, settings) ? " text-warn" : ""}`}>
+            {unanswered(e.createdAt, settings)
+              ? t("Sollicité le {date}, relancé{reminded}, sans réponse : sollicitez un autre expert ou écrivez-lui.", { date: fmtDate(locale, e.createdAt), reminded: e.reminderSentAt ? ` ${t("le {date}", { date: fmtDate(locale, e.reminderSentAt) })}` : "" })
+              : e.reminderSentAt
+                ? t("Sollicité le {date}, relancé le {reminded}.", { date: fmtDate(locale, e.createdAt), reminded: fmtDate(locale, e.reminderSentAt) })
+                : t("Sollicité le {date} · réponse attendue avant le {due} (relance automatique ensuite).", { date: fmtDate(locale, e.createdAt), due: fmtDate(locale, answerDue(e.createdAt, settings)!) })}
+          </p>
+        )}
         <div className="terms">
           <span className="term"><CalendarDays size={13} /> {unitCount(t, intlLocale(locale), e.days, type?.unit ?? "unité")}</span>
           <span className="term strong"><Euro size={13} /> {e.feeCents != null ? fmtEur(locale, e.feeCents) : "—"}{" "}{t("HT")}</span>

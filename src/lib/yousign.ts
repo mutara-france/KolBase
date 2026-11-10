@@ -183,6 +183,23 @@ export async function createSignatureRequest(i: { name: string; externalId: stri
   return { requestId: sr.id, documentId: doc.id, status: mapYousignStatus(activated.status) ?? "ongoing" };
 }
 
+/**
+ * Rappelle les signataires qui n'ont pas encore signé (GET …/signers, puis POST …/signers/{id}/send_reminder pour
+ * chacun) : Yousign leur renvoie son e-mail d'invitation. Renvoie le nombre de rappels envoyés.
+ * (https://developers.yousign.com/reference/post-signature_requests-signaturerequestid-signers-signerid-send_reminder)
+ */
+export async function remindPendingSigners(requestId: string): Promise<number> {
+  const id = encodeURIComponent(requestId);
+  const signers = await callJson<{ id: string; status?: string }[]>(`/signature_requests/${id}/signers`);
+  let n = 0;
+  for (const s of signers) {
+    if (s.status === "signed") continue;
+    await call(`/signature_requests/${id}/signers/${encodeURIComponent(s.id)}/send_reminder`, { method: "POST" });
+    n++;
+  }
+  return n;
+}
+
 /** État d'une demande (GET /signature_requests/{id}). */
 export async function getSignatureRequest(requestId: string) {
   const r = await callJson<{ status?: string; completed_at?: string | null; decline_information?: { reason?: string | null } | null }>(

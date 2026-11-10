@@ -24,6 +24,8 @@ import { DossierTabs, type DossierTab } from "@/components/DossierTabs";
 import { eventPlace, FORMAT_LABEL, formatDuration } from "@/lib/events";
 import { getT } from "@/lib/i18n/server";
 import { fmtHours, hoursDetail, hoursOf } from "@/lib/fees";
+import { answerDue } from "@/lib/deadlines";
+import { complianceSettings } from "@/lib/compliance";
 
 export async function generateMetadata() {
   const { t } = await getT();
@@ -65,6 +67,8 @@ export default async function Page({ params, searchParams }: { params: Promise<{
   const abandoned = state === "abandonne" || state === "refuse" || state === "retire";
   // Sollicitation restée sans réponse alors que le dossier a avancé : le recrutement est clos.
   const closed = state === "clos";
+  // Délai interne de l'organisation pour la réponse de l'expert (relance à l'échéance, « sans réponse » au double).
+  const answerBy = link.status === "ATT_EXPERTS" ? answerDue(link.createdAt, complianceSettings(p.organization.complianceSettings)) : null;
   const { t, locale } = await getT();
   const num = (n: number) => n.toLocaleString(intlLocale(locale));
   // Unité de prestation (« journée », « séance »…), traduite avec son pluriel.
@@ -150,6 +154,13 @@ export default async function Page({ params, searchParams }: { params: Promise<{
               {link.status === "ATT_EXPERTS" && !abandoned && !closed && (
                 <section className="card highlight" aria-labelledby="reponse-titre">
                   <SectionHead icon={Reply} id="reponse-titre" title={t("Votre réponse")} desc={t("Accord de principe, refus, ou d'autres honoraires : {org} est prévenue par e-mail.", { org: p.organization.name })} />
+                  {answerBy && (
+                    <p className={`hint${answerBy < new Date() ? " text-warn" : ""}`}>
+                      {answerBy < new Date()
+                        ? t("Réponse attendue depuis le {date} : sans réponse, {org} pourra solliciter un autre expert.", { date: fmtDate(locale, answerBy), org: p.organization.name })
+                        : t("Réponse attendue avant le {date}.", { date: fmtDate(locale, answerBy) })}
+                    </p>
+                  )}
                   <RespondForm linkId={link.id} />
                 </section>
               )}
