@@ -17,10 +17,13 @@ export async function generateMetadata() {
   return { title: `${t("Nouveau dossier")} — KolBase` };
 }
 
-export default async function Page({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: Promise<{ expert?: string }> }) {
+export default async function Page({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: Promise<{ expert?: string; modele?: string }> }) {
   const { t } = await getT();
   const { id } = await params;
-  const { expert } = await searchParams;
+  const { expert, modele } = await searchParams;
+  // « Dupliquer » depuis un dossier de l'organisation : titre, type, domaine et objet repris ; experts et date à choisir.
+  const source = modele ? await db.project.findFirst({ where: { id: modele, organizationId: id }, select: { title: true, typeId: true, therapeuticArea: true, description: true } }) : null;
+  const model = source ? { title: t("{title} (copie)", { title: source.title }), typeId: source.typeId, therapeuticArea: source.therapeuticArea ?? "", description: source.description ?? "" } : null;
   const { org } = await requireMembership(id, SOURCING_ROLES);
   if (!isVerifiedOrg(org)) {
     return (
@@ -50,7 +53,9 @@ export default async function Page({ params, searchParams }: { params: Promise<{
       <main className="narrow stack">
         <BillingNotice orgId={id} motive="sollicitation" />
         <p className="muted"><Link href={`/organisations/${id}`}>{org.name}</Link> / <Link href={`/organisations/${id}/dossiers`}>{t("Dossiers")}</Link></p>
+        {model && <p className="notice">{t("Nouveau dossier à partir de « {title} » : cadre repris, experts et date à choisir.", { title: source!.title })}</p>}
         <NewProjectForm
+          model={model}
           levels={await feeLevels(id)}
           hourlyMax={complianceSettings(org.complianceSettings).remunerationHourlyMax}
           ai={aiEnabled()}
