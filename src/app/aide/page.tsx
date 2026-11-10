@@ -1,6 +1,10 @@
 import Link from "next/link";
 import { Building2, ChevronDown, Mail, Newspaper, Stethoscope, Truck } from "lucide-react";
 import { SiteHeader } from "@/components/SiteHeader";
+import { NewsCard } from "@/components/News";
+import { KNOWLEDGE_CATEGORY } from "@/lib/article-format";
+import { publishedArticles } from "@/lib/news";
+import { fmtDate } from "@/lib/i18n";
 import { publicPage } from "@/lib/seo";
 import { getT } from "@/lib/i18n/server";
 import { getCurrentUser } from "@/lib/auth";
@@ -9,7 +13,7 @@ import { legal } from "@/lib/legal";
 
 export async function generateMetadata() {
   const { t } = await getT();
-  return publicPage({ title: t("Aide — KolBase"), description: t("Questions fréquentes sur KolBase : inscription, référencement des experts, événements, dossiers et conformité."), path: "/aide" });
+  return publicPage({ title: t("Base de connaissances — KolBase"), description: t("Premiers pas, questions fréquentes et guides : inscription, référencement des experts, événements, dossiers et conformité."), path: "/aide" });
 }
 export const dynamic = "force-dynamic";
 
@@ -58,7 +62,7 @@ const FAQ: { id: string; title: string; items: Faq[] }[] = [
 ];
 
 export default async function Page() {
-  const [{ t }, user] = await Promise.all([getT(), getCurrentUser()]);
+  const [{ t, locale }, user, guides] = await Promise.all([getT(), getCurrentUser(), publishedArticles(undefined, KNOWLEDGE_CATEGORY)]);
   // Prestataire : sa structure s'il en a une, sinon la création (après l'inscription pour un visiteur).
   const supplier = user?.memberships.find((m) => m.organization.kind === "PRESTATAIRE");
   const supplierHref = supplier ? `/organisations/${supplier.organizationId}` : user ? "/organisations/nouvelle" : "/inscription?profil=organisation";
@@ -91,9 +95,9 @@ export default async function Page() {
       <SiteHeader variant="public" />
       <main className="landing">
         <section className="public-section help-hero">
-          <div className="eyebrow help-eyebrow">{t("Aide")}</div>
-          <h1 className="section-h2">{t("Bien démarrer sur KolBase")}</h1>
-          <p className="help-lead">{t("Les premiers pas selon votre profil, puis les réponses aux questions les plus fréquentes.")}</p>
+          <div className="eyebrow help-eyebrow">{t("Ressources")}</div>
+          <h1 className="section-h2">{t("Base de connaissances")}</h1>
+          <p className="help-lead">{t("Les premiers pas selon votre profil, les réponses aux questions les plus fréquentes et nos guides.")}</p>
           <nav className="chips" aria-label={t("Thèmes de l'aide")}>
             {FAQ.map((g) => <a key={g.id} href={`#${g.id}`} className="chip">{t(g.title)}</a>)}
           </nav>
@@ -138,6 +142,15 @@ export default async function Page() {
           </div>
         </section>
 
+        {guides.length > 0 && (
+          <section className="public-section pt-0" aria-labelledby="guides">
+            <h2 id="guides" className="section-h2 mb-4">{t("Guides")}</h2>
+            <div className="news-grid">
+              {guides.map((a) => <NewsCard key={a.id} a={{ ...a, category: t(a.category) }} dateLabel={fmtDate(locale, a.publishedAt!, { day: "numeric", month: "long", year: "numeric" })} minutesLabel={t("{n} min de lecture")} />)}
+            </div>
+          </section>
+        )}
+
         <section className="public-section pt-0">
           <div className="help-contact">
             <div>
@@ -146,7 +159,7 @@ export default async function Page() {
             </div>
             <div className="help-contact-links">
               <a className="btn" href={`mailto:${contact}`}><Mail size={16} aria-hidden /> {contact}</a>
-              <Link className="btn secondary" href="/actualites"><Newspaper size={16} aria-hidden /> {t("Guides et réglementation")}</Link>
+              <Link className="btn secondary" href="/actualites"><Newspaper size={16} aria-hidden /> {t("Toutes les actualités")}</Link>
             </div>
           </div>
         </section>

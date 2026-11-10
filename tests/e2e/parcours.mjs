@@ -2575,11 +2575,21 @@ async function submitNewOrg(page, siren) {
   const anon = await session();
   await anon.page.goto(`${BASE}/actualites`);
   check("Actualités : rubrique publique", (await text(anon.page)).includes("Attestations de présence vérifiables"));
+  // Filtres par rubrique : la rubrique choisie est marquée, seuls ses articles restent.
+  await anon.page.goto(`${BASE}/actualites?rubrique=${encodeURIComponent("Réglementation")}`);
+  const filtered = await text(anon.page);
+  check("Actualités : filtre par rubrique", (await anon.page.locator('.news-filters a[aria-current="page"]').innerText()).includes("Réglementation") && filtered.includes("Transparence Santé") && !filtered.includes("Attestations de présence vérifiables"));
+  // Menu « Ressources » de la barre publique : actualités, baromètre, base de connaissances.
+  await anon.page.click('button:has-text("Ressources")');
+  // Le panneau est rendu après la mesure de la barre (effet) : attendre son apparition plutôt que tester aussitôt.
+  const panelShown = await anon.page.locator('.nav-panel a[href="/aide"]').waitFor({ timeout: 3000 }).then(() => true, () => false);
+  check("Barre publique : menu Ressources", panelShown && (await anon.page.locator('.nav-panel a[href="/barometre"]').count()) === 1 && (await anon.page.locator('.nav-panel a[href="/actualites"]').getAttribute("aria-current")) === "page");
   const { ctx, page } = await session();
   await login(page, "anne.chevalier@demo.kolbase.local");
   await page.goto(`${BASE}/admin?onglet=actualites`);
   await page.click('a:has-text("Nouvelle actualité")');
   await page.fill('input[name="title"]', "Nouveau : rubrique Actualités");
+  await page.selectOption('select[name="category"]', "Base de connaissances");
   await page.fill('textarea[name="excerpt"]', "KolBase publie ses nouveautés et des repères réglementaires.");
   await page.fill('textarea[name="body"]', "Premier paragraphe avec **du gras**.\n\n## Ce qui change\n\n- un point\n- un autre point\n\nVoir [l'aide](/aide).");
   const png = Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==", "base64");
@@ -2597,6 +2607,9 @@ async function submitNewOrg(page, siren) {
   check("Actualités : image publique", !!cover && (await anon.ctx.request.get(`${BASE}${cover}`)).ok());
   await anon.page.goto(`${BASE}/`);
   check("Accueil : dernières actualités", (await text(anon.page)).includes("Les nouvelles de KolBase") && (await text(anon.page)).includes("Nouveau : rubrique Actualités"));
+  // Rubrique « Base de connaissances » : l'article est repris dans les guides de la page /aide.
+  await anon.page.goto(`${BASE}/aide`);
+  check("Base de connaissances : guides repris depuis les actualités", (await anon.page.locator('#guides').count()) === 1 && (await text(anon.page)).includes("Nouveau : rubrique Actualités"));
   await page.click('button:has-text("Repasser en brouillon")');
   await page.waitForTimeout(1000);
   const gone = await anon.page.goto(`${BASE}/actualites/nouveau-rubrique-actualites`);

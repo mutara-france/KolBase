@@ -4,7 +4,10 @@
  * lignes « - » en liste, **gras** et [lien](https://… ou /…) dans le texte, « ![légende](/…) » seule
  * sur sa ligne pour une image du site.
  */
-export const ARTICLE_CATEGORIES = ["Plateforme", "Réglementation", "Événements", "Partenaires", "Conseils", "Études"] as const;
+export const ARTICLE_CATEGORIES = ["Plateforme", "Réglementation", "Événements", "Partenaires", "Conseils", "Études", "Podcasts", "Base de connaissances"] as const;
+export type ArticleCategory = (typeof ARTICLE_CATEGORIES)[number];
+/** Rubrique des articles repris sur la page « Base de connaissances » (/aide). */
+export const KNOWLEDGE_CATEGORY: ArticleCategory = "Base de connaissances";
 
 export type Inline = { text: string; bold?: boolean; href?: string };
 export type Block = { kind: "h2"; text: string } | { kind: "p"; parts: Inline[] } | { kind: "ul"; items: Inline[][] } | { kind: "img"; src: string; alt: string };
