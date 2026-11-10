@@ -4,6 +4,10 @@
  * prestataire → supplier, Ordre → French Dental Council, HT/TTC → excl./incl. VAT, pointage → check-in.
  */
 export const ORGANISATION: Record<string, string> = {
+  "Justification des honoraires au-dessus du repère (obligatoire, archivée)": "Justification for fees above the benchmark (required, archived)",
+  "Soumission refusée : les honoraires d'au moins un expert dépassent le repère de marché. Justifiez-les dans le champ ci-dessous ; la justification est archivée avec le dossier et lue par la conformité.": "Submission refused: at least one expert's fees exceed the market benchmark. Justify them in the field below; the justification is archived with the file and read by compliance.",
+  "Honoraires au-dessus du repère, justification de l'équipe :": "Fees above the benchmark, team's justification:",
+  "honoraires au-dessus de la fourchette, justifiés : « {note} »": "fees above the range, justified: “{note}”",
   "Seconde validation (autre membre Conformité) au-delà de — 0 : désactivée": "Second validation (another Compliance member) above — 0: disabled",
   "€ HT par dossier": "€ excl. VAT per file",
   "Contrôles": "Controls",
