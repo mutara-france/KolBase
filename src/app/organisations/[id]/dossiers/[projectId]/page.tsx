@@ -130,10 +130,10 @@ const NEXT_HINT: Partial<Record<ProjectStatus, string>> = {
 const DANGER: TransitionKey[] = ["abandon", "block", "ordre_ko", "decline_proposal", "back_to_accord"];
 
 
-export default async function Page({ params, searchParams }: { params: Promise<{ id: string; projectId: string }>; searchParams: Promise<{ modifier?: string; onglet?: string; fil?: string; evenement?: string; publie?: string; solliciter?: string }> }) {
+export default async function Page({ params, searchParams }: { params: Promise<{ id: string; projectId: string }>; searchParams: Promise<{ modifier?: string; onglet?: string; fil?: string; evenement?: string; publie?: string; solliciter?: string; soumission?: string }> }) {
   const { t, locale } = await getT();
   const { id, projectId } = await params;
-  const { modifier, onglet, fil, evenement, publie, solliciter } = await searchParams;
+  const { modifier, onglet, fil, evenement, publie, solliciter, soumission } = await searchParams;
   const { org, roles, user } = await requireMembership(id, PROJECT_VIEW_ROLES);
   const project = await db.project.findFirst({
     where: { id: projectId, organizationId: id },
@@ -440,6 +440,13 @@ export default async function Page({ params, searchParams }: { params: Promise<{
             <section className="card next-step" aria-labelledby="prochaine-etape">
               <span className="eyebrow-sm" id="prochaine-etape">{t("Prochaine étape")}</span>
               <p className="next-hint">{t(NEXT_HINT[project.status] ?? "")}</p>
+              {soumission === "date" && project.status === "ACCORD" && (
+                <p className="notice warn" role="alert">
+                  {t("Soumission refusée : renseignez la date d'intervention (ou créez l'événement daté) avant de soumettre le dossier à la conformité. Elle fixe le délai d'examen et le dernier jour de la démarche EPS.")}{" "}
+                  <Link href={`${base}?modifier=1#objet-titre`}>{t("Renseigner la date")}</Link>
+                </p>
+              )}
+              {!planned && project.status === "ACCORD" && soumission !== "date" && <p className="hint">{t("La date d'intervention est requise pour soumettre le dossier à la conformité.")}</p>}
               {subDue && (subLate > 0
                 ? <p className="notice warn">{t("Soumission à la conformité en retard de {n} j : l'échéance interne était le {date} ({lead} jours avant l'intervention).", { n: subLate, date: fmtDate(locale, subDue), lead: settings.submissionLeadDays })}</p>
                 : <p className="hint">{t("À soumettre à la conformité avant le {date} (délai interne : {lead} jours avant l'intervention).", { date: fmtDate(locale, subDue), lead: settings.submissionLeadDays })}</p>)}

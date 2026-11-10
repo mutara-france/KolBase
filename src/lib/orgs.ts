@@ -23,7 +23,7 @@ export async function requireMembership(orgId: string, roles?: OrgRole[], { allo
   const org = await db.organization.findUnique({ where: { id: orgId } });
   if (!org) notFound();
   // Page réservée à d'autres rôles : retour à l'accueil de l'organisation, avec un message (pas un retour muet).
-  if (roles && !userRoles.some((r) => roles.includes(r))) redirect(`/organisations/${orgId}?acces=refuse`);
+  if (roles && !userRoles.some((r) => roles.includes(r))) redirect(`/organisations/${orgId}?acces=refuse&roles=${roles.join(",")}`);
   // Une organisation prestataire n'a que son tableau de bord, ses demandes de devis et ses membres :
   // les espaces réservés à des rôles (dossiers, événements, conformité…) concernent les organisations clientes.
   if (roles && org.kind === "PRESTATAIRE" && !allowSupplier) redirect(`/organisations/${orgId}?acces=refuse`);

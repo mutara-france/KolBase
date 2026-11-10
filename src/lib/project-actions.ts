@@ -20,6 +20,7 @@ import { notifyCompliance, notifyCounterAccepted, notifySecondValidation, notify
 import { signatureEnabled } from "@/lib/yousign";
 import { engagementBlock, engagementGate } from "@/lib/billing";
 import { freezeBilling } from "@/lib/expert-billing";
+import { plannedDate } from "@/lib/deadlines";
 import type { GateLink } from "@/lib/billing-plans";
 import { getT } from "@/lib/i18n/server";
 import { closeOpenSignatures } from "@/lib/signature";
@@ -220,6 +221,11 @@ export async function advanceProject(form: FormData) {
   if (key === "hors_france" && regime !== "hors_france") return;
 
   const note = str(form, "note");
+  // Soumission à la conformité : la date d'intervention (ou un événement daté) est requise, sinon ni l'échéance EPS
+  // ni le délai d'examen ne peuvent être calculés ; le dossier reste en accord de principe et la page l'explique.
+  if (key === "submit" && !plannedDate({ plannedAt: project.plannedAt, events: await db.event.findMany({ where: { projectId, cancelledAt: null }, select: { startsAt: true, cancelledAt: true } }) })) {
+    redirect(`/organisations/${orgId}/dossiers/${projectId}?soumission=date`);
+  }
   // Abandon : le motif est obligatoire (il figure dans l'historique du dossier).
   if (key === "abandon" && !note) return;
   // Accepter la proposition d'un expert l'engage : organisation validée, contrat de sous-traitance, abonnement.
@@ -251,7 +257,10 @@ export async function advanceProject(form: FormData) {
   // Experts à prévenir, d'après leur situation avant le changement d'étape.
   const engagedIds = project.experts.filter((e) => e.status !== "DECLINE" && e.status !== "ATT_EXPERTS").map((e) => e.id);
   const waitingIds = project.experts.filter((e) => e.status === "ATT_EXPERTS").map((e) => e.id);
-  await db.project.update({
+  const auditData = { from: project.status, to: t.to, note: note || undefined, ...(attest ? { attestation: "convention signée conservée hors KolBase" } : {}), ...(attestCumul ? { attestationCumul: "autorisation de cumul conservée hors KolBase" } : {}), ...(selfValidated ? { selfValidated: true } : {}) };
+  // Changement d'étape, experts qui le suivent et trace d'audit : tout ou rien (un état sans trace, ou l'inverse, fausserait l'historique).
+  await db.$transaction(async (tx) => {
+  await tx.project.update({
     where: { id: projectId },
     data: {
       status: t.to,
@@ -266,16 +275,17 @@ export async function advanceProject(form: FormData) {
       ...(key === "submit" ? { submittedAt: new Date(), reviewReminderAt: null } : {}),
     },
   });
+  // Les experts ayant donné leur accord suivent le statut du dossier.
+  await tx.projectExpert.updateMany({ where: { projectId, status: { notIn: ["DECLINE", "ATT_EXPERTS"] } }, data: { status: t.to } });
+  if (key === "abandon") await tx.projectExpert.updateMany({ where: { projectId, status: "ATT_EXPERTS" }, data: { status: "DECLINE" } });
+  await tx.auditLog.create({ data: { actorId: user.id, action: `project.${key}`, entityType: "Project", entityId: projectId, data: auditData } });
+  });
   // Dossier sans responsable (projet proposé par un expert) : qui, dans l'équipe Projets, le fait avancer en devient responsable.
   if (t.roles !== "compliance" && key !== "decline_proposal" && key !== "abandon") await claimIfUnassigned(projectId, user.id);
-  // Les experts ayant donné leur accord suivent le statut du dossier.
-  await db.projectExpert.updateMany({ where: { projectId, status: { notIn: ["DECLINE", "ATT_EXPERTS"] } }, data: { status: t.to } });
   // Soumission à la conformité : la facturation de chaque expert (nom propre ou structure) est figée.
   if (key === "submit") await freezeBilling(projectId);
-  if (key === "abandon") await db.projectExpert.updateMany({ where: { projectId, status: "ATT_EXPERTS" }, data: { status: "DECLINE" } });
   // Dossier signé (conventions déposées ou attestées) ou abandonné : plus aucune signature électronique en attente.
   if (key === "signed" || key === "abandon") await closeOpenSignatures({ projectId }, key === "signed" ? "dossier passé « Signé »" : "dossier abandonné");
-  await audit(user.id, `project.${key}`, "Project", projectId, { from: project.status, to: t.to, note: note || undefined, ...(attest ? { attestation: "convention signée conservée hors KolBase" } : {}), ...(attestCumul ? { attestationCumul: "autorisation de cumul conservée hors KolBase" } : {}), ...(selfValidated ? { selfValidated: true } : {}) });
   // Proposition déclinée avec un motif : il rejoint les échanges avec l'expert (qui le lit dans sa sollicitation).
   if (key === "decline_proposal" && note && engagedIds[0]) await db.message.create({ data: { projectId, projectExpertId: engagedIds[0], authorId: user.id, body: note } });
   if (key === "submit" || key === "validate" || key === "block") notifyCompliance(projectId, key, user.id);
@@ -313,6 +323,27 @@ async function claimIfUnassigned(projectId: string, userId: string) {
  * Ajoute un responsable (un ou plusieurs par dossier) : membre Administrateur ou Projets de l'organisation. Il voit
  * le dossier dans « Mes dossiers » et reçoit ses e-mails. Toute l'équipe Projets garde l'accès au dossier.
  */
+/**
+ * Validation en série des dossiers sans drapeau depuis la file de la conformité : chaque dossier passe par
+ * advanceProject (mêmes contrôles, dont les quatre yeux : un dossier soumis par le valideur est laissé de côté),
+ * puis retour à la file avec le décompte.
+ */
+export async function validateProjectsInBulk(form: FormData) {
+  const orgId = str(form, "orgId");
+  await requireMembership(orgId, COMPLIANCE_ROLES);
+  const ids = form.getAll("projectId").map(String).filter(Boolean).slice(0, 50);
+  let done = 0;
+  for (const projectId of ids) {
+    const before = await db.project.findFirst({ where: { id: projectId, organizationId: orgId, status: "EN_VALID" }, select: { id: true } });
+    if (!before) continue;
+    const fd = new FormData();
+    fd.set("orgId", orgId); fd.set("projectId", projectId); fd.set("transition", "validate");
+    await advanceProject(fd);
+    if ((await db.project.findUnique({ where: { id: projectId }, select: { status: true } }))?.status === "VALIDE") done++;
+  }
+  redirect(`/organisations/${orgId}/conformite?valides=${done}&sur=${ids.length}`);
+}
+
 export async function addProjectLead(form: FormData) {
   const orgId = str(form, "orgId");
   const projectId = str(form, "projectId");
