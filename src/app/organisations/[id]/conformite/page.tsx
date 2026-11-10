@@ -9,7 +9,9 @@ import { ComplianceSettingsForm, FeeGridForm } from "@/components/ComplianceForm
 import { db } from "@/lib/db";
 import { requireMembership } from "@/lib/orgs";
 import { COMPLIANCE_ROLES } from "@/lib/events";
-import { collabType, STATUS_LABEL } from "@/lib/projects";
+import { collabType, fmvCheck, STATUS_LABEL } from "@/lib/projects";
+import { validateProjectsInBulk } from "@/lib/project-actions";
+import { ConfirmButton } from "@/components/ConfirmButton";
 import { setEventReviewRequired } from "@/lib/event-actions";
 import { complianceSettings, foreignRegime, hospitalityRegime, legalBound, remunerationRegime, REGIME_LABEL, regimeReason, SETTING_FIELDS, type Regime } from "@/lib/compliance";
 import { country, practicesInFrance } from "@/lib/countries";
@@ -42,11 +44,11 @@ async function RegimePill({ regime, reason }: { regime: Regime; reason?: string 
   return <span className={`pill ${regime === "autorisation" ? "wait" : regime === "hors_france" ? "" : "ok"}`} title={reason}>{t(REGIME_LABEL[regime])}</span>;
 }
 
-export default async function Page({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: Promise<{ onglet?: string; annee?: string; periode?: string }> }) {
+export default async function Page({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: Promise<{ onglet?: string; annee?: string; periode?: string; valides?: string; sur?: string }> }) {
   const { t, locale } = await getT();
   const loc = intlLocale(locale);
   const { id } = await params;
-  const { onglet = "a-valider", annee, periode } = await searchParams;
+  const { onglet = "a-valider", annee, periode, valides, sur } = await searchParams;
   const { org } = await requireMembership(id, COMPLIANCE_ROLES);
   const s = complianceSettings(org.complianceSettings);
   const year = annee === "toutes" ? null : Number(annee) || new Date().getFullYear();
@@ -101,6 +103,12 @@ export default async function Page({ params, searchParams }: { params: Promise<{
         <SectionNav tabs={sectionTabs} active={onglet} label={t("Rubrique Conformité")} />
         <PageHead title={t(TABS.find(([k]) => k === onglet)?.[1] ?? "Espace conformité")} />
 
+        {onglet === "a-valider" && valides != null && (
+          <p className="notice ok" role="status">
+            {t("{n} dossier(s) validé(s) sur {total}.", { n: Number(valides) || 0, total: Number(sur) || 0 })}
+            {Number(valides) < Number(sur) ? ` ${t("Les autres restent à examiner : soumis par vous-même (quatre yeux) ou déjà traités.")}` : ""}
+          </p>
+        )}
         {onglet === "a-valider" && <ToValidate />}
         {onglet === "autorisations" && (
           <section className="card">
@@ -267,18 +275,43 @@ export default async function Page({ params, searchParams }: { params: Promise<{
   async function ToValidate() {
     const { t, locale } = await getT();
     const conflicts = await Promise.all(toValidate.map((p) => detectConflicts(p.id)));
+    // File de traitement : par échéance d'examen (les plus pressés d'abord), avec les drapeaux qui appellent un
+    // regard humain — honoraires hors fourchette, régime d'autorisation, expert hors France, conflit d'intérêts.
+    // Les dossiers sans drapeau peuvent être validés en série ; le contrôle à quatre yeux s'applique à chacun.
+    const flagsOf = (p: (typeof toValidate)[number], c: (typeof conflicts)[number]) => {
+      const r = regimeOf(p);
+      const out: string[] = [];
+      if (p.experts.some((e) => fmvCheck(p.typeId, e.feeCents, e.days)?.verdict === "above")) out.push(t("honoraires au-dessus de la fourchette"));
+      if (r.regime === "autorisation") out.push(t("autorisation de l'Ordre requise"));
+      if (p.experts.some((e) => !practicesInFrance(e.practitioner.country))) out.push(t("expert exerçant hors de France"));
+      if (c.length) out.push(t(c.length > 1 ? "{n} conflits d'intérêts" : "{n} conflit d'intérêts", { n: c.length }));
+      if (!p.plannedAt) out.push(t("date d'intervention absente"));
+      return out;
+    };
+    const queue = toValidate
+      .map((p, i) => ({ p, c: conflicts[i], flags: flagsOf(p, conflicts[i]), due: reviewDue(p.submittedAt ?? p.updatedAt, s) }))
+      .sort((a, b) => (a.due?.getTime() ?? 0) - (b.due?.getTime() ?? 0));
+    const clean = queue.filter((q) => q.flags.length === 0);
     return (
       <>
       <section className="card">
-        <SectionHead icon={FolderCheck} title={t("Dossiers à valider")} />
+        <SectionHead icon={FolderCheck} title={t("Dossiers à valider")} desc={toValidate.length ? t("Par échéance d'examen. Les dossiers sans drapeau peuvent être validés en série ; chacun reste soumis au contrôle à quatre yeux.") : undefined} />
+        {clean.length > 1 && (
+          <form action={validateProjectsInBulk} className="inline wrap">
+            <input type="hidden" name="orgId" value={id} />
+            {clean.map((q) => <input key={q.p.id} type="hidden" name="projectId" value={q.p.id} />)}
+            <ConfirmButton className="btn small" confirm={t("valider {n} dossiers sans drapeau", { n: clean.length })} summary={t("Chaque dossier passe « Validé par la conformité » ; ceux que vous avez vous-même soumis sont laissés de côté (quatre yeux). Les équipes et les experts sont prévenus.")} localized>
+              {t("Valider les {n} dossiers sans drapeau", { n: clean.length })}
+            </ConfirmButton>
+          </form>
+        )}
         {toValidate.length === 0 ? <p className="muted">{t("Aucun dossier en attente de validation.")}</p> : (
           <TableWrap label={t("Dossiers à valider")}>
             <table className="table">
-              <thead><tr><th>{t("Dossier")}</th><th>{t("Experts")}</th><th>{t("Montant")}</th><th>{t("Juste contrepartie")}</th><th>{t("Régime")}</th><th>{t("Conflits")}</th><th>{t("Soumis le")}</th><th>{t("Échéance")}</th></tr></thead>
+              <thead><tr><th>{t("Dossier")}</th><th>{t("Experts")}</th><th>{t("Montant")}</th><th>{t("Juste contrepartie")}</th><th>{t("Régime")}</th><th>{t("Conflits")}</th><th>{t("Drapeaux")}</th><th>{t("Soumis le")}</th><th>{t("Échéance")}</th></tr></thead>
               <tbody>
-                {toValidate.map((p, i) => {
+                {queue.map(({ p, c, flags }) => {
                   const r = regimeOf(p);
-                  const c = conflicts[i];
                   return (
                     <tr key={p.id}>
                       <td data-label="Dossier"><Link href={dossier(p.id)}>{p.title}</Link><br /><span className="muted">{t(collabType(p.typeId)?.label ?? p.typeId)}</span></td>
@@ -287,6 +320,7 @@ export default async function Page({ params, searchParams }: { params: Promise<{
                       <td data-label="Juste contrepartie">{p.experts.map((e) => <FmvBadge key={e.id} typeId={p.typeId} feeCents={e.feeCents} units={e.days} />)}</td>
                       <td data-label="Régime"><RegimePill regime={r.regime} reason={regimeReason(r, t, loc)} /></td>
                       <td data-label="Conflits">{c.length ? <span className={`pill ${c.some((x) => x.severity === "danger") ? "bad" : "wait"}`}>{c.length}</span> : <span className="pill ok">{t("Aucun")}</span>}</td>
+                      <td data-label="Drapeaux">{flags.length ? <span className="text-sm">{flags.join(" · ")}</span> : <span className="pill ok">{t("Aucun")}</span>}</td>
                       <td data-label="Soumis le">{fmtDate(locale, p.submittedAt ?? p.updatedAt)}</td>
                       {/* Délai interne d'examen (Paramètres) : en retard, signalé. */}
                       <td data-label="Échéance">{(() => {

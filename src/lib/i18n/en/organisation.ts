@@ -4,6 +4,19 @@
  * prestataire → supplier, Ordre → French Dental Council, HT/TTC → excl./incl. VAT, pointage → check-in.
  */
 export const ORGANISATION: Record<string, string> = {
+  "honoraires au-dessus de la fourchette": "fees above the range",
+  "autorisation de l'Ordre requise": "Council authorisation required",
+  "expert exerçant hors de France": "expert practising outside France",
+  "{n} conflits d'intérêts": "{n} conflicts of interest",
+  "{n} conflit d'intérêts": "{n} conflict of interest",
+  "date d'intervention absente": "engagement date missing",
+  "Par échéance d'examen. Les dossiers sans drapeau peuvent être validés en série ; chacun reste soumis au contrôle à quatre yeux.": "By review deadline. Files without flags can be validated in bulk; each remains subject to the four-eyes check.",
+  "valider {n} dossiers sans drapeau": "validate {n} files without flags",
+  "Chaque dossier passe « Validé par la conformité » ; ceux que vous avez vous-même soumis sont laissés de côté (quatre yeux). Les équipes et les experts sont prévenus.": "Each file becomes “Validated by compliance”; those you submitted yourself are left aside (four eyes). Teams and experts are notified.",
+  "Valider les {n} dossiers sans drapeau": "Validate the {n} files without flags",
+  "Drapeaux": "Flags",
+  "{n} dossier(s) validé(s) sur {total}.": "{n} file(s) validated out of {total}.",
+  "Les autres restent à examiner : soumis par vous-même (quatre yeux) ou déjà traités.": "The others remain to be reviewed: submitted by you (four eyes) or already handled.",
   // Courriels (notifications)
   "\n\nCommentaire : {complianceNote}": "\n\nComment: {complianceNote}",
   "\n\nMotif : {declineNote}": "\n\nReason: {declineNote}",
