@@ -308,6 +308,27 @@ async function claimIfUnassigned(projectId: string, userId: string) {
  * Ajoute un responsable (un ou plusieurs par dossier) : membre Administrateur ou Projets de l'organisation. Il voit
  * le dossier dans « Mes dossiers » et reçoit ses e-mails. Toute l'équipe Projets garde l'accès au dossier.
  */
+/**
+ * Validation en série des dossiers sans drapeau depuis la file de la conformité : chaque dossier passe par
+ * advanceProject (mêmes contrôles, dont les quatre yeux : un dossier soumis par le valideur est laissé de côté),
+ * puis retour à la file avec le décompte.
+ */
+export async function validateProjectsInBulk(form: FormData) {
+  const orgId = str(form, "orgId");
+  await requireMembership(orgId, COMPLIANCE_ROLES);
+  const ids = form.getAll("projectId").map(String).filter(Boolean).slice(0, 50);
+  let done = 0;
+  for (const projectId of ids) {
+    const before = await db.project.findFirst({ where: { id: projectId, organizationId: orgId, status: "EN_VALID" }, select: { id: true } });
+    if (!before) continue;
+    const fd = new FormData();
+    fd.set("orgId", orgId); fd.set("projectId", projectId); fd.set("transition", "validate");
+    await advanceProject(fd);
+    if ((await db.project.findUnique({ where: { id: projectId }, select: { status: true } }))?.status === "VALIDE") done++;
+  }
+  redirect(`/organisations/${orgId}/conformite?valides=${done}&sur=${ids.length}`);
+}
+
 export async function addProjectLead(form: FormData) {
   const orgId = str(form, "orgId");
   const projectId = str(form, "projectId");
