@@ -68,6 +68,7 @@ const ACTION_LABEL: Record<string, string> = {
   "signature.declined": "Signature électronique refusée",
   "signature.expired": "Demande de signature électronique expirée",
   "signature.canceled": "Demande de signature électronique annulée",
+  "project.validate_first": "Première validation (seconde requise)",
   "signature.reminder": "Rappel envoyé aux signataires en retard",
   "project.submit": "Soumis à la conformité",
   "project.validate": "Validé par la conformité",
@@ -364,6 +365,10 @@ export default async function Page({ params, searchParams }: { params: Promise<{
   const expensesDue = project.expenses.filter((x) => x.status !== "payee").length;
   const over = project.budgetCents != null && spent > project.budgetCents;
   const complianceActs = available.filter((k) => TRANSITIONS[k].roles === "compliance");
+  // Seconde validation : honoraires engagés au-delà du seuil réglé par l'organisation (0 : désactivé).
+  const engagedFees = project.experts.filter((e) => e.status !== "DECLINE" && e.status !== "ATT_EXPERTS").reduce((x, e) => x + (e.feeCents ?? 0), 0);
+  const secondValidation = project.status === "EN_VALID" && settings.secondValidationAbove > 0 && engagedFees > settings.secondValidationAbove * 100;
+  const firstValidator = project.firstValidatedById ? await db.user.findUnique({ where: { id: project.firstValidatedById }, select: { firstName: true, lastName: true } }).then((u) => (u ? `${u.firstName} ${u.lastName}` : t("un membre de la conformité"))) : null;
   const teamActs = available.filter((k) => TRANSITIONS[k].roles !== "compliance");
   const selectedEvent = project.events.find((ev) => ev.id === evenement) ?? project.events[0] ?? null;
   const ev0 = selectedEvent ?? callEvent;
@@ -931,6 +936,14 @@ export default async function Page({ params, searchParams }: { params: Promise<{
                       : <p className="hint">{t("Examen attendu avant le {date}.", { date: fmtDate(locale, revDue) })}</p>)}
                     {fourEyesRule === "blocked" && <p className="notice warn">{t(FOUR_EYES_BLOCKED)}</p>}
                     {fourEyesRule === "justify" && <p className="hint">{t(FOUR_EYES_JUSTIFY)}</p>}
+                    {secondValidation && (
+                      project.firstValidatedById
+                        ? <p className={`notice ${project.firstValidatedById === user.id ? "warn" : "ok"}`}>
+                            {t("Première validation par {name} le {date}.", { name: firstValidator, date: fmtDate(locale, project.firstValidatedAt!) })}{" "}
+                            {project.firstValidatedById === user.id ? t("La seconde validation doit venir d'un autre membre de la conformité.") : t("Votre validation sera la seconde : le dossier passera « Validé ».")}
+                          </p>
+                        : <p className="hint">{t("Honoraires au-delà de {max} HT : deux validations, par deux membres de la conformité, sont requises. La vôtre sera la première.", { max: fmtEur(locale, settings.secondValidationAbove * 100) })}</p>
+                    )}
                     {transitionsBlock(complianceActs)}
                   </section>
                 )}

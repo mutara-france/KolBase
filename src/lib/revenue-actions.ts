@@ -189,7 +189,7 @@ export async function issueFeeNote(_: FormState, form: FormData): Promise<FormSt
       license: !practicesInFrance(prof.country) && prof.licenseNumber ? `${licenseRule(prof.country).label} ${prof.licenseNumber}` : null,
       iban: coords.iban ? formatIban(coords.iban) : null, vatRegime: coords.vatRegime },
     recipient: { name: link.project.organization.name, siren: link.project.organization.siren, address: link.project.organization.headquarters },
-    object: { title: link.project.title, type: type?.label ?? link.project.typeId, unit: type?.unit ?? null, units: link.days, signedAt: signedAt ? signedAt.toLocaleDateString("fr-FR", { timeZone: "Europe/Paris", day: "numeric", month: "long", year: "numeric" }) : null, projectRef: link.projectId.slice(-8).toUpperCase() },
+    object: { title: link.project.title, type: type?.label ?? link.project.typeId, unit: type?.unit ?? null, units: link.days, signedAt: signedAt ? signedAt.toLocaleDateString("fr-FR", { timeZone: "Europe/Paris", day: "numeric", month: "long", year: "numeric" }) : null, projectRef: link.projectId.slice(-8).toUpperCase(), purchaseOrder: link.project.purchaseOrder, costCenter: link.project.costCenter },
   };
   const vatBp = vatBpOf(coords.vatRegime);
   const year = new Date().getFullYear();

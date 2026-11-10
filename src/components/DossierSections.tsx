@@ -223,10 +223,16 @@ export async function BudgetTab({ orgId, projectId, canEdit }: { orgId: string; 
             {proposed > 0 && <div className="muted"><dt>{t("Honoraires proposés, sans réponse")}</dt><dd>{fmtEur(locale, proposed)}</dd></div>}
             {budget != null && <div className={`total${over ? " over" : ""}`}><dt>{over ? t("Dépassement") : t("Reste disponible")}</dt><dd>{fmtEur(locale, Math.abs(budget - total))}</dd></div>}
           </dl>
+          {(project.purchaseOrder || project.costCenter) && (
+            <p className="text-sm muted">
+              {[project.purchaseOrder ? t("Bon de commande {po}", { po: project.purchaseOrder }) : null, project.costCenter ? t("centre de coûts {cc}", { cc: project.costCenter }) : null].filter(Boolean).join(" · ")}
+              {" · "}{t("repris sur les notes d'honoraires des experts")}
+            </p>
+          )}
           {canEdit && (
             <details className="inline-edit" open={budget == null}>
               <summary>{budget != null ? t("Modifier le budget") : t("Renseigner le budget")}</summary>
-              <BudgetForm orgId={orgId} projectId={projectId} budgetCents={budget} />
+              <BudgetForm orgId={orgId} projectId={projectId} budgetCents={budget} purchaseOrder={project.purchaseOrder} costCenter={project.costCenter} />
             </details>
           )}
         </section>

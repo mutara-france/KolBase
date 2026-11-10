@@ -16,7 +16,7 @@ import { frameworkPeriodError, frameworkStart } from "@/lib/expert-costs";
 import { dayOrNull, eurToCents, str } from "@/lib/form";
 import { readFeeFields } from "@/lib/fee-fields";
 import { hoursOf } from "@/lib/fees";
-import { notifyCompliance, notifyCounterAccepted, notifyExpertAnswer, notifyExpertCounter, notifyExpertNotice, notifyMessage, notifyNewProposal, notifyProjectLead, notifySolicitations } from "@/lib/notifications";
+import { notifyCompliance, notifyCounterAccepted, notifySecondValidation, notifyExpertAnswer, notifyExpertCounter, notifyExpertNotice, notifyMessage, notifyNewProposal, notifyProjectLead, notifySolicitations } from "@/lib/notifications";
 import { signatureEnabled } from "@/lib/yousign";
 import { engagementBlock, engagementGate } from "@/lib/billing";
 import { freezeBilling } from "@/lib/expert-billing";
@@ -242,6 +242,20 @@ export async function advanceProject(form: FormData) {
     const rule = await fourEyes(await projectAuthors(projectId), orgId, user.id, COMPLIANCE_ROLES);
     if (rule === "blocked" || (rule === "justify" && !note)) return;
     selfValidated = rule === "justify";
+    // Seconde validation : au-delà du seuil d'honoraires réglé par l'organisation, deux membres Conformité différents
+    // valident. La première validation est posée sur le dossier ; la seconde, par quelqu'un d'autre, le fait avancer.
+    const settings = complianceSettings(project.organization.complianceSettings);
+    const fees = project.experts.filter((e) => e.status !== "DECLINE" && e.status !== "ATT_EXPERTS").reduce((x, e) => x + (e.feeCents ?? 0), 0);
+    if (settings.secondValidationAbove > 0 && fees > settings.secondValidationAbove * 100) {
+      if (!project.firstValidatedById) {
+        await db.project.update({ where: { id: projectId }, data: { firstValidatedById: user.id, firstValidatedAt: new Date(), complianceNote: note || null } });
+        await audit(user.id, "project.validate_first", "Project", projectId, { fees, note: note || undefined });
+        notifySecondValidation(projectId, user.id);
+        revalidatePath(`/organisations/${orgId}/dossiers/${projectId}`);
+        return;
+      }
+      if (project.firstValidatedById === user.id) return;
+    }
   }
   // Experts à prévenir, d'après leur situation avant le changement d'étape.
   const engagedIds = project.experts.filter((e) => e.status !== "DECLINE" && e.status !== "ATT_EXPERTS").map((e) => e.id);
@@ -254,6 +268,7 @@ export async function advanceProject(form: FormData) {
     data: {
       status: t.to,
       ...(key === "block" || key === "validate" ? { complianceNote: note || null } : {}),
+      ...(key === "block" || key === "back_to_accord" || key === "revise" ? { firstValidatedById: null, firstValidatedAt: null } : {}),
       ...(key === "abandon" ? { abandonNote: note } : {}),
       // Démarche EPS : date (et référence) de la déclaration, date de la demande à l'Ordre — preuve du respect des délais.
       ...(key === "ordre" ? { ordreRef: note || null, ordreRequestedAt: new Date() } : {}),
