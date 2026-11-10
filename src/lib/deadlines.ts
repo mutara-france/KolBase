@@ -41,3 +41,13 @@ export function epsDue(planned: Date | null, regime: "declaration" | "autorisati
   if (regime === "declaration") return shiftDays(planned, -s.declarationDays, isFrenchBusinessDay);
   return new Date(planned.getTime() - s.authorizationDays * DAY);
 }
+
+/** Dernier jour attendu pour la réponse d'un expert sollicité (délai interne, jours civils à partir de la sollicitation). */
+export function answerDue(solicitedAt: Date | null, s: { answerDays: number }): Date | null {
+  return solicitedAt ? new Date(solicitedAt.getTime() + s.answerDays * DAY) : null;
+}
+
+/** Sollicitation « sans réponse » : silence de l'expert au-delà du double du délai interne. */
+export function unanswered(solicitedAt: Date | null, s: { answerDays: number }, now = new Date()): boolean {
+  return !!solicitedAt && now.getTime() - solicitedAt.getTime() > 2 * s.answerDays * DAY;
+}
