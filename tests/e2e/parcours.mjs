@@ -4336,7 +4336,7 @@ async function submitNewOrg(page, siren) {
     check("Dossier terminé : pas de « Créer l'événement du dossier »", !(await text(jul.page)).includes("Créer l'événement du dossier"));
     // 7. Accès refusé : un message plutôt qu'un retour muet.
     await jul.page.goto(`${BASE}/organisations/demo-org-dentalys/conformite`);
-    check("Accès refusé : message sur l'accueil de l'organisation", jul.page.url().endsWith("?acces=refuse") && (await text(jul.page)).includes("réservée à d'autres rôles"), jul.page.url());
+    check("Accès refusé : message sur l'accueil de l'organisation", /\?acces=refuse(&roles=[A-Z,]+)?$/.test(jul.page.url()) && /réservée (au rôle|à d'autres rôles)/.test(await text(jul.page)), jul.page.url());
     // 7. « Solliciter » depuis l'espace courant.
     await pgc.query(`insert into "Membership" (id, "userId", "organizationId", role) values ('e2e-lot4-m', 'demo-u-julien', 'demo-org-cdra', 'PROJETS')`);
     // La page précédente mémorise son espace (kb_espace) une fois hydratée : attendre cette écriture avant de la remplacer.
@@ -5394,7 +5394,7 @@ async function submitNewOrg(page, siren) {
   await claire.page.goto(`${BASE}/organisations/demo-org-dentalys`);
   check("Administratrice sans rôle Conformité : pas de rubrique Conformité", (await claire.page.locator('aside a[href="/organisations/demo-org-dentalys/conformite"]').count()) === 0);
   await claire.page.goto(`${BASE}/organisations/demo-org-dentalys/conformite`);
-  check("Administratrice sans rôle Conformité : espace conformité refusé", claire.page.url().endsWith("/organisations/demo-org-dentalys?acces=refuse"), claire.page.url());
+  check("Administratrice sans rôle Conformité : espace conformité refusé", /\/organisations\/demo-org-dentalys\?acces=refuse(&roles=[A-Z,]+)?$/.test(claire.page.url()), claire.page.url());
   await claire.page.goto(`${BASE}/organisations/demo-org-dentalys/dossiers/demo-prj-symposium?onglet=conformite`);
   check("Administratrice sans rôle Conformité : pas de bouton de validation", (await claire.page.locator('button:text-is("Valider")').count()) === 0);
   // Menu du compte : « Mes inscriptions » pour un compte sans profil praticien.
