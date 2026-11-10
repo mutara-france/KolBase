@@ -14,6 +14,11 @@ export const ORGANISATION: Record<string, string> = {
   "un membre de la conformité": "a compliance member",
   "Première validation (seconde requise)": "First validation (second required)",
   "1re validation faite": "1st validation done",
+  "repas": "meal",
+  "Repère de votre client : la réglementation des avantages plafonne l'hospitalité à {max} TTC par {label} et par participant. {name} compare les devis sur ce coût par participant.": "Your client's benchmark: the regulation on benefits caps hospitality at {max} incl. VAT per {label} and per participant. {name} compares quotes on this cost per participant.",
+  "Pour {headcount} participants, cela correspond à {total} TTC au plus pour cette prestation.": "For {headcount} participants, that is at most {total} incl. VAT for this service.",
+  "Votre devis dépasse ce repère ({each} TTC par participant).": "Your quote exceeds this benchmark ({each} incl. VAT per participant).",
+  "Votre devis respecte ce repère ({each} TTC par participant).": "Your quote stays within this benchmark ({each} incl. VAT per participant).",
   // Courriels (notifications)
   "\n\nCommentaire : {complianceNote}": "\n\nComment: {complianceNote}",
   "\n\nMotif : {declineNote}": "\n\nReason: {declineNote}",
