@@ -12,6 +12,11 @@ export const ORGANISATION: Record<string, string> = {
   "repris sur les notes d'honoraires des experts": "carried onto the experts' fee notes",
   "Export comptable {year} (CSV)": "Accounting export {year} (CSV)",
   "Une ligne par engagement : honoraires (bon de commande, centre de coûts, structure facturée, note, paiement) et devis retenus.": "One line per commitment: fees (purchase order, cost centre, billing entity, fee note, payment) and retained quotes.",
+  "repas": "meal",
+  "Repère de votre client : la réglementation des avantages plafonne l'hospitalité à {max} TTC par {label} et par participant. {name} compare les devis sur ce coût par participant.": "Your client's benchmark: the regulation on benefits caps hospitality at {max} incl. VAT per {label} and per participant. {name} compares quotes on this cost per participant.",
+  "Pour {headcount} participants, cela correspond à {total} TTC au plus pour cette prestation.": "For {headcount} participants, that is at most {total} incl. VAT for this service.",
+  "Votre devis dépasse ce repère ({each} TTC par participant).": "Your quote exceeds this benchmark ({each} incl. VAT per participant).",
+  "Votre devis respecte ce repère ({each} TTC par participant).": "Your quote stays within this benchmark ({each} incl. VAT per participant).",
   // Courriels (notifications)
   "\n\nCommentaire : {complianceNote}": "\n\nComment: {complianceNote}",
   "\n\nMotif : {declineNote}": "\n\nReason: {declineNote}",
