@@ -451,6 +451,8 @@ export default async function Page({ params, searchParams }: { params: Promise<{
                 : <p className="hint">{t("Examen par la conformité attendu avant le {date} ({days} jours ouvrés après la soumission).", { date: fmtDate(locale, revDue), days: settings.reviewDays })}</p>)}
               {project.status === "EN_VALID" && !isCompliance && <p className="hint">{t("En attente de l'équipe Conformité.")}</p>}
               {teamActs.length > 0 && transitionsBlock(teamActs)}
+              {/* Dupliquer : un nouveau dossier avec le même cadre (titre, type, domaine, objet), experts et date à choisir. */}
+              {isProject && <p className="hint"><Link href={`/organisations/${id}/dossiers/nouveau?modele=${projectId}`}>{t("Dupliquer le dossier")}</Link> · {t("même cadre, nouveaux experts et nouvelle date")}</p>}
               {complianceActs.length > 0 && <Link className="btn" href={tabHref("conformite")}>{t("Examiner le dossier")}</Link>}
               {signStarted && isProject && (
                 <p className="hint">{t("Une convention est en cours de signature ou déjà signée : le retour en accord de principe n'est plus possible. Si les conditions doivent changer, abandonnez le dossier (motif obligatoire) et ouvrez-en un nouveau.")}</p>
