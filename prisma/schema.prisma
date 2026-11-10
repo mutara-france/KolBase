@@ -524,6 +524,10 @@ model Project {
   ordreRequestedAt DateTime?
   createdById     String?
   budgetCents     Int?
+  // Références du service achats de l'organisation : bon de commande et centre de coûts, repris sur la note
+  // d'honoraires de l'expert et dans l'export comptable (sans PO, aucun paiement ne part chez un industriel).
+  purchaseOrder   String?
+  costCenter      String?
   declarationRef  String?   // référence de publication Transparence Santé
   declaredAt      DateTime?
   // Signature attestée sans convention déposée (stockage de documents non configuré) : qui et quand.

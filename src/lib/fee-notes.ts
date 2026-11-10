@@ -50,7 +50,8 @@ export type FeeNoteData = {
   // Identifiant professionnel : RPPS en France ; ailleurs, celui du pays d'exercice (« Numéro INAMI … »), comme la convention.
   issuer: { name: string; entity: string | null; address: string; siret: string | null; vatNumber: string | null; rpps: string | null; license?: string | null; iban: string | null; vatRegime: string };
   recipient: { name: string; siren: string | null; address: string | null };
-  object: { title: string; type: string; unit: string | null; units: number | null; signedAt: string | null; projectRef: string };
+  // Références achats du client (bon de commande, centre de coûts) : sans elles, sa comptabilité ne rapproche pas la note.
+  object: { title: string; type: string; unit: string | null; units: number | null; signedAt: string | null; projectRef: string; purchaseOrder?: string | null; costCenter?: string | null };
 };
 
 const W = 595.28, H = 841.89, M = 56;
@@ -91,6 +92,10 @@ export async function feeNotePdf(n: { number: string; issuedAt: Date; amountCent
   text(`${d.object.type} « ${d.object.title} »`, M, y, 11, bold);
   y -= 15;
   text(`Convention ${d.object.signedAt ? `signée le ${d.object.signedAt}` : "signée"} · référence ${d.object.projectRef}`, M, y, 10, font, MUTED);
+  if (d.object.purchaseOrder || d.object.costCenter) {
+    y -= 15;
+    text([d.object.purchaseOrder ? `Bon de commande ${d.object.purchaseOrder}` : null, d.object.costCenter ? `centre de coûts ${d.object.costCenter}` : null].filter(Boolean).join(" · "), M, y, 10, font, MUTED);
+  }
   y -= 30;
 
   // Tableau.
