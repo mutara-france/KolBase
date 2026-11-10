@@ -3805,7 +3805,7 @@ async function submitNewOrg(page, siren) {
       if (!asso) await d.page.waitForTimeout(150);
     }
     check("Nouvelle structure (association) avec ses coordonnées, sans remplacer la structure par défaut", !!asso && asso.isPayee === false && asso.iban === "FR7630006000011234567890189", JSON.stringify(asso));
-    await pgc.query(`insert into "Project" (id, "organizationId", title, "typeId", status, "updatedAt") values ('e2e-fact-prj', 'demo-org-dentalys', 'Conférence facturée à une association', 'pleniere', 'ACCORD', now())`);
+    await pgc.query(`insert into "Project" (id, "organizationId", title, "typeId", status, "updatedAt", "plannedAt") values ('e2e-fact-prj', 'demo-org-dentalys', 'Conférence facturée à une association', 'pleniere', 'ACCORD', now(), now() + interval '30 days')`);
     await pgc.query(`insert into "ProjectExpert" (id, "projectId", "practitionerId", status, "feeCents", days, "respondedAt") values
       ('e2e-fact-l-durand', 'e2e-fact-prj', 'demo-p-durand', 'ACCORD', 120000, 1, now()), ('e2e-fact-l-moreau', 'e2e-fact-prj', 'demo-p-moreau', 'ACCORD', 120000, 1, now())`);
     await d.page.goto(`${BASE}/sollicitations/e2e-fact-l-durand?onglet=documents`);
@@ -4336,7 +4336,7 @@ async function submitNewOrg(page, siren) {
     check("Dossier terminé : pas de « Créer l'événement du dossier »", !(await text(jul.page)).includes("Créer l'événement du dossier"));
     // 7. Accès refusé : un message plutôt qu'un retour muet.
     await jul.page.goto(`${BASE}/organisations/demo-org-dentalys/conformite`);
-    check("Accès refusé : message sur l'accueil de l'organisation", jul.page.url().endsWith("?acces=refuse") && (await text(jul.page)).includes("réservée à d'autres rôles"), jul.page.url());
+    check("Accès refusé : message sur l'accueil de l'organisation", /\?acces=refuse(&roles=[A-Z,]+)?$/.test(jul.page.url()) && /réservée (au rôle|à d'autres rôles)/.test(await text(jul.page)), jul.page.url());
     // 7. « Solliciter » depuis l'espace courant.
     await pgc.query(`insert into "Membership" (id, "userId", "organizationId", role) values ('e2e-lot4-m', 'demo-u-julien', 'demo-org-cdra', 'PROJETS')`);
     // La page précédente mémorise son espace (kb_espace) une fois hydratée : attendre cette écriture avant de la remplacer.
@@ -4653,7 +4653,7 @@ async function submitNewOrg(page, siren) {
     const claireId = (await q1(`select id from "User" where email = $1`, [CLAIRE])).id;
     await pgc.query(`update "User" set "notifyPrefs" = '{}' where email in ($1, $2)`, [MOREAU, LEMOINE]);
     // Dossier en accord de principe : Moreau engagé, Lemoine sollicitée sans réponse.
-    await pgc.query(`insert into "Project" (id, "organizationId", title, "typeId", status, "createdById", "updatedAt") values ('e2e-5a-prj', 'demo-org-dentalys', 'Board 5a maintenance implantaire', 'advisory', 'ACCORD', $1, now())`, [claireId]);
+    await pgc.query(`insert into "Project" (id, "organizationId", title, "typeId", status, "createdById", "updatedAt", "plannedAt") values ('e2e-5a-prj', 'demo-org-dentalys', 'Board 5a maintenance implantaire', 'advisory', 'ACCORD', $1, now(), now() + interval '30 days')`, [claireId]);
     await pgc.query(`insert into "ProjectExpert" (id, "projectId", "practitionerId", status, "feeCents", days, "respondedAt") values
       ('e2e-5a-l-moreau', 'e2e-5a-prj', 'demo-p-moreau', 'ACCORD', 150000, 1, now()), ('e2e-5a-l-lemoine', 'e2e-5a-prj', 'demo-p-lemoine', 'ATT_EXPERTS', 150000, 1, null)`);
     const org = await session();
@@ -4817,7 +4817,7 @@ async function submitNewOrg(page, siren) {
     const MOREAU = "vincent.moreau@demo.kolbase.local";
     const LEMOINE = "julie.lemoine@demo.kolbase.local";
     const claireId = (await q1(`select id from "User" where email = $1`, [CLAIRE])).id;
-    await pgc.query(`insert into "Project" (id, "organizationId", title, "typeId", status, "createdById", "updatedAt") values ('e2e-5a-prj4', 'demo-org-dentalys', 'Board 5a négociation', 'advisory', 'ATT_EXPERTS', $1, now())`, [claireId]);
+    await pgc.query(`insert into "Project" (id, "organizationId", title, "typeId", status, "createdById", "updatedAt", "plannedAt") values ('e2e-5a-prj4', 'demo-org-dentalys', 'Board 5a négociation', 'advisory', 'ATT_EXPERTS', $1, now(), now() + interval '30 days')`, [claireId]);
     await pgc.query(`insert into "ProjectExpert" (id, "projectId", "practitionerId", status, "feeCents", days) values ('e2e-5a-l4', 'e2e-5a-prj4', 'demo-p-moreau', 'ATT_EXPERTS', 150000, 1)`);
     const dossier = `${BASE}/organisations/demo-org-dentalys/dossiers/e2e-5a-prj4`;
     const org = await session();
@@ -5394,7 +5394,7 @@ async function submitNewOrg(page, siren) {
   await claire.page.goto(`${BASE}/organisations/demo-org-dentalys`);
   check("Administratrice sans rôle Conformité : pas de rubrique Conformité", (await claire.page.locator('aside a[href="/organisations/demo-org-dentalys/conformite"]').count()) === 0);
   await claire.page.goto(`${BASE}/organisations/demo-org-dentalys/conformite`);
-  check("Administratrice sans rôle Conformité : espace conformité refusé", claire.page.url().endsWith("/organisations/demo-org-dentalys?acces=refuse"), claire.page.url());
+  check("Administratrice sans rôle Conformité : espace conformité refusé", /\/organisations\/demo-org-dentalys\?acces=refuse(&roles=[A-Z,]+)?$/.test(claire.page.url()), claire.page.url());
   await claire.page.goto(`${BASE}/organisations/demo-org-dentalys/dossiers/demo-prj-symposium?onglet=conformite`);
   check("Administratrice sans rôle Conformité : pas de bouton de validation", (await claire.page.locator('button:text-is("Valider")').count()) === 0);
   // Menu du compte : « Mes inscriptions » pour un compte sans profil praticien.
