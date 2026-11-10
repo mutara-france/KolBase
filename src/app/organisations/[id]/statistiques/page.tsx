@@ -41,6 +41,7 @@ export default async function Page({ params, searchParams }: { params: Promise<{
       <main className="stack">
         <PageHead title={t("Statistiques")} desc={t("Budget engagé, experts, événements, délais et conformité de l'organisation, année par année.")}>
           <a className="btn ghost small" href={`${base}/statistiques/export?annee=${year}`}><Download size={14} />{" "}{t("Exporter {year} (CSV)", { year })}</a>
+          <a className="btn ghost small" href={`${base}/statistiques/comptabilite?annee=${year}`} title={t("Une ligne par engagement : honoraires (bon de commande, centre de coûts, structure facturée, note, paiement) et devis retenus.")}><Download size={14} />{" "}{t("Export comptable {year} (CSV)", { year })}</a>
         </PageHead>
         <nav className="chips" aria-label={t("Année")}>
           {s.years.map((y) => <Link key={y} href={`?annee=${y}`} className={`chip${y === year ? " active" : ""}`} aria-current={y === year ? "page" : undefined}>{y}</Link>)}
