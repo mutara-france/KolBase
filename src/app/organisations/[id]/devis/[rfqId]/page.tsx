@@ -2,11 +2,11 @@ import Link from "next/link";
 import { RfqBrief } from "@/components/RfqBrief";
 import { termsParts } from "@/lib/supplier-profiles";
 import { notFound, redirect } from "next/navigation";
-import { ArrowLeft, Building2, CalendarClock, Clock, FileSignature, FileText, MapPin, MessageSquare, Scale, Users } from "lucide-react";
+import { ArrowLeft, Building2, CalendarClock, ClipboardCheck, Clock, FileSignature, FileText, MapPin, MessageSquare, Phone, Scale, Users } from "lucide-react";
 import { SiteHeader } from "@/components/SiteHeader";
 import { SectionHead } from "@/components/UI";
 import { CategoryIcon, StepTrail, type Step } from "@/components/SupplierBits";
-import { QuoteForm, RfqMessageForm } from "@/components/RfqForms";
+import { InvoiceForm, QuoteForm, RfqMessageForm } from "@/components/RfqForms";
 import { Thread } from "@/components/ProjectBits";
 import { BillingNotice } from "@/components/BillingNotice";
 import { ConfirmButton } from "@/components/ConfirmButton";
@@ -49,6 +49,8 @@ export default async function Page({ params }: { params: Promise<{ id: string; r
   if (!invite || invite.rfq.status === "draft") notFound();
   const r = invite.rfq;
   const declined = invite.declined;
+  // Contact sur place pour le prestataire retenu : la personne qui a ouvert la demande (nom, téléphone s'il est renseigné).
+  const creator = r.createdById ? await db.user.findUnique({ where: { id: r.createdById }, select: { firstName: true, lastName: true, phone: true, email: true } }) : null;
   // Repère réglementaire du client : seuil d'hospitalité par participant (repas, nuitée) qui pèse sur sa décision.
   // Le prestataire qui le connaît chiffre juste du premier coup ; le devis déjà envoyé est situé par rapport à lui.
   const settings = complianceSettings(r.organization.complianceSettings);
@@ -127,6 +129,24 @@ export default async function Page({ params }: { params: Promise<{ id: string; r
               )}
               <p className="text-sm muted"><Building2 size={13} /> {t("Client :")} {r.organization.listed && r.organization.verification === "VERIFIED" ? <Link href={`/structures/${r.organization.id}`}>{r.organization.name}</Link> : r.organization.name}</p>
             </section>
+            {q?.status === "retained" && r.status !== "cancelled" && (
+              <section className="card stack-sm" id="prestation">
+                <SectionHead icon={ClipboardCheck} title={t("Prestation")} desc={t("Ce qu'il vous faut pour le jour J, puis votre facture rapprochée du devis.")} />
+                <dl className="hero-facts">
+                  <div><dt><CalendarClock size={13} /> {t("Date")}</dt><dd>{r.serviceStart ? fmtDate(locale, r.serviceStart) : r.event ? fmtDate(locale, r.event.startsAt) : t("à préciser")}<small>{r.event?.venue ?? r.event?.city ?? r.city ?? ""}</small></dd></div>
+                  <div><dt><Users size={13} /> {t("Nombre définitif")}</dt><dd>{r.finalHeadcount ?? "—"}<small>{r.finalHeadcountAt ? t("confirmé le {date}", { date: fmtDate(locale, r.finalHeadcountAt) }) : t("en attente de l'organisation")}</small></dd></div>
+                  <div><dt><Phone size={13} /> {t("Contact sur place")}</dt><dd>{creator ? `${creator.firstName} ${creator.lastName}` : r.organization.name}<small>{creator?.phone ?? creator?.email ?? ""}</small></dd></div>
+                </dl>
+                {q.invoicedAt && (
+                  <p className={`notice ${q.invoicePaidAt ? "ok" : ""}`}>
+                    {t("Facture transmise le {date} : {amount} TTC", { date: fmtDate(locale, q.invoicedAt), amount: fmtEur(locale, q.invoiceCents ?? 0) })}
+                    {q.invoiceCents != null && q.invoiceCents !== quoteTtc(q) ? ` · ${q.invoiceCents > quoteTtc(q) ? t("{d} de plus que le devis", { d: fmtEur(locale, q.invoiceCents - quoteTtc(q)) }) : t("{d} de moins que le devis", { d: fmtEur(locale, quoteTtc(q) - q.invoiceCents) })}` : ""}
+                    {q.invoicePaidAt ? ` · ${t("payée le {date}", { date: fmtDate(locale, q.invoicePaidAt) })}` : ""}
+                  </p>
+                )}
+                {!q.invoicePaidAt && canWrite && <InvoiceForm orgId={id} rfqId={r.id} current={q.invoicedAt ? { cents: q.invoiceCents, name: q.invoiceName } : null} uploads={storageEnabled()} />}
+              </section>
+            )}
             <section className="card stack-sm rfq-talk">
               <SectionHead icon={MessageSquare} title={t("Questions et échanges avec {name}", { name: r.organization.name })} desc={r.messages.length ? t(r.messages.length > 1 ? "{messages} messages" : "{messages} message", { messages: r.messages.length }) : t("Une précision sur le besoin ? Posez votre question ici : seule l'organisation la lit.")} />
               {r.messages.length > 0 && <Thread messages={r.messages} meId={user.id} />}

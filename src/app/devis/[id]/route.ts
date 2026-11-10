@@ -6,8 +6,10 @@ import { rfqConflict } from "@/lib/suppliers";
 import { hasMemberRole, memberRoles } from "@/lib/org-roles";
 
 /** PDF joint à un devis : visible du prestataire qui l'a envoyé et de l'équipe événements de l'organisation qui l'a demandé. */
-export async function GET(_: Request, { params }: { params: Promise<{ id: string }> }) {
+export async function GET(req: Request, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
+  // ?facture=1 : la facture déposée par le prestataire retenu, mêmes droits que le devis.
+  const invoice = new URL(req.url).searchParams.get("facture") === "1";
   const user = await requireUser();
   const q = await db.quote.findUnique({ where: { id }, include: { rfq: { select: { organizationId: true, event: { select: { agencyId: true } }, suppliers: { select: { supplierId: true } } } } } });
   const supplier = !!q && hasMemberRole(user, q.supplierId);
@@ -17,9 +19,10 @@ export async function GET(_: Request, { params }: { params: Promise<{ id: string
   const agency = !!q?.rfq.event?.agencyId && hasMemberRole(user, q.rfq.event.agencyId) && memberRoles(user, q.rfq.organizationId).includes("PRESTATAIRE")
     && !rfqConflict(q.rfq.suppliers.map((s) => s.supplierId), user.memberships.filter((m) => m.organization.kind === "PRESTATAIRE").map((m) => m.organizationId));
   const requester = team || agency;
-  if (!q?.fileKey || !(supplier || requester)) return new Response("Devis introuvable.", { status: 404 });
-  const body = await getObject(q.fileKey);
-  const name = q.fileName ?? "devis.pdf";
+  const key = invoice ? q?.invoiceKey : q?.fileKey;
+  if (!q || !key || !(supplier || requester)) return new Response("Devis introuvable.", { status: 404 });
+  const body = await getObject(key);
+  const name = (invoice ? q.invoiceName : q.fileName) ?? (invoice ? "facture.pdf" : "devis.pdf");
   return new Response(Buffer.from(body), {
     headers: {
       "Content-Type": "application/pdf",

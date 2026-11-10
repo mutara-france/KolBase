@@ -1,5 +1,12 @@
 /** E-mails adressés aux praticiens. */
 export const EMAILS: Record<string, string> = {
+  "Facture reçue {de_org} : {amount} TTC": "Invoice received from {de_org}: {amount} incl. VAT",
+  "{name} a transmis sa facture pour la prestation{event} : {amount} TTC, pour un devis retenu de {quote} TTC{gap}.": "{name} sent their invoice for the service{event}: {amount} incl. VAT, against a retained quote of {quote} incl. VAT{gap}.",
+  "écart de {d} en plus": "{d} over",
+  "écart de {d} en moins": "{d} under",
+  "Voir la demande": "View the request",
+  "Facture payée ({org})": "Invoice paid ({org})",
+  "{org} indique avoir réglé votre facture pour la prestation retenue{event}.": "{org} reports having paid your invoice for the retained service{event}.",
   "KolBase — praticiens × organisations du secteur dentaire.": "KolBase — dentists × organisations in the dental sector.",
   "Gérer vos notifications": "Manage your notifications",
   "Bonjour,": "Hello,",

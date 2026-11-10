@@ -783,6 +783,7 @@ body:has(.sidebar) .site-footer { padding: 24px 32px; }
 .quote-detail > p { margin: 8px 0 0; }
 .quote-detail td:last-child { text-align: right; white-space: nowrap; }
 .warn-text { color: #9a5b00; }
+.ok-text { color: var(--ok, #1f7a3d); }
 .danger-text { color: var(--danger); }
 /* Fiche dossier : actions secondaires repliées, objet lisible, en-tête resserré. */
 .more-actions { border-top: 1px solid var(--line); padding-top: 10px; }
