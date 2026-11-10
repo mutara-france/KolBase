@@ -585,6 +585,8 @@ body:has(.sidebar) .site-footer { padding: 24px 32px; }
 .review { font-size: 12.5px; margin: 2px 0 0; padding: 6px 10px; border-radius: 10px; }
 .review.approved { background: var(--ok-bg); color: var(--ok); }
 .review.changes { background: var(--danger-bg); color: var(--danger); }
+/* Réponse du prestataire sous un avis : légèrement en retrait, filet à gauche. */
+.review-reply { margin: 4px 0 0 12px; padding-left: 10px; border-left: 2px solid var(--line); color: var(--ink-soft); }
 .sub-form { border: 1px dashed var(--line-strong); border-radius: 14px; padding: 14px; margin-top: 8px; }
 .tabs .count { margin-left: 6px; }
 /* Onglets dans une carte : séparés du contenu qui les entoure. */
