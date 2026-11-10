@@ -320,6 +320,7 @@ export default async function Page({ params, searchParams }: { params: Promise<{
                       <td data-label="Juste contrepartie">{p.experts.map((e) => <FmvBadge key={e.id} typeId={p.typeId} feeCents={e.feeCents} units={e.days} />)}</td>
                       <td data-label="Régime"><RegimePill regime={r.regime} reason={regimeReason(r, t, loc)} /></td>
                       <td data-label="Conflits">{c.length ? <span className={`pill ${c.some((x) => x.severity === "danger") ? "bad" : "wait"}`}>{c.length}</span> : <span className="pill ok">{t("Aucun")}</span>}</td>
+                      <td data-label="Soumis le">{fmtDate(locale, p.submittedAt ?? p.updatedAt)}{p.firstValidatedById && <><br /><span className="pill wait">{t("1re validation faite")}</span></>}</td>
                       <td data-label="Drapeaux">{flags.length ? <span className="text-sm">{flags.join(" · ")}</span> : <span className="pill ok">{t("Aucun")}</span>}</td>
                       <td data-label="Soumis le">{fmtDate(locale, p.submittedAt ?? p.updatedAt)}</td>
                       {/* Délai interne d'examen (Paramètres) : en retard, signalé. */}

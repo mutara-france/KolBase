@@ -513,6 +513,10 @@ model Project {
   declared        Boolean       @default(false)
   complianceNote  String?
   ordreRef        String?
+  // Seconde validation (réglage secondValidationAbove) : première validation posée, la seconde, par un autre membre
+  // Conformité, fait passer le dossier « Validé ». Effacés quand le dossier repasse en accord de principe.
+  firstValidatedById String?
+  firstValidatedAt   DateTime?
   // Démarche EPS (dispositif anti-cadeaux) : date de la déclaration simple et sa référence, date de la demande
   // d'autorisation à l'Ordre. Preuve du respect des délais (8 jours ouvrables, 2 mois avant l'exécution).
   epsDeclaredAt    DateTime?
