@@ -599,6 +599,21 @@ export function notifyCompliance(projectId: string, step: "submit" | "validate" 
   });
 }
 
+/** Première validation posée : les autres membres Conformité sont invités à donner la seconde. */
+export function notifySecondValidation(projectId: string, firstId: string) {
+  later(async () => {
+    const p = await db.project.findUnique({ where: { id: projectId }, select: { id: true, title: true, organizationId: true } });
+    if (!p) return;
+    const first = await db.user.findUnique({ where: { id: firstId }, select: { firstName: true, lastName: true } });
+    const others = (await members(p.organizationId, COMPLIANCE_ROLES)).filter((u) => u.id !== firstId);
+    await send(others, (t) => ({
+      subject: t("Seconde validation attendue : {title}", { title: p.title }),
+      text: `${t("Bonjour,")}\n\n${t("{name} a validé le dossier « {title} », dont les honoraires dépassent le seuil de seconde validation de votre organisation. Une seconde validation, par un autre membre de la conformité, est nécessaire.", { name: first ? `${first.firstName} ${first.lastName}` : t("Un membre de la conformité"), title: p.title })}`,
+      cta: { label: t("Examiner le dossier"), href: `/organisations/${p.organizationId}/dossiers/${p.id}?onglet=conformite` },
+    }));
+  });
+}
+
 /**
  * Demande de devis envoyée : prévient chaque prestataire consulté. `only` : seulement ces prestataires (ajoutés à une
  * demande déjà envoyée, ou relancés) ; `reminder` : relance d'un prestataire resté sans réponse.

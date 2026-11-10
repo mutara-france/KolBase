@@ -281,7 +281,7 @@ export default async function Page({ params, searchParams }: { params: Promise<{
     const flagsOf = (p: (typeof toValidate)[number], c: (typeof conflicts)[number]) => {
       const r = regimeOf(p);
       const out: string[] = [];
-      if (p.experts.some((e) => fmvCheck(p.typeId, e.feeCents, e.days)?.verdict === "above")) out.push(t("honoraires au-dessus de la fourchette"));
+      if (p.experts.some((e) => fmvCheck(p.typeId, e.feeCents, e.days)?.verdict === "above")) out.push(p.fmvJustification ? t("honoraires au-dessus de la fourchette, justifiés : « {note} »", { note: p.fmvJustification.length > 80 ? `${p.fmvJustification.slice(0, 80)}…` : p.fmvJustification }) : t("honoraires au-dessus de la fourchette"));
       if (r.regime === "autorisation") out.push(t("autorisation de l'Ordre requise"));
       if (p.experts.some((e) => !practicesInFrance(e.practitioner.country))) out.push(t("expert exerçant hors de France"));
       if (c.length) out.push(t(c.length > 1 ? "{n} conflits d'intérêts" : "{n} conflit d'intérêts", { n: c.length }));
@@ -320,6 +320,7 @@ export default async function Page({ params, searchParams }: { params: Promise<{
                       <td data-label="Juste contrepartie">{p.experts.map((e) => <FmvBadge key={e.id} typeId={p.typeId} feeCents={e.feeCents} units={e.days} />)}</td>
                       <td data-label="Régime"><RegimePill regime={r.regime} reason={regimeReason(r, t, loc)} /></td>
                       <td data-label="Conflits">{c.length ? <span className={`pill ${c.some((x) => x.severity === "danger") ? "bad" : "wait"}`}>{c.length}</span> : <span className="pill ok">{t("Aucun")}</span>}</td>
+                      <td data-label="Soumis le">{fmtDate(locale, p.submittedAt ?? p.updatedAt)}{p.firstValidatedById && <><br /><span className="pill wait">{t("1re validation faite")}</span></>}</td>
                       <td data-label="Drapeaux">{flags.length ? <span className="text-sm">{flags.join(" · ")}</span> : <span className="pill ok">{t("Aucun")}</span>}</td>
                       <td data-label="Soumis le">{fmtDate(locale, p.submittedAt ?? p.updatedAt)}</td>
                       {/* Délai interne d'examen (Paramètres) : en retard, signalé. */}

@@ -18,7 +18,7 @@ import { BillingNotice } from "@/components/BillingNotice";
 import { db } from "@/lib/db";
 import { requireMembership } from "@/lib/orgs";
 import { COMPLIANCE_ROLES } from "@/lib/events";
-import { ACCOUNT_DELETED, PROPOSAL_ORIGIN, PROPOSAL_WITHDRAWN, collabType, eventTabOpen, needsMeeting, PROJECT_ROLES, PROJECT_VIEW_ROLES, projectEditable, recruitmentOpen, REVIEW_ROLES, STATUS_LABEL, TRANSITIONS, unitCount, type TransitionKey } from "@/lib/projects";
+import { ACCOUNT_DELETED, PROPOSAL_ORIGIN, PROPOSAL_WITHDRAWN, collabType, eventTabOpen, fmvCheck, needsMeeting, PROJECT_ROLES, PROJECT_VIEW_ROLES, projectEditable, recruitmentOpen, REVIEW_ROLES, STATUS_LABEL, TRANSITIONS, unitCount, type TransitionKey } from "@/lib/projects";
 import { storageEnabled } from "@/lib/storage";
 import { acceptCounterOffer, addProjectLead, advanceProject, removeProjectLead } from "@/lib/project-actions";
 import { ConfirmButton } from "@/components/ConfirmButton";
@@ -68,6 +68,7 @@ const ACTION_LABEL: Record<string, string> = {
   "signature.declined": "Signature électronique refusée",
   "signature.expired": "Demande de signature électronique expirée",
   "signature.canceled": "Demande de signature électronique annulée",
+  "project.validate_first": "Première validation (seconde requise)",
   "signature.reminder": "Rappel envoyé aux signataires en retard",
   "project.submit": "Soumis à la conformité",
   "project.validate": "Validé par la conformité",
@@ -257,8 +258,10 @@ export default async function Page({ params, searchParams }: { params: Promise<{
     if (k === "back_to_accord" && signStarted) return false;
     return (t.from as readonly string[]).includes(project.status) && (t.roles === "compliance" ? isCompliance : isProject);
   }).sort((a, b) => Number(DANGER.includes(a)) - Number(DANGER.includes(b)));
-  const needsNote = (k: TransitionKey) => k === "block" || k === "validate" || k === "ordre" || k === "declaration" || k === "abandon" || k === "decline_proposal";
-  const notePlaceholder = (k: TransitionKey) => (k === "ordre" ? "Référence de la demande" : k === "declaration" ? "Référence de la déclaration EPS (facultatif)" : k === "validate" && fourEyesRule === "justify" ? "Justification (obligatoire)" : k === "block" ? "Motif du blocage (obligatoire)" : k === "abandon" ? "Motif de l'abandon (obligatoire)" : k === "decline_proposal" ? "Motif, transmis à l'expert (facultatif)" : "Commentaire (facultatif)");
+  // Honoraires au-dessus du repère de marché : la soumission demande une justification, archivée avec le dossier.
+  const fmvOver = project.experts.some((e) => e.status !== "DECLINE" && e.status !== "ATT_EXPERTS" && fmvCheck(project.typeId, e.feeCents, e.days)?.verdict === "above");
+  const needsNote = (k: TransitionKey) => k === "block" || k === "validate" || k === "ordre" || k === "declaration" || k === "abandon" || k === "decline_proposal" || (k === "submit" && fmvOver);
+  const notePlaceholder = (k: TransitionKey) => (k === "submit" ? "Justification des honoraires au-dessus du repère (obligatoire, archivée)" : k === "ordre" ? "Référence de la demande" : k === "declaration" ? "Référence de la déclaration EPS (facultatif)" : k === "validate" && fourEyesRule === "justify" ? "Justification (obligatoire)" : k === "block" ? "Motif du blocage (obligatoire)" : k === "abandon" ? "Motif de l'abandon (obligatoire)" : k === "decline_proposal" ? "Motif, transmis à l'expert (facultatif)" : "Commentaire (facultatif)");
   // Libellés français ci-dessus, traduits à l'affichage.
 
   // Engagé = experts ayant accepté ; les honoraires proposés sans réponse sont indiqués à part (même définition
@@ -362,6 +365,10 @@ export default async function Page({ params, searchParams }: { params: Promise<{
   const expensesDue = project.expenses.filter((x) => x.status !== "payee").length;
   const over = project.budgetCents != null && spent > project.budgetCents;
   const complianceActs = available.filter((k) => TRANSITIONS[k].roles === "compliance");
+  // Seconde validation : honoraires engagés au-delà du seuil réglé par l'organisation (0 : désactivé).
+  const engagedFees = project.experts.filter((e) => e.status !== "DECLINE" && e.status !== "ATT_EXPERTS").reduce((x, e) => x + (e.feeCents ?? 0), 0);
+  const secondValidation = project.status === "EN_VALID" && settings.secondValidationAbove > 0 && engagedFees > settings.secondValidationAbove * 100;
+  const firstValidator = project.firstValidatedById ? await db.user.findUnique({ where: { id: project.firstValidatedById }, select: { firstName: true, lastName: true } }).then((u) => (u ? `${u.firstName} ${u.lastName}` : t("un membre de la conformité"))) : null;
   const teamActs = available.filter((k) => TRANSITIONS[k].roles !== "compliance");
   const selectedEvent = project.events.find((ev) => ev.id === evenement) ?? project.events[0] ?? null;
   const ev0 = selectedEvent ?? callEvent;
@@ -387,7 +394,7 @@ export default async function Page({ params, searchParams }: { params: Promise<{
       <input type="hidden" name="orgId" value={id} />
       <input type="hidden" name="projectId" value={projectId} />
       <input type="hidden" name="transition" value={k} />
-      {needsNote(k) && <input name="note" aria-label={t(notePlaceholder(k))} placeholder={t(notePlaceholder(k))} required={k === "block" || k === "abandon" || (k === "validate" && fourEyesRule === "justify")} />}
+      {needsNote(k) && <input name="note" aria-label={t(notePlaceholder(k))} placeholder={t(notePlaceholder(k))} required={k === "block" || k === "abandon" || (k === "validate" && fourEyesRule === "justify") || (k === "submit" && fmvOver)} />}
       {k === "signed" && attestable && (
         <label className="check text-sm">
           <input type="checkbox" name="attest" value="1" required />{" "}{t("J'atteste que la convention de {join} est signée par les deux parties et conservée par l'organisation.", { join: unsigned.join(", ") })}
@@ -436,6 +443,9 @@ export default async function Page({ params, searchParams }: { params: Promise<{
             <section className="card next-step" aria-labelledby="prochaine-etape">
               <span className="eyebrow-sm" id="prochaine-etape">{t("Prochaine étape")}</span>
               <p className="next-hint">{t(NEXT_HINT[project.status] ?? "")}</p>
+              {soumission === "justification" && project.status === "ACCORD" && (
+                <p className="notice warn" role="alert">{t("Soumission refusée : les honoraires d'au moins un expert dépassent le repère de marché. Justifiez-les dans le champ ci-dessous ; la justification est archivée avec le dossier et lue par la conformité.")}</p>
+              )}
               {soumission === "date" && project.status === "ACCORD" && (
                 <p className="notice warn" role="alert">
                   {t("Soumission refusée : renseignez la date d'intervention (ou créez l'événement daté) avant de soumettre le dossier à la conformité. Elle fixe le délai d'examen et le dernier jour de la démarche EPS.")}{" "}
@@ -883,6 +893,7 @@ export default async function Page({ params, searchParams }: { params: Promise<{
                 {project.status === "VALIDE" && !planned && regime && regime.regime !== "hors_france" && (
                   <p className="muted text-sm">{t("Renseignez la date d'intervention du dossier pour connaître le dernier jour de la démarche EPS.")}</p>
                 )}
+                {project.fmvJustification && <p className="notice"><strong>{t("Honoraires au-dessus du repère, justification de l'équipe :")}</strong> {project.fmvJustification}</p>}
                 {project.complianceNote && <p className={`notice ${project.status === "BLOQUE" ? "error" : "ok"}`}>{t("Conformité : {complianceNote}", { complianceNote: project.complianceNote })}</p>}
                 {project.epsDeclaredAt && (
                   <p className="muted text-sm">
@@ -925,6 +936,14 @@ export default async function Page({ params, searchParams }: { params: Promise<{
                       : <p className="hint">{t("Examen attendu avant le {date}.", { date: fmtDate(locale, revDue) })}</p>)}
                     {fourEyesRule === "blocked" && <p className="notice warn">{t(FOUR_EYES_BLOCKED)}</p>}
                     {fourEyesRule === "justify" && <p className="hint">{t(FOUR_EYES_JUSTIFY)}</p>}
+                    {secondValidation && (
+                      project.firstValidatedById
+                        ? <p className={`notice ${project.firstValidatedById === user.id ? "warn" : "ok"}`}>
+                            {t("Première validation par {name} le {date}.", { name: firstValidator, date: fmtDate(locale, project.firstValidatedAt!) })}{" "}
+                            {project.firstValidatedById === user.id ? t("La seconde validation doit venir d'un autre membre de la conformité.") : t("Votre validation sera la seconde : le dossier passera « Validé ».")}
+                          </p>
+                        : <p className="hint">{t("Honoraires au-delà de {max} HT : deux validations, par deux membres de la conformité, sont requises. La vôtre sera la première.", { max: fmtEur(locale, settings.secondValidationAbove * 100) })}</p>
+                    )}
                     {transitionsBlock(complianceActs)}
                   </section>
                 )}

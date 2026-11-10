@@ -6,7 +6,7 @@ import { db } from "@/lib/db";
 import { audit, requireUser } from "@/lib/auth";
 import { isVerifiedOrg, notVerified, requireMembership } from "@/lib/orgs";
 import { COMPLIANCE_ROLES } from "@/lib/events";
-import { collabType, expertNotices, PROJECT_ROLES, projectEditable, RECRUITING_STATUSES, recruitmentOpen, SOURCING_ROLES, PROJECT_VIEW_ROLES, termsChanged, TRANSITIONS, type TransitionKey } from "@/lib/projects";
+import { collabType, expertNotices, fmvCheck, PROJECT_ROLES, projectEditable, RECRUITING_STATUSES, recruitmentOpen, SOURCING_ROLES, PROJECT_VIEW_ROLES, termsChanged, TRANSITIONS, type TransitionKey } from "@/lib/projects";
 import { storageEnabled } from "@/lib/storage";
 import { fourEyes, projectAuthors } from "@/lib/four-eyes";
 import type { ProjectStatus } from "@/generated/prisma/client";
@@ -16,7 +16,7 @@ import { frameworkPeriodError, frameworkStart } from "@/lib/expert-costs";
 import { dayOrNull, eurToCents, str } from "@/lib/form";
 import { readFeeFields } from "@/lib/fee-fields";
 import { hoursOf } from "@/lib/fees";
-import { notifyCompliance, notifyCounterAccepted, notifyExpertAnswer, notifyExpertCounter, notifyExpertNotice, notifyMessage, notifyNewProposal, notifyProjectLead, notifySolicitations } from "@/lib/notifications";
+import { notifyCompliance, notifyCounterAccepted, notifySecondValidation, notifyExpertAnswer, notifyExpertCounter, notifyExpertNotice, notifyMessage, notifyNewProposal, notifyProjectLead, notifySolicitations } from "@/lib/notifications";
 import { signatureEnabled } from "@/lib/yousign";
 import { engagementBlock, engagementGate } from "@/lib/billing";
 import { freezeBilling } from "@/lib/expert-billing";
@@ -226,6 +226,9 @@ export async function advanceProject(form: FormData) {
   if (key === "submit" && !plannedDate({ plannedAt: project.plannedAt, events: await db.event.findMany({ where: { projectId, cancelledAt: null }, select: { startsAt: true, cancelledAt: true } }) })) {
     redirect(`/organisations/${orgId}/dossiers/${projectId}?soumission=date`);
   }
+  // Honoraires au-dessus du repère de marché : la soumission exige une justification écrite, archivée avec le dossier.
+  const fmvOver = project.experts.some((e) => e.status !== "DECLINE" && e.status !== "ATT_EXPERTS" && fmvCheck(project.typeId, e.feeCents, e.days)?.verdict === "above");
+  if (key === "submit" && fmvOver && !note) redirect(`/organisations/${orgId}/dossiers/${projectId}?soumission=justification`);
   // Abandon : le motif est obligatoire (il figure dans l'historique du dossier).
   if (key === "abandon" && !note) return;
   // Accepter la proposition d'un expert l'engage : organisation validée, contrat de sous-traitance, abonnement.
@@ -239,6 +242,20 @@ export async function advanceProject(form: FormData) {
     const rule = await fourEyes(await projectAuthors(projectId), orgId, user.id, COMPLIANCE_ROLES);
     if (rule === "blocked" || (rule === "justify" && !note)) return;
     selfValidated = rule === "justify";
+    // Seconde validation : au-delà du seuil d'honoraires réglé par l'organisation, deux membres Conformité différents
+    // valident. La première validation est posée sur le dossier ; la seconde, par quelqu'un d'autre, le fait avancer.
+    const settings = complianceSettings(project.organization.complianceSettings);
+    const fees = project.experts.filter((e) => e.status !== "DECLINE" && e.status !== "ATT_EXPERTS").reduce((x, e) => x + (e.feeCents ?? 0), 0);
+    if (settings.secondValidationAbove > 0 && fees > settings.secondValidationAbove * 100) {
+      if (!project.firstValidatedById) {
+        await db.project.update({ where: { id: projectId }, data: { firstValidatedById: user.id, firstValidatedAt: new Date(), complianceNote: note || null } });
+        await audit(user.id, "project.validate_first", "Project", projectId, { fees, note: note || undefined });
+        notifySecondValidation(projectId, user.id);
+        revalidatePath(`/organisations/${orgId}/dossiers/${projectId}`);
+        return;
+      }
+      if (project.firstValidatedById === user.id) return;
+    }
   }
   // Experts à prévenir, d'après leur situation avant le changement d'étape.
   const engagedIds = project.experts.filter((e) => e.status !== "DECLINE" && e.status !== "ATT_EXPERTS").map((e) => e.id);
@@ -251,13 +268,14 @@ export async function advanceProject(form: FormData) {
     data: {
       status: t.to,
       ...(key === "block" || key === "validate" ? { complianceNote: note || null } : {}),
+      ...(key === "block" || key === "back_to_accord" || key === "revise" ? { firstValidatedById: null, firstValidatedAt: null } : {}),
       ...(key === "abandon" ? { abandonNote: note } : {}),
       // Démarche EPS : date (et référence) de la déclaration, date de la demande à l'Ordre — preuve du respect des délais.
       ...(key === "ordre" ? { ordreRef: note || null, ordreRequestedAt: new Date() } : {}),
       ...(key === "declaration" ? { epsDeclaredAt: new Date(), epsRef: note || null } : {}),
       ...(attest ? { signatureAttestedAt: new Date(), signatureAttestedById: user.id } : {}),
       // Soumission à la conformité : point de départ du délai d'examen (relance si elle est dépassée).
-      ...(key === "submit" ? { submittedAt: new Date(), reviewReminderAt: null } : {}),
+      ...(key === "submit" ? { submittedAt: new Date(), reviewReminderAt: null, fmvJustification: fmvOver ? note : null } : {}),
     },
   });
   // Les experts ayant donné leur accord suivent le statut du dossier.

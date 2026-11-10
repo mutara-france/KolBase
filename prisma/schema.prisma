@@ -513,6 +513,13 @@ model Project {
   declared        Boolean       @default(false)
   complianceNote  String?
   ordreRef        String?
+  // Seconde validation (réglage secondValidationAbove) : première validation posée, la seconde, par un autre membre
+  // Conformité, fait passer le dossier « Validé ». Effacés quand le dossier repasse en accord de principe.
+  firstValidatedById String?
+  firstValidatedAt   DateTime?
+  // Honoraires au-dessus du repère de marché : justification écrite par l'équipe à la soumission, archivée avec le
+  // dossier (la conformité d'un industriel la demande ; sans elle, l'écart n'était noté nulle part).
+  fmvJustification String?
   // Démarche EPS (dispositif anti-cadeaux) : date de la déclaration simple et sa référence, date de la demande
   // d'autorisation à l'Ordre. Preuve du respect des délais (8 jours ouvrables, 2 mois avant l'exécution).
   epsDeclaredAt    DateTime?
@@ -520,6 +527,10 @@ model Project {
   ordreRequestedAt DateTime?
   createdById     String?
   budgetCents     Int?
+  // Références du service achats de l'organisation : bon de commande et centre de coûts, repris sur la note
+  // d'honoraires de l'expert et dans l'export comptable (sans PO, aucun paiement ne part chez un industriel).
+  purchaseOrder   String?
+  costCenter      String?
   declarationRef  String?   // référence de publication Transparence Santé
   declaredAt      DateTime?
   // Signature attestée sans convention déposée (stockage de documents non configuré) : qui et quand.
