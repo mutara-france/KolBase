@@ -59,3 +59,15 @@ describe("échéance de la démarche EPS", () => {
     expect(epsDue(d("2026-11-18"), null, s)).toBeNull();
   });
 });
+
+describe("réponse d'un expert sollicité", () => {
+  it("échéance au délai interne, « sans réponse » au double", async () => {
+    const { answerDue, unanswered } = await import("@/lib/deadlines");
+    const s = { answerDays: 7 };
+    expect(answerDue(d("2026-11-01"), s)?.toISOString().slice(0, 10)).toBe("2026-11-08");
+    expect(answerDue(null, s)).toBeNull();
+    expect(unanswered(d("2026-11-01"), s, d("2026-11-14"))).toBe(false);
+    expect(unanswered(d("2026-11-01"), s, d("2026-11-16"))).toBe(true);
+    expect(unanswered(null, s, d("2026-11-16"))).toBe(false);
+  });
+});

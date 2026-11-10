@@ -4,6 +4,11 @@
  * prestataire → supplier, Ordre → French Dental Council, HT/TTC → excl./incl. VAT, pointage → check-in.
  */
 export const ORGANISATION: Record<string, string> = {
+  "Réponse attendue d'un expert sollicité (relance à l'échéance)": "Answer expected from a solicited expert (reminder at the deadline)",
+  "Sollicité le {date}, relancé{reminded}, sans réponse : sollicitez un autre expert ou écrivez-lui.": "Solicited on {date}, reminded{reminded}, no answer: solicit another expert or write to them.",
+  "Sollicité le {date}, relancé le {reminded}.": "Solicited on {date}, reminded on {reminded}.",
+  "Sollicité le {date} · réponse attendue avant le {due} (relance automatique ensuite).": "Solicited on {date} · answer expected by {due} (automatic reminder afterwards).",
+  "Rappel envoyé aux signataires en retard": "Reminder sent to late signers",
   // Courriels (notifications)
   "\n\nCommentaire : {complianceNote}": "\n\nComment: {complianceNote}",
   "\n\nMotif : {declineNote}": "\n\nReason: {declineNote}",
