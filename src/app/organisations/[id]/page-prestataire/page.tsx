@@ -13,6 +13,7 @@ import { db } from "@/lib/db";
 import { requireMembership } from "@/lib/orgs";
 import { SUPPLIER_CATEGORIES, supplierCategoryLabel } from "@/lib/suppliers";
 import { getT } from "@/lib/i18n/server";
+import { REGIONS } from "@/lib/regions";
 import { fmtEur, intlLocale } from "@/lib/i18n";
 
 export async function generateMetadata() {
@@ -58,7 +59,8 @@ export default async function Page({ params }: { params: Promise<{ id: string }>
         <SupplierProfileForm
           orgId={id}
           categories={SUPPLIER_CATEGORIES.map((c) => ({ id: c.id, label: t(c.label) }))}
-          current={{ categories: org.supplierCategories, coverage: org.coverage ?? "", listed: org.listed }}
+          regions={REGIONS}
+          current={{ categories: org.supplierCategories, coverage: org.coverage ?? "", coverageRegions: org.coverageRegions, coverageNational: org.coverageNational, listed: org.listed }}
           canEdit={isAdmin}
         />
         {isAdmin && (

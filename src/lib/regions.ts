@@ -24,6 +24,19 @@ const REGION_DEPTS: Record<string, string[]> = {
   Mayotte: ["976"],
 };
 
+/** Régions (métropole puis outre-mer), dans l'ordre d'affichage. */
+export const REGIONS = Object.keys(REGION_DEPTS);
+
+/**
+ * Le prestataire intervient-il dans cette région ? Sans zone déclarée (ni régions, ni France entière), on ne sait pas :
+ * `null`, pour ne pas écarter à tort un prestataire qui n'a pas renseigné sa zone.
+ */
+export function coversRegion(supplier: { coverageRegions: string[]; coverageNational: boolean }, region: string | null): boolean | null {
+  if (supplier.coverageNational) return true;
+  if (supplier.coverageRegions.length === 0) return null;
+  return region ? supplier.coverageRegions.includes(region) : null;
+}
+
 const BY_DEPT = new Map(Object.entries(REGION_DEPTS).flatMap(([region, depts]) => depts.map((d) => [d, region] as const)));
 
 /** Principales villes (préfectures de région et grandes villes) : région quand le code postal manque. */

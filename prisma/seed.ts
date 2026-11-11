@@ -24,7 +24,7 @@ const at = (days: number, hour = 9) => {
 const MAIL = "demo.kolbase.local";
 
 // ─── Organisations ─────────────────────────────────────────────────────────
-const ORGS: { id: string; name: string; kind: OrgKind; sector: string; hq: string; areas: string[]; about: string; policy: string; cats?: string[]; coverage?: string }[] = [
+const ORGS: { id: string; name: string; kind: OrgKind; sector: string; hq: string; areas: string[]; about: string; policy: string; cats?: string[]; coverage?: string; regions?: string[]; national?: boolean }[] = [
   { id: "demo-org-dentalys", name: "Dentalys Implants", kind: "INDUSTRIEL", sector: "Dispositifs médicaux", hq: "Lyon, France",
     areas: ["Implantologie", "Chirurgie orale", "Prothèse, CFAO"],
     about: "Fabricant fictif d'implants et de solutions de chirurgie guidée. Organisation de démonstration.",
@@ -44,19 +44,19 @@ const ORGS: { id: string; name: string; kind: OrgKind; sector: string; hq: strin
   { id: "demo-org-mediane", name: "Agence Médiane Événements", kind: "PRESTATAIRE", sector: "Logistique événementielle", hq: "Marseille, France",
     areas: ["Congrès", "Hospitalités"],
     about: "Agence fictive mandatée pour la logistique d'événements scientifiques. Organisation de démonstration.",
-    policy: "Agit uniquement sur mandat écrit d'une organisation.", cats: ["evenementiel", "audiovisuel"], coverage: "France entière" },
+    policy: "Agit uniquement sur mandat écrit d'une organisation.", cats: ["evenementiel", "audiovisuel"], coverage: "France entière", national: true },
   // Prestataires référencés (annuaire des prestataires, demandes de devis).
-  { id: "demo-sup-belleville", name: "Traiteur Belleville", kind: "PRESTATAIRE", sector: "Restauration", hq: "Lyon, France", areas: [], cats: ["restauration"], coverage: "Auvergne-Rhône-Alpes",
+  { id: "demo-sup-belleville", name: "Traiteur Belleville", kind: "PRESTATAIRE", sector: "Restauration", hq: "Lyon, France", areas: [], cats: ["restauration"], coverage: "Auvergne-Rhône-Alpes", regions: ["Auvergne-Rhône-Alpes"],
     about: "Pauses, cocktails et déjeuners assis, formules adaptées aux contraintes de coût raisonnable. Prestataire fictif.", policy: "" },
-  { id: "demo-sup-tablesdusud", name: "Les Tables du Sud", kind: "PRESTATAIRE", sector: "Restauration", hq: "Marseille, France", areas: [], cats: ["restauration"], coverage: "PACA, Occitanie",
+  { id: "demo-sup-tablesdusud", name: "Les Tables du Sud", kind: "PRESTATAIRE", sector: "Restauration", hq: "Marseille, France", areas: [], cats: ["restauration"], coverage: "PACA, Occitanie", regions: ["Provence-Alpes-Côte d'Azur", "Occitanie"],
     about: "Cocktails dînatoires et buffets, service en salle ou sur site. Prestataire fictif.", policy: "" },
-  { id: "demo-sup-confluence", name: "Espace Confluence", kind: "PRESTATAIRE", sector: "Lieu de réception", hq: "Lyon, France", areas: [], cats: ["salle"], coverage: "Lyon et Rhône",
+  { id: "demo-sup-confluence", name: "Espace Confluence", kind: "PRESTATAIRE", sector: "Lieu de réception", hq: "Lyon, France", areas: [], cats: ["salle"], coverage: "Lyon et Rhône", regions: ["Auvergne-Rhône-Alpes"],
     about: "Amphithéâtre de 200 places, trois salles d'atelier, régie intégrée. Prestataire fictif.", policy: "" },
-  { id: "demo-sup-rivegauche", name: "Hôtel Rive Gauche", kind: "PRESTATAIRE", sector: "Hébergement", hq: "Lyon, France", areas: [], cats: ["hebergement"], coverage: "Lyon centre",
+  { id: "demo-sup-rivegauche", name: "Hôtel Rive Gauche", kind: "PRESTATAIRE", sector: "Hébergement", hq: "Lyon, France", areas: [], cats: ["hebergement"], coverage: "Lyon centre", regions: ["Auvergne-Rhône-Alpes"],
     about: "Blocs de chambres pour congressistes, tarif garanti hors salon. Prestataire fictif.", policy: "" },
-  { id: "demo-sup-praxis", name: "Studio Praxis", kind: "PRESTATAIRE", sector: "Communication", hq: "Bordeaux, France", areas: [], cats: ["communication", "impression"], coverage: "France entière",
+  { id: "demo-sup-praxis", name: "Studio Praxis", kind: "PRESTATAIRE", sector: "Communication", hq: "Bordeaux, France", areas: [], cats: ["communication", "impression"], coverage: "France entière", national: true,
     about: "Conception de supports pédagogiques et campagnes d'inscription, relecture réglementaire incluse. Prestataire fictif.", policy: "" },
-  { id: "demo-sup-navette", name: "Navette Pro", kind: "PRESTATAIRE", sector: "Transport", hq: "Paris, France", areas: [], cats: ["transport"], coverage: "France entière",
+  { id: "demo-sup-navette", name: "Navette Pro", kind: "PRESTATAIRE", sector: "Transport", hq: "Paris, France", areas: [], cats: ["transport"], coverage: "France entière", national: true,
     about: "Navettes gare–lieu d'événement et transferts de groupes. Prestataire fictif.", policy: "" },
 ];
 
@@ -148,7 +148,7 @@ async function main() {
         eventReview: o.kind === "INDUSTRIEL",
       },
     });
-    if (o.cats) await db.organization.updateMany({ where: { id: o.id, supplierCategories: { isEmpty: true } }, data: { supplierCategories: o.cats, coverage: o.coverage } });
+    if (o.cats) await db.organization.updateMany({ where: { id: o.id, supplierCategories: { isEmpty: true } }, data: { supplierCategories: o.cats, coverage: o.coverage, coverageRegions: o.regions ?? [], coverageNational: o.national ?? false } });
   }
 
   for (const s of STAFF) {

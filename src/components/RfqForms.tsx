@@ -1,5 +1,6 @@
 "use client";
 import { detailFields } from "@/lib/supplier-profiles";
+import { coversRegion } from "@/lib/regions";
 import { SectionHead } from "@/components/UI";
 
 import { useActionState, useState } from "react";
@@ -18,15 +19,15 @@ import { intlLocale, type Locale } from "@/lib/i18n/core";
 type Cat = { id: string; label: string };
 type Supplier = {
   id: string; name: string; categories: string[]; city: string | null; coverage: string | null; about: string | null; since: number; rating?: number | null; reviews?: number;
-  logo?: string | null; priceHint?: string | null; from?: string | null;
+  logo?: string | null; priceHint?: string | null; from?: string | null; coverageRegions?: string[]; coverageNational?: boolean;
 };
-type EventOpt = { id: string; label: string; city: string | null; capacity: number | null; agencyId?: string | null; day?: string; endDay?: string };
+type EventOpt = { id: string; label: string; city: string | null; capacity: number | null; agencyId?: string | null; day?: string; endDay?: string; region?: string | null };
 
 /**
  * Prestataire à consulter (nouvelle demande). `eventAgency` : l'agence à qui l'événement choisi est confié. La consulter
  * reste possible (choix conscient du client) ; elle ne verra alors sur la demande que son propre devis.
  */
-function SupplierPick({ s, selected, onToggle, eventAgency = false }: { s: Supplier; selected: boolean; onToggle: () => void; eventAgency?: boolean }) {
+function SupplierPick({ s, selected, onToggle, eventAgency = false, outOfZone = false }: { s: Supplier; selected: boolean; onToggle: () => void; eventAgency?: boolean; outOfZone?: boolean }) {
   const t = useT();
   return (
     <div className={`supplier pick${selected ? " selected" : ""}`}>
@@ -36,6 +37,7 @@ function SupplierPick({ s, selected, onToggle, eventAgency = false }: { s: Suppl
           <strong>{s.name}</strong>
           {s.rating != null && <span className="rating-badge" title={t("({reviews} avis)", { reviews: s.reviews })}><Star size={11} /> {s.rating.toFixed(1).replace(".", ",")}</span>}
           {eventAgency && <span className="pill wait">{t("Agence de cet événement")}</span>}
+          {outOfZone && <span className="pill muted" title={t("Ce prestataire n'a pas déclaré intervenir dans la région de l'événement ; vous pouvez le consulter quand même.")}>{t("Hors de sa zone")}</span>}
         </div>
         <div className="muted text-xs">{[s.coverage ?? s.city, s.from ?? s.priceHint, t("référencé depuis {since}", { since: s.since })].filter(Boolean).join(" · ")}{" · "}<a href={`/structures/${s.id}`} target="_blank" rel="noreferrer">{t("voir sa page")}</a></div>
         {eventAgency && (
@@ -68,7 +70,10 @@ export function NewRfqForm({ orgId, categories, suppliers, events, defaultEventI
   // Dates de la prestation : celles de l'événement par défaut, à saisir pour une demande sans événement.
   const [serviceStart, setServiceStart] = useState(ev?.day ?? "");
   const [serviceEnd, setServiceEnd] = useState(ev?.endDay && ev.endDay !== ev.day ? ev.endDay : "");
-  const matching = suppliers.filter((s) => s.categories.includes(category));
+  // Prestataires de la catégorie, ceux qui déclarent couvrir la région de l'événement en tête ; les autres restent consultables.
+  const region = ev?.region ?? null;
+  const covers = (s: Supplier) => coversRegion({ coverageRegions: s.coverageRegions ?? [], coverageNational: s.coverageNational ?? false }, region);
+  const matching = suppliers.filter((s) => s.categories.includes(category)).sort((a, b) => Number(covers(a) === false) - Number(covers(b) === false));
   const toggle = (id: string) => setPicked((p) => (p.includes(id) ? p.filter((x) => x !== id) : [...p, id]));
   const catLabel = categories.find((c) => c.id === category)?.label ?? "";
   const pickedNames = picked.map((id) => suppliers.find((s) => s.id === id)?.name).filter(Boolean) as string[];
@@ -118,7 +123,7 @@ export function NewRfqForm({ orgId, categories, suppliers, events, defaultEventI
           </div>
           <p className="hint">{t("Référencés dans la catégorie « {cat} ». Chacun ne voit que sa propre réponse ; vous comparez tous les devis.", { cat: catLabel })}</p>
           <div className="stack-sm">
-            {matching.map((s) => <SupplierPick key={s.id} s={s} selected={picked.includes(s.id)} onToggle={() => toggle(s.id)} eventAgency={!!ev?.agencyId && ev.agencyId === s.id} />)}
+            {matching.map((s) => <SupplierPick key={s.id} s={s} selected={picked.includes(s.id)} onToggle={() => toggle(s.id)} eventAgency={!!ev?.agencyId && ev.agencyId === s.id} outOfZone={covers(s) === false} />)}
             {matching.length === 0 && <p className="muted">{t("Aucun prestataire référencé dans cette catégorie pour l'instant.")}</p>}
           </div>
         </section>
@@ -312,9 +317,10 @@ function SelectAll({ count, all, onAll }: { count: number; all: boolean; onAll: 
   return <button type="button" className="link" onClick={onAll}>{all ? t("Tout désélectionner") : t("Consulter les {count} prestataires de la catégorie", { count })}</button>;
 }
 
-export function SupplierProfileForm({ orgId, categories, current, canEdit }: { orgId: string; categories: Cat[]; current: { categories: string[]; coverage: string; listed: boolean }; canEdit: boolean }) {
+export function SupplierProfileForm({ orgId, categories, regions, current, canEdit }: { orgId: string; categories: Cat[]; regions: string[]; current: { categories: string[]; coverage: string; coverageRegions: string[]; coverageNational: boolean; listed: boolean }; canEdit: boolean }) {
   const t = useT();
   const [state, action, pending] = useActionState(updateSupplierProfile, undefined);
+  const [national, setNational] = useState(current.coverageNational);
   // Catégories cochées, et la principale (enregistrée en tête) : titre, couleur et icône de la page du prestataire.
   const [checked, setChecked] = useState<string[]>(current.categories);
   const [main, setMain] = useState<string>(current.categories[0] ?? "");
@@ -344,7 +350,15 @@ export function SupplierProfileForm({ orgId, categories, current, canEdit }: { o
       ) : (
         <input type="hidden" name="main" value={principal} />
       )}
-      <label>{t("Zone couverte")}<input name="coverage" defaultValue={current.coverage} placeholder={t("France entière, Grand Ouest…")} disabled={!canEdit} /></label>
+      <span className="label">{t("Zone d'intervention")}</span>
+      <label className="check"><input type="checkbox" name="national" checked={national} onChange={(e) => setNational(e.target.checked)} disabled={!canEdit} />{" "}{t("France entière")}</label>
+      {!national && (
+        <div className="checks">
+          {regions.map((r) => <label key={r} className="check"><input type="checkbox" name="regions" value={r} defaultChecked={current.coverageRegions.includes(r)} disabled={!canEdit} /> {r}</label>)}
+        </div>
+      )}
+      <span className="hint">{t("Lors d'une demande, les prestataires qui couvrent la région de l'événement sont présentés en premier ; les autres restent consultables, signalés « hors de sa zone ».")}</span>
+      <label>{t("Précision sur la zone (facultatif)")}<input name="coverage" defaultValue={current.coverage} placeholder={t("Rayon de 100 km autour de Lyon, Grand Ouest…")} disabled={!canEdit} /></label>
       <label className="check"><input type="checkbox" name="listed" defaultChecked={current.listed} disabled={!canEdit} />{" "}{t("Apparaître dans l'annuaire des prestataires")}</label>
       {canEdit && <button className="btn" disabled={pending}>{pending ? t("Enregistrement…") : t("Enregistrer")}</button>}
     </ActionForm>

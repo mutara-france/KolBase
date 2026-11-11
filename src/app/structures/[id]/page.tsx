@@ -139,7 +139,7 @@ export default async function Page({ params }: { params: Promise<{ id: string }>
                 <section className="card stack-sm">
                   <SectionHead icon={Info} title={t("Présentation")} />
                   {o.about ? <p>{o.about}</p> : <p className="muted">{t("Pas encore de présentation.")}</p>}
-                  {o.coverage && <p className="meta-line"><MapPin size={12} /> {t("Zone couverte : {zone}", { zone: o.coverage })}</p>}
+                  {(o.coverageNational || o.coverageRegions.length > 0 || o.coverage) && <p className="meta-line"><MapPin size={12} /> {t("Zone couverte : {zone}", { zone: [...new Set([o.coverageNational ? t("France entière") : o.coverageRegions.join(", "), o.coverage].filter(Boolean))].join(" · ") })}</p>}
                   {Object.keys(caps).length > 0 && (
                     <ul className="plain text-sm">
                       {Object.keys(caps).map((k) => <li key={k}><strong>{caps[k]}</strong> {t(capacityUnit(k))}</li>)}

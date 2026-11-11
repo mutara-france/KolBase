@@ -317,6 +317,10 @@ model Organization {
   // Prestataires référencés : catégories de prestation et zone couverte.
   supplierCategories String[] @default([])
   coverage           String?
+  // Zone d'intervention : régions couvertes (noms de src/lib/regions.ts) ou France entière ; sert à repérer les
+  // prestataires hors zone lors d'une demande, et à filtrer l'annuaire par région.
+  coverageRegions    String[] @default([])
+  coverageNational   Boolean  @default(false)
   // Book prestataire : capacités ({ seats, cocktail, banquet, rooms }), équipements, accessibilité, prix indicatif.
   capacities         Json     @default("{}")
   equipment          String[] @default([])

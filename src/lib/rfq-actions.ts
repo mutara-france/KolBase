@@ -15,6 +15,7 @@ import type { GateLink } from "@/lib/billing-plans";
 import { awardRight } from "@/lib/mandates";
 import { notifyAward, notifyFinalHeadcount, notifyInvoice, notifyInvoicePaid, notifyProposalWithdrawn, notifyQuote, notifyRfqDeclined, notifyQuoteProposed, notifyRfqCancelled, notifyRfqMessage, notifyRfqSent, notifySupplierBilling } from "@/lib/notifications";
 import { getT } from "@/lib/i18n/server";
+import { REGIONS } from "@/lib/regions";
 import { FINAL_COUNT_CATEGORIES, readDetails, readQuoteTerms } from "@/lib/supplier-profiles";
 
 export type ActionState = { error?: string; ok?: string; fix?: GateLink } | undefined;
@@ -390,7 +391,9 @@ export async function updateSupplierProfile(_: ActionState, form: FormData): Pro
   if (asked && categories.length === 0) return { error: t("Choisissez au moins une catégorie pour être référencé.") };
   // En attente de validation : catégories et zone sont enregistrées ; le référencement suivra la validation.
   const listed = asked && isVerifiedOrg(ctxOrg);
-  await db.organization.update({ where: { id: orgId }, data: { supplierCategories: categories, coverage: str(form, "coverage") || null, listed } });
+  const coverageNational = form.get("national") === "on";
+  const coverageRegions = coverageNational ? [] : form.getAll("regions").map(String).filter((r) => REGIONS.includes(r));
+  await db.organization.update({ where: { id: orgId }, data: { supplierCategories: categories, coverage: str(form, "coverage") || null, coverageRegions, coverageNational, listed } });
   await audit(user.id, "supplier.profile", "Organization", orgId, { categories, listed });
   revalidatePath(`/organisations/${orgId}/page-prestataire`);
   if (asked && !listed)

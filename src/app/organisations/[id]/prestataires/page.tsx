@@ -21,6 +21,7 @@ import { logoSrc } from "@/lib/logos";
 import { BillingNotice } from "@/components/BillingNotice";
 import { engagementBlock } from "@/lib/billing";
 import { getT } from "@/lib/i18n/server";
+import { coversRegion, REGIONS, regionOf } from "@/lib/regions";
 import { fmtDate, fmtEur, type Locale, type T } from "@/lib/i18n";
 
 export async function generateMetadata() {
@@ -30,10 +31,12 @@ export async function generateMetadata() {
 
 const DAY = 864e5;
 
-export default async function Page({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: Promise<{ onglet?: string; evenement?: string; cat?: string; prestataire?: string }> }) {
+export default async function Page({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: Promise<{ onglet?: string; evenement?: string; cat?: string; prestataire?: string; region?: string }> }) {
   const { t, locale } = await getT();
   const { id } = await params;
   const { evenement, cat, prestataire } = await searchParams;
+  const region = (await searchParams).region;
+  const regionQs = region ? `&region=${encodeURIComponent(region)}` : "";
   const onglet = (await searchParams).onglet ?? (evenement || prestataire ? "nouvelle" : "demandes");
   const { user, roles } = await requireMembership(id, EVENT_MANAGER_ROLES);
   const base = `/organisations/${id}`;
@@ -79,12 +82,12 @@ export default async function Page({ params, searchParams }: { params: Promise<{
               ai={aiEnabled()}
               categories={SUPPLIER_CATEGORIES.map((c) => ({ id: c.id, label: t(c.label) }))}
               suppliers={suppliers.map((s) => ({
-                id: s.id, name: s.name, categories: s.categories, city: s.city, coverage: s.coverage, about: s.about, since: s.since, rating: s.rating, reviews: s.reviews,
+                id: s.id, name: s.name, categories: s.categories, city: s.city, coverage: s.coverage, coverageRegions: s.coverageRegions, coverageNational: s.coverageNational, about: s.about, since: s.since, rating: s.rating, reviews: s.reviews,
                 logo: logoSrc(s), priceHint: s.priceHint,
                 from: s.from ? t("dès {amount} HT {unit}", { amount: fmtEur(locale, s.from.unitCents), unit: t(OFFER_UNITS[s.from.unit as keyof typeof OFFER_UNITS] ?? s.from.unit) }) : null,
               }))}
               events={events.map((e) => ({
-                id: e.id, label: `${fmtDate(locale, e.startsAt)} — ${e.title}`, city: e.city, capacity: e.capacity, agencyId: e.agencyId,
+                id: e.id, label: `${fmtDate(locale, e.startsAt)} — ${e.title}`, city: e.city, capacity: e.capacity, agencyId: e.agencyId, region: regionOf(e.postalCode, e.city),
                 day: toParisInput(e.startsAt).slice(0, 10), endDay: toParisInput(new Date(e.startsAt.getTime() + (e.durationMinutes ?? 0) * 60e3)).slice(0, 10),
               }))}
               defaultEventId={evenement}
@@ -114,15 +117,26 @@ export default async function Page({ params, searchParams }: { params: Promise<{
         {onglet === "annuaire" && (
           <section className="stack" aria-label={t("Annuaire des prestataires")}>
             <div className="chips">
-              <Link href="?onglet=annuaire" className={`chip${!cat ? " active" : ""}`}>{t("Toutes")}</Link>
+              <Link href={`?onglet=annuaire${regionQs}`} className={`chip${!cat ? " active" : ""}`}>{t("Toutes")}</Link>
               {SUPPLIER_CATEGORIES.map((c) => (
-                <Link key={c.id} href={`?onglet=annuaire&cat=${c.id}`} className={`chip chip-icon${cat === c.id ? " active" : ""}`}>
+                <Link key={c.id} href={`?onglet=annuaire&cat=${c.id}${regionQs}`} className={`chip chip-icon${cat === c.id ? " active" : ""}`}>
                   <CategoryIcon category={c.id} size={13} className="xs" /> {t(c.label)}
                 </Link>
               ))}
             </div>
+            {/* Région : prestataires qui la déclarent (ou France entière) ; ceux sans zone déclarée restent visibles. */}
+            <form className="inline-form" aria-label={t("Région de l'événement")}>
+              <input type="hidden" name="onglet" value="annuaire" />
+              {cat && <input type="hidden" name="cat" value={cat} />}
+              <span className="muted text-sm">{t("Région")}</span>
+              <select name="region" defaultValue={region ?? ""} aria-label={t("Région")}>
+                <option value="">{t("Toute la France")}</option>
+                {REGIONS.map((r) => <option key={r} value={r}>{r}</option>)}
+              </select>
+              <button className="btn ghost small">{t("Filtrer")}</button>
+            </form>
             {(() => {
-              const list = cat ? suppliers.filter((s) => s.categories.includes(cat)) : suppliers;
+              const list = (cat ? suppliers.filter((s) => s.categories.includes(cat)) : suppliers).filter((s) => !region || coversRegion(s, region) !== false);
               if (list.length === 0) return <div className="card empty"><EmptyState icon={Store} title={t("Aucun prestataire référencé dans cette catégorie.")} /></div>;
               return (
                 <div className="supplier-grid">
