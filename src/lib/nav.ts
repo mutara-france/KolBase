@@ -11,7 +11,7 @@ export const NAV_COOKIE = "kb_nav";
  * les pages d'une même rubrique se retrouvant en onglets. Module sans dépendance serveur (utilisé aussi côté client).
  */
 
-export type ShellIcon = "House" | "Users" | "Folder" | "FileText" | "CalendarDays" | "ShieldCheck" | "Send" | "Megaphone" | "UserRound" | "Receipt" | "Plug" | "ExternalLink" | "Wallet" | "BarChart3" | "Store" | "Building2" | "BadgeCheck" | "ScrollText" | "Newspaper" | "Activity" | "Flag" | "Mail";
+export type ShellIcon = "House" | "Users" | "Folder" | "FileText" | "CalendarDays" | "ShieldCheck" | "Send" | "Megaphone" | "UserRound" | "Receipt" | "Plug" | "ExternalLink" | "Wallet" | "BarChart3" | "Store" | "Building2" | "BadgeCheck" | "ScrollText" | "Newspaper" | "Activity" | "Flag" | "Mail" | "Radar";
 export type ShellItem = { key: string; href: string; label: string; short?: string; icon: ShellIcon; badge?: number; match?: string[]; exact?: boolean; /** Absente de la barre du bas (mobile) quand elle compterait plus de cinq entrées. */ secondary?: boolean };
 export type ShellLink = { href: string; label: string; icon: ShellIcon };
 export type ShellSpace = {
@@ -149,6 +149,7 @@ export function adminNavItems(counts: { orgs: number; identities: number; servic
     { key: "admin-services", href: "/admin/services", label: "Services", icon: "Megaphone", badge: counts.services, secondary: true },
     { key: "admin-abonnements", href: "/admin/abonnements", label: "Abonnements", icon: "Wallet", secondary: true },
     { key: "admin-actualites", href: "/admin/actualites", label: "Actualités", icon: "Newspaper", secondary: true },
+    { key: "admin-veille", href: "/admin/veille", label: "Veille", icon: "Radar", secondary: true },
     { key: "admin-emails", href: "/admin/emails", label: "E-mails", icon: "Mail", secondary: true },
     { key: "admin-exploitation", href: "/admin/exploitation", label: "Exploitation", icon: "Activity", secondary: true },
   ];

@@ -6,7 +6,7 @@ import { defineConfig } from "vitest/config";
  * lancé par la CI). Les actions serveur, elles, sont couvertes par le parcours de bout en bout.
  */
 const RULE_MODULES = [
-  "agenda", "article-format", "billing-plans", "compliance", "events", "fee-notes", "indicators", "intelligence", "nav",
+  "agenda", "article-format", "billing-plans", "compliance", "events", "fee-notes", "feed", "indicators", "intelligence", "nav",
   "org-roles", "projects", "quotes", "service-pack", "tabular", "totp", "visibility",
 ].map((m) => `src/lib/${m}.ts`);
 

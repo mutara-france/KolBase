@@ -1,13 +1,13 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
-import { Building2, FileSpreadsheet, Radar, Trash2, UserCheck, Users } from "lucide-react";
+import { Building2, ExternalLink, FileSpreadsheet, Newspaper, Radar, Trash2, UserCheck, Users } from "lucide-react";
 import { EmptyState, PageHead, SectionHead } from "@/components/UI";
 import { SiteHeader } from "@/components/SiteHeader";
 import { SectionNav } from "@/components/SectionNav";
 import { RankedBars } from "@/components/Charts";
 import { TableWrap } from "@/components/TableWrap";
 import { ConfirmButton } from "@/components/ConfirmButton";
-import { CompetitorForm, PublicImportForm } from "@/components/IntelligenceForms";
+import { CompetitorForm, PublicImportForm, WatchPinForm } from "@/components/IntelligenceForms";
 import { requireMembership } from "@/lib/orgs";
 import { STATS_ROLES } from "@/lib/org-roles";
 import { addonGate } from "@/lib/billing";
@@ -15,6 +15,8 @@ import { db } from "@/lib/db";
 import { competitorOverview, portfolio } from "@/lib/intelligence-data";
 import { LINK_KIND_LABEL, LINK_KINDS, LOYALTY_LABEL, personKey } from "@/lib/intelligence";
 import { removeCompetitor, removeImport } from "@/lib/intelligence-actions";
+import { watchFor, WATCH_DAYS } from "@/lib/watch";
+import { removeWatchPin } from "@/lib/watch-actions";
 import { getT } from "@/lib/i18n/server";
 import { fmtDate, fmtEur, intlLocale } from "@/lib/i18n";
 
@@ -23,19 +25,19 @@ export async function generateMetadata() {
   return { title: `${t("Intelligence")} — KolBase` };
 }
 
-const TABS = ["portefeuille", "concurrents", "sources"] as const;
+const TABS = ["portefeuille", "concurrents", "veille", "sources"] as const;
 type Tab = (typeof TABS)[number];
 const pct = (x: number) => `${Math.round(x * 100)} %`;
 
 /**
  * KolBase Intelligence (option de l'abonnement) : portefeuille d'experts de l'organisation, déclarations publiques de
- * ses concurrents suivis et fichiers Transparence Santé qu'elle a importés.
+ * ses concurrents suivis, veille des sites spécialisés et fichiers Transparence Santé qu'elle a importés.
  */
 export default async function Page({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: Promise<{ onglet?: string; annee?: string }> }) {
   const { t, locale } = await getT();
   const { id } = await params;
   const sp = await searchParams;
-  await requireMembership(id, STATS_ROLES);
+  const { org } = await requireMembership(id, STATS_ROLES);
   const gate = await addonGate(id, "intelligence");
   if (gate) redirect(gate);
   const tab: Tab = TABS.find((x) => x === sp.onglet) ?? "portefeuille";
@@ -43,10 +45,11 @@ export default async function Page({ params, searchParams }: { params: Promise<{
   const asked = Number(sp.annee);
   const year = Number.isInteger(asked) && asked >= 2000 && asked <= now ? asked : now;
   const base = `/organisations/${id}/intelligence`;
-  const [p, c, imports] = await Promise.all([
+  const [p, c, imports, watch] = await Promise.all([
     portfolio(id, year),
     competitorOverview(id, year),
     tab === "sources" ? db.publicImport.findMany({ where: { organizationId: id }, orderBy: { createdAt: "desc" } }) : [],
+    tab === "veille" ? watchFor(org) : null,
   ]);
   const years = [...new Set([...p.years, ...c.years, now])].filter((y) => y <= now).sort();
   // Bénéficiaires des concurrents qui sont aussi des experts de l'organisation (rapprochés par nom).
@@ -54,6 +57,7 @@ export default async function Page({ params, searchParams }: { params: Promise<{
   const tabs = [
     { key: "portefeuille", href: `${base}?annee=${year}`, label: t("Portefeuille d'experts") },
     { key: "concurrents", href: `${base}?onglet=concurrents&annee=${year}`, label: t("Concurrents"), count: c.competitors.length },
+    { key: "veille", href: `${base}?onglet=veille`, label: t("Veille") },
     { key: "sources", href: `${base}?onglet=sources`, label: t("Fichiers importés") },
   ];
 
@@ -64,7 +68,7 @@ export default async function Page({ params, searchParams }: { params: Promise<{
         <p className="muted"><Link href={`/organisations/${id}/statistiques`}>{t("Statistiques")}</Link> / {t("Intelligence")}</p>
         <PageHead title={t("KolBase Intelligence")} desc={t("Votre portefeuille d'experts et les déclarations publiques de vos concurrents suivis. Sources : vos dossiers et les fichiers Transparence Santé que vous importez ; jamais les données d'une autre organisation cliente de KolBase.")} />
         <SectionNav tabs={tabs} active={tab} label={t("Rubrique Intelligence")} />
-        {tab !== "sources" && (
+        {(tab === "portefeuille" || tab === "concurrents") && (
           <nav className="chips" aria-label={t("Année")}>
             {years.map((y) => <Link key={y} href={`${base}?${tab === "concurrents" ? "onglet=concurrents&" : ""}annee=${y}`} className={`chip${y === year ? " active" : ""}`} aria-current={y === year ? "page" : undefined}>{y}</Link>)}
           </nav>
@@ -162,6 +166,45 @@ export default async function Page({ params, searchParams }: { params: Promise<{
             <section className="card stack-sm">
               <SectionHead icon={Building2} title={t("Suivre un concurrent")} desc={t("Vingt concurrents au plus. Seules leurs déclarations sont conservées lors d'un import.")} />
               <CompetitorForm orgId={id} />
+            </section>
+          </>
+        )}
+
+        {tab === "veille" && watch && (
+          <>
+            <section className="card stack-sm">
+              <SectionHead icon={Newspaper} title={t("Publications des {n} derniers jours", { n: WATCH_DAYS })} desc={t("Publications des sites spécialisés relevés par KolBase qui citent l'un de vos concurrents suivis ou votre organisation, et publications que vous avez ajoutées. Titre, date et court extrait : l'article se lit sur le site d'origine.")} />
+              {watch.competitors === 0 && <p className="notice warn">{t("Vous ne suivez aucun concurrent : seules les publications qui citent votre organisation apparaissent.")} <Link href={`${base}?onglet=concurrents`}>{t("Suivre un concurrent")}</Link></p>}
+              {watch.hits.length === 0 ? (
+                <EmptyState icon={Newspaper} compact>{watch.sources.length === 0 ? t("Aucune source n'est encore relevée par KolBase : ajoutez vos propres publications ci-dessous.") : t("Aucune publication ne cite vos concurrents suivis ni votre organisation sur la période.")}</EmptyState>
+              ) : (
+                <ul className="plain stack-sm">
+                  {watch.hits.map((h) => (
+                    <li key={h.id} className="stack-xs">
+                      <div className="actions spread">
+                        <a href={h.url} target="_blank" rel="noopener noreferrer nofollow"><strong>{h.title}</strong> <ExternalLink size={13} aria-hidden /></a>
+                        {h.manual && (
+                          <form action={removeWatchPin}>
+                            <input type="hidden" name="orgId" value={id} />
+                            <input type="hidden" name="itemId" value={h.id} />
+                            <button className="link">{t("retirer")}</button>
+                          </form>
+                        )}
+                      </div>
+                      <div className="text-xs muted">{fmtDate(locale, h.publishedAt)} · {h.manual ? t("ajoutée par votre équipe") : h.source}{" "}{h.about.map((a) => <span key={a} className="pill wait">{a}</span>)}{h.own && <span className="pill ok">{t("votre organisation")}</span>}</div>
+                      {h.summary && <p className="text-sm muted">{h.summary}</p>}
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </section>
+            <section className="card stack-sm">
+              <SectionHead icon={Radar} title={t("Ajouter une publication")} desc={t("Publication d'un réseau social (LinkedIn, Instagram…) ou article hors des sources relevées : elle n'est visible que de votre organisation. Les réseaux sociaux n'autorisent pas la collecte automatisée de leurs publications.")} />
+              <WatchPinForm orgId={id} />
+            </section>
+            <section className="card stack-sm">
+              <SectionHead icon={Newspaper} title={t("Sources relevées par KolBase")} desc={t("Relevées toutes les six heures. Une source vous manque ? Écrivez-nous depuis la page d'aide.")} />
+              {watch.sources.length === 0 ? <p className="muted">{t("Aucune source pour l'instant.")}</p> : <p>{watch.sources.map((s) => s.name).join(" · ")}</p>}
             </section>
           </>
         )}

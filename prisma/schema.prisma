@@ -386,6 +386,39 @@ model Organization {
   // KolBase Intelligence : concurrents suivis et déclarations publiques importées par l'organisation.
   competitors      Competitor[]
   publicImports    PublicImport[]
+  watchItems       WatchItem[]
+}
+
+/// Source de veille (flux RSS ou Atom d'un site spécialisé, d'une revue, d'une chaîne vidéo), choisie par l'équipe
+/// KolBase depuis /admin/veille et relevée par les tâches planifiées.
+model WatchSource {
+  id        String      @id @default(cuid())
+  name      String
+  url       String      @unique
+  active    Boolean     @default(true)
+  fetchedAt DateTime?
+  error     String?     // dernier relevé en échec (effacé au relevé suivant réussi)
+  createdAt DateTime    @default(now())
+  items     WatchItem[]
+}
+
+/// Publication de veille : relevée dans une source (commune à toutes les organisations), ou ajoutée à la main par une
+/// organisation (publication d'un réseau social, par exemple), alors visible d'elle seule. Titre, lien et court extrait.
+model WatchItem {
+  id             String        @id @default(cuid())
+  sourceId       String?
+  source         WatchSource?  @relation(fields: [sourceId], references: [id], onDelete: Cascade)
+  organizationId String?
+  organization   Organization? @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  title          String
+  url            String
+  summary        String?
+  publishedAt    DateTime
+  createdAt      DateTime      @default(now())
+
+  @@unique([sourceId, url])
+  @@index([publishedAt])
+  @@index([organizationId])
 }
 
 /// Concurrent suivi par une organisation (KolBase Intelligence) : son nom et ses autres écritures (marques, filiales)

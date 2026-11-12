@@ -2830,6 +2830,79 @@ async function submitNewOrg(page, siren) {
   await pgc.end();
 }
 
+// ── Veille de KolBase Intelligence : sources gérées par KolBase, mentions des concurrents suivis, ajouts à la main ──
+{
+  const pgc = new pg.Client({ connectionString: process.env.DATABASE_URL });
+  await pgc.connect();
+  const org = "demo-org-dentalys";
+  await pgc.query(`delete from "WatchSource" where id = 'e2e-source'`);
+  await pgc.query(`delete from "WatchItem" where "organizationId" = $1`, [org]);
+  await pgc.query(`delete from "Competitor" where "organizationId" = $1`, [org]);
+  const before = (await pgc.query(`select "addonsGranted" from "Subscription" where "organizationId" = $1`, [org])).rows[0]?.addonsGranted ?? "{}";
+  await pgc.query(`update "Subscription" set "addonsGranted" = '{intelligence}' where "organizationId" = $1`, [org]);
+  await pgc.query(`insert into "Competitor" (id, "organizationId", name, aliases) values ('e2e-concurrent', $1, 'Implants Démo Concurrent', '{IDC}')`, [org]);
+  // Source relevée (comme par les tâches planifiées) : une publication cite le concurrent, une l'organisation, une
+  // personne ; une source en pause et une publication trop ancienne restent hors de la veille.
+  await pgc.query(`insert into "WatchSource" (id, name, url, "fetchedAt") values ('e2e-source', 'Revue dentaire (fictive)', 'https://revue-fictive.example.org/rss', now())`);
+  await pgc.query(`insert into "WatchItem" (id, "sourceId", title, url, summary, "publishedAt") values
+    ('e2e-w1', 'e2e-source', 'IDC ouvre un centre de formation', 'https://revue-fictive.example.org/a/1', 'Le fabricant annonce un centre à Lyon.', now() - interval '2 days'),
+    ('e2e-w2', 'e2e-source', 'Dentalys Implants au congrès', 'https://revue-fictive.example.org/a/2', null, now() - interval '3 days'),
+    ('e2e-w3', 'e2e-source', 'Actualité sans rapport', 'https://revue-fictive.example.org/a/3', null, now() - interval '4 days'),
+    ('e2e-w4', 'e2e-source', 'IDC : ancienne annonce', 'https://revue-fictive.example.org/a/4', null, now() - interval '200 days')`);
+  const { ctx, page } = await session();
+  await login(page, "claire.morel@demo.kolbase.local");
+  await page.goto(`${BASE}/organisations/${org}/intelligence?onglet=veille`);
+  let t = await text(page);
+  check("Veille : publications citant un concurrent suivi ou l'organisation, sur 90 jours", t.includes("IDC ouvre un centre de formation") && t.includes("Dentalys Implants au congrès") && !t.includes("Actualité sans rapport") && !t.includes("ancienne annonce") && t.includes("Revue dentaire (fictive)"), t.slice(0, 400));
+  check("Veille : lien vers le site d'origine, ouvert à part", (await page.locator('a[href="https://revue-fictive.example.org/a/1"][rel~="noopener"][target="_blank"]').count()) === 1);
+  // Publication d'un réseau social ajoutée à la main : visible de l'organisation seule.
+  await page.fill('input[name="url"]', "javascript:alert(1)");
+  await page.fill('input[name="title"]', "Publication LinkedIn de IDC sur son nouveau produit");
+  await page.locator('form:has(input[name="title"])').evaluate((f) => { f.noValidate = true; });
+  await page.click('button:has-text("Ajouter à la veille")');
+  await page.locator("main .notice.error").waitFor({ timeout: 10000 });
+  check("Veille : adresse refusée si ce n'est pas un lien https", (await text(page)).includes("adresse complète de la publication"));
+  await page.fill('input[name="url"]', "https://www.linkedin.com/posts/exemple-fictif");
+  await page.click('button:has-text("Ajouter à la veille")');
+  await page.locator("main .notice.ok").waitFor({ timeout: 10000 });
+  await page.reload();
+  t = await text(page);
+  check("Veille : publication ajoutée à la main, rattachée au concurrent cité", t.includes("Publication LinkedIn de IDC") && t.includes("ajoutée par votre équipe"));
+  const other = await session();
+  await login(other.page, "thomas.garnier@demo.kolbase.local");
+  await pgc.query(`update "Subscription" set "addonsGranted" = '{intelligence}' where "organizationId" = 'demo-org-orthonova'`);
+  await other.page.goto(`${BASE}/organisations/demo-org-orthonova/intelligence?onglet=veille`);
+  t = await text(other.page);
+  check("Veille : les ajouts et les concurrents d'une organisation restent invisibles d'une autre", !t.includes("Publication LinkedIn") && !t.includes("IDC ouvre un centre") && t.includes("Vous ne suivez aucun concurrent"));
+  await pgc.query(`update "Subscription" set "addonsGranted" = '{}' where "organizationId" = 'demo-org-orthonova'`);
+  await other.ctx.close();
+
+  // Administration : une adresse interne ou non https n'est jamais relevée ; une source se met en pause.
+  const adm = await session();
+  await login(adm.page, "anne.chevalier@demo.kolbase.local");
+  await adm.page.goto(`${BASE}/admin/veille`);
+  check("Admin : sources de veille listées", (await text(adm.page)).includes("Revue dentaire (fictive)"));
+  for (const bad of ["http://localhost:3000/api/health", "https://169.254.169.254/latest/meta-data/"]) {
+    await adm.page.fill('input[name="name"]', "Adresse interne");
+    await adm.page.fill('input[name="url"]', bad);
+    await adm.page.click('button:has-text("Ajouter la source")');
+    await adm.page.locator("main .notice.error").waitFor({ timeout: 10000 });
+  }
+  check("Admin : adresse interne refusée, rien n'est enregistré", (await text(adm.page)).includes("Adresse refusée") && (await pgc.query(`select count(*)::int as n from "WatchSource" where name = 'Adresse interne'`)).rows[0].n === 0);
+  await adm.page.locator('tr:has-text("Revue dentaire (fictive)") button:has-text("mettre en pause")').click();
+  await adm.page.locator('tr:has-text("Revue dentaire (fictive)") .pill:has-text("en pause")').waitFor({ timeout: 10000 });
+  await page.reload();
+  t = await text(page);
+  check("Veille : source en pause, ses publications sortent de la veille (les ajouts restent)", !t.includes("IDC ouvre un centre") && t.includes("Publication LinkedIn de IDC"));
+  await adm.ctx.close();
+  await pgc.query(`delete from "WatchSource" where id = 'e2e-source'`);
+  await pgc.query(`delete from "WatchItem" where "organizationId" = $1`, [org]);
+  await pgc.query(`delete from "Competitor" where "organizationId" = $1`, [org]);
+  await pgc.query(`update "Subscription" set "addonsGranted" = $2 where "organizationId" = $1`, [org, before]);
+  await ctx.close();
+  await pgc.end();
+}
+
 // ── Lettre d'information : proposée une fois à l'accueil, encart des actualités ──
 {
   const no = await session();

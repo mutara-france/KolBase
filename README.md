@@ -248,6 +248,14 @@ Abonnement), atteinte depuis Statistiques :
   (`PublicLink`), un fichier importé deux fois ne crée pas de doublon. Lecture des fichiers sans dépendance :
   `src/lib/tabular.ts`.
 
+- **Veille** (`src/lib/watch.ts`) : l'équipe KolBase choisit les sources depuis `/admin/veille` (flux RSS ou Atom de
+  sites spécialisés, revues, chaînes vidéo), relevées toutes les six heures par les tâches planifiées ; chaque
+  organisation voit, sur 90 jours, les publications qui citent ses concurrents suivis ou elle-même (titre, lien, date,
+  court extrait, conservés treize mois). Les réseaux sociaux ne publient pas de flux et interdisent la collecte
+  automatisée : leurs publications s'ajoutent à la main, par organisation. Une adresse de flux n'est relevée que si
+  elle est en https, sur un nom public dont la résolution DNS ne donne aucune adresse privée, redirections comprises
+  (`src/lib/feed-reader.ts`).
+
 Deux limites voulues : aucune donnée d'une autre organisation cliente n'est lue, et la réutilisation de la base
 Transparence Santé reste encadrée (finalité de transparence des liens d'intérêts, article L.1453-1 du code de la santé
 publique) — l'organisation l'atteste à chaque import ; à faire valider par un conseil avant l'ouverture commerciale.
