@@ -4,7 +4,9 @@ import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import { db } from "@/lib/db";
-import { audit, createSession, destroyOtherSessions, destroySession, requireUser } from "@/lib/auth";
+import { audit, createSession, destroyOtherSessions, destroySession, requireUser, sessionScope } from "@/lib/auth";
+import { currentHost } from "@/lib/brand-server";
+import { appUrl } from "@/lib/ics";
 import { hashPassword, needsRehash, passwordProblem, verifyPassword } from "@/lib/password";
 import { confirmPassword, tooManyAttempts } from "@/lib/password-check";
 import { blockedFor, clientIp, hit, reset } from "@/lib/rate-limit";
@@ -72,6 +74,8 @@ export async function signUp(_: FormState, form: FormData): Promise<FormState> {
 
   const exists = await db.user.findUnique({ where: { email } });
   if (exists) return { error: t("Un compte existe déjà avec cette adresse. Connectez-vous.") };
+  // Nom de domaine d'une organisation (KolBase Business) : les comptes se créent sur KolBase.
+  if ((await currentHost()).claimed) return { error: t("Les comptes se créent sur KolBase : rendez-vous sur {site}.", { site: appUrl() || "kolbase.io" }) };
 
   const user = await db.user.create({
     data: {
@@ -121,6 +125,12 @@ export async function signIn(_: FormState, form: FormData): Promise<FormState> {
   if (user.disabledAt) {
     await audit(user.id, "user.signin_disabled", "User", user.id);
     return { error: t("Ce compte a été désactivé par l'équipe KolBase. Pour en savoir plus, écrivez à {email}.", { email: LEGAL.contactEmail ?? "contact@kolbase.io" }) };
+  }
+  // Nom de domaine d'une organisation (KolBase Business) : réservé à ses membres ; les autres comptes se connectent
+  // sur KolBase (dit avant le second facteur, pour ne pas le demander en vain).
+  if (!(await sessionScope(user.id)).allowed) {
+    await audit(user.id, "user.signin_brand_refused", "User", user.id);
+    return { error: t("Cette adresse est réservée à l'équipe de l'organisation. Connectez-vous sur {site}.", { site: appUrl() || "kolbase.io" }) };
   }
   // Hash d'un ancien format ou de paramètres dépassés : recalculé maintenant que le mot de passe est connu.
   if (user.passwordHash && needsRehash(user.passwordHash)) await db.user.update({ where: { id: user.id }, data: { passwordHash: await hashPassword(password) } });

@@ -10,7 +10,7 @@ describe("Administration KolBase : navigation", () => {
   it("une entrée par page, les décisions en attente en pastille", () => {
     expect(items.map((i) => i.href)).toEqual([
       "/admin", "/admin/organisations", "/admin/comptes", "/admin/identites", "/admin/journal", "/admin/signalements",
-      "/admin/services", "/admin/abonnements", "/admin/actualites", "/admin/emails", "/admin/exploitation",
+      "/admin/services", "/admin/abonnements", "/admin/actualites", "/admin/veille", "/admin/emails", "/admin/exploitation",
     ]);
     expect(items.find((i) => i.key === "admin-organisations")?.badge).toBe(2);
     expect(items.find((i) => i.key === "admin-identites")?.badge).toBe(3);
@@ -19,7 +19,7 @@ describe("Administration KolBase : navigation", () => {
   it("barre du bas : cinq rubriques, le reste dans le menu", () => {
     const { bar, overflow } = bottomBar(items);
     expect(bar.map((i) => i.key)).toEqual(["admin-accueil", "admin-organisations", "admin-comptes", "admin-identites", "admin-journal"]);
-    expect(overflow).toHaveLength(6);
+    expect(overflow).toHaveLength(7);
   });
 
   it("le tableau de bord n'est actif que sur /admin", () => {

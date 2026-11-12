@@ -26,6 +26,52 @@ export const freeMonths = (plan: Plan) => Math.round(12 - PLANS[plan].yearCents 
 export const TRIAL_DAYS = 30;
 export const planFor = (kind: string): Plan => (kind === "PRESTATAIRE" ? "prestataire" : "organisation");
 
+/**
+ * Options de l'abonnement organisation : cumulables, facturées en plus de l'abonnement et à la même périodicité
+ * (annuel : dix mois payés pour douze, comme l'abonnement). Une option ne se prend jamais sans l'abonnement.
+ * - KolBase Intelligence, 490 € HT/mois : pilotage du KOL management et veille concurrentielle ; industriels.
+ * - KolBase Business, 990 € HT/mois : KolBase à la marque de l'organisation (nom, logo, couleurs, nom de domaine) ;
+ *   toute organisation hors prestataires.
+ * `product` : identifiant du produit Stripe, qui permet de reconnaître l'option dans les lignes d'un abonnement.
+ * `open` : option en vente (page Abonnement, conditions de vente). Fermée, elle reste attribuable par KolBase
+ * depuis /admin (pilote), le temps que ses pages soient livrées.
+ */
+export const ADDONS = {
+  intelligence: {
+    label: "KolBase Intelligence", cents: 49000, yearCents: 490000, kinds: ["INDUSTRIEL"], product: "kolbase_option_intelligence", open: true,
+    pitch: "Pilotage de votre KOL management et veille concurrentielle : portefeuille d'experts, fidélisation, concurrents suivis et experts que vous partagez avec eux.",
+  },
+  business: {
+    label: "KolBase Business", cents: 99000, yearCents: 990000, kinds: ["INDUSTRIEL", "SOCIETE_SAVANTE", "ASSOCIATION_PRO", "ORGANISME_FORMATION"], product: "kolbase_option_business", open: true,
+    pitch: "Votre propre KolBase : votre nom, votre logo, votre couleur et votre nom de domaine, pour l'espace de vos équipes et votre page publique.",
+  },
+} as const satisfies Record<string, { label: string; cents: number; yearCents: number; kinds: readonly string[]; product: string; open: boolean; pitch: string }>;
+export type Addon = keyof typeof ADDONS;
+export const ADDON_KEYS = Object.keys(ADDONS) as Addon[];
+export const asAddon = (v: unknown): Addon | null => (typeof v === "string" && Object.hasOwn(ADDONS, v) ? (v as Addon) : null);
+/** Prix d'une échéance de l'option (centimes HT). */
+export const addonPrice = (addon: Addon, interval: Interval) => (interval === "year" ? ADDONS[addon].yearCents : ADDONS[addon].cents);
+/** Options prévues pour ce type d'organisation (aucune pour un prestataire), en vente ou non. */
+export const addonsFor = (kind: string): Addon[] => ADDON_KEYS.filter((a) => (ADDONS[a].kinds as readonly string[]).includes(kind));
+/** Option en vente ? (lue par une fonction : la valeur change d'une livraison à l'autre) */
+export const addonOpen = (addon: Addon): boolean => ADDONS[addon].open;
+
+export type AddonSub = { status: string; addons: readonly string[]; addonsGranted: readonly string[] } | null | undefined;
+/** Abonnement Stripe en cours (essai, actif ou paiement en cours de relance) : ses lignes sont facturées. */
+export const RUNNING: readonly string[] = ["essai", "active", "impayee"];
+/** D'où vient l'option : offerte par KolBase (prime), souscrite sur un abonnement en cours, ou absente. */
+export const addonSource = (s: AddonSub, addon: Addon): "offerte" | "souscrite" | null =>
+  s?.addonsGranted.includes(addon) ? "offerte" : s?.addons.includes(addon) && RUNNING.includes(s.status) ? "souscrite" : null;
+export const hasAddon = (s: AddonSub, addon: Addon) => addonSource(s, addon) !== null;
+/** Options reconnues dans les lignes d'un abonnement Stripe (par produit). */
+export const addonsFromStripe = (items: readonly { price?: { product?: string | null } | null }[]): Addon[] =>
+  ADDON_KEYS.filter((a) => items.some((i) => i.price?.product === ADDONS[a].product));
+/** Page d'abonnement ouverte sur une option (page réservée à l'option). */
+export const addonHref = (orgId: string, addon: Addon) => `/organisations/${orgId}/abonnement?option=${addon}#options`;
+/** Revenu mensuel récurrent d'un abonnement, options souscrites comprises (une formule annuelle compte pour un douzième). */
+export const recurringMonthlyCents = (plan: Plan, interval: Interval, addons: readonly string[] = []) =>
+  monthlyCents(plan, interval) + ADDON_KEYS.filter((a) => addons.includes(a)).reduce((s, a) => s + Math.round(addonPrice(a, interval) / (interval === "year" ? 12 : 1)), 0);
+
 export const STATUS_LABEL: Record<string, string> = {
   aucun: "Pas encore d'abonnement",
   a_activer: "À activer",

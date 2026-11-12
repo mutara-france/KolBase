@@ -7,6 +7,7 @@ import { purgeRateLimits } from "@/lib/rate-limit";
 import { purgeEmailLog } from "@/lib/email-log";
 import { offerFreedPlaces } from "@/lib/waitlist";
 import { NEEDS_RETENTION_DAYS } from "@/lib/registration-needs";
+import { refreshWatchSources } from "@/lib/watch";
 
 /** Tâches dues : rappels de la veille, puis remerciements (attestation, questionnaire) après les événements. Idempotent. */
 export async function runDueTasks(now = new Date()) {
@@ -55,5 +56,8 @@ export async function runDueTasks(now = new Date()) {
   })).count;
   // Journal des e-mails : 90 jours.
   const emails = await purgeEmailLog(now);
-  return { reminders, followUps, reports, reviewReminders, solicitationReminders, signatureReminders, offers, purged: { sessions, tokens, clicks, attempts, needs, emails } };
+  // Veille de KolBase Intelligence : sources dues relevées, publications de plus de treize mois effacées. Une source
+  // injoignable note son erreur et n'arrête pas les autres tâches.
+  const watch = await refreshWatchSources(now);
+  return { reminders, followUps, reports, reviewReminders, solicitationReminders, signatureReminders, offers, watch, purged: { sessions, tokens, clicks, attempts, needs, emails } };
 }

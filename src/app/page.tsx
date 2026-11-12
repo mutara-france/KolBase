@@ -15,6 +15,10 @@ import { appUrl } from "@/lib/ics";
 import { JsonLd } from "@/components/JsonLd";
 import { getCurrentUser } from "@/lib/auth";
 import { orgJoinHref } from "@/lib/nav";
+import { redirect } from "next/navigation";
+import { currentBrand } from "@/lib/brand-server";
+import { db } from "@/lib/db";
+import { orgIsPublic } from "@/lib/org-roles";
 
 export const dynamic = "force-dynamic";
 // Adresse canonique : les liens suivis de paramètres (?compte=…, www) se rattachent à l'accueil.
@@ -24,6 +28,14 @@ export const metadata = { alternates: { canonical: "/" } };
 export default async function Home({ searchParams }: { searchParams: Promise<{ compte?: string }> }) {
   const deleted = (await searchParams).compte === "supprime";
   const [{ t, locale }, user] = await Promise.all([getT(), getCurrentUser()]);
+  // KolBase Business : sur le nom de domaine d'une organisation, l'accueil est le sien — son espace pour un membre
+  // connecté, sa page publique sinon (la connexion si elle n'est pas publiée).
+  const brand = await currentBrand();
+  if (brand && !deleted) {
+    if (user) redirect("/tableau-de-bord");
+    const org = await db.organization.findUnique({ where: { id: brand.orgId }, select: { verification: true, listed: true } });
+    redirect(org && orgIsPublic(org) ? `/structures/${brand.orgId}` : "/connexion");
+  }
   const [events, experts, orgs, calls, n, specialties, news] = await Promise.all([
     publicEvents(3, { tracked: true }), publicExperts(4), publicOrgs(), publicCalls(2), publicCounts(), publicSpecialties(), publishedArticles(3),
   ]);

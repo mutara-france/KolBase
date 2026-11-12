@@ -218,6 +218,72 @@ Formule annuelle au choix : dix mois facturés pour douze (5 990 € HT et 2 490
 vers `<APP_URL>/api/stripe/webhook`), `STRIPE_TAX_RATE` (taux de TVA `txr_…`). Sans clé, rien n'est facturé.
 Activer le portail client dans le tableau de bord Stripe (moyen de paiement, factures, résiliation).
 
+### Options de l'abonnement organisation
+
+Deux options cumulables s'ajoutent à l'abonnement organisation, à sa périodicité (`ADDONS`, `src/lib/billing-plans.ts`) :
+
+- **KolBase Intelligence**, 490 € HT par mois (industriels) : pilotage du KOL management et veille concurrentielle ;
+- **KolBase Business**, 990 € HT par mois (toute organisation hors prestataires) : KolBase à la marque de
+  l'organisation (nom, logo, couleurs, nom de domaine).
+
+Une option est une ligne de plus sur l'abonnement Stripe en cours, reconnue par son produit (`kolbase_option_…`,
+créé à la première souscription) : un administrateur l'ajoute ou la retire depuis la page Abonnement (`changeAddon`),
+avec prorata facturé à l'ajout et déduit au retrait. Les options souscrites sont relues à chaque notification Stripe
+(`Subscription.addons`) ; KolBase peut aussi en offrir une depuis `/admin/abonnements` (`Subscription.addonsGranted`,
+pilote ou partenaire, sans effet sur Stripe). Tant qu'une option est fermée à la vente (`open: false`), elle n'apparaît
+ni sur la page Abonnement ni dans les conditions de vente, mais reste attribuable depuis `/admin`.
+
+### KolBase Intelligence
+
+Page `/organisations/<id>/intelligence` (rôles des statistiques, option requise ; sans elle, renvoi vers la page
+Abonnement), atteinte depuis Statistiques :
+
+- **Portefeuille d'experts** (`src/lib/intelligence-data.ts`) : experts engagés de l'année, place de chacun (nouveau,
+  fidèle, de retour, dormant), taux de fidélisation, experts que des concurrents suivis déclarent aussi.
+- **Concurrents** : vingt au plus, avec leurs autres écritures (marques, filiales). Pour chacun : montants déclarés
+  par type de lien, bénéficiaires, catégories, objets, premiers bénéficiaires.
+- **Fichiers importés** : l'organisation dépose l'export CSV ou Excel qu'elle a téléchargé sur
+  transparence.sante.gouv.fr (aucun appel à l'API du site). Les colonnes sont reconnues par mots-clés
+  (`detectColumns`, `src/lib/intelligence.ts`), seules les lignes des concurrents suivis sont conservées
+  (`PublicLink`), un fichier importé deux fois ne crée pas de doublon. Lecture des fichiers sans dépendance :
+  `src/lib/tabular.ts`.
+
+- **Veille** (`src/lib/watch.ts`) : l'équipe KolBase choisit les sources depuis `/admin/veille` (flux RSS ou Atom de
+  sites spécialisés, revues, chaînes vidéo), relevées toutes les six heures par les tâches planifiées ; chaque
+  organisation voit, sur 90 jours, les publications qui citent ses concurrents suivis ou elle-même (titre, lien, date,
+  court extrait, conservés treize mois). Les réseaux sociaux ne publient pas de flux et interdisent la collecte
+  automatisée : leurs publications s'ajoutent à la main, par organisation. Une adresse de flux n'est relevée que si
+  elle est en https, sur un nom public dont la résolution DNS ne donne aucune adresse privée, redirections comprises
+  (`src/lib/feed-reader.ts`).
+
+Deux limites voulues (Intelligence) : aucune donnée d'une autre organisation cliente n'est lue, et la réutilisation de la base
+Transparence Santé reste encadrée (finalité de transparence des liens d'intérêts, article L.1453-1 du code de la santé
+publique) — l'organisation l'atteste à chaque import ; à faire valider par un conseil avant l'ouverture commerciale.
+
+### KolBase Business
+
+KolBase servi à la marque d'une organisation sur son propre nom de domaine (`src/lib/brand.ts`, `brand-server.ts`) :
+
+- **Réglages** : `/organisations/<id>/marque` (administrateurs, option requise) — nom affiché, couleur principale
+  (contraste d'au moins 4,5 avec le blanc, teintes dérivées par `brandPalette`), logo de l'organisation, nom de domaine.
+- **Nom de domaine** : l'organisation saisit un sous-domaine (`kol.exemple.com`) et crée un CNAME vers
+  `BRAND_DOMAIN_TARGET` (par défaut `kolbase-web.onrender.com`). L'équipe KolBase, prévenue par e-mail, **ajoute le
+  domaine au service `kolbase-web` chez Render** (Settings › Custom Domains ; Render émet le certificat), puis l'active
+  dans `/admin/abonnements` › Noms de domaine. Rien n'est automatisé chez l'hébergeur. Un domaine retiré par
+  l'organisation reste réservé (« à détacher ») jusqu'à ce que l'équipe l'ait détaché chez Render puis libéré.
+- **Sur ce domaine** (hôte lu dans `X-Forwarded-Host`, table gardée une minute) : logo ou nom et couleur de
+  l'organisation dans l'en-tête, la barre latérale et le pied de page ; accueil redirigé vers son espace ou sa page
+  publique ; aucune indexation (`robots.txt`, balise `noindex`). La marque tombe d'elle-même si l'option s'arrête, si
+  l'organisation est suspendue ou si le domaine est retiré.
+- **Sessions** (`sessionScope`, `src/lib/auth.ts`) : le DNS du domaine appartient à l'organisation, qui pourrait le
+  faire pointer ailleurs et y recevoir le cookie de session. On n'y ouvre donc jamais une session KolBase ordinaire :
+  seuls les membres de l'organisation s'y connectent, pour une session (`Session.brandOrgId`) valable sur ce domaine
+  seulement et limitée à son espace — ni leurs autres organisations, ni leur profil de praticien, ni `/admin`. Sur un
+  domaine en attente, retiré ou sans option, personne ne se connecte. Les experts gardent leur compte sur KolBase.
+- **Ce que la marque ne fait pas** : les titres d'onglet, les e-mails, leurs liens (`APP_URL`), le retour de paiement
+  Stripe et les textes légaux restent ceux de KolBase ; les pages publiques (annuaire, agenda) ne sont pas restreintes
+  à l'organisation ; les comptes se créent sur KolBase.
+
 ### Services KolBase
 
 Sur chaque événement publié, les organisateurs commandent des services réalisés par l'équipe KolBase

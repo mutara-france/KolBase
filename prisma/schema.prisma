@@ -105,6 +105,9 @@ model Session {
   user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
   expiresAt DateTime
   userAgent String?
+  // Session ouverte sur le nom de domaine d'une organisation (KolBase Business) : valable sur ce domaine seulement,
+  // et limitée à l'espace de cette organisation. null : session ouverte sur KolBase.
+  brandOrgId String?
   createdAt DateTime @default(now())
 
   @@index([userId])
@@ -383,6 +386,122 @@ model Organization {
   coveredCountries String[]         @default([])
   brands           String[]         @default([])
   channels         ContactChannel[]
+  // KolBase Intelligence : concurrents suivis et déclarations publiques importées par l'organisation.
+  competitors      Competitor[]
+  publicImports    PublicImport[]
+  watchItems       WatchItem[]
+  brand            OrgBrand?
+}
+
+enum BrandDomainStatus {
+  demande // saisi par l'organisation : en attente du rattachement par l'équipe KolBase
+  active  // rattaché au service et contrôlé : KolBase y est servi à la marque de l'organisation
+  retire  // retiré par l'organisation : réservé tant que l'équipe KolBase ne l'a pas détaché du service
+}
+
+/// KolBase Business : marque de l'organisation (nom affiché, couleur) et nom de domaine sur lequel KolBase est servi
+/// à cette marque. Le logo est celui de l'organisation (OrganizationLogo).
+model OrgBrand {
+  organizationId    String             @id
+  organization      Organization       @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  displayName       String?
+  color             String?            // couleur principale (#rrggbb), contraste suffisant avec le blanc
+  domain            String?            @unique
+  domainStatus      BrandDomainStatus?
+  domainRequestedAt DateTime?
+  domainActivatedAt DateTime?
+  updatedAt         DateTime           @updatedAt
+}
+
+/// Source de veille (flux RSS ou Atom d'un site spécialisé, d'une revue, d'une chaîne vidéo), choisie par l'équipe
+/// KolBase depuis /admin/veille et relevée par les tâches planifiées.
+model WatchSource {
+  id        String      @id @default(cuid())
+  name      String
+  url       String      @unique
+  active    Boolean     @default(true)
+  fetchedAt DateTime?
+  error     String?     // dernier relevé en échec (effacé au relevé suivant réussi)
+  createdAt DateTime    @default(now())
+  items     WatchItem[]
+}
+
+/// Publication de veille : relevée dans une source (commune à toutes les organisations), ou ajoutée à la main par une
+/// organisation (publication d'un réseau social, par exemple), alors visible d'elle seule. Titre, lien et court extrait.
+model WatchItem {
+  id             String        @id @default(cuid())
+  sourceId       String?
+  source         WatchSource?  @relation(fields: [sourceId], references: [id], onDelete: Cascade)
+  organizationId String?
+  organization   Organization? @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  title          String
+  url            String
+  summary        String?
+  publishedAt    DateTime
+  createdAt      DateTime      @default(now())
+
+  @@unique([sourceId, url])
+  @@index([publishedAt])
+  @@index([organizationId])
+}
+
+/// Concurrent suivi par une organisation (KolBase Intelligence) : son nom et ses autres écritures (marques, filiales)
+/// servent à reconnaître ses déclarations publiques dans les fichiers importés.
+model Competitor {
+  id             String       @id @default(cuid())
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  name           String
+  aliases        String[]     @default([])
+  createdAt      DateTime     @default(now())
+  links          PublicLink[]
+
+  @@unique([organizationId, name])
+}
+
+/// Fichier de la base publique Transparence Santé déposé par l'organisation (téléchargé par elle sur le site officiel).
+/// Seules les lignes de ses concurrents suivis sont conservées ; supprimer l'import les efface.
+model PublicImport {
+  id             String       @id @default(cuid())
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  fileName       String
+  rows           Int          // lignes lues dans le fichier
+  kept           Int          // lignes conservées (concurrents suivis, hors doublons)
+  importedById   String?
+  createdAt      DateTime     @default(now())
+  links          PublicLink[]
+
+  @@index([organizationId])
+}
+
+enum PublicLinkKind {
+  convention
+  remuneration
+  avantage
+}
+
+/// Lien d'intérêts déclaré par un concurrent suivi, tel que publié (ligne d'un fichier importé). Propre à
+/// l'organisation qui l'a importé : jamais partagé avec une autre.
+model PublicLink {
+  id              String         @id @default(cuid())
+  organizationId  String
+  competitorId    String
+  competitor      Competitor     @relation(fields: [competitorId], references: [id], onDelete: Cascade)
+  importId        String
+  import          PublicImport   @relation(fields: [importId], references: [id], onDelete: Cascade)
+  kind            PublicLinkKind
+  date            DateTime?
+  amountCents     Int
+  beneficiaryId   String?        // identifiant professionnel publié (RPPS), s'il figure dans le fichier
+  beneficiaryName String?
+  category        String?        // catégorie ou profession du bénéficiaire
+  purpose         String?
+  sourceKey       String         // empreinte de la ligne : un fichier importé deux fois ne crée pas de doublon
+
+  @@unique([competitorId, sourceKey])
+  @@index([organizationId, beneficiaryId])
+  @@index([competitorId, date])
 }
 
 /** Groupe d'organisations (industriel présent dans plusieurs pays) : ses entités sont rattachées par l'équipe KolBase. */
@@ -1605,6 +1724,10 @@ model Subscription {
   cancelAtPeriodEnd    Boolean      @default(false)
   exemptUntil          DateTime?    // gratuité accordée par KolBase (pilote, partenaire, démonstration)
   exemptNote           String?
+  // Options en plus de l'abonnement organisation : souscrites (lignes de l'abonnement Stripe, relues à chaque
+  // notification) ou offertes par KolBase depuis /admin (pilote, partenaire).
+  addons               SubscriptionAddon[] @default([])
+  addonsGranted        SubscriptionAddon[] @default([])
   createdAt            DateTime     @default(now())
   updatedAt            DateTime     @updatedAt
 }
@@ -1693,6 +1816,12 @@ enum SubscriptionPlan {
 enum BillingInterval {
   month
   year
+}
+
+/// intelligence : pilotage du KOL management et veille concurrentielle ; business : KolBase à la marque de l'organisation.
+enum SubscriptionAddon {
+  intelligence
+  business
 }
 
 enum SubscriptionStatus {

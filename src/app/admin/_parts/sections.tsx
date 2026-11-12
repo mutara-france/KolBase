@@ -1,9 +1,11 @@
 import Link from "next/link";
 import { db } from "@/lib/db";
 import { formatDate, formatEUR } from "@/lib/events";
-import { asInterval, displayStatus, exempt, monthlyCents, PLANS, planFor, STATUS_LABEL } from "@/lib/billing-plans";
+import { ADDONS, addonsFor, addonSource, asInterval, displayStatus, exempt, planFor, PLANS, recurringMonthlyCents, STATUS_LABEL } from "@/lib/billing-plans";
 import { stripeEnabled } from "@/lib/billing";
-import { setExemption } from "@/lib/billing-actions";
+import { setExemption, setAddonGrant } from "@/lib/billing-actions";
+import { setBrandDomainStatus } from "@/lib/brand-actions";
+import { brandDomainTarget } from "@/lib/brand";
 import { saveServiceOffer, updateServiceOrder } from "@/lib/service-actions";
 import { featuredUntil, newsletterAudienceCount, newsletterSendsThisMonth, ORDER_STATUS, orderStats, trackedPath } from "@/lib/services";
 import { groupOrders, packItemStatus, packStatus } from "@/lib/service-pack";
@@ -178,18 +180,18 @@ export async function BillingAdmin() {
   const today = now.toLocaleDateString("sv-SE", { timeZone: "Europe/Paris" });
   const paying = orgs.filter((o) => ["essai", "active", "impayee"].includes(o.subscription?.status ?? "") && !exempt(o.subscription, now));
   // Revenu mensuel récurrent : une formule annuelle compte pour un douzième.
-  const mrr = paying.filter((o) => o.subscription!.status !== "essai").reduce((s, o) => s + monthlyCents(planFor(o.kind), asInterval(o.subscription!.interval)), 0);
+  const mrr = paying.filter((o) => o.subscription!.status !== "essai").reduce((s, o) => s + recurringMonthlyCents(planFor(o.kind), asInterval(o.subscription!.interval), o.subscription!.addons), 0);
   return (
     <section className="card stack-sm">
       <h2>Abonnements</h2>
       <p className="muted">
         {stripeEnabled() ? "Facturation active (Stripe)." : "Facturation inactive : STRIPE_SECRET_KEY non défini, toutes les fonctions sont accessibles."}{" "}
-        {paying.length} abonnement{paying.length > 1 ? "s" : ""} en cours, revenu mensuel hors essais : {formatEUR(mrr)} HT.
+        {paying.length} abonnement{paying.length > 1 ? "s" : ""} en cours, revenu mensuel hors essais : {formatEUR(mrr)} HT, options comprises.
       </p>
       <p className="hint scroll-hint">Tableau plus large que l&apos;écran : faites-le défiler vers la droite pour la colonne Gratuité.</p>
       <TableWrap label="Abonnements des organisations">
         <table className="table">
-          <thead><tr><th>Organisation</th><th>Offre</th><th>Statut</th><th>Échéance</th><th>Gratuité</th></tr></thead>
+          <thead><tr><th>Organisation</th><th>Offre</th><th>Options</th><th>Statut</th><th>Échéance</th><th>Gratuité</th></tr></thead>
           <tbody>
             {orgs.map((o) => {
               const st = displayStatus(o.subscription, now);
@@ -197,6 +199,20 @@ export async function BillingAdmin() {
                 <tr key={o.id}>
                   <td data-label="Organisation">{o.name}</td>
                   <td data-label="Offre">{PLANS[planFor(o.kind)].label.replace("Abonnement ", "")}{o.subscription && ["essai", "active", "impayee"].includes(o.subscription.status) ? <div className="text-xs muted">{asInterval(o.subscription.interval) === "year" ? "annuel" : "mensuel"}</div> : null}</td>
+                  <td data-label="Options">
+                    {addonsFor(o.kind).length === 0 ? "—" : addonsFor(o.kind).map((a) => {
+                      const source = addonSource(o.subscription, a);
+                      return (
+                        <form key={a} action={setAddonGrant} className="inline wrap">
+                          <input type="hidden" name="orgId" value={o.id} />
+                          <input type="hidden" name="addon" value={a} />
+                          <input type="hidden" name="on" value={source === "offerte" ? "0" : "1"} />
+                          <span className="text-xs">{ADDONS[a].label.replace("KolBase ", "")}{source ? <>{" "}<span className="pill ok">{source}</span></> : null}</span>
+                          {source !== "souscrite" && <ConfirmButton className="link" confirm={source === "offerte" ? "reprendre l'option" : "attribuer l'option"} summary={source === "offerte" ? <>{o.name} perd aussitôt l&apos;accès à {ADDONS[a].label}.</> : <>{o.name} accède à {ADDONS[a].label} sans la payer, jusqu&apos;à ce que vous la repreniez.</>}>{source === "offerte" ? "reprendre" : "attribuer"}</ConfirmButton>}
+                        </form>
+                      );
+                    })}
+                  </td>
                   <td data-label="Statut"><span className={`pill ${["active", "essai", "offerte"].includes(st) ? "ok" : st === "impayee" ? "wait" : ""}`}>{STATUS_LABEL[st]}</span>{o.subscription?.triggeredAt ? <div className="text-xs muted">{o.subscription.triggeredBy}</div> : null}</td>
                   <td data-label="Échéance">{o.subscription?.trialEndsAt && o.subscription.status === "essai" ? `essai → ${formatDate(o.subscription.trialEndsAt)}` : o.subscription?.currentPeriodEnd ? formatDate(o.subscription.currentPeriodEnd) : "—"}</td>
                   <td data-label="Gratuité">
@@ -271,6 +287,47 @@ export function LaunchChecklist({ items }: { items: LaunchItem[] }) {
           </li>
         ))}
       </ul>
+    </section>
+  );
+}
+
+/**
+ * Noms de domaine des organisations (KolBase Business) : demandés par elles, à rattacher au service web chez
+ * l'hébergeur avant d'être activés ici. Un domaine activé sans y être rattaché n'aboutit nulle part.
+ */
+export async function BrandDomainsAdmin() {
+  const brands = await db.orgBrand.findMany({ where: { domain: { not: null } }, orderBy: { domainRequestedAt: "desc" }, include: { organization: { select: { name: true, subscription: { select: { status: true, addons: true, addonsGranted: true } } } } } });
+  return (
+    <section className="card stack-sm" id="domaines">
+      <h2>Noms de domaine (KolBase Business)</h2>
+      <p className="muted">Pour chaque demande : 1. ajouter le domaine au service kolbase-web chez Render (Settings › Custom Domains) ; 2. attendre que l&apos;enregistrement CNAME vers <code>{brandDomainTarget()}</code> soit vérifié et le certificat émis ; 3. activer ici. La marque n&apos;est servie que si l&apos;option est en cours. Domaine retiré par l&apos;organisation : le détacher chez Render, puis le libérer ici. Tant qu&apos;un domaine figure dans cette liste sans être actif, personne ne peut s&apos;y connecter.</p>
+      {brands.length === 0 ? <p className="muted">Aucun nom de domaine demandé.</p> : (
+        <TableWrap label="Noms de domaine des organisations">
+          <table className="table">
+            <thead><tr><th>Organisation</th><th>Nom de domaine</th><th>État</th><th></th></tr></thead>
+            <tbody>
+              {brands.map((b) => {
+                const st = b.domainStatus ?? "demande";
+                return (
+                  <tr key={b.organizationId}>
+                    <td data-label="Organisation">{b.organization.name}{!addonSource(b.organization.subscription, "business") && <div className="text-xs warn-text">option KolBase Business absente</div>}</td>
+                    <td data-label="Nom de domaine"><code>{b.domain}</code>{b.domainRequestedAt && <div className="text-xs muted">demandé le {formatDate(b.domainRequestedAt)}</div>}</td>
+                    <td data-label="État"><span className={`pill ${st === "active" ? "ok" : "wait"}`}>{st === "active" ? "actif" : st === "retire" ? "à détacher" : "à rattacher"}</span></td>
+                    <td>
+                      <form action={setBrandDomainStatus} className="inline wrap">
+                        <input type="hidden" name="orgId" value={b.organizationId} />
+                        {st === "demande" && <ConfirmButton className="link" name="op" value="activate" confirm="activer le domaine" summary={<>{b.domain} est rattaché à kolbase-web chez Render et son certificat est émis.</>}>activer</ConfirmButton>}
+                        {st === "active" && <ConfirmButton className="link" name="op" value="suspend" confirm="remettre en attente" summary={<>{b.domain} n&apos;affiche plus la marque de {b.organization.name} et ses sessions sont fermées.</>}>remettre en attente</ConfirmButton>}
+                        {st !== "active" && <ConfirmButton className="link" name="op" value="release" confirm="libérer le domaine" summary={<>{b.domain} est détaché de kolbase-web chez Render (ou n&apos;y a jamais été rattaché) : KolBase l&apos;oublie.</>}>libérer</ConfirmButton>}
+                      </form>
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </TableWrap>
+      )}
     </section>
   );
 }

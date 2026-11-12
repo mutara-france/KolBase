@@ -1,7 +1,7 @@
 import "server-only";
 import { db } from "@/lib/db";
 import { stripe, stripeEnabled, type StripeSubscription } from "@/lib/stripe";
-import { asInterval, asObjectId, canEngage, ENGAGING, fromStripeStatus, needsSubscription, planFor, planPrice, PLANS, stripePause, subscribeHref, TRIAL_DAYS, type Blocked, type GateLink, type Interval, type Motive } from "@/lib/billing-plans";
+import { addonHref, addonPrice, ADDONS, addonsFor, addonsFromStripe, asInterval, asObjectId, canEngage, ENGAGING, fromStripeStatus, hasAddon, needsSubscription, planFor, planPrice, PLANS, RUNNING, stripePause, subscribeHref, TRIAL_DAYS, type Addon, type Blocked, type GateLink, type Interval, type Motive } from "@/lib/billing-plans";
 import { dpaCurrent, dpaHref, dpaMessage } from "@/lib/dpa";
 import { makeT, type T } from "@/lib/i18n";
 import { getT } from "@/lib/i18n/server";
@@ -92,6 +92,8 @@ export async function applyStripeSubscription(orgId: string, s: StripeSubscripti
     status, stripeCustomerId: s.customer, stripeSubscriptionId: s.id, trialEndsAt: date(s.trial_end), currentPeriodEnd: date(s.current_period_end),
     cancelAtPeriodEnd: !!s.cancel_at_period_end, ...(status === "essai" ? { trialUsed: true } : {}),
     interval: asInterval(s.items?.data?.[0]?.price?.recurring?.interval ?? s.metadata?.interval),
+    // Options : les lignes de l'abonnement Stripe font foi (ajout, retrait, résiliation).
+    addons: addonsFromStripe(s.items?.data ?? []),
   };
   await db.subscription.upsert({ where: { organizationId: orgId }, update: data, create: { organizationId: orgId, plan: planFor(org.kind), ...data } });
 }
@@ -161,4 +163,54 @@ export async function portalUrl(orgId: string) {
   const app = process.env.APP_URL ?? "http://localhost:3000";
   const p = await stripe<{ url: string }>("POST", "/v1/billing_portal/sessions", { customer: sub.stripeCustomerId, return_url: `${app}/organisations/${orgId}/abonnement` });
   return p.url;
+}
+
+/** L'organisation dispose-t-elle de l'option (offerte par KolBase, ou souscrite sur un abonnement en cours) ? */
+export async function orgHasAddon(orgId: string, addon: Addon) {
+  const sub = await db.subscription.findUnique({ where: { organizationId: orgId }, select: { status: true, addons: true, addonsGranted: true } });
+  return hasAddon(sub, addon);
+}
+
+/** Page d'une option : sans l'option, la page d'abonnement s'ouvre sur sa présentation (null : accès accordé). */
+export async function addonGate(orgId: string, addon: Addon): Promise<string | null> {
+  return (await orgHasAddon(orgId, addon)) ? null : addonHref(orgId, addon);
+}
+
+/** Produit Stripe de l'option, créé à la première souscription (identifiant fixe : il sert à relire les lignes). */
+async function addonProduct(addon: Addon) {
+  const { product, label } = ADDONS[addon];
+  const found = await stripe<{ id: string }>("GET", `/v1/products/${product}`).catch(() => null);
+  if (!found) await stripe("POST", "/v1/products", { id: product, name: label, metadata: { addon } });
+  return product;
+}
+
+export type AddonChange = "added" | "removed" | "unchanged" | "no_subscription" | "not_offered";
+
+/**
+ * Ajoute ou retire une option sur l'abonnement Stripe en cours de l'organisation : une ligne de plus, à la périodicité
+ * de l'abonnement et à son taux de TVA. Ajout : le prorata de la période en cours est facturé aussitôt (rien pendant
+ * le mois offert). Retrait : l'option cesse aussitôt et la part non consommée est déduite de la prochaine facture.
+ * L'état enregistré est celui que Stripe renvoie.
+ */
+export async function changeAddon(orgId: string, addon: Addon, on: boolean): Promise<AddonChange> {
+  const org = await db.organization.findUnique({ where: { id: orgId }, select: { kind: true, subscription: { select: { stripeSubscriptionId: true, status: true, interval: true } } } });
+  if (!org || !addonsFor(org.kind).includes(addon)) return "not_offered";
+  const sub = org.subscription;
+  if (!sub?.stripeSubscriptionId || !RUNNING.includes(sub.status)) return "no_subscription";
+  const path = `/v1/subscriptions/${sub.stripeSubscriptionId}`;
+  const current = await stripe<StripeSubscription>("GET", path);
+  const line = current.items?.data.find((i) => i.price?.product === ADDONS[addon].product);
+  if (on === !!line) {
+    await applyStripeSubscription(orgId, current);
+    return "unchanged";
+  }
+  const interval = asInterval(current.items?.data[0]?.price?.recurring?.interval ?? sub.interval);
+  const updated = on
+    ? await stripe<StripeSubscription>("POST", path, {
+        items: [{ quantity: 1, price_data: { currency: "eur", product: await addonProduct(addon), unit_amount: addonPrice(addon, interval), recurring: { interval }, tax_behavior: "exclusive" } }],
+        proration_behavior: "always_invoice",
+      })
+    : await stripe<StripeSubscription>("POST", path, { items: [{ id: line!.id, deleted: true }], proration_behavior: "create_prorations" });
+  await applyStripeSubscription(orgId, updated);
+  return on ? "added" : "removed";
 }

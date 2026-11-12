@@ -185,9 +185,10 @@ export function startFakeYousign(port = 3995) {
 
 /**
  * Faux Stripe (port 3993) : clients, sessions de paiement (page « Payer » qui crée l'abonnement en essai et
- * prévient l'application par une notification signée), abonnements, portail, lignes de facture.
+ * prévient l'application par une notification signée), abonnements et leurs lignes (options), produits, portail,
+ * lignes de facture.
  */
-export const stripeState = { customers: new Map(), sessions: new Map(), subscriptions: new Map(), invoiceItems: [], webhooks: [] };
+export const stripeState = { customers: new Map(), sessions: new Map(), subscriptions: new Map(), products: new Map(), invoiceItems: [], webhooks: [] };
 export const STRIPE_WEBHOOK_SECRET = "whsec_test";
 const APP = process.env.BASE ?? "http://localhost:3000";
 
@@ -215,7 +216,7 @@ export function startFakeStripe(port = 3993) {
       const now = Math.floor(Date.now() / 1000);
       const trial = Number(s.trialDays || 0);
       const year = s.interval === "year";
-      const sub = { id: `sub_${randomUUID().slice(0, 10).replace(/-/g, "")}`, object: "subscription", customer: s.customer, status: trial ? "trialing" : "active", trial_end: trial ? now + trial * 86400 : null, current_period_end: now + (trial || (year ? 365 : 30)) * 86400, cancel_at_period_end: false, metadata: { orgId: s.metadata.orgId }, amount: s.amount, items: { data: [{ price: { recurring: { interval: s.interval } } }] } };
+      const sub = { id: `sub_${randomUUID().slice(0, 10).replace(/-/g, "")}`, object: "subscription", customer: s.customer, status: trial ? "trialing" : "active", trial_end: trial ? now + trial * 86400 : null, current_period_end: now + (trial || (year ? 365 : 30)) * 86400, cancel_at_period_end: false, metadata: { orgId: s.metadata.orgId }, amount: s.amount, items: { data: [{ id: `si_${randomUUID().slice(0, 8)}`, price: { product: "prod_abonnement", unit_amount: s.amount, recurring: { interval: s.interval } } }] } };
       stripeState.subscriptions.set(sub.id, sub);
       s.subscription = sub.id;
       s.status = "complete";
@@ -257,6 +258,19 @@ export function startFakeStripe(port = 3993) {
     if (req.method === "POST" && m) {
       const sub = stripeState.subscriptions.get(m[1]);
       if (!sub) return json(res, { error: { message: "introuvable" } }, 404);
+      // Option ajoutée (ligne de plus, sur un produit existant) ou retirée (ligne supprimée), avec la règle de prorata.
+      if (form.has("items[0][price_data][product]")) {
+        const product = form.get("items[0][price_data][product]");
+        if (!stripeState.products.has(product)) return json(res, { error: { message: `No such product: '${product}'` } }, 400);
+        if (form.get("items[0][price_data][recurring][interval]") !== sub.items.data[0].price.recurring.interval) return json(res, { error: { message: "périodicité différente de l'abonnement" } }, 400);
+        sub.items.data.push({ id: `si_${randomUUID().slice(0, 8)}`, price: { product, unit_amount: Number(form.get("items[0][price_data][unit_amount]")), recurring: { interval: form.get("items[0][price_data][recurring][interval]") } } });
+        sub.lastProration = form.get("proration_behavior");
+      } else if (form.get("items[0][deleted]") === "true") {
+        const at = sub.items.data.findIndex((i) => i.id === form.get("items[0][id]"));
+        if (at < 0) return json(res, { error: { message: "ligne introuvable" } }, 400);
+        sub.items.data.splice(at, 1);
+        sub.lastProration = form.get("proration_behavior");
+      }
       if (form.get("pause_collection") === "") sub.pause_collection = null;
       else if (form.has("pause_collection[behavior]")) {
         const behavior = form.get("pause_collection[behavior]");
@@ -264,6 +278,14 @@ export function startFakeStripe(port = 3993) {
         sub.pause_collection = { behavior, resumes_at: form.has("pause_collection[resumes_at]") ? Number(form.get("pause_collection[resumes_at]")) : null };
       }
       return json(res, sub);
+    }
+    m = url.pathname.match(/^\/v1\/products\/([a-z0-9_]+)$/);
+    if (req.method === "GET" && m) return stripeState.products.has(m[1]) ? json(res, stripeState.products.get(m[1])) : json(res, { error: { message: `No such product: '${m[1]}'` } }, 404);
+    if (req.method === "POST" && url.pathname === "/v1/products") {
+      if (stripeState.products.has(get("id"))) return json(res, { error: { message: "Product already exists." } }, 400);
+      const product = { id: get("id"), object: "product", name: get("name") };
+      stripeState.products.set(product.id, product);
+      return json(res, product);
     }
     if (req.method === "POST" && url.pathname === "/v1/billing_portal/sessions") return json(res, { url: `http://localhost:${port}/portal?back=${encodeURIComponent(get("return_url"))}` });
     if (req.method === "POST" && url.pathname === "/v1/invoiceitems") {

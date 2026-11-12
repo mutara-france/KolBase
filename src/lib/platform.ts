@@ -18,8 +18,9 @@ const listed = (user: { email: string }) => platformAdminEmails().includes(user.
  * Adresse listée ET confirmée dès que l'envoi d'e-mails est configuré : sans cette confirmation,
  * quiconque créerait un compte avec une adresse listée (encore libre) deviendrait administrateur.
  */
-export const isPlatformAdmin = (user: { email: string; emailVerifiedAt?: Date | null } | null | undefined) =>
-  !!user && listed(user) && (!mailEnabled() || !!user.emailVerifiedAt);
+export const isPlatformAdmin = (user: { email: string; emailVerifiedAt?: Date | null; brandScoped?: boolean } | null | undefined) =>
+  // Jamais depuis une session ouverte sur le nom de domaine d'une organisation (KolBase Business).
+  !!user && !user.brandScoped && listed(user) && (!mailEnabled() || !!user.emailVerifiedAt);
 
 export async function requirePlatformAdmin() {
   const user = await requireUser();

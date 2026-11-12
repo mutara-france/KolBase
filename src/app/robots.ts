@@ -1,8 +1,13 @@
 import type { MetadataRoute } from "next";
 import { appUrl } from "@/lib/ics";
+import { currentBrand } from "@/lib/brand-server";
 
-/** Seules les pages publiques sont à indexer. */
-export default function robots(): MetadataRoute.Robots {
+/**
+ * Seules les pages publiques sont à indexer. Sur le nom de domaine d'une organisation (KolBase Business), rien ne
+ * l'est : ses pages publiques existent déjà sur KolBase.
+ */
+export default async function robots(): Promise<MetadataRoute.Robots> {
+  if (await currentBrand()) return { rules: { userAgent: "*", disallow: "/" } };
   return {
     rules: {
       userAgent: "*",

@@ -2,6 +2,7 @@ import type { OrgRole } from "@/generated/prisma/client";
 import { COMPLIANCE_ROLES, EVENT_MANAGER_ROLES, EVENT_ORGANIZER_ROLES } from "@/lib/events";
 import { PROJECT_VIEW_ROLES, REVIEW_ROLES, SOURCING_ROLES } from "@/lib/projects";
 import { isAgencyOnly, STATS_ROLES } from "@/lib/org-roles";
+import { addonOpen, addonsFor } from "@/lib/billing-plans";
 
 /** Barre latérale ouverte (libellés visibles) : choix mémorisé dans ce cookie ; repliée par défaut, icônes seules. */
 export const NAV_COOKIE = "kb_nav";
@@ -11,7 +12,7 @@ export const NAV_COOKIE = "kb_nav";
  * les pages d'une même rubrique se retrouvant en onglets. Module sans dépendance serveur (utilisé aussi côté client).
  */
 
-export type ShellIcon = "House" | "Users" | "Folder" | "FileText" | "CalendarDays" | "ShieldCheck" | "Send" | "Megaphone" | "UserRound" | "Receipt" | "Plug" | "ExternalLink" | "Wallet" | "BarChart3" | "Store" | "Building2" | "BadgeCheck" | "ScrollText" | "Newspaper" | "Activity" | "Flag" | "Mail";
+export type ShellIcon = "House" | "Users" | "Folder" | "FileText" | "CalendarDays" | "ShieldCheck" | "Send" | "Megaphone" | "UserRound" | "Receipt" | "Plug" | "ExternalLink" | "Wallet" | "BarChart3" | "Store" | "Building2" | "BadgeCheck" | "ScrollText" | "Newspaper" | "Activity" | "Flag" | "Mail" | "Radar";
 export type ShellItem = { key: string; href: string; label: string; short?: string; icon: ShellIcon; badge?: number; match?: string[]; exact?: boolean; /** Absente de la barre du bas (mobile) quand elle compterait plus de cinq entrées. */ secondary?: boolean };
 export type ShellLink = { href: string; label: string; icon: ShellIcon };
 export type ShellSpace = {
@@ -65,7 +66,8 @@ export function orgNavItems(orgId: string, roles: OrgRole[], kind: string): Shel
       match: [`${base}/prestataires`],
     });
   if (has(roles, COMPLIANCE_ROLES)) items.push({ key: "conformite", href: `${base}/conformite`, label: "Conformité", icon: "ShieldCheck", match: [`${base}/hospitalites`, `${base}/relecture`, `${base}/partenariats`] });
-  if (has(roles, STATS_ROLES)) items.push({ key: "statistiques", href: `${base}/statistiques`, label: "Statistiques", short: "Stats", icon: "BarChart3", secondary: true });
+  // KolBase Intelligence (option) se range sous les statistiques : même rubrique, même entrée active.
+  if (has(roles, STATS_ROLES)) items.push({ key: "statistiques", href: `${base}/statistiques`, label: "Statistiques", short: "Stats", icon: "BarChart3", secondary: true, match: [`${base}/intelligence`] });
   return items;
 }
 
@@ -78,6 +80,8 @@ export function orgMenuLinks(orgId: string, roles: OrgRole[], kind: string): She
     links.push({ href: `${base}/membres`, label: "Membres et réglages", icon: "Users" });
   if (roles.includes("ADMIN")) links.push({ href: `${base}/abonnement`, label: "Abonnement", icon: "Wallet" });
   if (!isSupplier && has(roles, ["ADMIN", "PROJETS", "CONFORMITE"])) links.push({ href: `${base}/integrations`, label: "Intégrations", icon: "Plug" });
+  // KolBase Business (option) : marque et nom de domaine de l'organisation.
+  if (roles.includes("ADMIN") && addonsFor(kind).includes("business") && addonOpen("business")) links.push({ href: `${base}/marque`, label: "Marque et nom de domaine", icon: "Store" });
   // Une agence mandatée agit pour l'organisation sans la représenter : pas de « notre » page publique.
   if (!isSupplier && !isAgencyOnly(roles, kind)) links.push({ href: `/structures/${orgId}`, label: "Voir notre page publique", icon: "ExternalLink" });
   return links;
@@ -148,6 +152,7 @@ export function adminNavItems(counts: { orgs: number; identities: number; servic
     { key: "admin-services", href: "/admin/services", label: "Services", icon: "Megaphone", badge: counts.services, secondary: true },
     { key: "admin-abonnements", href: "/admin/abonnements", label: "Abonnements", icon: "Wallet", secondary: true },
     { key: "admin-actualites", href: "/admin/actualites", label: "Actualités", icon: "Newspaper", secondary: true },
+    { key: "admin-veille", href: "/admin/veille", label: "Veille", icon: "Radar", secondary: true },
     { key: "admin-emails", href: "/admin/emails", label: "E-mails", icon: "Mail", secondary: true },
     { key: "admin-exploitation", href: "/admin/exploitation", label: "Exploitation", icon: "Activity", secondary: true },
   ];

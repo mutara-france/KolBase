@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { billingInfo, canEngage, displayStatus, fromStripeStatus, needsSubscription, planFor, PLANS } from "@/lib/billing-plans";
+import { addonOpen, addonPrice, ADDON_KEYS, ADDONS, addonsFor, addonsFromStripe, addonSource, asAddon, billingInfo, canEngage, displayStatus, fromStripeStatus, hasAddon, needsSubscription, planFor, PLANS, recurringMonthlyCents } from "@/lib/billing-plans";
 import { encodeForm, signWebhook, verifyWebhook } from "@/lib/stripe-core";
 
 describe("facturation", () => {
@@ -64,5 +64,42 @@ describe("formule annuelle", () => {
     expect(monthlyCents("organisation", "year")).toBe(49917);
     expect(monthlyCents("organisation", "month")).toBe(59900);
     expect(fmt(599000, "year").replace(/\s/g, " ")).toBe("5 990 € HT par an");
+  });
+});
+
+describe("options de l'abonnement organisation", () => {
+  it("tarifs : même règle annuelle que l'abonnement (dix mois payés pour douze)", () => {
+    expect(ADDONS.intelligence.cents).toBe(49000);
+    expect(ADDONS.business.cents).toBe(99000);
+    for (const a of ADDON_KEYS) expect(addonPrice(a, "year")).toBe(addonPrice(a, "month") * 10);
+  });
+  it("proposées selon le type d'organisation, jamais à un prestataire", () => {
+    expect(addonsFor("INDUSTRIEL")).toEqual(["intelligence", "business"]);
+    expect(addonsFor("SOCIETE_SAVANTE")).toEqual(["business"]);
+    expect(addonsFor("PRESTATAIRE")).toEqual([]);
+    expect(asAddon("business")).toBe("business");
+    expect(asAddon("toString")).toBeNull();
+    expect(typeof addonOpen("intelligence")).toBe("boolean");
+  });
+  it("active si elle est offerte par KolBase, ou souscrite sur un abonnement en cours", () => {
+    const sub = (status: string, addons: string[] = [], addonsGranted: string[] = []) => ({ status, addons, addonsGranted });
+    expect(hasAddon(null, "intelligence")).toBe(false);
+    expect(hasAddon(sub("active"), "intelligence")).toBe(false);
+    expect(addonSource(sub("active", ["intelligence"]), "intelligence")).toBe("souscrite");
+    expect(hasAddon(sub("essai", ["intelligence"]), "intelligence")).toBe(true);
+    expect(hasAddon(sub("impayee", ["business"]), "business")).toBe(true);
+    // Abonnement résilié : ses options tombent avec lui ; une option offerte reste.
+    expect(hasAddon(sub("resiliee", ["intelligence"]), "intelligence")).toBe(false);
+    expect(addonSource(sub("resiliee", ["intelligence"], ["intelligence"]), "intelligence")).toBe("offerte");
+    expect(hasAddon(sub("a_activer", [], ["business"]), "intelligence")).toBe(false);
+  });
+  it("relues dans les lignes de l'abonnement Stripe, par produit", () => {
+    expect(addonsFromStripe([{ price: { product: "prod_abonnement" } }, { price: { product: ADDONS.business.product } }])).toEqual(["business"]);
+    expect(addonsFromStripe([{ price: null }, {}])).toEqual([]);
+  });
+  it("comptées dans le revenu mensuel récurrent", () => {
+    expect(recurringMonthlyCents("organisation", "month")).toBe(59900);
+    expect(recurringMonthlyCents("organisation", "month", ["intelligence", "business"])).toBe(59900 + 49000 + 99000);
+    expect(recurringMonthlyCents("organisation", "year", ["intelligence"])).toBe(Math.round(599000 / 12) + Math.round(490000 / 12));
   });
 });

@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { LegalPage, L, P, T } from "@/components/LegalPage";
 import { LEGAL, legal } from "@/lib/legal";
-import { formatPrice, freeMonths, PLANS, TRIAL_DAYS } from "@/lib/billing-plans";
+import { addonOpen, ADDON_KEYS, ADDONS, formatPrice, freeMonths, PLANS, TRIAL_DAYS } from "@/lib/billing-plans";
 import { db } from "@/lib/db";
 
 export const dynamic = "force-dynamic";
@@ -12,12 +12,14 @@ const eur = (cents: number) => `${(cents / 100).toLocaleString("fr-FR")} € HT`
 /** Conditions générales de vente : abonnements (organisations, prestataires) et services KolBase. Prix tirés du code et du catalogue. */
 export default async function Page() {
   const offers = await db.serviceOffer.findMany({ where: { active: true }, orderBy: { position: "asc" } });
+  // Options en vente (une option encore fermée n'apparaît pas dans les conditions).
+  const options = ADDON_KEYS.filter(addonOpen);
   const contact = <a href={`mailto:${LEGAL.contactEmail}`}>{legal("contactEmail")}</a>;
   return (
     <LegalPage
       path="/conditions-de-vente"
       title="Conditions générales de vente"
-      updated="6 novembre 2026"
+      updated="12 novembre 2026"
       intro={<P>{[`Les présentes conditions régissent les abonnements et les services payants de KolBase, vendus par ${legal("editor")} (« l'éditeur ») à des professionnels. Elles complètent les conditions générales d'utilisation.`]}</P>}
       sections={[
         ["Champ d'application", <P key="1">{[
@@ -31,6 +33,13 @@ export default async function Page() {
             ["Prestataire (traiteur, lieu, hébergement, agence…)", formatPrice(PLANS.prestataire.cents), `${formatPrice(PLANS.prestataire.yearCents, "year")} (${freeMonths("prestataire")} mois offerts)`],
           ]} />
           <P>{["L'abonnement couvre l'ensemble de l'organisation : utilisateurs illimités, agences mandatées sans surcoût."]}</P>
+          {options.length > 0 && <>
+            <T head={["Option de l'abonnement organisation", "Mensuel", "Annuel"]} rows={options.map((a) => [`${ADDONS[a].label} — ${ADDONS[a].pitch}`, formatPrice(ADDONS[a].cents), formatPrice(ADDONS[a].yearCents, "year")])} />
+            <P>{[
+              "Une option s'ajoute à l'abonnement organisation, à la même périodicité, et ne peut être souscrite sans lui. Un administrateur du client l'ajoute ou la retire à tout moment depuis la page Abonnement.",
+              "À l'ajout, la période en cours est facturée aussitôt au prorata des jours restants (rien n'est facturé pendant le mois offert). Au retrait, l'option cesse immédiatement et la part non consommée de la période en cours est déduite de la facture suivante. La résiliation de l'abonnement met fin à ses options à la même date.",
+            ]}</P>
+          </>}
         </>],
         ["Ce qui déclenche l'abonnement", <>
           <P>{["La création du compte, la validation de l'organisation, l'invitation de l'équipe, le paramétrage, la consultation de l'annuaire et les brouillons sont gratuits. L'abonnement est demandé :"]}</P>
