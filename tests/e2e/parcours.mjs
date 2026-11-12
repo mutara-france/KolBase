@@ -2759,8 +2759,7 @@ async function submitNewOrg(page, siren) {
   check("Stripe : option en ligne d'abonnement (490 € HT par mois, prorata facturé aussitôt)", sub.items.data.length === 2 && line?.price.unit_amount === 49000 && line?.price.recurring.interval === "month" && sub.lastProration === "always_invoice" && stripeState.products.get("kolbase_option_intelligence")?.name === "KolBase Intelligence", JSON.stringify(sub.items.data));
   t = await text(page);
   check("Intelligence : option active sur la page Abonnement", t.includes("KolBase Intelligence est activée") && (await option.innerText()).includes("Active") && (await option.locator('button:has-text("Retirer l\'option")').count()) === 1);
-  // Business reste fermée à la vente : ni proposée, ni ajoutable par un envoi forcé.
-  check("Business : pas encore en vente", !t.includes("KolBase Business"));
+  check("Options : KolBase Business proposée à côté, non souscrite", (await page.locator('.plan-option:has-text("KolBase Business")').innerText()).replace(/\s/g, " ").includes("990 € HT par mois") && (await page.locator('.plan-option:has-text("KolBase Business") button:has-text("Ajouter l\'option")').count()) === 1);
 
   // Portefeuille : experts engagés de l'organisation, fidélisation.
   await page.goto(`${BASE}/organisations/${org}/statistiques`);
