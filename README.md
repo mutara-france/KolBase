@@ -238,8 +238,18 @@ ni sur la page Abonnement ni dans les conditions de vente, mais reste attribuabl
 Page `/organisations/<id>/intelligence` (rôles des statistiques, option requise ; sans elle, renvoi vers la page
 Abonnement), atteinte depuis Statistiques :
 
+- **Recommandations** (`src/lib/intelligence-advice.ts`, en tête de la page) : règles lisibles, seuils regroupés
+  dans `ADVICE_RULES`. Chaque recommandation dit le constat chiffré, ce qu'il est proposé de faire et où : expert
+  qu'un concurrent paie davantage, experts dormants à relancer, panel concentré ou sans renouvellement, produits à
+  rattacher, produit que les experts déclinent ou qui n'engage plus personne, produit qui recrute le plus, concurrent
+  en forte hausse, fichier Transparence Santé à renouveler. Les six plus pressantes sont affichées.
 - **Portefeuille d'experts** (`src/lib/intelligence-data.ts`) : experts engagés de l'année, place de chacun (nouveau,
   fidèle, de retour, dormant), taux de fidélisation, experts que des concurrents suivis déclarent aussi.
+- **Produits** (`Product`, `productOverview`) : l'organisation décrit ses produits ou gammes et y rattache ses
+  dossiers et ses événements (un événement suit le produit de son dossier s'il n'a pas le sien) depuis l'onglet
+  Produits — un par un, ou d'un coup quand le titre nomme le produit. Par produit et par année : experts engagés,
+  **nouveaux experts recrutés** (première collaboration avec l'organisation, sur ce produit), honoraires, taux
+  d'acceptation des sollicitations, événements et inscrits. Un produit archivé garde son historique.
 - **Concurrents** : vingt au plus, avec leurs autres écritures (marques, filiales). Pour chacun : montants déclarés
   par type de lien, bénéficiaires, catégories, objets, premiers bénéficiaires.
 - **Fichiers importés** : l'organisation dépose l'export CSV ou Excel qu'elle a téléchargé sur

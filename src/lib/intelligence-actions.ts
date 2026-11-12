@@ -10,6 +10,8 @@ import { MAX_NAME, str } from "@/lib/form";
 import { MAX_UPLOAD_BYTES } from "@/lib/storage";
 import { readTable, TabularError } from "@/lib/tabular";
 import { detectColumns, FIELD_LABEL, matchCompetitor, normName, parseAliases, parseLink } from "@/lib/intelligence";
+import { suggestProduct } from "@/lib/intelligence-advice";
+import { productOverview } from "@/lib/intelligence-data";
 import { getT } from "@/lib/i18n/server";
 
 export type ActionState = { error?: string; ok?: string } | undefined;
@@ -112,5 +114,72 @@ export async function removeImport(form: FormData) {
   if (!imp) return;
   await db.publicImport.delete({ where: { id: imp.id } });
   await audit(m.user.id, "intelligence.import_remove", "Organization", orgId, { file: imp.fileName });
+  refresh(orgId);
+}
+
+/** Produits par organisation : au-delà, c'est une référence d'article, pas un produit à piloter. */
+const MAX_PRODUCTS = 60;
+
+/** Produit ou gamme ajouté au catalogue de l'organisation : ses dossiers et ses événements s'y rattachent ensuite. */
+export async function addProduct(_: ActionState, form: FormData): Promise<ActionState> {
+  const { t } = await getT();
+  const orgId = str(form, "orgId");
+  const m = await access(orgId);
+  if (!m) return { error: t("Cette page fait partie de l'option KolBase Intelligence.") };
+  const name = str(form, "name", MAX_NAME);
+  if (normName(name).length < 2) return { error: t("Indiquez le nom du produit.") };
+  const existing = await db.product.findMany({ where: { organizationId: orgId }, select: { name: true } });
+  if (existing.some((p) => normName(p.name) === normName(name))) return { error: t("Ce produit existe déjà.") };
+  if (existing.length >= MAX_PRODUCTS) return { error: t("Vous avez atteint {n} produits : regroupez-les par gamme.", { n: MAX_PRODUCTS }) };
+  const product = await db.product.create({ data: { organizationId: orgId, name, range: str(form, "range", MAX_NAME) || null } });
+  await audit(m.user.id, "intelligence.product_add", "Organization", orgId, { productId: product.id, name });
+  refresh(orgId);
+  return { ok: t("{name} est ajouté : rattachez-y vos dossiers et vos événements.", { name }) };
+}
+
+/** Produit archivé (son historique reste lisible, il n'est plus proposé) ou remis en service. */
+export async function archiveProduct(form: FormData) {
+  const orgId = str(form, "orgId");
+  const m = await access(orgId);
+  if (!m) return;
+  const product = await db.product.findFirst({ where: { id: str(form, "productId"), organizationId: orgId } });
+  if (!product) return;
+  await db.product.update({ where: { id: product.id }, data: { archivedAt: product.archivedAt ? null : new Date() } });
+  await audit(m.user.id, product.archivedAt ? "intelligence.product_restore" : "intelligence.product_archive", "Organization", orgId, { name: product.name });
+  refresh(orgId);
+}
+
+/** Dossier ou événement de l'organisation rattaché à l'un de ses produits (ou détaché : produit vide). */
+async function attach(orgId: string, kind: string, id: string, productId: string | null) {
+  if (kind === "project") return (await db.project.updateMany({ where: { id, organizationId: orgId }, data: { productId } })).count;
+  if (kind === "event") return (await db.event.updateMany({ where: { id, organizationId: orgId }, data: { productId } })).count;
+  return 0;
+}
+
+export async function assignProduct(form: FormData) {
+  const orgId = str(form, "orgId");
+  const m = await access(orgId);
+  if (!m) return;
+  const productId = str(form, "productId") || null;
+  // Le produit doit être celui de l'organisation : jamais celui d'une autre.
+  if (productId && !(await db.product.findFirst({ where: { id: productId, organizationId: orgId }, select: { id: true } }))) return;
+  if (await attach(orgId, str(form, "kind"), str(form, "id"), productId)) await audit(m.user.id, "intelligence.product_assign", "Organization", orgId, { kind: str(form, "kind"), id: str(form, "id"), productId });
+  refresh(orgId);
+}
+
+/** Rattache d'un coup les dossiers et événements de l'année dont le titre nomme un produit (propositions affichées). */
+export async function assignSuggestedProducts(form: FormData) {
+  const orgId = str(form, "orgId");
+  const m = await access(orgId);
+  if (!m) return;
+  const year = Number(str(form, "year"));
+  if (!Number.isInteger(year) || year < 2000 || year > 2100) return;
+  const o = await productOverview(orgId, year);
+  let done = 0;
+  for (const item of o.toAttach) {
+    const product = suggestProduct(item.title, o.products);
+    if (product) done += await attach(orgId, item.kind, item.id, product.id);
+  }
+  if (done) await audit(m.user.id, "intelligence.product_assign_suggested", "Organization", orgId, { year, count: done });
   refresh(orgId);
 }
