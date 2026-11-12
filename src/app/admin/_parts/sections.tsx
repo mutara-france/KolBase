@@ -4,6 +4,8 @@ import { formatDate, formatEUR } from "@/lib/events";
 import { ADDONS, addonsFor, addonSource, asInterval, displayStatus, exempt, planFor, PLANS, recurringMonthlyCents, STATUS_LABEL } from "@/lib/billing-plans";
 import { stripeEnabled } from "@/lib/billing";
 import { setExemption, setAddonGrant } from "@/lib/billing-actions";
+import { setBrandDomainStatus } from "@/lib/brand-actions";
+import { brandDomainTarget } from "@/lib/brand";
 import { saveServiceOffer, updateServiceOrder } from "@/lib/service-actions";
 import { featuredUntil, newsletterAudienceCount, newsletterSendsThisMonth, ORDER_STATUS, orderStats, trackedPath } from "@/lib/services";
 import { groupOrders, packItemStatus, packStatus } from "@/lib/service-pack";
@@ -285,6 +287,47 @@ export function LaunchChecklist({ items }: { items: LaunchItem[] }) {
           </li>
         ))}
       </ul>
+    </section>
+  );
+}
+
+/**
+ * Noms de domaine des organisations (KolBase Business) : demandés par elles, à rattacher au service web chez
+ * l'hébergeur avant d'être activés ici. Un domaine activé sans y être rattaché n'aboutit nulle part.
+ */
+export async function BrandDomainsAdmin() {
+  const brands = await db.orgBrand.findMany({ where: { domain: { not: null } }, orderBy: { domainRequestedAt: "desc" }, include: { organization: { select: { name: true, subscription: { select: { status: true, addons: true, addonsGranted: true } } } } } });
+  return (
+    <section className="card stack-sm" id="domaines">
+      <h2>Noms de domaine (KolBase Business)</h2>
+      <p className="muted">Pour chaque demande : 1. ajouter le domaine au service kolbase-web chez Render (Settings › Custom Domains) ; 2. attendre que l&apos;enregistrement CNAME vers <code>{brandDomainTarget()}</code> soit vérifié et le certificat émis ; 3. activer ici. La marque n&apos;est servie que si l&apos;option est en cours. Domaine retiré par l&apos;organisation : le détacher chez Render, puis le libérer ici. Tant qu&apos;un domaine figure dans cette liste sans être actif, personne ne peut s&apos;y connecter.</p>
+      {brands.length === 0 ? <p className="muted">Aucun nom de domaine demandé.</p> : (
+        <TableWrap label="Noms de domaine des organisations">
+          <table className="table">
+            <thead><tr><th>Organisation</th><th>Nom de domaine</th><th>État</th><th></th></tr></thead>
+            <tbody>
+              {brands.map((b) => {
+                const st = b.domainStatus ?? "demande";
+                return (
+                  <tr key={b.organizationId}>
+                    <td data-label="Organisation">{b.organization.name}{!addonSource(b.organization.subscription, "business") && <div className="text-xs warn-text">option KolBase Business absente</div>}</td>
+                    <td data-label="Nom de domaine"><code>{b.domain}</code>{b.domainRequestedAt && <div className="text-xs muted">demandé le {formatDate(b.domainRequestedAt)}</div>}</td>
+                    <td data-label="État"><span className={`pill ${st === "active" ? "ok" : "wait"}`}>{st === "active" ? "actif" : st === "retire" ? "à détacher" : "à rattacher"}</span></td>
+                    <td>
+                      <form action={setBrandDomainStatus} className="inline wrap">
+                        <input type="hidden" name="orgId" value={b.organizationId} />
+                        {st === "demande" && <ConfirmButton className="link" name="op" value="activate" confirm="activer le domaine" summary={<>{b.domain} est rattaché à kolbase-web chez Render et son certificat est émis.</>}>activer</ConfirmButton>}
+                        {st === "active" && <ConfirmButton className="link" name="op" value="suspend" confirm="remettre en attente" summary={<>{b.domain} n&apos;affiche plus la marque de {b.organization.name} et ses sessions sont fermées.</>}>remettre en attente</ConfirmButton>}
+                        {st !== "active" && <ConfirmButton className="link" name="op" value="release" confirm="libérer le domaine" summary={<>{b.domain} est détaché de kolbase-web chez Render (ou n&apos;y a jamais été rattaché) : KolBase l&apos;oublie.</>}>libérer</ConfirmButton>}
+                      </form>
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </TableWrap>
+      )}
     </section>
   );
 }

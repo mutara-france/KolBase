@@ -256,9 +256,33 @@ Abonnement), atteinte depuis Statistiques :
   elle est en https, sur un nom public dont la résolution DNS ne donne aucune adresse privée, redirections comprises
   (`src/lib/feed-reader.ts`).
 
-Deux limites voulues : aucune donnée d'une autre organisation cliente n'est lue, et la réutilisation de la base
+Deux limites voulues (Intelligence) : aucune donnée d'une autre organisation cliente n'est lue, et la réutilisation de la base
 Transparence Santé reste encadrée (finalité de transparence des liens d'intérêts, article L.1453-1 du code de la santé
 publique) — l'organisation l'atteste à chaque import ; à faire valider par un conseil avant l'ouverture commerciale.
+
+### KolBase Business
+
+KolBase servi à la marque d'une organisation sur son propre nom de domaine (`src/lib/brand.ts`, `brand-server.ts`) :
+
+- **Réglages** : `/organisations/<id>/marque` (administrateurs, option requise) — nom affiché, couleur principale
+  (contraste d'au moins 4,5 avec le blanc, teintes dérivées par `brandPalette`), logo de l'organisation, nom de domaine.
+- **Nom de domaine** : l'organisation saisit un sous-domaine (`kol.exemple.com`) et crée un CNAME vers
+  `BRAND_DOMAIN_TARGET` (par défaut `kolbase-web.onrender.com`). L'équipe KolBase, prévenue par e-mail, **ajoute le
+  domaine au service `kolbase-web` chez Render** (Settings › Custom Domains ; Render émet le certificat), puis l'active
+  dans `/admin/abonnements` › Noms de domaine. Rien n'est automatisé chez l'hébergeur. Un domaine retiré par
+  l'organisation reste réservé (« à détacher ») jusqu'à ce que l'équipe l'ait détaché chez Render puis libéré.
+- **Sur ce domaine** (hôte lu dans `X-Forwarded-Host`, table gardée une minute) : logo ou nom et couleur de
+  l'organisation dans l'en-tête, la barre latérale et le pied de page ; accueil redirigé vers son espace ou sa page
+  publique ; aucune indexation (`robots.txt`, balise `noindex`). La marque tombe d'elle-même si l'option s'arrête, si
+  l'organisation est suspendue ou si le domaine est retiré.
+- **Sessions** (`sessionScope`, `src/lib/auth.ts`) : le DNS du domaine appartient à l'organisation, qui pourrait le
+  faire pointer ailleurs et y recevoir le cookie de session. On n'y ouvre donc jamais une session KolBase ordinaire :
+  seuls les membres de l'organisation s'y connectent, pour une session (`Session.brandOrgId`) valable sur ce domaine
+  seulement et limitée à son espace — ni leurs autres organisations, ni leur profil de praticien, ni `/admin`. Sur un
+  domaine en attente, retiré ou sans option, personne ne se connecte. Les experts gardent leur compte sur KolBase.
+- **Ce que la marque ne fait pas** : les titres d'onglet, les e-mails, leurs liens (`APP_URL`), le retour de paiement
+  Stripe et les textes légaux restent ceux de KolBase ; les pages publiques (annuaire, agenda) ne sont pas restreintes
+  à l'organisation ; les comptes se créent sur KolBase.
 
 ### Services KolBase
 

@@ -2903,6 +2903,157 @@ async function submitNewOrg(page, siren) {
   await pgc.end();
 }
 
+// ── Option KolBase Business : marque de l'organisation servie sur son nom de domaine ──
+{
+  const pgc = new pg.Client({ connectionString: process.env.DATABASE_URL });
+  await pgc.connect();
+  const org = "demo-org-dentalys";
+  const domain = "kol.dentalys-demo.example";
+  await pgc.query(`delete from "OrgBrand" where "organizationId" = $1`, [org]);
+  await pgc.query(`delete from "Session" where id like 'e2e-s-%'`);
+  await pgc.query(`delete from "Membership" where id = 'e2e-m-marque'`);
+  const before = (await pgc.query(`select "addonsGranted" from "Subscription" where "organizationId" = $1`, [org])).rows[0]?.addonsGranted ?? "{}";
+  await pgc.query(`update "Subscription" set "addonsGranted" = '{}' where "organizationId" = $1`, [org]);
+  const { ctx, page } = await session();
+  await login(page, "claire.morel@demo.kolbase.local");
+  await page.goto(`${BASE}/organisations/${org}/marque`);
+  let t = await text(page);
+  check("Business : page réservée à l'option, renvoi vers l'abonnement (990 € HT par mois)", page.url().includes("/abonnement?option=business") && t.includes("Cette page fait partie de l'option KolBase Business") && t.replace(/\s/g, " ").includes("990 € HT par mois"));
+  await page.goto(`${BASE}/conditions-de-vente`);
+  t = (await text(page)).replace(/\s/g, " ");
+  check("CGV : les deux options et leurs règles", t.includes("KolBase Intelligence") && t.includes("KolBase Business") && t.includes("990 € HT par mois") && t.includes("9 900 € HT par an") && t.includes("au prorata des jours restants"));
+  await pgc.query(`update "Subscription" set "addonsGranted" = '{business}' where "organizationId" = $1`, [org]);
+
+  // Marque : nom affiché et couleur ; une couleur trop claire pour un texte blanc est refusée.
+  await page.goto(`${BASE}/organisations/${org}/marque`);
+  await page.fill('input[name="displayName"]', "Dentalys Experts");
+  await page.check('input[name="useColor"]');
+  await page.fill('input[name="color"]', "#ffe066");
+  check("Marque : couleur trop claire signalée, enregistrement bloqué", (await text(page)).includes("Trop claire") && (await page.locator('button:has-text("Enregistrer la marque")').isDisabled()));
+  await page.fill('input[name="color"]', "#006644");
+  await page.click('button:has-text("Enregistrer la marque")');
+  await page.locator('main .notice.ok:has-text("Marque enregistrée")').waitFor({ timeout: 10000 });
+  // Nom de domaine : sous-domaine exigé, adresses réservées refusées, demande transmise à l'équipe KolBase.
+  for (const [bad, message] of [["dentalys-demo.example", "Indiquez un sous-domaine"], ["marque.kolbase.io", "réservé"], ["localhost", "Nom de domaine invalide"]]) {
+    await page.fill('input[name="domain"]', bad);
+    await page.click('button:has-text("Demander ce nom de domaine")');
+    await page.locator(`main .notice.error:has-text("${message}")`).waitFor({ timeout: 10000 }).catch(() => {});
+    check(`Domaine : « ${bad} » refusé`, (await text(page)).includes(message));
+  }
+  await page.fill('input[name="domain"]', `https://${domain.toUpperCase()}/`);
+  await page.click('button:has-text("Demander ce nom de domaine")');
+  await page.locator('.pill:has-text("En attente d\'activation")').waitFor({ timeout: 10000 });
+  t = await text(page);
+  check("Domaine : demande en attente, enregistrement CNAME indiqué", t.includes("En attente d'activation") && t.includes(domain) && t.includes("CNAME") && t.includes("kolbase-web.onrender.com"));
+  check("Domaine : l'équipe KolBase est prévenue", !!(await waitMail("anne.chevalier@demo.kolbase.local", `Nom de domaine à rattacher : ${domain}`)));
+
+  // Sur ce nom de domaine (hôte transmis par le répartiteur) : KolBase tant que le domaine n'est pas activé.
+  const visit = async () => {
+    const c = await browser.newContext({ locale: "fr-FR", extraHTTPHeaders: { "x-forwarded-host": domain } });
+    const p = await c.newPage();
+    await p.goto(`${BASE}/connexion`);
+    const seen = { label: await p.locator("a.brand-lockup").first().getAttribute("aria-label"), style: (await p.locator("html").getAttribute("style")) ?? "", title: await p.title(), footer: await p.locator("footer.site-footer").innerText(), robots: await (await c.request.get(`${BASE}/robots.txt`)).text() };
+    const home = await c.request.get(`${BASE}/`, { maxRedirects: 0 });
+    await c.close();
+    return { ...seen, home: home.status(), location: home.headers().location ?? "" };
+  };
+  let v = await visit();
+  check("Domaine en attente : le site reste à la marque de KolBase", v.label === "KolBase — accueil" && !v.style.includes("--outremer") && v.robots.includes("Allow: /") && v.home === 200, JSON.stringify(v).slice(0, 300));
+  const adm = await session();
+  await login(adm.page, "anne.chevalier@demo.kolbase.local");
+  await adm.page.goto(`${BASE}/admin/abonnements`);
+  const row = adm.page.locator(`#domaines tr:has-text("${domain}")`);
+  check("Admin : domaine à rattacher, marche à suivre affichée", (await row.innerText()).includes("à rattacher") && (await adm.page.locator("#domaines").innerText()).includes("Custom Domains"));
+  await row.locator('button:text-is("activer")').click();
+  await row.locator('button:has-text("Confirmer")').click();
+  await adm.page.locator(`#domaines tr:has-text("${domain}") .pill:has-text("actif")`).waitFor({ timeout: 10000 });
+  v = await visit();
+  check("Domaine activé : nom et couleur de l'organisation", v.label === "Dentalys Experts — accueil" && v.style.includes("--outremer:#006644"), JSON.stringify({ label: v.label, style: v.style }));
+  check("Domaine activé : KolBase reste nommé comme éditeur, adresse non indexée", v.footer.includes("propulsé par KolBase") && v.footer.includes("Mentions légales") && /Disallow: \/\s*$/m.test(v.robots) && !v.robots.includes("Allow"), v.robots);
+  check("Domaine activé : l'accueil est la page de l'organisation", [307, 308].includes(v.home) && v.location.endsWith(`/structures/${org}`), `${v.home} ${v.location}`);
+  // L'habillage ne donne aucun droit : sans compte, l'espace de l'organisation reste fermé sur son domaine.
+  const anon = await browser.newContext({ locale: "fr-FR", extraHTTPHeaders: { "x-forwarded-host": domain } });
+  const closed = await anon.request.get(`${BASE}/organisations/${org}/dossiers`, { maxRedirects: 0 });
+  check("Domaine activé : aucun accès sans connexion", [307, 308].includes(closed.status()) && (closed.headers().location ?? "").includes("/connexion"), `${closed.status()} ${closed.headers().location}`);
+  await anon.close();
+  await page.reload();
+  check("Marque : domaine actif côté organisation", (await text(page)).includes("KolBase est servi à votre marque sur"));
+
+  // Sessions : le domaine appartient à l'organisation, une session KolBase ordinaire n'y vaut donc rien, et une
+  // session ouverte sur ce domaine ne vaut que là, pour un membre, dans le seul espace de l'organisation.
+  const { createHash } = await import("node:crypto");
+  const tokenHash = (v) => createHash("sha256").update(v).digest("hex");
+  const userId = async (email) => (await pgc.query(`select id from "User" where email = $1`, [email])).rows[0].id;
+  await pgc.query(`insert into "Session" (id, "tokenHash", "userId", "expiresAt", "brandOrgId") values ('e2e-s-membre', $1, $2, now() + interval '1 hour', $4), ('e2e-s-autre', $3, $5, now() + interval '1 hour', $4)`, [tokenHash("jeton-membre"), await userId("claire.morel@demo.kolbase.local"), tokenHash("jeton-autre"), org, await userId("anne.chevalier@demo.kolbase.local")]);
+  const probe = async (cookie, onDomain, path = `/organisations/${org}/dossiers`) => (await fetch(`${BASE}${path}`, { redirect: "manual", headers: { cookie: `kb_session=${cookie}`, ...(onDomain ? { "x-forwarded-host": domain } : {}) } })).status;
+  const kolbaseCookie = (await ctx.cookies()).find((k) => k.name === "kb_session").value;
+  check("Session du domaine : un membre accède à l'espace de son organisation", (await probe("jeton-membre", true)) === 200);
+  check("Session du domaine : sans valeur sur KolBase", [307, 308].includes(await probe("jeton-membre", false)));
+  check("Session KolBase : sans valeur sur le domaine d'une organisation", [307, 308].includes(await probe(kolbaseCookie, true)) && (await probe(kolbaseCookie, false)) === 200);
+  check("Session du domaine : refusée à qui n'est pas membre de l'organisation", [307, 308].includes(await probe("jeton-autre", true)));
+  // Administratrice KolBase devenue membre de l'organisation : sur le domaine, ni l'administration ni ses autres espaces.
+  await pgc.query(`insert into "Membership" (id, "userId", "organizationId", role) values ('e2e-m-marque', $1, $2, 'PROJETS')`, [await userId("anne.chevalier@demo.kolbase.local"), org]);
+  const scoped = [await probe("jeton-autre", true), await probe("jeton-autre", true, "/admin"), await probe("jeton-autre", true, "/organisations/demo-org-academie")];
+  check("Session du domaine : l'espace de l'organisation seulement (ni administration KolBase, ni autres organisations)", scoped[0] === 200 && scoped[1] !== 200 && scoped[2] === 404, scoped.join(" "));
+  await pgc.query(`delete from "Membership" where id = 'e2e-m-marque'`);
+  // Connexion sur le domaine (vrai nom d'hôte, résolu vers l'application) : réservée aux membres.
+  const origin = `http://${domain}:${new URL(BASE).port || 80}`;
+  const b2 = await chromium.launch({ args: [`--host-resolver-rules=MAP ${domain} 127.0.0.1`] });
+  const c2 = await b2.newContext({ locale: "fr-FR" });
+  await c2.addCookies([{ name: "kb_consent", value: `1.${Math.floor(Date.now() / 1000)}.00`, url: origin }]);
+  const p2 = await c2.newPage();
+  const signIn = async (email) => {
+    await p2.goto(`${origin}/connexion`);
+    await p2.fill('input[name="email"]', email);
+    await p2.fill('input[name="password"]', PW);
+    await p2.click('button:has-text("Se connecter")');
+    await Promise.race([p2.waitForURL((u) => u.pathname !== "/connexion", { timeout: 10000 }), p2.locator("main .notice.error").waitFor({ timeout: 10000 })]).catch(() => {});
+  };
+  await signIn("thomas.garnier@demo.kolbase.local");
+  check("Connexion sur le domaine : refusée à un compte extérieur à l'organisation", (await p2.locator("main").innerText()).includes("réservée à l'équipe de l'organisation"));
+  await signIn("claire.morel@demo.kolbase.local");
+  const opened = (await pgc.query(`select count(*)::int as n from "Session" where "brandOrgId" = $1 and id not like 'e2e-%'`, [org])).rows[0].n;
+  check("Connexion sur le domaine : session d'un membre, limitée à son organisation", opened === 1, String(opened));
+  // Un autre client ne peut pas prendre le même nom de domaine.
+  await pgc.query(`update "Subscription" set "addonsGranted" = '{business}' where "organizationId" = 'demo-org-orthonova'`);
+  const other = await session();
+  await login(other.page, "thomas.garnier@demo.kolbase.local");
+  await other.page.goto(`${BASE}/organisations/demo-org-orthonova/marque`);
+  await other.page.fill('input[name="domain"]', domain);
+  await other.page.click('button:has-text("Demander ce nom de domaine")');
+  await other.page.locator("main .notice.error").waitFor({ timeout: 10000 });
+  check("Domaine : déjà pris par une autre organisation, refusé", (await text(other.page)).includes("déjà utilisé par une autre organisation"));
+  await pgc.query(`delete from "OrgBrand" where "organizationId" = 'demo-org-orthonova'`);
+  await pgc.query(`update "Subscription" set "addonsGranted" = '{}' where "organizationId" = 'demo-org-orthonova'`);
+  await other.ctx.close();
+  // Retrait du domaine par l'organisation : il retombe aussitôt sur KolBase, ses sessions sont fermées, et plus
+  // personne ne s'y connecte tant que l'équipe KolBase ne l'a pas détaché puis libéré.
+  await page.locator('button:has-text("Retirer le nom de domaine")').click();
+  await page.locator('button:has-text("Confirmer")').click();
+  await page.locator('.pill:has-text("Retrait en cours")').waitFor({ timeout: 10000 });
+  v = await visit();
+  check("Domaine retiré : le site retombe sur KolBase, sessions du domaine fermées", v.label === "KolBase — accueil" && !v.style.includes("--outremer") && (await pgc.query(`select count(*)::int as n from "Session" where "brandOrgId" = $1`, [org])).rows[0].n === 0);
+  check("Domaine retiré : pas de nouvelle demande avant sa libération", (await page.locator('button:has-text("Demander ce nom de domaine")').count()) === 0);
+  await signIn("claire.morel@demo.kolbase.local");
+  check("Domaine retiré mais encore rattaché : aucune connexion", (await p2.locator("main").innerText()).includes("réservée à l'équipe de l'organisation") && (await pgc.query(`select count(*)::int as n from "Session" where "brandOrgId" = $1`, [org])).rows[0].n === 0);
+  await b2.close();
+  check("Domaine retiré : l'équipe KolBase est prévenue", !!(await waitMail("anne.chevalier@demo.kolbase.local", `Nom de domaine à détacher : ${domain}`)));
+  await adm.page.reload();
+  const gone = adm.page.locator(`#domaines tr:has-text("${domain}")`);
+  check("Admin : domaine à détacher", (await gone.innerText()).includes("à détacher"));
+  await gone.locator('button:has-text("libérer")').click();
+  await gone.locator('button:has-text("Confirmer")').click();
+  await adm.page.locator('#domaines:has-text("Aucun nom de domaine demandé")').waitFor({ timeout: 10000 });
+  await page.reload();
+  check("Domaine libéré : une nouvelle demande est possible", (await page.locator('button:has-text("Demander ce nom de domaine")').count()) === 1);
+  await adm.ctx.close();
+  await pgc.query(`delete from "Session" where id like 'e2e-s-%' or "brandOrgId" = $1`, [org]);
+  await pgc.query(`delete from "OrgBrand" where "organizationId" = $1`, [org]);
+  await pgc.query(`update "Subscription" set "addonsGranted" = $2 where "organizationId" = $1`, [org, before]);
+  await ctx.close();
+  await pgc.end();
+}
+
 // ── Lettre d'information : proposée une fois à l'accueil, encart des actualités ──
 {
   const no = await session();

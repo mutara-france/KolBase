@@ -105,6 +105,9 @@ model Session {
   user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
   expiresAt DateTime
   userAgent String?
+  // Session ouverte sur le nom de domaine d'une organisation (KolBase Business) : valable sur ce domaine seulement,
+  // et limitée à l'espace de cette organisation. null : session ouverte sur KolBase.
+  brandOrgId String?
   createdAt DateTime @default(now())
 
   @@index([userId])
@@ -387,6 +390,27 @@ model Organization {
   competitors      Competitor[]
   publicImports    PublicImport[]
   watchItems       WatchItem[]
+  brand            OrgBrand?
+}
+
+enum BrandDomainStatus {
+  demande // saisi par l'organisation : en attente du rattachement par l'équipe KolBase
+  active  // rattaché au service et contrôlé : KolBase y est servi à la marque de l'organisation
+  retire  // retiré par l'organisation : réservé tant que l'équipe KolBase ne l'a pas détaché du service
+}
+
+/// KolBase Business : marque de l'organisation (nom affiché, couleur) et nom de domaine sur lequel KolBase est servi
+/// à cette marque. Le logo est celui de l'organisation (OrganizationLogo).
+model OrgBrand {
+  organizationId    String             @id
+  organization      Organization       @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  displayName       String?
+  color             String?            // couleur principale (#rrggbb), contraste suffisant avec le blanc
+  domain            String?            @unique
+  domainStatus      BrandDomainStatus?
+  domainRequestedAt DateTime?
+  domainActivatedAt DateTime?
+  updatedAt         DateTime           @updatedAt
 }
 
 /// Source de veille (flux RSS ou Atom d'un site spécialisé, d'une revue, d'une chaîne vidéo), choisie par l'équipe

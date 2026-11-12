@@ -2,21 +2,25 @@ import Link from "next/link";
 import { Logo } from "@/components/Logo";
 import { CookieSettingsButton } from "@/components/CookieConsent";
 import { getT } from "@/lib/i18n/server";
+import { currentBrand } from "@/lib/brand-server";
 
 export async function SiteFooter() {
   const { t, locale } = await getT();
+  // Sur le nom de domaine d'une organisation : sa marque, et la mention de KolBase, éditeur du service (les
+  // informations légales restent celles de KolBase).
+  const brand = await currentBrand();
   return (
     <footer className="site-footer">
       <div className="footer-inner">
         <div>
           <Logo tone="light" height={26} />
           <p className="text-xs mt-2" style={{ maxWidth: 360 }}>
-            {t("La plateforme qui met en relation les chirurgiens-dentistes et les organisations du secteur.")}
+            {brand ? t("Un service propulsé par KolBase, la plateforme qui met en relation les chirurgiens-dentistes et les organisations du secteur.") : t("La plateforme qui met en relation les chirurgiens-dentistes et les organisations du secteur.")}
           </p>
         </div>
         {/* Premier niveau : contenus et aide ; les informations légales sont à part, en bas. */}
         <nav className="footer-links" aria-label={t("Pied de page")}>
-          <Link href="/actualites" className="footer-link">{t("Actualités")}</Link>
+          {!brand && <Link href="/actualites" className="footer-link">{t("Actualités")}</Link>}
           <Link href="/aide" className="footer-link">{t("Base de connaissances")}</Link>
         </nav>
       </div>

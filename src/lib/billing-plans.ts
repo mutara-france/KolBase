@@ -42,8 +42,8 @@ export const ADDONS = {
     pitch: "Pilotage de votre KOL management et veille concurrentielle : portefeuille d'experts, fidélisation, concurrents suivis et experts que vous partagez avec eux.",
   },
   business: {
-    label: "KolBase Business", cents: 99000, yearCents: 990000, kinds: ["INDUSTRIEL", "SOCIETE_SAVANTE", "ASSOCIATION_PRO", "ORGANISME_FORMATION"], product: "kolbase_option_business", open: false,
-    pitch: "Votre propre KolBase : votre nom, votre logo, vos couleurs et votre nom de domaine, pour vos équipes et vos experts.",
+    label: "KolBase Business", cents: 99000, yearCents: 990000, kinds: ["INDUSTRIEL", "SOCIETE_SAVANTE", "ASSOCIATION_PRO", "ORGANISME_FORMATION"], product: "kolbase_option_business", open: true,
+    pitch: "Votre propre KolBase : votre nom, votre logo, votre couleur et votre nom de domaine, pour l'espace de vos équipes et votre page publique.",
   },
 } as const satisfies Record<string, { label: string; cents: number; yearCents: number; kinds: readonly string[]; product: string; open: boolean; pitch: string }>;
 export type Addon = keyof typeof ADDONS;
