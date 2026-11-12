@@ -2732,6 +2732,104 @@ async function submitNewOrg(page, siren) {
   await pgc.end();
 }
 
+// ── Option KolBase Intelligence : ajout sur l'abonnement en cours, concurrents suivis, import Transparence Santé ──
+{
+  const pgc = new pg.Client({ connectionString: process.env.DATABASE_URL });
+  await pgc.connect();
+  const org = "demo-org-dentalys";
+  await pgc.query(`delete from "Competitor" where "organizationId" = $1`, [org]);
+  await pgc.query(`delete from "PublicImport" where "organizationId" = $1`, [org]);
+  await pgc.query(`delete from "Subscription" where "organizationId" = $1`, [org]);
+  const { ctx, page } = await session();
+  await login(page, "claire.morel@demo.kolbase.local");
+  // Sans l'option : la page renvoie vers l'abonnement, ouvert sur l'option ; elle s'ajoute à un abonnement en cours.
+  await page.goto(`${BASE}/organisations/${org}/intelligence`);
+  let t = await text(page);
+  check("Intelligence : page réservée à l'option, renvoi vers l'abonnement", page.url().includes("/abonnement?option=intelligence") && t.includes("Cette page fait partie de l'option KolBase Intelligence") && t.replace(/\s/g, " ").includes("490 € HT par mois"));
+  check("Intelligence : pas d'ajout sans abonnement en cours", t.includes("Activez d'abord l'abonnement ci-dessus") && (await page.locator('button:has-text("Ajouter l\'option")').count()) === 0);
+  await page.click('button:has-text("Activer l\'abonnement mensuel")');
+  await page.waitForURL(/\/abonnement\?session=cs_/, { timeout: 15000 });
+  const option = page.locator('.plan-option:has-text("KolBase Intelligence")');
+  await option.locator('button:has-text("Ajouter l\'option")').click();
+  check("Intelligence : prix et facturation annoncés avant de confirmer", (await option.innerText()).includes("à partir de la fin de votre mois offert"));
+  await option.locator('button:has-text("Confirmer")').click();
+  await page.waitForURL(/resultat=added/, { timeout: 15000 });
+  const sub = [...stripeState.subscriptions.values()].at(-1);
+  const line = sub.items.data.find((i) => i.price.product === "kolbase_option_intelligence");
+  check("Stripe : option en ligne d'abonnement (490 € HT par mois, prorata facturé aussitôt)", sub.items.data.length === 2 && line?.price.unit_amount === 49000 && line?.price.recurring.interval === "month" && sub.lastProration === "always_invoice" && stripeState.products.get("kolbase_option_intelligence")?.name === "KolBase Intelligence", JSON.stringify(sub.items.data));
+  t = await text(page);
+  check("Intelligence : option active sur la page Abonnement", t.includes("KolBase Intelligence est activée") && (await option.innerText()).includes("Active") && (await option.locator('button:has-text("Retirer l\'option")').count()) === 1);
+  // Business reste fermée à la vente : ni proposée, ni ajoutable par un envoi forcé.
+  check("Business : pas encore en vente", !t.includes("KolBase Business"));
+
+  // Portefeuille : experts engagés de l'organisation, fidélisation.
+  await page.goto(`${BASE}/organisations/${org}/statistiques`);
+  await page.click('a:has-text("KolBase Intelligence")');
+  await page.waitForURL(/\/intelligence/, { timeout: 15000 });
+  t = await text(page);
+  const expert = (await pgc.query(`select u."firstName", u."lastName", pr.rpps from "ProjectExpert" pe join "Project" p on p.id = pe."projectId" join "PractitionerProfile" pr on pr.id = pe."practitionerId" join "User" u on u.id = pr."userId" where p."organizationId" = $1 and pe.status not in ('ATT_EXPERTS', 'DECLINE') and pr.rpps is not null and extract(year from coalesce(pe."respondedAt", pe."createdAt")) = extract(year from now()) order by pe."feeCents" desc limit 1`, [org])).rows[0];
+  check("Intelligence : portefeuille d'experts de l'année", /experts engagés/i.test(t) && /fidélisation/i.test(t) && t.includes(`${expert.firstName} ${expert.lastName}`), `${expert.firstName} ${expert.lastName}`);
+
+  // Concurrents suivis, puis import d'un export Transparence Santé : seules leurs lignes sont conservées.
+  await page.goto(`${BASE}/organisations/${org}/intelligence?onglet=sources`);
+  check("Intelligence : import impossible sans concurrent suivi", (await text(page)).includes("Ajoutez d'abord au moins un concurrent") && (await page.locator('input[name="file"]').count()) === 0);
+  await page.goto(`${BASE}/organisations/${org}/intelligence?onglet=concurrents`);
+  await page.fill('input[name="name"]', "Implants Démo Concurrent");
+  await page.fill('input[name="aliases"]', "IDC Biomatériaux");
+  await page.click('button:has-text("Suivre ce concurrent")');
+  await page.locator("main .notice.ok").waitFor({ timeout: 10000 });
+  await page.goto(`${BASE}/organisations/${org}/intelligence?onglet=sources`);
+  const year = new Date().getFullYear();
+  const csv = [
+    "denomination_sociale;lien_interet;date;montant_ttc;benef_nom;benef_prenom;benef_identifiant_valeur;benef_categorie_libelle;motif_lien_interet",
+    `IMPLANTS DEMO CONCURRENT SAS;Convention;${year}-03-14;1500,00;${expert.lastName.toUpperCase()};${expert.firstName};${expert.rpps};Professionnel de santé;Contrat d'intervenant à une manifestation`,
+    `IDC Biomatériaux France;Avantage;02/04/${year};62,50;INCONNU;Paul;;Professionnel de santé;Hospitalité - restauration`,
+    `Société sans rapport;Rémunération;${year}-05-02;800;AUTRE;Jeanne;;Professionnel de santé;Contrat d'expert scientifique`,
+    `IMPLANTS DEMO CONCURRENT SAS;Rémunération;${year - 1}-11-20;2400;INCONNU;Paul;;Professionnel de santé;Contrat d'expert scientifique`,
+  ].join("\n");
+  const upload = () => page.setInputFiles('input[name="file"]', { name: "declarations.csv", mimeType: "text/csv", buffer: Buffer.from(csv) });
+  await upload();
+  await page.check('input[name="licence"]');
+  await page.click('button:has-text("Importer le fichier")');
+  await page.locator("main .notice.ok").waitFor({ timeout: 15000 });
+  check("Import : seules les lignes des concurrents suivis sont conservées", (await text(page)).includes("4 lignes lues, 3 déclarées par vos concurrents suivis, dont 3 nouvelles"), (await text(page)).slice(0, 300));
+  const stored = (await pgc.query(`select count(*)::int as n, count(distinct "competitorId")::int as c from "PublicLink" where "organizationId" = $1`, [org])).rows[0];
+  check("Import : lignes enregistrées dans l'espace de l'organisation", stored.n === 3 && stored.c === 1, JSON.stringify(stored));
+  await upload();
+  await page.check('input[name="licence"]');
+  await page.click('button:has-text("Importer le fichier")');
+  await page.locator('main .notice.ok:has-text("dont 0 nouvelles")').waitFor({ timeout: 15000 }).catch(() => {});
+  check("Import : même fichier déposé deux fois, aucun doublon", (await text(page)).includes("dont 0 nouvelles") && (await pgc.query(`select count(*)::int as n from "PublicLink" where "organizationId" = $1`, [org])).rows[0].n === 3);
+  await page.goto(`${BASE}/organisations/${org}/intelligence?onglet=concurrents`);
+  t = (await text(page)).replace(/\s/g, " ");
+  check("Concurrents : montants de l'année par type de lien, bénéficiaires", t.includes("1 562,50 €") && /premiers bénéficiaires déclarés/i.test(t) && t.includes("dans votre portefeuille"), t.slice(0, 400));
+  await page.goto(`${BASE}/organisations/${org}/intelligence`);
+  const row = page.locator("tr", { hasText: `${expert.firstName} ${expert.lastName}` });
+  check("Portefeuille : expert partagé avec un concurrent suivi (rapproché par RPPS)", (await row.innerText()).replace(/\s/g, " ").includes("Implants Démo Concurrent : 1 500 €"), await row.innerText());
+
+  // Cloisonnement : un membre d'une autre organisation n'accède ni à la page ni aux données importées.
+  const other = await session();
+  await login(other.page, "thomas.garnier@demo.kolbase.local");
+  const refused = await other.page.goto(`${BASE}/organisations/${org}/intelligence`);
+  check("Intelligence : page fermée aux autres organisations", refused.status() === 404);
+  await other.ctx.close();
+
+  // Retrait de l'option : ligne supprimée chez Stripe, prorata déduit, page de nouveau fermée (données conservées).
+  await page.goto(`${BASE}/organisations/${org}/abonnement`);
+  await option.locator('button:has-text("Retirer l\'option")').click();
+  await option.locator('button:has-text("Confirmer")').click();
+  await page.waitForURL(/resultat=removed/, { timeout: 15000 });
+  check("Stripe : option retirée (ligne supprimée, prorata déduit)", sub.items.data.length === 1 && sub.lastProration === "create_prorations");
+  await page.goto(`${BASE}/organisations/${org}/intelligence`);
+  check("Intelligence : page refermée après le retrait de l'option", page.url().includes("/abonnement?option=intelligence"));
+  // État de départ de la démonstration : abonnement offert, sans concurrent ni import.
+  await pgc.query(`delete from "Competitor" where "organizationId" = $1`, [org]);
+  await pgc.query(`delete from "PublicImport" where "organizationId" = $1`, [org]);
+  await pgc.query(`update "Subscription" set "exemptUntil" = '2099-12-31T23:59:59Z', "exemptNote" = 'Démonstration' where "organizationId" = $1`, [org]);
+  await ctx.close();
+  await pgc.end();
+}
+
 // ── Lettre d'information : proposée une fois à l'accueil, encart des actualités ──
 {
   const no = await session();

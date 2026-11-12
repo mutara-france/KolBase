@@ -233,6 +233,25 @@ avec prorata facturé à l'ajout et déduit au retrait. Les options souscrites s
 pilote ou partenaire, sans effet sur Stripe). Tant qu'une option est fermée à la vente (`open: false`), elle n'apparaît
 ni sur la page Abonnement ni dans les conditions de vente, mais reste attribuable depuis `/admin`.
 
+### KolBase Intelligence
+
+Page `/organisations/<id>/intelligence` (rôles des statistiques, option requise ; sans elle, renvoi vers la page
+Abonnement), atteinte depuis Statistiques :
+
+- **Portefeuille d'experts** (`src/lib/intelligence-data.ts`) : experts engagés de l'année, place de chacun (nouveau,
+  fidèle, de retour, dormant), taux de fidélisation, experts que des concurrents suivis déclarent aussi.
+- **Concurrents** : vingt au plus, avec leurs autres écritures (marques, filiales). Pour chacun : montants déclarés
+  par type de lien, bénéficiaires, catégories, objets, premiers bénéficiaires.
+- **Fichiers importés** : l'organisation dépose l'export CSV ou Excel qu'elle a téléchargé sur
+  transparence.sante.gouv.fr (aucun appel à l'API du site). Les colonnes sont reconnues par mots-clés
+  (`detectColumns`, `src/lib/intelligence.ts`), seules les lignes des concurrents suivis sont conservées
+  (`PublicLink`), un fichier importé deux fois ne crée pas de doublon. Lecture des fichiers sans dépendance :
+  `src/lib/tabular.ts`.
+
+Deux limites voulues : aucune donnée d'une autre organisation cliente n'est lue, et la réutilisation de la base
+Transparence Santé reste encadrée (finalité de transparence des liens d'intérêts, article L.1453-1 du code de la santé
+publique) — l'organisation l'atteste à chaque import ; à faire valider par un conseil avant l'ouverture commerciale.
+
 ### Services KolBase
 
 Sur chaque événement publié, les organisateurs commandent des services réalisés par l'équipe KolBase

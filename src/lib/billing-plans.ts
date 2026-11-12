@@ -38,8 +38,8 @@ export const planFor = (kind: string): Plan => (kind === "PRESTATAIRE" ? "presta
  */
 export const ADDONS = {
   intelligence: {
-    label: "KolBase Intelligence", cents: 49000, yearCents: 490000, kinds: ["INDUSTRIEL"], product: "kolbase_option_intelligence", open: false,
-    pitch: "Pilotage de votre KOL management et veille concurrentielle : portefeuille d'experts, budgets, concurrents suivis, veille des sites spécialisés.",
+    label: "KolBase Intelligence", cents: 49000, yearCents: 490000, kinds: ["INDUSTRIEL"], product: "kolbase_option_intelligence", open: true,
+    pitch: "Pilotage de votre KOL management et veille concurrentielle : portefeuille d'experts, fidélisation, concurrents suivis et experts que vous partagez avec eux.",
   },
   business: {
     label: "KolBase Business", cents: 99000, yearCents: 990000, kinds: ["INDUSTRIEL", "SOCIETE_SAVANTE", "ASSOCIATION_PRO", "ORGANISME_FORMATION"], product: "kolbase_option_business", open: false,
@@ -66,6 +66,8 @@ export const hasAddon = (s: AddonSub, addon: Addon) => addonSource(s, addon) !==
 /** Options reconnues dans les lignes d'un abonnement Stripe (par produit). */
 export const addonsFromStripe = (items: readonly { price?: { product?: string | null } | null }[]): Addon[] =>
   ADDON_KEYS.filter((a) => items.some((i) => i.price?.product === ADDONS[a].product));
+/** Page d'abonnement ouverte sur une option (page réservée à l'option). */
+export const addonHref = (orgId: string, addon: Addon) => `/organisations/${orgId}/abonnement?option=${addon}#options`;
 /** Revenu mensuel récurrent d'un abonnement, options souscrites comprises (une formule annuelle compte pour un douzième). */
 export const recurringMonthlyCents = (plan: Plan, interval: Interval, addons: readonly string[] = []) =>
   monthlyCents(plan, interval) + ADDON_KEYS.filter((a) => addons.includes(a)).reduce((s, a) => s + Math.round(addonPrice(a, interval) / (interval === "year" ? 12 : 1)), 0);

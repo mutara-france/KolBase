@@ -65,7 +65,8 @@ export function orgNavItems(orgId: string, roles: OrgRole[], kind: string): Shel
       match: [`${base}/prestataires`],
     });
   if (has(roles, COMPLIANCE_ROLES)) items.push({ key: "conformite", href: `${base}/conformite`, label: "Conformité", icon: "ShieldCheck", match: [`${base}/hospitalites`, `${base}/relecture`, `${base}/partenariats`] });
-  if (has(roles, STATS_ROLES)) items.push({ key: "statistiques", href: `${base}/statistiques`, label: "Statistiques", short: "Stats", icon: "BarChart3", secondary: true });
+  // KolBase Intelligence (option) se range sous les statistiques : même rubrique, même entrée active.
+  if (has(roles, STATS_ROLES)) items.push({ key: "statistiques", href: `${base}/statistiques`, label: "Statistiques", short: "Stats", icon: "BarChart3", secondary: true, match: [`${base}/intelligence`] });
   return items;
 }
 

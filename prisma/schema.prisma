@@ -383,6 +383,68 @@ model Organization {
   coveredCountries String[]         @default([])
   brands           String[]         @default([])
   channels         ContactChannel[]
+  // KolBase Intelligence : concurrents suivis et déclarations publiques importées par l'organisation.
+  competitors      Competitor[]
+  publicImports    PublicImport[]
+}
+
+/// Concurrent suivi par une organisation (KolBase Intelligence) : son nom et ses autres écritures (marques, filiales)
+/// servent à reconnaître ses déclarations publiques dans les fichiers importés.
+model Competitor {
+  id             String       @id @default(cuid())
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  name           String
+  aliases        String[]     @default([])
+  createdAt      DateTime     @default(now())
+  links          PublicLink[]
+
+  @@unique([organizationId, name])
+}
+
+/// Fichier de la base publique Transparence Santé déposé par l'organisation (téléchargé par elle sur le site officiel).
+/// Seules les lignes de ses concurrents suivis sont conservées ; supprimer l'import les efface.
+model PublicImport {
+  id             String       @id @default(cuid())
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  fileName       String
+  rows           Int          // lignes lues dans le fichier
+  kept           Int          // lignes conservées (concurrents suivis, hors doublons)
+  importedById   String?
+  createdAt      DateTime     @default(now())
+  links          PublicLink[]
+
+  @@index([organizationId])
+}
+
+enum PublicLinkKind {
+  convention
+  remuneration
+  avantage
+}
+
+/// Lien d'intérêts déclaré par un concurrent suivi, tel que publié (ligne d'un fichier importé). Propre à
+/// l'organisation qui l'a importé : jamais partagé avec une autre.
+model PublicLink {
+  id              String         @id @default(cuid())
+  organizationId  String
+  competitorId    String
+  competitor      Competitor     @relation(fields: [competitorId], references: [id], onDelete: Cascade)
+  importId        String
+  import          PublicImport   @relation(fields: [importId], references: [id], onDelete: Cascade)
+  kind            PublicLinkKind
+  date            DateTime?
+  amountCents     Int
+  beneficiaryId   String?        // identifiant professionnel publié (RPPS), s'il figure dans le fichier
+  beneficiaryName String?
+  category        String?        // catégorie ou profession du bénéficiaire
+  purpose         String?
+  sourceKey       String         // empreinte de la ligne : un fichier importé deux fois ne crée pas de doublon
+
+  @@unique([competitorId, sourceKey])
+  @@index([organizationId, beneficiaryId])
+  @@index([competitorId, date])
 }
 
 /** Groupe d'organisations (industriel présent dans plusieurs pays) : ses entités sont rattachées par l'équipe KolBase. */

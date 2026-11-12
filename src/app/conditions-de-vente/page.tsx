@@ -19,7 +19,7 @@ export default async function Page() {
     <LegalPage
       path="/conditions-de-vente"
       title="Conditions générales de vente"
-      updated="6 novembre 2026"
+      updated="12 novembre 2026"
       intro={<P>{[`Les présentes conditions régissent les abonnements et les services payants de KolBase, vendus par ${legal("editor")} (« l'éditeur ») à des professionnels. Elles complètent les conditions générales d'utilisation.`]}</P>}
       sections={[
         ["Champ d'application", <P key="1">{[
