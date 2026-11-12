@@ -8,7 +8,7 @@ import { storageEnabled } from "@/lib/storage";
 import { orcidOAuth } from "@/lib/orcid";
 import { signatureApiUrl, signatureEnabled, signatureSandbox, webhookSecret } from "@/lib/yousign";
 import { aiEnabled } from "@/lib/ai";
-import { asInterval, exempt, monthlyCents, planFor } from "@/lib/billing-plans";
+import { asInterval, exempt, planFor, recurringMonthlyCents } from "@/lib/billing-plans";
 import { stripeEnabled } from "@/lib/billing";
 import { adminTwoFactorRequired } from "@/lib/two-factor";
 import { TASK_NAME, taskHealth } from "@/lib/task-health";
@@ -113,7 +113,7 @@ export async function dashboardFigures(now = new Date()) {
   ]);
   const paying = subs.filter((o) => ["essai", "active", "impayee"].includes(o.subscription?.status ?? "") && !exempt(o.subscription, now));
   // Revenu mensuel récurrent : une formule annuelle compte pour un douzième ; les essais ne comptent pas.
-  const mrr = paying.filter((o) => o.subscription!.status !== "essai").reduce((s, o) => s + monthlyCents(planFor(o.kind), asInterval(o.subscription!.interval)), 0);
+  const mrr = paying.filter((o) => o.subscription!.status !== "essai").reduce((s, o) => s + recurringMonthlyCents(planFor(o.kind), asInterval(o.subscription!.interval), o.subscription!.addons), 0);
   const unpaid = paying.filter((o) => o.subscription!.status === "impayee").length;
   return { users, newUsers, experts, newExperts, orgs, suppliers, upcoming, registrations, projects, rfqs, services, demoOrgs: demo[0], demoUsers: demo[1], paying: paying.length, mrr, unpaid };
 }

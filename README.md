@@ -218,6 +218,21 @@ Formule annuelle au choix : dix mois facturés pour douze (5 990 € HT et 2 490
 vers `<APP_URL>/api/stripe/webhook`), `STRIPE_TAX_RATE` (taux de TVA `txr_…`). Sans clé, rien n'est facturé.
 Activer le portail client dans le tableau de bord Stripe (moyen de paiement, factures, résiliation).
 
+### Options de l'abonnement organisation
+
+Deux options cumulables s'ajoutent à l'abonnement organisation, à sa périodicité (`ADDONS`, `src/lib/billing-plans.ts`) :
+
+- **KolBase Intelligence**, 490 € HT par mois (industriels) : pilotage du KOL management et veille concurrentielle ;
+- **KolBase Business**, 990 € HT par mois (toute organisation hors prestataires) : KolBase à la marque de
+  l'organisation (nom, logo, couleurs, nom de domaine).
+
+Une option est une ligne de plus sur l'abonnement Stripe en cours, reconnue par son produit (`kolbase_option_…`,
+créé à la première souscription) : un administrateur l'ajoute ou la retire depuis la page Abonnement (`changeAddon`),
+avec prorata facturé à l'ajout et déduit au retrait. Les options souscrites sont relues à chaque notification Stripe
+(`Subscription.addons`) ; KolBase peut aussi en offrir une depuis `/admin/abonnements` (`Subscription.addonsGranted`,
+pilote ou partenaire, sans effet sur Stripe). Tant qu'une option est fermée à la vente (`open: false`), elle n'apparaît
+ni sur la page Abonnement ni dans les conditions de vente, mais reste attribuable depuis `/admin`.
+
 ### Services KolBase
 
 Sur chaque événement publié, les organisateurs commandent des services réalisés par l'équipe KolBase

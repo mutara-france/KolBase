@@ -1605,6 +1605,10 @@ model Subscription {
   cancelAtPeriodEnd    Boolean      @default(false)
   exemptUntil          DateTime?    // gratuité accordée par KolBase (pilote, partenaire, démonstration)
   exemptNote           String?
+  // Options en plus de l'abonnement organisation : souscrites (lignes de l'abonnement Stripe, relues à chaque
+  // notification) ou offertes par KolBase depuis /admin (pilote, partenaire).
+  addons               SubscriptionAddon[] @default([])
+  addonsGranted        SubscriptionAddon[] @default([])
   createdAt            DateTime     @default(now())
   updatedAt            DateTime     @updatedAt
 }
@@ -1693,6 +1697,12 @@ enum SubscriptionPlan {
 enum BillingInterval {
   month
   year
+}
+
+/// intelligence : pilotage du KOL management et veille concurrentielle ; business : KolBase à la marque de l'organisation.
+enum SubscriptionAddon {
+  intelligence
+  business
 }
 
 enum SubscriptionStatus {

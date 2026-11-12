@@ -23,4 +23,4 @@ export async function stripe<T = Record<string, unknown>>(method: "GET" | "POST"
   return data;
 }
 
-export type StripeSubscription = { id: string; status: string; customer: string; trial_end: number | null; current_period_end: number | null; cancel_at_period_end: boolean; metadata?: Record<string, string>; items?: { data: { price?: { recurring?: { interval?: string } | null } }[] } };
+export type StripeSubscription = { id: string; status: string; customer: string; trial_end: number | null; current_period_end: number | null; cancel_at_period_end: boolean; metadata?: Record<string, string>; items?: { data: { id?: string; price?: { product?: string | null; recurring?: { interval?: string } | null } }[] } };

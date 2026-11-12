@@ -7,8 +7,8 @@ import { audit } from "@/lib/auth";
 import { requireMembership } from "@/lib/orgs";
 import { requirePlatformAdmin } from "@/lib/platform";
 import { str } from "@/lib/form";
-import { checkoutUrl, portalUrl, stripeEnabled, syncStripePause } from "@/lib/billing";
-import { asInterval, asMotive, asObjectId, exempt, planFor } from "@/lib/billing-plans";
+import { changeAddon, checkoutUrl, portalUrl, stripeEnabled, syncStripePause, type AddonChange } from "@/lib/billing";
+import { addonOpen, addonsFor, asAddon, asInterval, asMotive, asObjectId, exempt, planFor } from "@/lib/billing-plans";
 import { notifyExemption } from "@/lib/notifications";
 import { parseParisDateTime } from "@/lib/events";
 import { getT } from "@/lib/i18n/server";
@@ -31,6 +31,43 @@ export async function openBillingPortal(form: FormData) {
   if (!isAdmin || !stripeEnabled()) redirect(`/organisations/${orgId}/abonnement`);
   const url = await portalUrl(orgId);
   redirect(url ?? `/organisations/${orgId}/abonnement`);
+}
+
+/**
+ * Option ajoutée ou retirée par un administrateur de l'organisation, sur son abonnement Stripe en cours. Une option
+ * fermée à la vente ne s'ajoute pas (elle peut toujours être retirée). Le résultat est affiché par la page d'abonnement.
+ */
+export async function toggleAddon(form: FormData) {
+  const orgId = str(form, "orgId");
+  const { user, isAdmin } = await requireMembership(orgId);
+  const addon = asAddon(form.get("addon"));
+  const on = form.get("on") === "1";
+  const back = `/organisations/${orgId}/abonnement`;
+  if (!isAdmin || !stripeEnabled() || !addon || (on && !addonOpen(addon))) redirect(back);
+  let result: AddonChange | "error";
+  try {
+    result = await changeAddon(orgId, addon, on);
+  } catch (e) {
+    // Paiement refusé, Stripe injoignable : rien n'est enregistré, la page le dit.
+    console.error("[option]", addon, e);
+    result = "error";
+  }
+  await audit(user.id, on ? "billing.addon_add" : "billing.addon_remove", "Organization", orgId, { addon, result });
+  redirect(`${back}?option=${addon}&resultat=${result}#options`);
+}
+
+/** Option offerte par KolBase (pilote, partenaire) ou reprise, depuis /admin : sans effet sur l'abonnement Stripe. */
+export async function setAddonGrant(form: FormData) {
+  const admin = await requirePlatformAdmin();
+  const orgId = str(form, "orgId");
+  const addon = asAddon(form.get("addon"));
+  const org = await db.organization.findUnique({ where: { id: orgId }, select: { kind: true, subscription: { select: { addonsGranted: true } } } });
+  if (!org || !addon || !addonsFor(org.kind).includes(addon)) return;
+  const on = form.get("on") === "1";
+  const granted = [...(org.subscription?.addonsGranted ?? []).filter((a) => a !== addon), ...(on ? [addon] : [])];
+  await db.subscription.upsert({ where: { organizationId: orgId }, update: { addonsGranted: { set: granted } }, create: { organizationId: orgId, plan: planFor(org.kind), addonsGranted: granted } });
+  await audit(admin.id, on ? "billing.addon_grant" : "billing.addon_ungrant", "Organization", orgId, { addon });
+  revalidatePath("/admin", "layout");
 }
 
 export type ExemptionState = { error?: string } | undefined;
