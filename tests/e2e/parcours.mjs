@@ -2822,10 +2822,12 @@ async function submitNewOrg(page, siren) {
   check("Stripe : option retirée (ligne supprimée, prorata déduit)", sub.items.data.length === 1 && sub.lastProration === "create_prorations");
   await page.goto(`${BASE}/organisations/${org}/intelligence`);
   check("Intelligence : page refermée après le retrait de l'option", page.url().includes("/abonnement?option=intelligence"));
-  // État de départ de la démonstration : abonnement offert, sans concurrent ni import.
+  // État de départ de la démonstration : abonnement offert sans client Stripe (la suite du parcours facture des
+  // services « hors Stripe » à cette organisation), sans concurrent ni import.
   await pgc.query(`delete from "Competitor" where "organizationId" = $1`, [org]);
   await pgc.query(`delete from "PublicImport" where "organizationId" = $1`, [org]);
-  await pgc.query(`update "Subscription" set "exemptUntil" = '2099-12-31T23:59:59Z', "exemptNote" = 'Démonstration' where "organizationId" = $1`, [org]);
+  await pgc.query(`delete from "Subscription" where "organizationId" = $1`, [org]);
+  await pgc.query(`insert into "Subscription" ("organizationId", plan, status, "exemptUntil", "exemptNote", "updatedAt") values ($1, 'organisation', 'a_activer', '2099-12-31T23:59:59Z', 'Démonstration', now())`, [org]);
   await ctx.close();
   await pgc.end();
 }
