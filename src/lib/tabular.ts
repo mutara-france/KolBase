@@ -1,4 +1,5 @@
 import { inflateRawSync } from "node:zlib";
+import { attr, element, elements } from "@/lib/xml";
 
 /**
  * Lecture d'un tableau déposé par une organisation (export CSV ou Excel d'un site public) : lignes de cellules en
@@ -74,28 +75,30 @@ const unescapeXml = (s: string) =>
   s.replace(/&(lt|gt|quot|apos|amp|#x?[0-9a-fA-F]+);/g, (_, e: string) =>
     e === "lt" ? "<" : e === "gt" ? ">" : e === "quot" ? '"' : e === "apos" ? "'" : e === "amp" ? "&" : String.fromCodePoint(e[1] === "x" ? parseInt(e.slice(2), 16) : Number(e.slice(1))));
 /** Texte d'un élément <si> ou <is> : ses <t> mis bout à bout (texte enrichi compris). */
-const richText = (xml: string) => [...xml.matchAll(/<t(?:\s[^>]*)?>([\s\S]*?)<\/t>/g)].map((m) => unescapeXml(m[1])).join("");
+const richText = (xml: string) => [...elements(xml, "t")].map((t) => unescapeXml(t.body)).join("");
 /** Colonne d'une référence de cellule (« A1 » → 0, « AB12 » → 27). */
 const columnOf = (ref: string) => [...ref.replace(/\d+$/, "")].reduce((n, ch) => n * 26 + ch.charCodeAt(0) - 64, 0) - 1;
+/** Nombre maximal de colonnes lues (une référence de cellule fantaisiste ne fait pas grossir la ligne). */
+const MAX_COLUMNS = 500;
 
 /** Première feuille d'un classeur Excel (.xlsx) : cellules en texte (nombres tels qu'écrits dans le fichier). */
 export function readXlsx(bytes: Uint8Array): string[][] {
   const zip = zipEntries(bytes);
   const read = (name: string) => zip.get(name)?.().toString("utf8") ?? null;
-  const shared = [...(read("xl/sharedStrings.xml") ?? "").matchAll(/<si>([\s\S]*?)<\/si>/g)].map((m) => richText(m[1]));
+  const shared = [...elements(read("xl/sharedStrings.xml") ?? "", "si")].map((si) => richText(si.body));
   const sheetName = [...zip.keys()].filter((k) => /^xl\/worksheets\/sheet\d+\.xml$/.test(k)).sort((a, b) => a.length - b.length || a.localeCompare(b))[0];
   const sheet = sheetName ? read(sheetName) : null;
   if (!sheet) throw new TabularError("format");
   const rows: string[][] = [];
-  for (const r of sheet.matchAll(/<row\b[^>]*>([\s\S]*?)<\/row>/g)) {
+  for (const r of elements(sheet, "row")) {
     const row: string[] = [];
-    for (const c of r[1].matchAll(/<c\b([^>]*?)(?:\/>|>([\s\S]*?)<\/c>)/g)) {
-      const ref = /\br="([A-Z]+\d+)"/.exec(c[1])?.[1];
-      const type = /\bt="(\w+)"/.exec(c[1])?.[1];
-      const body = c[2] ?? "";
-      const v = /<v>([\s\S]*?)<\/v>/.exec(body)?.[1] ?? "";
-      const value = type === "s" ? shared[Number(v)] ?? "" : type === "inlineStr" ? richText(body) : unescapeXml(v);
-      const col = ref ? columnOf(ref) : row.length;
+    for (const c of elements(r.body, "c")) {
+      const ref = attr(c.attrs, "r");
+      const type = attr(c.attrs, "t");
+      const v = element(c.body, "v")?.body ?? "";
+      const value = type === "s" ? shared[Number(v)] ?? "" : type === "inlineStr" ? richText(c.body) : unescapeXml(v);
+      const col = ref && /^[A-Z]{1,3}\d+$/.test(ref) ? columnOf(ref) : row.length;
+      if (col >= MAX_COLUMNS) continue;
       while (row.length < col) row.push("");
       row[col] = value;
     }

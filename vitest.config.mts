@@ -7,7 +7,7 @@ import { defineConfig } from "vitest/config";
  */
 const RULE_MODULES = [
   "agenda", "article-format", "billing-plans", "compliance", "events", "fee-notes", "indicators", "intelligence", "nav",
-  "org-roles", "projects", "quotes", "service-pack", "tabular", "totp", "visibility",
+  "org-roles", "projects", "quotes", "service-pack", "tabular", "totp", "visibility", "xml",
 ].map((m) => `src/lib/${m}.ts`);
 
 export default defineConfig({
