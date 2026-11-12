@@ -233,6 +233,10 @@ avec prorata facturé à l'ajout et déduit au retrait. Les options souscrites s
 pilote ou partenaire, sans effet sur Stripe). Tant qu'une option est fermée à la vente (`open: false`), elle n'apparaît
 ni sur la page Abonnement ni dans les conditions de vente, mais reste attribuable depuis `/admin`.
 
+Chaque option a sa page de présentation publique, atteinte depuis le pied de page : `/intelligence` et `/business`
+(`src/components/OfferPage.tsx`, prix lus dans `ADDONS`). Le bouton mène un administrateur d'une organisation
+concernée à sa page Abonnement, ouverte sur l'option ; un visiteur, à l'inscription de son organisation.
+
 ### KolBase Intelligence
 
 Page `/organisations/<id>/intelligence` (rôles des statistiques, option requise ; sans elle, renvoi vers la page

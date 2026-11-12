@@ -3136,6 +3136,30 @@ async function submitNewOrg(page, siren) {
   await pgc.end();
 }
 
+// ── Pages de présentation des options, atteintes depuis le pied de page ──
+{
+  const anon = await session();
+  await anon.page.goto(`${BASE}/`);
+  const footer = anon.page.locator("footer.site-footer");
+  check("Pied de page : liens vers KolBase Intelligence et KolBase Business", (await footer.locator('a[href="/intelligence"]').count()) === 1 && (await footer.locator('a[href="/business"]').count()) === 1);
+  await footer.locator('a[href="/intelligence"]').click();
+  await anon.page.waitForURL(/\/intelligence$/, { timeout: 15000 });
+  let t = (await text(anon.page)).replace(/\s/g, " ");
+  check("Présentation d'Intelligence : prix, apports, inscription proposée au visiteur", t.includes("Pilotez votre KOL management") && t.includes("490 € HT par mois") && t.includes("Des recommandations, pas seulement des chiffres") && (await anon.page.locator('main a[href="/inscription?profil=organisation"]').count()) === 1, t.slice(0, 300));
+  await anon.page.goto(`${BASE}/business`);
+  t = (await text(anon.page)).replace(/\s/g, " ");
+  check("Présentation de Business : prix, apports, limites dites", t.includes("Votre propre KolBase") && t.includes("990 € HT par mois") && t.includes("Vos experts gardent leur compte et leur espace sur kolbase.io") && (await anon.page.title()).includes("KolBase Business"), t.slice(0, 300));
+  const map = await (await anon.ctx.request.get(`${BASE}/sitemap.xml`)).text();
+  check("Plan du site : les deux pages y figurent", map.includes("/intelligence</loc>") && map.includes("/business</loc>"));
+  await anon.ctx.close();
+  // Administrateur d'un industriel : le bouton mène à sa page Abonnement, ouverte sur l'option.
+  const { ctx, page } = await session();
+  await login(page, "claire.morel@demo.kolbase.local");
+  await page.goto(`${BASE}/intelligence`);
+  check("Présentation : un administrateur est mené à son abonnement, ouvert sur l'option", (await page.locator('main a[href="/organisations/demo-org-dentalys/abonnement?option=intelligence#options"]').count()) === 1);
+  await ctx.close();
+}
+
 // ── Lettre d'information : proposée une fois à l'accueil, encart des actualités ──
 {
   const no = await session();
