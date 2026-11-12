@@ -1,6 +1,7 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import { parseCsv, readTable, readXlsx, TabularError } from "@/lib/tabular";
+import { attr, element, elements } from "@/lib/xml";
 import { amountCents, cellDate, detectColumns, linkKind, loyalty, matchCompetitor, normName, parseAliases, parseLink, personKey } from "@/lib/intelligence";
 
 describe("lecture des fichiers déposés (CSV, Excel)", () => {
@@ -29,6 +30,24 @@ describe("lecture des fichiers déposés (CSV, Excel)", () => {
     expect(readTable(Uint8Array.from([0x45, 0x6e, 0x74, 0x3b, 0xe9, 0x0a, 0x31, 0x3b, 0x32]))[0]).toEqual(["Ent", "é"]);
     expect(() => readTable(Uint8Array.from([0x50, 0x4b, 0x03, 0x04, 0, 0, 0, 0]))).toThrow(TabularError);
     expect(() => readTable(Uint8Array.from([0xd0, 0xcf, 0x11, 0xe0]))).toThrow(TabularError);
+  });
+});
+
+describe("lecture de XML fourni par un tiers", () => {
+  it("lit les éléments de gauche à droite, sans confondre les noms voisins", () => {
+    const xml = '<cols><col min="1"/></cols><c r="A1" t="s"><v>0</v></c><c r="B1"/><content:encoded>x</content:encoded><content type="html">y</content>';
+    expect([...elements(xml, "c")].map((c) => [attr(c.attrs, "r"), attr(c.attrs, "t"), element(c.body, "v")?.body ?? null])).toEqual([["A1", "s", "0"], ["B1", null, null]]);
+    expect([...elements(xml, "content")].map((c) => c.body)).toEqual(["y"]);
+    expect(attr(' xml:spr="1" r="A2"', "r")).toBe("A2");
+    expect(attr(' r="A2', "r")).toBeNull();
+    expect(element("<a>", "b")).toBeNull();
+  });
+  it("reste linéaire sur un document piégé (balises jamais refermées)", () => {
+    const trap = "<row><c r=\"A1\">".repeat(200_000);
+    const started = Date.now();
+    expect([...elements(trap, "row")]).toEqual([]);
+    expect([...elements(`${"<item>".repeat(200_000)}`, "item")]).toEqual([]);
+    expect(Date.now() - started).toBeLessThan(1500);
   });
 });
 

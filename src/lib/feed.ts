@@ -1,5 +1,6 @@
 import { isIP } from "node:net";
 import { normName } from "@/lib/intelligence";
+import { attr, element, elements } from "@/lib/xml";
 
 /**
  * Veille des sites spécialisés (KolBase Intelligence) : lecture des flux RSS et Atom, contrôle des adresses relevées
@@ -16,18 +17,22 @@ const decode = (s: string) =>
     const code = e[1] === "x" ? parseInt(e.slice(2), 16) : Number(e.slice(1));
     return code > 0 && code <= 0x10ffff ? String.fromCodePoint(code) : "";
   });
+/** Texte brut repris d'un élément, borné avant tout traitement (un flux piégé ne coûte rien). */
+const RAW_MAX = 6000;
+const cdata = (s: string) => s.slice(0, RAW_MAX).replace(/<!\[CDATA\[([\s\S]*?)\]\]>/g, "$1");
 /**
  * Texte d'un élément XML : CDATA dépliée, balises HTML retirées et entités décodées, deux fois (le HTML d'un flux est
  * souvent échappé : « &amp;lt;p&amp;gt; », « &amp;nbsp; »), espaces resserrés. Le résultat est affiché comme du texte.
  */
 const plain = (s: string) => {
-  const pass = (x: string) => decode(x.replace(/<[^>]*>/g, " "));
-  return pass(pass(s.replace(/<!\[CDATA\[([\s\S]*?)\]\]>/g, "$1"))).replace(/\s+/g, " ").trim();
+  const pass = (x: string) => decode(x.replace(/<[^>]{0,2000}>/g, " "));
+  return pass(pass(cdata(s))).replace(/\s+/g, " ").trim();
 };
+/** Contenu du premier élément présent parmi ces noms. */
 const tag = (xml: string, names: string[]) => {
   for (const n of names) {
-    const m = new RegExp(`<${n}(?:\\s[^>]*)?>([\\s\\S]*?)</${n}>`, "i").exec(xml);
-    if (m) return m[1];
+    const e = element(xml, n);
+    if (e) return e.body;
   }
   return "";
 };
@@ -36,27 +41,31 @@ const cut = (s: string, max: number) => (s.length > max ? `${s.slice(0, max - 1)
 /** Adresse d'article reprise d'un flux : http(s) seulement (jamais « javascript: » ou autre). */
 const articleUrl = (v: string) => {
   try {
-    const u = new URL(decode(v.replace(/<!\[CDATA\[([\s\S]*?)\]\]>/g, "$1")).trim());
+    const u = new URL(decode(cdata(v)).trim());
     return u.protocol === "https:" || u.protocol === "http:" ? u.toString().slice(0, 600) : null;
   } catch {
     return null;
   }
 };
 
-/** Publications d'un flux RSS 2.0 (<item>) ou Atom (<entry>) ; un document qui n'est ni l'un ni l'autre ne donne rien. */
+/**
+ * Publications d'un flux RSS 2.0 (<item>) ou Atom (<entry>) ; un document qui n'est ni l'un ni l'autre ne donne rien.
+ * Lecture en temps linéaire (lib/xml) : le flux vient d'un site tiers.
+ */
 export function parseFeed(xml: string, max = 60): FeedItem[] {
   const items: FeedItem[] = [];
-  for (const m of xml.matchAll(/<(item|entry)(?:\s[^>]*)?>([\s\S]*?)<\/\1>/gi)) {
-    const body = m[2];
-    const title = cut(plain(tag(body, ["title"])), 240);
-    // Atom : <link href="…"> (de préférence rel="alternate") ; RSS : <link>…</link>, à défaut <guid>.
-    const links = [...body.matchAll(/<link\b([^>]*)\/?>/gi)].map((l) => ({ rel: /\brel="([^"]*)"/i.exec(l[1])?.[1] ?? "alternate", href: /\bhref="([^"]*)"/i.exec(l[1])?.[1] }));
-    const url = articleUrl(links.find((l) => l.href && l.rel === "alternate")?.href ?? links.find((l) => l.href)?.href ?? (tag(body, ["link"]) || tag(body, ["guid", "id"])));
-    if (!title || !url) continue;
-    const date = new Date(plain(tag(body, ["pubDate", "published", "updated", "dc:date"])));
-    const summary = cut(plain(tag(body, ["description", "summary", "content", "content:encoded"])), 300);
-    items.push({ title, url, summary: summary || null, publishedAt: Number.isNaN(date.getTime()) ? null : date });
-    if (items.length >= max) break;
+  for (const name of ["item", "entry"]) {
+    for (const { body } of elements(xml, name)) {
+      const title = cut(plain(tag(body, ["title"])), 240);
+      // Atom : <link href="…"> (de préférence rel="alternate") ; RSS : <link>…</link>, à défaut <guid>.
+      const links = [...elements(body, "link")].map((l) => ({ rel: attr(l.attrs, "rel") ?? "alternate", href: attr(l.attrs, "href"), text: l.body }));
+      const url = articleUrl(links.find((l) => l.href && l.rel === "alternate")?.href ?? links.find((l) => l.href)?.href ?? (links.find((l) => l.text.trim())?.text || tag(body, ["guid", "id"])));
+      if (!title || !url) continue;
+      const date = new Date(plain(tag(body, ["pubDate", "published", "updated", "dc:date"])));
+      const summary = cut(plain(tag(body, ["description", "summary", "content", "content:encoded"])), 300);
+      items.push({ title, url, summary: summary || null, publishedAt: Number.isNaN(date.getTime()) ? null : date });
+      if (items.length >= max) return items;
+    }
   }
   return items;
 }
