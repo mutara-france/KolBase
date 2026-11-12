@@ -4,7 +4,7 @@ import { useActionState } from "react";
 import { Notice } from "@/components/AuthForms";
 import { ActionForm } from "@/components/ActionForm";
 import { useT } from "@/components/I18nProvider";
-import { addCompetitor, importPublicFile } from "@/lib/intelligence-actions";
+import { addCompetitor, addProduct, importPublicFile } from "@/lib/intelligence-actions";
 import { addWatchPin } from "@/lib/watch-actions";
 
 /** Concurrent à suivre : nom, et autres écritures sous lesquelles il déclare (marques, filiales). */
@@ -58,6 +58,23 @@ export function WatchPinForm({ orgId }: { orgId: string }) {
       </label>
       <label>{t("Note (facultatif)")}<input name="note" maxLength={300} /></label>
       <button className="btn small" disabled={pending}>{pending ? t("Enregistrement…") : t("Ajouter à la veille")}</button>
+    </ActionForm>
+  );
+}
+
+/** Produit ou gamme de l'organisation, auquel ses dossiers et ses événements se rattachent. */
+export function ProductForm({ orgId }: { orgId: string }) {
+  const t = useT();
+  const [state, action, pending] = useActionState(addProduct, undefined);
+  return (
+    <ActionForm action={action} className="form stack-sm">
+      <Notice state={state} />
+      <input type="hidden" name="orgId" value={orgId} />
+      <div className="row">
+        <label>{t("Nom du produit")}<input name="name" required maxLength={120} /></label>
+        <label>{t("Gamme ou marque (facultatif)")}<input name="range" maxLength={120} /></label>
+      </div>
+      <button className="btn small" disabled={pending}>{pending ? t("Enregistrement…") : t("Ajouter le produit")}</button>
     </ActionForm>
   );
 }

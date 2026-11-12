@@ -1,20 +1,22 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
-import { Building2, ExternalLink, FileSpreadsheet, Newspaper, Radar, Trash2, UserCheck, Users } from "lucide-react";
+import { Building2, ExternalLink, FileSpreadsheet, Lightbulb, Newspaper, Package, Radar, Trash2, UserCheck, Users } from "lucide-react";
 import { EmptyState, PageHead, SectionHead } from "@/components/UI";
 import { SiteHeader } from "@/components/SiteHeader";
 import { SectionNav } from "@/components/SectionNav";
 import { RankedBars } from "@/components/Charts";
 import { TableWrap } from "@/components/TableWrap";
 import { ConfirmButton } from "@/components/ConfirmButton";
-import { CompetitorForm, PublicImportForm, WatchPinForm } from "@/components/IntelligenceForms";
+import { CompetitorForm, ProductForm, PublicImportForm, WatchPinForm } from "@/components/IntelligenceForms";
+import { AutoSubmitSelect } from "@/components/AutoSubmit";
 import { requireMembership } from "@/lib/orgs";
 import { STATS_ROLES } from "@/lib/org-roles";
 import { addonGate } from "@/lib/billing";
 import { db } from "@/lib/db";
-import { competitorOverview, portfolio } from "@/lib/intelligence-data";
+import { competitorOverview, portfolio, productOverview } from "@/lib/intelligence-data";
+import { advise, suggestProduct, type AdviceTab } from "@/lib/intelligence-advice";
 import { LINK_KIND_LABEL, LINK_KINDS, LOYALTY_LABEL, personKey } from "@/lib/intelligence";
-import { removeCompetitor, removeImport } from "@/lib/intelligence-actions";
+import { archiveProduct, assignProduct, assignSuggestedProducts, removeCompetitor, removeImport } from "@/lib/intelligence-actions";
 import { watchFor, WATCH_DAYS } from "@/lib/watch";
 import { removeWatchPin } from "@/lib/watch-actions";
 import { getT } from "@/lib/i18n/server";
@@ -25,13 +27,16 @@ export async function generateMetadata() {
   return { title: `${t("Intelligence")} — KolBase` };
 }
 
-const TABS = ["portefeuille", "concurrents", "veille", "sources"] as const;
+const TABS = ["portefeuille", "produits", "concurrents", "veille", "sources"] as const;
+const ADVICE_TONE = { danger: "error", warn: "warn", ok: "ok", info: "" } as const;
+const ADVICE_CTA: Record<AdviceTab, string> = { portefeuille: "Voir les experts", produits: "Ouvrir les produits", concurrents: "Ouvrir les concurrents", sources: "Importer un fichier", opportunites: "Publier une opportunité" };
 type Tab = (typeof TABS)[number];
 const pct = (x: number) => `${Math.round(x * 100)} %`;
 
 /**
- * KolBase Intelligence (option de l'abonnement) : portefeuille d'experts de l'organisation, déclarations publiques de
- * ses concurrents suivis, veille des sites spécialisés et fichiers Transparence Santé qu'elle a importés.
+ * KolBase Intelligence (option de l'abonnement) : recommandations tirées des chiffres de l'organisation, portefeuille
+ * d'experts, activité par produit, déclarations publiques de ses concurrents suivis, veille des sites spécialisés et
+ * fichiers Transparence Santé qu'elle a importés.
  */
 export default async function Page({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: Promise<{ onglet?: string; annee?: string }> }) {
   const { t, locale } = await getT();
@@ -45,17 +50,24 @@ export default async function Page({ params, searchParams }: { params: Promise<{
   const asked = Number(sp.annee);
   const year = Number.isInteger(asked) && asked >= 2000 && asked <= now ? asked : now;
   const base = `/organisations/${id}/intelligence`;
-  const [p, c, imports, watch] = await Promise.all([
+  const [p, c, prod, imports, watch] = await Promise.all([
     portfolio(id, year),
     competitorOverview(id, year),
-    tab === "sources" ? db.publicImport.findMany({ where: { organizationId: id }, orderBy: { createdAt: "desc" } }) : [],
+    productOverview(id, year),
+    db.publicImport.findMany({ where: { organizationId: id }, orderBy: { createdAt: "desc" } }),
     tab === "veille" ? watchFor(org) : null,
   ]);
+  // Recommandations : règles lisibles (lib/intelligence-advice), les plus pressantes d'abord.
+  const advice = advise({ year, portfolio: p, competitors: c.competitors, products: { count: prod.products.length, coverage: prod.coverage, unassigned: prod.unassigned, rows: prod.rows }, lastImportAt: imports[0]?.createdAt ?? null });
+  const adviceHref = (to: AdviceTab) => (to === "opportunites" ? `/organisations/${id}/opportunites` : to === "portefeuille" ? "#experts" : `${base}?onglet=${to}${to === "sources" ? "" : `&annee=${year}`}`);
+  const live = prod.products.filter((x) => !x.archivedAt);
+  const suggested = prod.toAttach.filter((x) => suggestProduct(x.title, prod.products)).length;
   const years = [...new Set([...p.years, ...c.years, now])].filter((y) => y <= now).sort();
   // Bénéficiaires des concurrents qui sont aussi des experts de l'organisation (rapprochés par nom).
   const mine = new Set(p.experts.map((e) => personKey(e.name)));
   const tabs = [
     { key: "portefeuille", href: `${base}?annee=${year}`, label: t("Portefeuille d'experts") },
+    { key: "produits", href: `${base}?onglet=produits&annee=${year}`, label: t("Produits"), count: live.length },
     { key: "concurrents", href: `${base}?onglet=concurrents&annee=${year}`, label: t("Concurrents"), count: c.competitors.length },
     { key: "veille", href: `${base}?onglet=veille`, label: t("Veille") },
     { key: "sources", href: `${base}?onglet=sources`, label: t("Fichiers importés") },
@@ -66,16 +78,32 @@ export default async function Page({ params, searchParams }: { params: Promise<{
       <SiteHeader />
       <main className="stack">
         <p className="muted"><Link href={`/organisations/${id}/statistiques`}>{t("Statistiques")}</Link> / {t("Intelligence")}</p>
-        <PageHead title={t("KolBase Intelligence")} desc={t("Votre portefeuille d'experts et les déclarations publiques de vos concurrents suivis. Sources : vos dossiers et les fichiers Transparence Santé que vous importez ; jamais les données d'une autre organisation cliente de KolBase.")} />
+        <PageHead title={t("KolBase Intelligence")} desc={t("Vos experts, vos produits et vos concurrents suivis, avec les recommandations qui en découlent. Sources : vos dossiers, vos événements et les fichiers Transparence Santé que vous importez ; jamais les données d'une autre organisation cliente de KolBase.")} />
         <SectionNav tabs={tabs} active={tab} label={t("Rubrique Intelligence")} />
-        {(tab === "portefeuille" || tab === "concurrents") && (
+        {(tab === "portefeuille" || tab === "produits" || tab === "concurrents") && (
           <nav className="chips" aria-label={t("Année")}>
-            {years.map((y) => <Link key={y} href={`${base}?${tab === "concurrents" ? "onglet=concurrents&" : ""}annee=${y}`} className={`chip${y === year ? " active" : ""}`} aria-current={y === year ? "page" : undefined}>{y}</Link>)}
+            {years.map((y) => <Link key={y} href={`${base}?${tab === "portefeuille" ? "" : `onglet=${tab}&`}annee=${y}`} className={`chip${y === year ? " active" : ""}`} aria-current={y === year ? "page" : undefined}>{y}</Link>)}
           </nav>
         )}
 
         {tab === "portefeuille" && (
           <>
+            <section className="card stack-sm" id="recommandations">
+              <SectionHead icon={Lightbulb} title={t("Recommandations")} desc={t("Tirées de vos chiffres de {year}, les plus pressantes d'abord. Chaque constat est chiffré : à vous de décider.", { year })} />
+              {advice.length === 0 ? (
+                <p className="muted">{t("Rien à signaler en {year} : portefeuille équilibré, produits rattachés, sources à jour.", { year })}</p>
+              ) : (
+                <ul className="plain stack-sm">
+                  {advice.slice(0, 6).map((a) => (
+                    <li key={a.key} className={`notice ${ADVICE_TONE[a.tone]} stack-xs`}>
+                      <strong>{t(a.title, a.vars)}</strong>
+                      <span>{t(a.detail, a.vars)}</span>
+                      <Link href={adviceHref(a.tab)}>{t(ADVICE_CTA[a.tab])}</Link>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </section>
             <dl className="hero-facts">
               <div><dt><Users size={13} />{" "}{t("Experts engagés")}</dt><dd>{p.active}<small>{t("{montant} d'honoraires (HT) en {year}", { montant: fmtEur(locale, p.total), year })}</small></dd></div>
               <div><dt><UserCheck size={13} />{" "}{t("Fidélisation")}</dt><dd>{p.retention == null ? "—" : pct(p.retention)}<small>{t("des experts de {year} encore engagés", { year: year - 1 })}</small></dd></div>
@@ -83,7 +111,7 @@ export default async function Page({ params, searchParams }: { params: Promise<{
               <div><dt>{t("Dormants")}</dt><dd>{p.loyalty.dormant}<small>{t("engagés en {year}, plus depuis", { year: year - 1 })}</small></dd></div>
               <div><dt><Radar size={13} />{" "}{t("Experts partagés")}</dt><dd>{p.shared}<small>{t("aussi déclarés par un concurrent suivi")}</small></dd></div>
             </dl>
-            <section className="card stack-sm">
+            <section className="card stack-sm" id="experts">
               <SectionHead icon={Users} title={t("Experts du portefeuille")} desc={t("Engagés : proposition acceptée, à la date de leur accord (même définition que les statistiques). Liens avec vos concurrents : déclarations publiques importées, rapprochées par RPPS ou, à défaut, par nom et prénom.")} />
               {p.experts.length === 0 ? (
                 <EmptyState icon={Users} compact>{t("Aucun expert engagé en {year} ni l'année précédente.", { year })}</EmptyState>
@@ -105,6 +133,96 @@ export default async function Page({ params, searchParams }: { params: Promise<{
                   </table>
                 </TableWrap>
               )}
+            </section>
+          </>
+        )}
+
+        {tab === "produits" && (
+          <>
+            <dl className="hero-facts">
+              <div><dt><Package size={13} />{" "}{t("Produits suivis")}</dt><dd>{live.length}<small>{t(prod.products.length - live.length > 1 ? "{n} archivés" : "{n} archivé", { n: prod.products.length - live.length })}</small></dd></div>
+              <div><dt>{t("Dossiers rattachés")}</dt><dd>{prod.coverage == null ? "—" : pct(prod.coverage)}<small>{t(prod.unassigned > 1 ? "{n} dossiers de {year} sans produit" : "{n} dossier de {year} sans produit", { n: prod.unassigned, year })}</small></dd></div>
+              <div><dt><UserCheck size={13} />{" "}{t("Recrute le plus")}</dt><dd>{prod.rows[0]?.recruited ? prod.rows[0].name : "—"}<small>{prod.rows[0]?.recruited ? t(prod.rows[0].recruited > 1 ? "{n} nouveaux experts en {year}" : "{n} nouvel expert en {year}", { n: prod.rows[0].recruited, year }) : t("aucun nouvel expert rattaché à un produit en {year}", { year })}</small></dd></div>
+            </dl>
+            {prod.products.length > 0 && (
+              <>
+                <div className="stats-grid">
+                  <section className="card stack-sm">
+                    <SectionHead icon={UserCheck} title={t("Nouveaux experts par produit")} desc={t("Experts dont la toute première collaboration avec vous date de {year}, selon le produit de ce premier dossier.", { year })} />
+                    <RankedBars caption={t("Nouveaux experts recrutés par produit en {year}", { year })} format="int" empty={t("Aucun nouvel expert rattaché à un produit en {year}.", { year })} rows={prod.rows.filter((r) => r.recruited > 0).map((r) => ({ label: r.name, value: r.recruited, note: t(r.experts > 1 ? "{n} experts engagés" : "{n} expert engagé", { n: r.experts }) }))} />
+                  </section>
+                  <section className="card stack-sm">
+                    <SectionHead icon={Users} title={t("Inscrits aux événements par produit")} desc={t("Inscriptions non annulées aux événements de {year} ; un événement suit le produit de son dossier s'il n'a pas le sien.", { year })} />
+                    <RankedBars caption={t("Inscrits aux événements par produit en {year}", { year })} format="int" empty={t("Aucun événement rattaché à un produit en {year}.", { year })} rows={prod.rows.filter((r) => r.registrations > 0).sort((a, b) => b.registrations - a.registrations).map((r) => ({ label: r.name, value: r.registrations, note: t(r.events > 1 ? "{n} événements" : "{n} événement", { n: r.events }) }))} />
+                  </section>
+                </div>
+                <section className="card stack-sm">
+                  <SectionHead icon={Package} title={t("Activité par produit en {year}", { year })} desc={t("Acceptation : part des experts sollicités dans l'année qui ont accepté, parmi ceux qui ont répondu.")} />
+                  <TableWrap label={t("Activité par produit en {year}", { year })}>
+                    <table className="table">
+                      <thead><tr><th>{t("Produit")}</th><th>{t("Experts engagés")}</th><th>{t("Honoraires {year}", { year })}</th><th>{t("Acceptation")}</th><th>{t("Événements")}</th><th></th></tr></thead>
+                      <tbody>
+                        {[...prod.rows, prod.none].map((r) => (
+                          <tr key={r.id ?? "sans"}>
+                            <td data-label={t("Produit")}>{r.id ? r.name : <em>{t("Sans produit")}</em>}{r.range && <div className="text-xs muted">{r.range}</div>}{r.archived && <>{" "}<span className="pill">{t("archivé")}</span></>}</td>
+                            <td data-label={t("Experts engagés")}>{r.experts}{r.recruited > 0 && <div className="text-xs muted">{t(r.recruited > 1 ? "dont {n} nouveaux" : "dont {n} nouveau", { n: r.recruited })}</div>}</td>
+                            <td data-label={t("Honoraires {year}", { year })}>{r.cents ? fmtEur(locale, r.cents) : "—"}{r.dossiers > 0 && <div className="text-xs muted">{t(r.dossiers > 1 ? "{n} dossiers" : "{n} dossier", { n: r.dossiers })}</div>}</td>
+                            <td data-label={t("Acceptation")}>{r.accepted + r.declined > 0 ? pct(r.accepted / (r.accepted + r.declined)) : "—"}{r.accepted + r.declined > 0 && <div className="text-xs muted">{t("{accepted} sur {answered} réponses", { accepted: r.accepted, answered: r.accepted + r.declined })}</div>}</td>
+                            <td data-label={t("Événements")}>{r.events || "—"}{r.events > 0 && <div className="text-xs muted">{t(r.registrations > 1 ? "{n} inscrits" : "{n} inscrit", { n: r.registrations })}</div>}</td>
+                            <td>
+                              {r.id && (
+                                <form action={archiveProduct}>
+                                  <input type="hidden" name="orgId" value={id} />
+                                  <input type="hidden" name="productId" value={r.id} />
+                                  <button className="link">{r.archived ? t("remettre en service") : t("archiver")}</button>
+                                </form>
+                              )}
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </TableWrap>
+                </section>
+              </>
+            )}
+            {live.length > 0 && prod.toAttach.length > 0 && (
+              <section className="card stack-sm" id="a-rattacher">
+                <div className="actions spread">
+                  <SectionHead icon={Package} title={t("À rattacher à un produit")} desc={t("Dossiers engagés et événements de {year} sans produit. Le produit proposé est celui que le titre nomme.", { year })} />
+                  {suggested > 0 && (
+                    <form action={assignSuggestedProducts}>
+                      <input type="hidden" name="orgId" value={id} />
+                      <input type="hidden" name="year" value={year} />
+                      <button className="btn small">{t(suggested > 1 ? "Rattacher les {n} propositions" : "Rattacher la proposition", { n: suggested })}</button>
+                    </form>
+                  )}
+                </div>
+                <ul className="plain stack-sm">
+                  {prod.toAttach.map((x) => {
+                    const guess = suggestProduct(x.title, prod.products);
+                    return (
+                      <li key={`${x.kind}:${x.id}`} className="actions spread">
+                        <span><Link href={`/organisations/${id}/${x.kind === "project" ? "dossiers" : "evenements"}/${x.id}`}>{x.title}</Link> <span className="text-xs muted">· {x.kind === "project" ? t("dossier") : t("événement")}{guess ? ` · ${t("proposé : {name}", { name: guess.name })}` : ""}</span></span>
+                        <form action={assignProduct} className="inline">
+                          <input type="hidden" name="orgId" value={id} />
+                          <input type="hidden" name="kind" value={x.kind} />
+                          <input type="hidden" name="id" value={x.id} />
+                          <AutoSubmitSelect name="productId" defaultValue="" aria-label={t("Produit de « {title} »", { title: x.title })}>
+                            <option value="">{t("— choisir un produit —")}</option>
+                            {live.map((pr) => <option key={pr.id} value={pr.id}>{pr.name}</option>)}
+                          </AutoSubmitSelect>
+                          <noscript><button className="btn small secondary">{t("Rattacher")}</button></noscript>
+                        </form>
+                      </li>
+                    );
+                  })}
+                </ul>
+              </section>
+            )}
+            <section className="card stack-sm">
+              <SectionHead icon={Package} title={t("Ajouter un produit")} desc={t("Un produit ou une gamme, tel que vos équipes le nomment. Vos dossiers et vos événements s'y rattachent ensuite ; un événement suit le produit de son dossier.")} />
+              <ProductForm orgId={id} />
             </section>
           </>
         )}

@@ -391,6 +391,23 @@ model Organization {
   publicImports    PublicImport[]
   watchItems       WatchItem[]
   brand            OrgBrand?
+  products         Product[]
+}
+
+/// Produit ou gamme de l'organisation (KolBase Intelligence) : ses dossiers et ses événements s'y rattachent, pour
+/// lire l'activité par produit (experts recrutés, honoraires, inscrits). Archivé, il garde son historique.
+model Product {
+  id             String       @id @default(cuid())
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  name           String
+  range          String?      // gamme ou marque
+  archivedAt     DateTime?
+  createdAt      DateTime     @default(now())
+  projects       Project[]
+  events         Event[]
+
+  @@unique([organizationId, name])
 }
 
 enum BrandDomainStatus {
@@ -626,6 +643,9 @@ model Project {
   title           String
   typeId          String
   therapeuticArea String?
+  // Produit de l'organisation auquel le dossier se rattache (facultatif, KolBase Intelligence).
+  productId       String?
+  product         Product?      @relation(fields: [productId], references: [id], onDelete: SetNull)
   origin          String?
   description     String?
   status          ProjectStatus @default(ATT_EXPERTS)
@@ -687,6 +707,7 @@ model Project {
 
   @@index([organizationId])
   @@index([proposalId])
+  @@index([productId])
 }
 
 /**
@@ -942,6 +963,9 @@ model Event {
   title            String
   typeId           String
   therapeuticArea  String?
+  // Produit de l'organisation (facultatif) ; à défaut, celui du dossier auquel l'événement est rattaché.
+  productId        String?
+  product          Product?     @relation(fields: [productId], references: [id], onDelete: SetNull)
   description      String?
   startsAt         DateTime
   durationMinutes  Int?
@@ -1012,6 +1036,7 @@ model Event {
   @@index([startsAt])
   @@index([agencyId])
   @@index([projectId])
+  @@index([productId])
 }
 
 // Demande de devis adressée à des prestataires référencés.

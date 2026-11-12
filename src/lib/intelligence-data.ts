@@ -129,3 +129,86 @@ export async function competitorOverview(orgId: string, year: number) {
   });
   return { competitors: summaries, years: years.map((y) => num(y.year)) };
 }
+
+export type ProductRow = {
+  id: string | null; name: string; range: string | null; archived: boolean;
+  /** Experts engagés dans l'année, dont ceux entrés dans le panel de l'organisation par ce produit. */
+  experts: number; recruited: number; previousExperts: number; cents: number; dossiers: number;
+  /** Réponses des experts sollicités dans l'année : acceptations et refus (les sollicitations sans réponse ne comptent pas). */
+  accepted: number; declined: number;
+  events: number; registrations: number;
+};
+
+/**
+ * Activité par produit sur une année. Un dossier porte son produit ; un événement porte le sien, à défaut celui de son
+ * dossier. « Recruté » : la toute première collaboration de l'expert avec l'organisation date de cette année et s'est
+ * faite sur ce produit. Les dossiers et événements sans produit sont comptés à part (« Sans produit ») et listés pour
+ * être rattachés, avec le produit que leur titre laisse deviner.
+ */
+export async function productOverview(orgId: string, year: number) {
+  const { gte, lt } = bounds(year);
+  const [products, projects, events] = await Promise.all([
+    db.product.findMany({ where: { organizationId: orgId }, orderBy: { name: "asc" } }),
+    db.project.findMany({
+      where: { organizationId: orgId },
+      select: { id: true, title: true, productId: true, experts: { select: { practitionerId: true, status: true, feeCents: true, respondedAt: true, createdAt: true } } },
+    }),
+    db.event.findMany({
+      where: { organizationId: orgId, cancelledAt: null, startsAt: { gte, lt } },
+      select: { id: true, title: true, productId: true, project: { select: { productId: true } }, _count: { select: { registrations: { where: { cancelledAt: null } } } } },
+      orderBy: { startsAt: "asc" },
+    }),
+  ]);
+  const NONE = "";
+  const blank = (p: { id: string | null; name: string; range: string | null; archived: boolean }): ProductRow => ({ ...p, experts: 0, recruited: 0, previousExperts: 0, cents: 0, dossiers: 0, accepted: 0, declined: 0, events: 0, registrations: 0 });
+  const rows = new Map<string, ProductRow>([[NONE, blank({ id: null, name: "", range: null, archived: false })], ...products.map((p) => [p.id, blank({ id: p.id, name: p.name, range: p.range, archived: !!p.archivedAt })] as const)]);
+  const engaged = (s: string) => s !== "ATT_EXPERTS" && s !== "DECLINE";
+  const when = (e: { respondedAt: Date | null; createdAt: Date }) => e.respondedAt ?? e.createdAt;
+  // Première collaboration de chaque expert avec l'organisation, tous produits confondus.
+  const first = new Map<string, { at: Date; product: string }>();
+  for (const p of projects) for (const e of p.experts) if (engaged(e.status) && (!first.has(e.practitionerId) || when(e) < first.get(e.practitionerId)!.at)) first.set(e.practitionerId, { at: when(e), product: p.productId ?? NONE });
+  const seen = new Map<string, Set<string>>(), before = new Map<string, Set<string>>();
+  const add = (m: Map<string, Set<string>>, key: string, id: string) => m.set(key, (m.get(key) ?? new Set()).add(id));
+  const toAttach: { kind: "project" | "event"; id: string; title: string }[] = [];
+  let withProduct = 0, engagedDossiers = 0;
+  for (const p of projects) {
+    const key = p.productId ?? NONE;
+    const row = rows.get(key) ?? rows.get(NONE)!;
+    let inYear = false;
+    for (const e of p.experts) {
+      const y = yearOf(when(e));
+      if (engaged(e.status) && y === year) { inYear = true; row.cents += e.feeCents ?? 0; add(seen, key, e.practitionerId); }
+      if (engaged(e.status) && y === year - 1) add(before, key, e.practitionerId);
+      // Réponses aux sollicitations de l'année : acceptée (expert engagé) ou déclinée.
+      if (y === year && e.status === "DECLINE") row.declined++;
+      if (y === year && engaged(e.status)) row.accepted++;
+    }
+    if (!inYear) continue;
+    row.dossiers++;
+    engagedDossiers++;
+    if (p.productId) withProduct++;
+    else toAttach.push({ kind: "project", id: p.id, title: p.title });
+  }
+  for (const [key, row] of rows) {
+    row.experts = seen.get(key)?.size ?? 0;
+    row.previousExperts = before.get(key)?.size ?? 0;
+    row.recruited = [...(seen.get(key) ?? [])].filter((id) => first.get(id)?.product === key && yearOf(first.get(id)!.at) === year).length;
+  }
+  for (const e of events) {
+    const key = e.productId ?? e.project?.productId ?? NONE;
+    const row = rows.get(key) ?? rows.get(NONE)!;
+    row.events++;
+    row.registrations += e._count.registrations;
+    if (key === NONE) toAttach.push({ kind: "event", id: e.id, title: e.title });
+  }
+  const none = rows.get(NONE)!;
+  return {
+    products,
+    rows: [...rows.values()].filter((r) => r.id !== null).sort((a, b) => b.recruited - a.recruited || b.experts - a.experts || b.registrations - a.registrations || a.name.localeCompare(b.name, "fr")),
+    none,
+    // Part des dossiers engagés de l'année rattachés à un produit (null : aucun dossier engagé).
+    coverage: engagedDossiers > 0 ? withProduct / engagedDossiers : null,
+    unassigned: engagedDossiers - withProduct,
+    toAttach: toAttach.slice(0, 60),
+  };
+}

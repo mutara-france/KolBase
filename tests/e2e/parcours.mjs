@@ -2765,8 +2765,12 @@ async function submitNewOrg(page, siren) {
   await page.goto(`${BASE}/organisations/${org}/statistiques`);
   await page.click('a:has-text("KolBase Intelligence")');
   await page.waitForURL(/\/intelligence/, { timeout: 15000 });
+  // Année du dernier accord d'un expert : la démonstration est datée par rapport au jour du test (début janvier,
+  // l'année civile en cours n'a encore aucun dossier).
+  const expert = (await pgc.query(`select u."firstName", u."lastName", pr.rpps, extract(year from coalesce(pe."respondedAt", pe."createdAt"))::int as year from "ProjectExpert" pe join "Project" p on p.id = pe."projectId" join "PractitionerProfile" pr on pr.id = pe."practitionerId" join "User" u on u.id = pr."userId" where p."organizationId" = $1 and pe.status not in ('ATT_EXPERTS', 'DECLINE') and pr.rpps is not null order by coalesce(pe."respondedAt", pe."createdAt") desc limit 1`, [org])).rows[0];
+  const year = expert.year;
+  await page.goto(`${BASE}/organisations/${org}/intelligence?annee=${year}`);
   t = await text(page);
-  const expert = (await pgc.query(`select u."firstName", u."lastName", pr.rpps from "ProjectExpert" pe join "Project" p on p.id = pe."projectId" join "PractitionerProfile" pr on pr.id = pe."practitionerId" join "User" u on u.id = pr."userId" where p."organizationId" = $1 and pe.status not in ('ATT_EXPERTS', 'DECLINE') and pr.rpps is not null and extract(year from coalesce(pe."respondedAt", pe."createdAt")) = extract(year from now()) order by pe."feeCents" desc limit 1`, [org])).rows[0];
   check("Intelligence : portefeuille d'experts de l'année", /experts engagés/i.test(t) && /fidélisation/i.test(t) && t.includes(`${expert.firstName} ${expert.lastName}`), `${expert.firstName} ${expert.lastName}`);
 
   // Concurrents suivis, puis import d'un export Transparence Santé : seules leurs lignes sont conservées.
@@ -2778,7 +2782,6 @@ async function submitNewOrg(page, siren) {
   await page.click('button:has-text("Suivre ce concurrent")');
   await page.locator("main .notice.ok").waitFor({ timeout: 10000 });
   await page.goto(`${BASE}/organisations/${org}/intelligence?onglet=sources`);
-  const year = new Date().getFullYear();
   const csv = [
     "denomination_sociale;lien_interet;date;montant_ttc;benef_nom;benef_prenom;benef_identifiant_valeur;benef_categorie_libelle;motif_lien_interet",
     `IMPLANTS DEMO CONCURRENT SAS;Convention;${year}-03-14;1500,00;${expert.lastName.toUpperCase()};${expert.firstName};${expert.rpps};Professionnel de santé;Contrat d'intervenant à une manifestation`,
@@ -2799,10 +2802,10 @@ async function submitNewOrg(page, siren) {
   await page.click('button:has-text("Importer le fichier")');
   await page.locator('main .notice.ok:has-text("dont 0 nouvelles")').waitFor({ timeout: 15000 }).catch(() => {});
   check("Import : même fichier déposé deux fois, aucun doublon", (await text(page)).includes("dont 0 nouvelles") && (await pgc.query(`select count(*)::int as n from "PublicLink" where "organizationId" = $1`, [org])).rows[0].n === 3);
-  await page.goto(`${BASE}/organisations/${org}/intelligence?onglet=concurrents`);
+  await page.goto(`${BASE}/organisations/${org}/intelligence?onglet=concurrents&annee=${year}`);
   t = (await text(page)).replace(/\s/g, " ");
   check("Concurrents : montants de l'année par type de lien, bénéficiaires", t.includes("1 562,50 €") && /premiers bénéficiaires déclarés/i.test(t) && t.includes("dans votre portefeuille"), t.slice(0, 400));
-  await page.goto(`${BASE}/organisations/${org}/intelligence`);
+  await page.goto(`${BASE}/organisations/${org}/intelligence?annee=${year}`);
   const row = page.locator("tr", { hasText: `${expert.firstName} ${expert.lastName}` });
   check("Portefeuille : expert partagé avec un concurrent suivi (rapproché par RPPS)", (await row.innerText()).replace(/\s/g, " ").includes("Implants Démo Concurrent : 1 500 €"), await row.innerText());
 
@@ -3053,6 +3056,108 @@ async function submitNewOrg(page, siren) {
   await pgc.query(`update "Subscription" set "addonsGranted" = $2 where "organizationId" = $1`, [org, before]);
   await ctx.close();
   await pgc.end();
+}
+
+// ── KolBase Intelligence : produits de l'organisation (lesquels recrutent) et recommandations ──
+{
+  const pgc = new pg.Client({ connectionString: process.env.DATABASE_URL });
+  await pgc.connect();
+  const org = "demo-org-dentalys";
+  await pgc.query(`delete from "Product" where "organizationId" = $1`, [org]);
+  await pgc.query(`delete from "Competitor" where "organizationId" = $1`, [org]);
+  const before = (await pgc.query(`select "addonsGranted" from "Subscription" where "organizationId" = $1`, [org])).rows[0]?.addonsGranted ?? "{}";
+  await pgc.query(`update "Subscription" set "addonsGranted" = '{intelligence}' where "organizationId" = $1`, [org]);
+  // Année du dernier accord d'un expert (la démonstration est datée par rapport au jour du test), et deux dossiers
+  // engagés cette année-là : l'un dont le titre nomme un produit, l'autre non.
+  const dossiers = (await pgc.query(`select p.id, p.title, extract(year from max(coalesce(pe."respondedAt", pe."createdAt")))::int as year from "Project" p join "ProjectExpert" pe on pe."projectId" = p.id where p."organizationId" = $1 and pe.status not in ('ATT_EXPERTS', 'DECLINE') group by p.id, p.title order by max(coalesce(pe."respondedAt", pe."createdAt")) desc`, [org])).rows;
+  const year = dossiers[0].year;
+  const [named, other] = dossiers.filter((d) => d.year === year);
+  const titles = [named.title, other.title];
+  await pgc.query(`update "Project" set title = $2 where id = $1`, [named.id, `${named.title} · Axis Pro`]);
+  const { ctx, page } = await session();
+  await login(page, "claire.morel@demo.kolbase.local");
+  const base = `${BASE}/organisations/${org}/intelligence`;
+
+  // Recommandations : sans produit ni concurrent, les deux premières choses à faire sont dites.
+  await page.goto(`${base}?annee=${year}`);
+  let advice = await page.locator("#recommandations").innerText();
+  check("Recommandations : produits à décrire, concurrents à suivre", advice.includes("Décrivez vos produits pour savoir lesquels recrutent") && advice.includes("Suivez vos concurrents"), advice.slice(0, 300));
+  await page.locator('#recommandations a:has-text("Ouvrir les produits")').first().click();
+  await page.waitForURL(/onglet=produits/, { timeout: 15000 });
+
+  // Catalogue : deux produits ; un doublon est refusé.
+  const add = async (name, range) => {
+    await page.fill('input[name="name"]', name);
+    await page.fill('input[name="range"]', range);
+    await page.click('button:has-text("Ajouter le produit")');
+    await page.locator("main .notice.ok, main .notice.error").first().waitFor({ timeout: 10000 });
+  };
+  await add("Axis Pro", "Implants");
+  await page.goto(`${base}?onglet=produits&annee=${year}`);
+  await add("Nova", "Biomatériaux");
+  await page.goto(`${base}?onglet=produits&annee=${year}`);
+  await add("axis pro", "");
+  check("Produits : doublon refusé", (await text(page)).includes("Ce produit existe déjà"));
+  await page.goto(`${base}?onglet=produits&annee=${year}`);
+  const t = await text(page);
+  check("Produits : dossiers de l'année à rattacher, produit deviné d'après le titre", t.includes("À rattacher à un produit") && t.includes("proposé : Axis Pro") && t.includes(other.title) && (await page.locator('button:has-text("Rattacher la proposition")').count()) === 1, t.slice(0, 300));
+  await page.click('button:has-text("Rattacher la proposition")');
+  await page.locator(`#a-rattacher a:has-text("Axis Pro")`).waitFor({ state: "detached", timeout: 10000 });
+  // Rattachement à la main : la liste déroulante envoie son choix.
+  await page.locator(`#a-rattacher li:has-text("${other.title}") select`).selectOption({ label: "Nova" });
+  await page.locator(`#a-rattacher a:has-text("${other.title}")`).waitFor({ state: "detached", timeout: 10000 }).catch(() => {});
+  const linked = (await pgc.query(`select p.title, pr.name from "Project" p join "Product" pr on pr.id = p."productId" where p.id = any($1) order by pr.name`, [[named.id, other.id]])).rows;
+  check("Produits : dossiers rattachés (proposition, puis choix à la main)", linked.length === 2 && linked[0].name === "Axis Pro" && linked[1].name === "Nova", JSON.stringify(linked));
+  await page.goto(`${base}?onglet=produits&annee=${year}`);
+  // Tableau d'activité (les graphiques ont aussi leur tableau de données, replié).
+  const row = (name) => page.locator('section:has(h2:has-text("Activité par produit")) table tr', { hasText: name }).first().innerText();
+  const engaged = (await pgc.query(`select count(distinct pe."practitionerId")::int as n from "ProjectExpert" pe where pe."projectId" = $1 and pe.status not in ('ATT_EXPERTS', 'DECLINE') and extract(year from coalesce(pe."respondedAt", pe."createdAt")) = $2`, [named.id, year])).rows[0].n;
+  check("Produits : activité par produit (experts engagés, honoraires, acceptation)", (await row("Axis Pro")).replace(/\s+/g, " ").includes(`Implants ${engaged} `) && /Sans produit/.test(await text(page)) && /acceptation/i.test(await text(page)), await row("Axis Pro"));
+  // Un produit d'une autre organisation n'est jamais accepté.
+  const foreign = (await pgc.query(`insert into "Product" (id, "organizationId", name) values ('e2e-produit-autre', 'demo-org-orthonova', 'Produit d''un autre') returning id`)).rows[0].id;
+  await pgc.query(`update "Project" set "productId" = null where id = $1`, [other.id]);
+  await page.goto(`${base}?onglet=produits&annee=${year}`);
+  await page.locator(`#a-rattacher li:has-text("${other.title}") select`).evaluate((s, id) => { const o = document.createElement("option"); o.value = id; o.textContent = "autre"; s.append(o); s.value = id; s.form.requestSubmit(); }, foreign);
+  await page.waitForTimeout(1200);
+  check("Produits : le produit d'une autre organisation est refusé", (await pgc.query(`select "productId" from "Project" where id = $1`, [other.id])).rows[0].productId === null);
+  // Recommandations mises à jour ; archivage : l'historique reste, le produit n'est plus proposé.
+  await page.goto(`${base}?annee=${year}`);
+  advice = await page.locator("#recommandations").innerText();
+  check("Recommandations : suivent les produits (plus de « Décrivez vos produits »)", !advice.includes("Décrivez vos produits") && advice.includes("Suivez vos concurrents"), advice.slice(0, 300));
+  await page.goto(`${base}?onglet=produits&annee=${year}`);
+  await page.locator("table tr", { hasText: "Nova" }).locator('button:has-text("archiver")').click();
+  await page.locator('table tr:has-text("Nova") .pill:has-text("archivé")').waitFor({ timeout: 10000 });
+  check("Produits : produit archivé, plus proposé au rattachement", (await page.locator('#a-rattacher select option:has-text("Nova")').count()) === 0 && (await page.locator('#a-rattacher select option:has-text("Axis Pro")').count()) > 0);
+  // État de départ de la démonstration.
+  await pgc.query(`delete from "Product" where "organizationId" = $1 or id = 'e2e-produit-autre'`, [org]);
+  await pgc.query(`update "Project" set title = $2 where id = $1`, [named.id, titles[0]]);
+  await pgc.query(`update "Subscription" set "addonsGranted" = $2 where "organizationId" = $1`, [org, before]);
+  await ctx.close();
+  await pgc.end();
+}
+
+// ── Pages de présentation des options, atteintes depuis le pied de page ──
+{
+  const anon = await session();
+  await anon.page.goto(`${BASE}/`);
+  const footer = anon.page.locator("footer.site-footer");
+  check("Pied de page : liens vers KolBase Intelligence et KolBase Business", (await footer.locator('a[href="/intelligence"]').count()) === 1 && (await footer.locator('a[href="/business"]').count()) === 1);
+  await footer.locator('a[href="/intelligence"]').click();
+  await anon.page.waitForURL(/\/intelligence$/, { timeout: 15000 });
+  let t = (await text(anon.page)).replace(/\s/g, " ");
+  check("Présentation d'Intelligence : prix, apports, inscription proposée au visiteur", t.includes("Pilotez votre KOL management") && t.includes("490 € HT par mois") && t.includes("Des recommandations, pas seulement des chiffres") && (await anon.page.locator('main a[href="/inscription?profil=organisation"]').count()) === 1, t.slice(0, 300));
+  await anon.page.goto(`${BASE}/business`);
+  t = (await text(anon.page)).replace(/\s/g, " ");
+  check("Présentation de Business : prix, apports, limites dites", t.includes("Votre propre KolBase") && t.includes("990 € HT par mois") && t.includes("Vos experts gardent leur compte et leur espace sur kolbase.io") && (await anon.page.title()).includes("KolBase Business"), t.slice(0, 300));
+  const map = await (await anon.ctx.request.get(`${BASE}/sitemap.xml`)).text();
+  check("Plan du site : les deux pages y figurent", map.includes("/intelligence</loc>") && map.includes("/business</loc>"));
+  await anon.ctx.close();
+  // Administrateur d'un industriel : le bouton mène à sa page Abonnement, ouverte sur l'option.
+  const { ctx, page } = await session();
+  await login(page, "claire.morel@demo.kolbase.local");
+  await page.goto(`${BASE}/intelligence`);
+  check("Présentation : un administrateur est mené à son abonnement, ouvert sur l'option", (await page.locator('main a[href="/organisations/demo-org-dentalys/abonnement?option=intelligence#options"]').count()) === 1);
+  await ctx.close();
 }
 
 // ── Lettre d'information : proposée une fois à l'accueil, encart des actualités ──

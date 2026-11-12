@@ -20,6 +20,9 @@ export async function SiteFooter() {
         </div>
         {/* Premier niveau : contenus et aide ; les informations légales sont à part, en bas. */}
         <nav className="footer-links" aria-label={t("Pied de page")}>
+          {/* Options de l'abonnement : présentées sur KolBase, pas sur le domaine d'une organisation. */}
+          {!brand && <Link href="/intelligence" className="footer-link">KolBase Intelligence</Link>}
+          {!brand && <Link href="/business" className="footer-link">KolBase Business</Link>}
           {!brand && <Link href="/actualites" className="footer-link">{t("Actualités")}</Link>}
           <Link href="/aide" className="footer-link">{t("Base de connaissances")}</Link>
         </nav>

@@ -66,6 +66,20 @@ p { color: var(--ink-soft); font-size: 14px; line-height: 1.6; margin: 0 0 8px; 
 .brand-logo.brand-own.on-dark { background: #fff; border-radius: 6px; padding: 3px 6px; box-sizing: content-box; }
 .brand-name { font-family: var(--font-display); font-weight: 700; font-size: 1.15rem; color: var(--outremer); }
 .site-footer .brand-name { color: #fff; }
+/* Pages de présentation des options (KolBase Intelligence, KolBase Business) : reprennent l'accueil, sans sa recherche. */
+.offer .home-hero-inner { padding-bottom: 64px; }
+.offer-price { margin: 0; max-width: 620px; color: rgba(255, 255, 255, 0.86); }
+.offer-price strong { color: #fff; font-size: 20px; }
+.btn.ghost.on-dark { color: #fff; border-color: rgba(255, 255, 255, 0.5); background: transparent; }
+.btn.ghost.on-dark:hover { color: #fff; border-color: #fff; }
+.offer-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(340px, 100%), 1fr)); gap: 20px; }
+.offer-card { display: flex; flex-direction: column; gap: 10px; padding: 24px; border-radius: 22px; border: 1px solid var(--line); background: #fff; }
+.offer-card h3 { margin: 0; font-size: 19px; line-height: 1.25; }
+.offer-card p { margin: 0; color: var(--ink-soft); }
+.offer-icon { display: flex; align-items: center; justify-content: center; width: 44px; height: 44px; border-radius: 14px; background: var(--tint); color: var(--outremer); }
+.offer-two { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(320px, 100%), 1fr)); gap: 40px; }
+.offer-two .check-list { margin-bottom: 16px; }
+.offer-steps { margin: 0; padding-left: 22px; display: flex; flex-direction: column; gap: 10px; }
 /* Aperçu de la marque (réglages KolBase Business) : variables de couleur posées sur le bloc. */
 .brand-preview { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; padding: 12px; border: 1px solid var(--line); border-radius: 12px; background: var(--tint); }
 .brand-preview-bar { background: var(--outremer-deep); color: #fff; font-weight: 600; padding: 8px 14px; border-radius: 8px; }
