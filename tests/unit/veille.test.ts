@@ -24,6 +24,13 @@ describe("veille : lecture des flux", () => {
     expect(parseFeed("<html><body>Pas un flux</body></html>")).toEqual([]);
     expect(parseFeed(`<rss>${"<item><title>t</title><link>https://a.example.org/1</link></item>".repeat(80)}</rss>`)).toHaveLength(60);
   });
+  it("lit un flux piégé sans s'y attarder", () => {
+    const started = Date.now();
+    expect(parseFeed("<item><title>".repeat(150_000))).toEqual([]);
+    expect(parseFeed(`<item><title>${"<![CDATA[".repeat(100_000)}</title><link>https://a.example.org/1</link>${"<link ".repeat(100_000)}</item>`)).toHaveLength(1);
+    expect(parseFeed(`<item><title>t</title><link>https://a.example.org/1</link><description>${"<b ".repeat(300_000)}</description></item>`)).toHaveLength(1);
+    expect(Date.now() - started).toBeLessThan(2000);
+  });
   it("n'accepte que l'adresse https d'un site public", () => {
     expect(feedUrl("https://www.revue-dentaire.fr/rss.xml")?.hostname).toBe("www.revue-dentaire.fr");
     for (const bad of ["http://www.revue-dentaire.fr/rss", "https://localhost/rss", "https://127.0.0.1/rss", "https://[::1]/rss", "https://intranet/rss", "https://app.internal/rss", "https://site.fr:8443/rss", "https://u:p@site.fr/rss", "ftp://site.fr/rss", "pas une adresse"]) expect(feedUrl(bad), bad).toBeNull();
