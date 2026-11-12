@@ -184,7 +184,7 @@ export async function BillingAdmin() {
       <h2>Abonnements</h2>
       <p className="muted">
         {stripeEnabled() ? "Facturation active (Stripe)." : "Facturation inactive : STRIPE_SECRET_KEY non défini, toutes les fonctions sont accessibles."}{" "}
-        {paying.length} abonnement{paying.length > 1 ? "s" : ""} en cours, revenu mensuel hors essais, options comprises : {formatEUR(mrr)} HT.
+        {paying.length} abonnement{paying.length > 1 ? "s" : ""} en cours, revenu mensuel hors essais : {formatEUR(mrr)} HT, options comprises.
       </p>
       <p className="hint scroll-hint">Tableau plus large que l&apos;écran : faites-le défiler vers la droite pour la colonne Gratuité.</p>
       <TableWrap label="Abonnements des organisations">
