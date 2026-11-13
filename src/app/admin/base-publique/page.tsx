@@ -2,7 +2,7 @@ import { requirePlatformAdmin } from "@/lib/platform";
 import { db } from "@/lib/db";
 import { TableWrap } from "@/components/TableWrap";
 import { MarketImportForm } from "@/components/AdminForms";
-import { IMPORT_STALE_MS } from "@/lib/market-import";
+import { importInterrupted } from "@/lib/market-import";
 import { formatDate } from "@/lib/events";
 import { AdminFrame, ADMIN_HOME } from "../_parts/frame";
 
@@ -21,7 +21,7 @@ export default async function Page() {
   await requirePlatformAdmin();
   const imports = await db.marketImport.findMany({ orderBy: { createdAt: "desc" }, take: 8 });
   const current = imports.find((i) => i.status === "pret");
-  const running = imports.find((i) => i.status === "en_cours" && Date.now() - i.createdAt.getTime() < IMPORT_STALE_MS);
+  const running = imports.find((i) => i.status === "en_cours" && !importInterrupted(i));
   return (
     <AdminFrame title="Base publique" desc="Fichier Transparence Santé lu par KolBase Intelligence : il sert à comparer chaque organisation au marché et à fonder ses recommandations." crumbs={[ADMIN_HOME]}>
       {/* Lecture en cours : la page se relit seule toutes les dix secondes. */}
