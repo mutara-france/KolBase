@@ -72,6 +72,7 @@ jobs:
       # Parcours de bout en bout : administrateur KolBase de démo et faux services externes (tests/e2e/faux-services.mjs).
       PLATFORM_ADMIN_EMAILS: anne.chevalier@demo.kolbase.local
       SIREN_API_URL: http://localhost:3998
+      GOOGLE_FILES_URL: http://localhost:3998
       ORCID_BASE_URL: http://localhost:3997
       ORCID_PUB_API_URL: http://localhost:3997/v3.0
       ORCID_CLIENT_ID: test

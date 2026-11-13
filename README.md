@@ -227,7 +227,7 @@ Activer le portail client dans le tableau de bord Stripe (moyen de paiement, fac
 
 Deux options cumulables s'ajoutent à l'abonnement organisation, à sa périodicité (`ADDONS`, `src/lib/billing-plans.ts`) :
 
-- **KolBase Intelligence**, 490 € HT par mois (industriels) : pilotage du KOL management et veille concurrentielle ;
+- **KolBase Intelligence**, 490 € HT par mois (industriels) : tableau de bord comparatif (marché, organisations équivalentes, organisations choisies) et recommandations ;
 - **KolBase Business**, 990 € HT par mois (toute organisation hors prestataires) : KolBase à la marque de
   l'organisation (nom, logo, couleurs, nom de domaine).
 
@@ -244,40 +244,51 @@ concernée à sa page Abonnement, ouverte sur l'option ; un visiteur, à l'inscr
 
 ### KolBase Intelligence
 
-Page `/organisations/<id>/intelligence` (rôles des statistiques, option requise ; sans elle, renvoi vers la page
-Abonnement), atteinte depuis Statistiques :
+Tableau de bord comparatif et moteur de recommandation. Page `/organisations/<id>/intelligence` (rôles des
+statistiques, option requise ; sans elle, renvoi vers la page Abonnement), atteinte depuis Statistiques :
 
-- **Recommandations** (`src/lib/intelligence-advice.ts`, en tête de la page) : règles lisibles, seuils regroupés
-  dans `ADVICE_RULES`. Chaque recommandation dit le constat chiffré, ce qu'il est proposé de faire et où : expert
-  qu'un concurrent paie davantage, experts dormants à relancer, panel concentré ou sans renouvellement, produits à
-  rattacher, produit que les experts déclinent ou qui n'engage plus personne, produit qui recrute le plus, concurrent
-  en forte hausse, fichier Transparence Santé à renouveler. Les six plus pressantes sont affichées.
-- **Portefeuille d'experts** (`src/lib/intelligence-data.ts`) : experts engagés de l'année, place de chacun (nouveau,
-  fidèle, de retour, dormant), taux de fidélisation, experts que des concurrents suivis déclarent aussi.
+- **Base publique** (`/admin/base-publique`, `src/lib/market-import.ts`) : c'est l'équipe KolBase qui tient la base
+  Transparence Santé, pas les organisations. Un administrateur colle le lien de partage du fichier CSV (Google Drive)
+  ou d'une feuille Google Sheets et clique « Mettre à jour » : le fichier est lu au fil de l'eau après la réponse
+  (`CsvStream`, plusieurs dizaines de Mo), rangé par lots dans `MarketLink`, et remplace l'import précédent une fois
+  lu en entier (`MarketImport` : en cours, prêt, en échec). Seules les adresses de Google sont lues. Colonnes de
+  l'export officiel reconnues par leur nom (`marketColumns`, `src/lib/market.ts`). Un bénéficiaire est reconnu d'une
+  entreprise à l'autre par son nom, son prénom et son département.
+- **Comparaison** (`src/lib/market-data.ts`, onglet Vue d'ensemble) : l'organisation est reconnue dans la base sous
+  son nom ou les écritures qu'elle indique (`MarketProfile`). Elle est comparée au **marché** (toutes les entreprises
+  de la base), à des **organisations équivalentes** (`peersOf` : même secteur d'activité quand il est renseigné,
+  montants entre la moitié et le double ; à défaut les cinq de taille la plus proche) et aux **organisations qu'elle
+  choisit** (`Competitor`, vingt au plus) : rang, part du marché, montants versés, bénéficiaires, montant par
+  bénéficiaire, évolution sur cinq ans, répartition par motif et par région. Montants : avantages et rémunérations
+  (le montant d'une convention, repris par ses rémunérations, n'est pas additionné).
+- **Recommandations** (`src/lib/market-advice.ts` pour la base publique, `src/lib/intelligence-advice.ts` pour les
+  chiffres de l'organisation) : règles lisibles, seuils regroupés dans `MARKET_RULES` et `ADVICE_RULES`, classées par
+  famille — **experts à protéger** (une autre entreprise verse plus, ou ses montants montent), **experts à recruter**
+  (engagés par les organisations comparées, sans lien déclaré avec l'organisation), **budget** (place sur le marché,
+  motif ou région où les équivalentes investissent davantage, concentration, montant moyen par bénéficiaire),
+  produits, points forts. Les huit plus pressantes sont affichées.
+- **Experts** : experts à protéger et à recruter (base publique), puis portefeuille de l'organisation
+  (`src/lib/intelligence-data.ts`) : experts engagés de l'année, place de chacun (nouveau, fidèle, de retour,
+  dormant), taux de fidélisation, liens publics de chacun avec d'autres entreprises.
 - **Produits** (`Product`, `productOverview`) : l'organisation décrit ses produits ou gammes et y rattache ses
   dossiers et ses événements (un événement suit le produit de son dossier s'il n'a pas le sien) depuis l'onglet
   Produits — un par un, ou d'un coup quand le titre nomme le produit. Par produit et par année : experts engagés,
   **nouveaux experts recrutés** (première collaboration avec l'organisation, sur ce produit), honoraires, taux
   d'acceptation des sollicitations, événements et inscrits. Un produit archivé garde son historique.
-- **Concurrents** : vingt au plus, avec leurs autres écritures (marques, filiales). Pour chacun : montants déclarés
-  par type de lien, bénéficiaires, catégories, objets, premiers bénéficiaires.
-- **Fichiers importés** : l'organisation dépose l'export CSV ou Excel qu'elle a téléchargé sur
-  transparence.sante.gouv.fr (aucun appel à l'API du site). Les colonnes sont reconnues par mots-clés
-  (`detectColumns`, `src/lib/intelligence.ts`), seules les lignes des concurrents suivis sont conservées
-  (`PublicLink`), un fichier importé deux fois ne crée pas de doublon. Lecture des fichiers sans dépendance :
-  `src/lib/tabular.ts`.
-
 - **Veille** (`src/lib/watch.ts`) : l'équipe KolBase choisit les sources depuis `/admin/veille` (flux RSS ou Atom de
   sites spécialisés, revues, chaînes vidéo), relevées toutes les six heures par les tâches planifiées ; chaque
-  organisation voit, sur 90 jours, les publications qui citent ses concurrents suivis ou elle-même (titre, lien, date,
+  organisation voit, sur 90 jours, les publications qui citent les organisations qu'elle compare ou elle-même (titre, lien, date,
   court extrait, conservés treize mois). Les réseaux sociaux ne publient pas de flux et interdisent la collecte
   automatisée : leurs publications s'ajoutent à la main, par organisation. Une adresse de flux n'est relevée que si
   elle est en https, sur un nom public dont la résolution DNS ne donne aucune adresse privée, redirections comprises
   (`src/lib/feed-reader.ts`).
 
-Deux limites voulues (Intelligence) : aucune donnée d'une autre organisation cliente n'est lue, et la réutilisation de la base
-Transparence Santé reste encadrée (finalité de transparence des liens d'intérêts, article L.1453-1 du code de la santé
-publique) — l'organisation l'atteste à chaque import ; à faire valider par un conseil avant l'ouverture commerciale.
+Deux limites voulues (Intelligence) : aucune donnée d'une autre organisation cliente n'est lue (la base centrale ne
+contient que des données publiques), et la réutilisation de la base Transparence Santé reste encadrée (finalité de
+transparence des liens d'intérêts, article L.1453-1 du code de la santé publique). En l'important elle-même, KolBase
+en devient le réutilisateur et le responsable de traitement : avis juridique à obtenir avant toute ouverture payante.
+Les anciennes tables `PublicImport` et `PublicLink` (import par organisation) ne sont plus lues ; à supprimer par une
+migration ultérieure.
 
 ### KolBase Business
 

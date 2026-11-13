@@ -1,15 +1,14 @@
 import { describe, expect, it } from "vitest";
-import { advise, ADVICE_RULES, suggestProduct, type AdviceInput } from "@/lib/intelligence-advice";
+import { advise, FAMILY_LABEL, suggestProduct, type AdviceInput } from "@/lib/intelligence-advice";
 import { EN } from "@/lib/i18n/en";
 
 const expert = (name: string, loyalty: string, cents: number, previousCents = 0, shared: { competitor: string; cents: number }[] = []) => ({ name, loyalty, cents, previousCents, shared });
-/** Portefeuille sain : six experts, fidèles et nouveaux, honoraires répartis ; un produit couvert ; import récent. */
+/** Portefeuille sain : six experts, fidèles et nouveaux, honoraires répartis ; un produit couvert. */
 const base = (): AdviceInput => {
   const experts = [expert("A", "fidele", 300_000, 200_000), expert("B", "fidele", 250_000, 200_000), expert("C", "nouveau", 250_000), expert("D", "nouveau", 200_000), expert("E", "fidele", 200_000, 100_000), expert("F", "revenu", 200_000)];
   return {
-    year: 2026, now: new Date("2026-11-12T12:00:00Z"), lastImportAt: new Date("2026-09-01T12:00:00Z"),
+    year: 2026,
     portfolio: { active: 6, total: experts.reduce((s, e) => s + e.cents, 0), loyalty: { nouveau: 2, fidele: 3, dormant: 0 }, experts },
-    competitors: [{ name: "Rival", lines: 10, year: { cents: 1_000_000, lines: 10 }, previousCents: 950_000, purposes: [{ label: "Formation" }] }],
     products: { count: 1, coverage: 1, unassigned: 0, rows: [{ name: "Axis", archived: false, recruited: 1, experts: 6, previousExperts: 4, accepted: 6, declined: 1 }] },
   };
 };
@@ -19,11 +18,11 @@ describe("KolBase Intelligence : recommandations", () => {
   it("rien à signaler sur un portefeuille sain", () => {
     expect(advise(base())).toEqual([]);
   });
-  it("signale d'abord l'expert qu'un concurrent paie davantage", () => {
+  it("signale d'abord l'expert qu'une autre entreprise paie davantage", () => {
     const i = base();
     i.portfolio.experts[2] = expert("C", "nouveau", 250_000, 0, [{ competitor: "Rival", cents: 900_000 }, { competitor: "Autre", cents: 100_000 }]);
     const [first] = advise(i);
-    expect(first).toMatchObject({ key: "experts-partages", level: 1, tone: "danger", vars: { n: 1, names: "C", competitor: "Rival" } });
+    expect(first).toMatchObject({ key: "experts-partages", level: 1, tone: "danger", family: "proteger", tab: "experts", vars: { n: 1, names: "C", competitor: "Rival" } });
     // Déclaré par un concurrent, mais moins que vos honoraires : pas d'alerte.
     i.portfolio.experts[2] = expert("C", "nouveau", 250_000, 0, [{ competitor: "Rival", cents: 100_000 }]);
     expect(keys(i)).not.toContain("experts-partages");
@@ -63,30 +62,15 @@ describe("KolBase Intelligence : recommandations", () => {
     i.products.rows[1] = { ...i.products.rows[1], accepted: 0, declined: 3, previousExperts: 0 };
     expect(keys(i)).toEqual(["produits-a-rattacher", "produit-qui-recrute"]);
   });
-  it("concurrents : hausse notable, veille à nourrir", () => {
-    const i = base();
-    i.competitors[0].year.cents = 1_300_000;
-    expect(advise(i)[0]).toMatchObject({ key: "concurrent-hausse:rival", vars: { rise: 37, purpose: "Formation" } });
-    i.competitors[0].year.lines = 2;
-    expect(keys(i)).toEqual([]);
-    i.competitors = [];
-    expect(keys(i)).toEqual(["sans-concurrents"]);
-    const j = base();
-    j.lastImportAt = null;
-    expect(keys(j)).toEqual(["sans-import"]);
-    j.lastImportAt = new Date(j.now!.getTime() - (ADVICE_RULES.importAge + 1) * 86400e3);
-    expect(keys(j)).toEqual(["import-ancien"]);
-  });
   it("classe par priorité, et chaque texte a sa traduction", () => {
     const i = base();
     i.portfolio.experts.push(expert("G", "dormant", 0, 50_000));
     i.portfolio.loyalty.dormant = 1;
     i.portfolio.experts[0] = expert("A", "fidele", 300_000, 200_000, [{ competitor: "Rival", cents: 900_000 }]);
-    i.competitors = [];
     const list = advise(i);
     expect(list.map((a) => a.level)).toEqual([...list.map((a) => a.level)].sort());
     const all = [base(), i].flatMap(advise);
-    for (const a of all) for (const text of [a.title, a.detail]) expect(EN[text], text).toBeTruthy();
+    for (const a of all) for (const text of [a.title, a.detail, FAMILY_LABEL[a.family]]) expect(EN[text], text).toBeTruthy();
   });
   it("propose le produit que le titre nomme", () => {
     const p = (id: string, name: string, range: string | null = null, archived = false) => ({ id, name, range, archivedAt: archived ? new Date() : null });

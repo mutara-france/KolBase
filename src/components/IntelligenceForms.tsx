@@ -4,11 +4,11 @@ import { useActionState } from "react";
 import { Notice } from "@/components/AuthForms";
 import { ActionForm } from "@/components/ActionForm";
 import { useT } from "@/components/I18nProvider";
-import { addCompetitor, addProduct, importPublicFile } from "@/lib/intelligence-actions";
+import { addCompetitor, addProduct, saveMarketNames } from "@/lib/intelligence-actions";
 import { addWatchPin } from "@/lib/watch-actions";
 
-/** Concurrent à suivre : nom, et autres écritures sous lesquelles il déclare (marques, filiales). */
-export function CompetitorForm({ orgId }: { orgId: string }) {
+/** Organisation à comparer : nom (proposé parmi les entreprises de la base publique), et autres écritures sous lesquelles elle déclare. */
+export function CompetitorForm({ orgId, suggestions }: { orgId: string; suggestions: string[] }) {
   const t = useT();
   const [state, action, pending] = useActionState(addCompetitor, undefined);
   return (
@@ -16,27 +16,29 @@ export function CompetitorForm({ orgId }: { orgId: string }) {
       <Notice state={state} />
       <input type="hidden" name="orgId" value={orgId} />
       <div className="row">
-        <label>{t("Nom du concurrent")}<input name="name" required maxLength={120} /></label>
+        <label>{t("Nom de l'organisation")}<input name="name" required maxLength={120} list="entreprises-base-publique" autoComplete="off" /></label>
         <label>{t("Autres écritures")}<input name="aliases" placeholder={t("Marques, filiales, séparées par des virgules")} />
-          <span className="hint">{t("Une déclaration est rattachée au concurrent quand le nom de l'entreprise déclarante contient l'une de ces écritures.")}</span>
+          <span className="hint">{t("Une entreprise de la base publique lui est rattachée quand son nom contient l'une de ces écritures.")}</span>
         </label>
       </div>
-      <button className="btn small" disabled={pending}>{pending ? t("Enregistrement…") : t("Suivre ce concurrent")}</button>
+      <datalist id="entreprises-base-publique">{suggestions.map((s) => <option key={s} value={s} />)}</datalist>
+      <button className="btn small" disabled={pending}>{pending ? t("Enregistrement…") : t("Ajouter à ma comparaison")}</button>
     </ActionForm>
   );
 }
 
-/** Dépôt d'un export de la base publique Transparence Santé, avec l'attestation d'origine et de licence. */
-export function PublicImportForm({ orgId }: { orgId: string }) {
+/** Écritures sous lesquelles l'organisation déclare elle-même dans la base publique. */
+export function MarketNamesForm({ orgId, names }: { orgId: string; names: string[] }) {
   const t = useT();
-  const [state, action, pending] = useActionState(importPublicFile, undefined);
+  const [state, action, pending] = useActionState(saveMarketNames, undefined);
   return (
     <ActionForm action={action} className="form stack-sm">
       <Notice state={state} />
       <input type="hidden" name="orgId" value={orgId} />
-      <label>{t("Fichier exporté (CSV ou Excel .xlsx, 10 Mo au plus)")}<input type="file" name="file" required accept=".csv,.xlsx,text/csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" /></label>
-      <label className="check"><input type="checkbox" name="licence" value="1" required /> <span>{t("J'ai téléchargé ce fichier sur le site public Transparence Santé et notre organisation l'utilise dans le respect de sa licence de réutilisation (finalité de transparence des liens d'intérêts).")}</span></label>
-      <button className="btn small" disabled={pending}>{pending ? t("Import en cours…") : t("Importer le fichier")}</button>
+      <label>{t("Votre organisation dans la base publique")}<input name="names" defaultValue={names.join(", ")} maxLength={1500} list="entreprises-base-publique" autoComplete="off" />
+        <span className="hint">{t("Raison sociale sous laquelle vous déclarez, et vos filiales, séparées par des virgules.")}</span>
+      </label>
+      <button className="btn small secondary" disabled={pending}>{pending ? t("Enregistrement…") : t("Enregistrer")}</button>
     </ActionForm>
   );
 }

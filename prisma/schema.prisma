@@ -389,6 +389,7 @@ model Organization {
   // KolBase Intelligence : concurrents suivis et déclarations publiques importées par l'organisation.
   competitors      Competitor[]
   publicImports    PublicImport[]
+  marketProfile    MarketProfile?
   watchItems       WatchItem[]
   brand            OrgBrand?
   products         Product[]
@@ -462,8 +463,8 @@ model WatchItem {
   @@index([organizationId])
 }
 
-/// Concurrent suivi par une organisation (KolBase Intelligence) : son nom et ses autres écritures (marques, filiales)
-/// servent à reconnaître ses déclarations publiques dans les fichiers importés.
+/// Organisation à laquelle une organisation cliente choisit de se comparer (KolBase Intelligence) : son nom et ses
+/// autres écritures (marques, filiales) servent à reconnaître ses déclarations dans la base publique.
 model Competitor {
   id             String       @id @default(cuid())
   organizationId String
@@ -476,8 +477,8 @@ model Competitor {
   @@unique([organizationId, name])
 }
 
-/// Fichier de la base publique Transparence Santé déposé par l'organisation (téléchargé par elle sur le site officiel).
-/// Seules les lignes de ses concurrents suivis sont conservées ; supprimer l'import les efface.
+/// Ancien import par organisation : plus alimenté ni lu depuis que la base publique est tenue par l'équipe KolBase
+/// (MarketImport). Tables gardées le temps d'un déploiement ; à supprimer par une migration ultérieure.
 model PublicImport {
   id             String       @id @default(cuid())
   organizationId String
@@ -498,8 +499,7 @@ enum PublicLinkKind {
   avantage
 }
 
-/// Lien d'intérêts déclaré par un concurrent suivi, tel que publié (ligne d'un fichier importé). Propre à
-/// l'organisation qui l'a importé : jamais partagé avec une autre.
+/// Ancienne ligne d'un import par organisation (voir PublicImport) : plus alimentée ni lue.
 model PublicLink {
   id              String         @id @default(cuid())
   organizationId  String
@@ -519,6 +519,65 @@ model PublicLink {
   @@unique([competitorId, sourceKey])
   @@index([organizationId, beneficiaryId])
   @@index([competitorId, date])
+}
+
+enum MarketImportStatus {
+  en_cours // lecture du fichier en cours
+  pret // lu en entier : le plus récent import prêt est celui que lisent les organisations
+  echec // lecture interrompue (lien non partagé, colonnes absentes…) : ses lignes sont effacées
+}
+
+/// Mise à jour de la base publique Transparence Santé, lancée par l'équipe KolBase depuis /admin/base-publique à
+/// partir d'un lien Google Drive ou Google Sheets. Commune à toutes les organisations : données publiques seulement.
+model MarketImport {
+  id          String             @id @default(cuid())
+  sourceUrl   String
+  status      MarketImportStatus @default(en_cours)
+  rows        Int                @default(0) // lignes lues dans le fichier
+  kept        Int                @default(0) // lignes conservées (entreprise, type de lien, date et bénéficiaire lisibles)
+  companies   Int                @default(0)
+  people      Int                @default(0)
+  firstYear   Int?
+  lastYear    Int?
+  error       String?
+  startedById String?
+  createdAt   DateTime           @default(now())
+  finishedAt  DateTime?
+  links       MarketLink[]
+}
+
+/// Lien d'intérêts publié dans la base Transparence Santé (une ligne du fichier), rattaché à l'import qui l'a lu.
+model MarketLink {
+  id          String         @id @default(cuid())
+  importId    String
+  import      MarketImport   @relation(fields: [importId], references: [id], onDelete: Cascade)
+  companyKey  String // nom de l'entreprise déclarante, normalisé
+  company     String
+  sector      String?
+  kind        PublicLinkKind
+  year        Int
+  amountCents Int
+  purpose     String?
+  personKey   String // bénéficiaire : nom et prénom normalisés, et département
+  nameKey     String // nom et prénom normalisés, sans le département (rapprochement avec les experts de l'organisation)
+  personName  String
+  rpps        String?
+  category    String? // catégorie du bénéficiaire (professionnel de santé, association…)
+  city        String?
+  region      String?
+
+  @@index([importId, companyKey, year])
+  @@index([importId, personKey])
+  @@index([importId, nameKey])
+}
+
+/// Écritures sous lesquelles une organisation cliente déclare dans la base publique (raison sociale, filiales) : à
+/// défaut, son nom dans KolBase. Sert à la reconnaître pour la comparer aux autres.
+model MarketProfile {
+  organizationId String       @id
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  names          String[]     @default([])
+  updatedAt      DateTime     @updatedAt
 }
 
 /** Groupe d'organisations (industriel présent dans plusieurs pays) : ses entités sont rattachées par l'équipe KolBase. */

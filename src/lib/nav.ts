@@ -153,6 +153,7 @@ export function adminNavItems(counts: { orgs: number; identities: number; servic
     { key: "admin-abonnements", href: "/admin/abonnements", label: "Abonnements", icon: "Wallet", secondary: true },
     { key: "admin-actualites", href: "/admin/actualites", label: "Actualités", icon: "Newspaper", secondary: true },
     { key: "admin-veille", href: "/admin/veille", label: "Veille", icon: "Radar", secondary: true },
+    { key: "admin-base-publique", href: "/admin/base-publique", label: "Base publique", icon: "BarChart3", secondary: true },
     { key: "admin-emails", href: "/admin/emails", label: "E-mails", icon: "Mail", secondary: true },
     { key: "admin-exploitation", href: "/admin/exploitation", label: "Exploitation", icon: "Activity", secondary: true },
   ];

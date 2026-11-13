@@ -1,5 +1,6 @@
-// Faux services externes pour les parcours : répertoire des entreprises et ORCID (OAuth + API publique).
-// L'application doit être lancée avec SIREN_API_URL=http://localhost:3998, ORCID_BASE_URL=http://localhost:3997,
+// Faux services externes pour les parcours : répertoire des entreprises, fichiers Google partagés par lien et ORCID
+// (OAuth + API publique). L'application doit être lancée avec SIREN_API_URL=http://localhost:3998,
+// GOOGLE_FILES_URL=http://localhost:3998, ORCID_BASE_URL=http://localhost:3997,
 // ORCID_PUB_API_URL=http://localhost:3997/v3.0, ORCID_CLIENT_ID et ORCID_CLIENT_SECRET définis,
 // SMTP_URL=smtp://localhost:2525 et MAIL_DELIVER_RESERVED=1 (les comptes de démo sont en .local),
 // S3_ENDPOINT=http://localhost:3996, S3_BUCKET, S3_ACCESS_KEY_ID, S3_SECRET_ACCESS_KEY et S3_FORCE_PATH_STYLE=1,
@@ -25,9 +26,19 @@ export const ORCID_ID = "0000-0002-1825-0097";
 /** Objets reçus par le faux stockage S3 (port 3996, adressage par chemin /compartiment/clé). */
 export const objects = new Map();
 
+/** Fichiers « partagés par lien » du faux Google (GOOGLE_FILES_URL=http://localhost:3998) : identifiant → contenu CSV. */
+export const googleFiles = new Map();
+
 export function startFakes() {
   const siren = http.createServer((req, res) => {
-    const q = new URL(req.url, "http://x").searchParams.get("q") ?? "";
+    const asked = new URL(req.url, "http://x");
+    if (asked.pathname === "/download") {
+      // Fichier inconnu : comme Google pour un fichier non partagé, une page de connexion (HTML) à la place du CSV.
+      const body = googleFiles.get(asked.searchParams.get("id"));
+      res.writeHead(200, { "Content-Type": body ? "text/csv" : "text/html; charset=utf-8" });
+      return res.end(body ?? "<html><body>Connexion</body></html>");
+    }
+    const q = asked.searchParams.get("q") ?? "";
     json(res, { results: ENTREPRISES[q] ? [ENTREPRISES[q]] : [], total_results: ENTREPRISES[q] ? 1 : 0 });
   });
   const orcid = http.createServer((req, res) => {
