@@ -1,11 +1,11 @@
 import "server-only";
 import { db } from "@/lib/db";
-import { LINK_KINDS, loyalty, personKey, type LinkKind, type Loyalty } from "@/lib/intelligence";
+import { loyalty, personKey, type Loyalty } from "@/lib/intelligence";
 
 /**
- * KolBase Intelligence : lecture du portefeuille d'experts de l'organisation et des déclarations publiques de ses
- * concurrents suivis. Deux sources seulement : les dossiers de l'organisation elle-même, et les lignes qu'elle a
- * importées de la base publique Transparence Santé. Aucune donnée d'une autre organisation cliente n'est lue.
+ * KolBase Intelligence : lecture du portefeuille d'experts et des produits de l'organisation. Deux sources seulement :
+ * ses propres dossiers et événements, et la base publique Transparence Santé tenue par l'équipe KolBase (lib/market-data).
+ * Aucune donnée d'une autre organisation cliente n'est lue.
  */
 
 const yearOf = (d: Date) => d.getUTCFullYear();
@@ -13,37 +13,25 @@ const bounds = (year: number) => ({ gte: new Date(Date.UTC(year, 0, 1)), lt: new
 
 export type PortfolioExpert = {
   id: string; name: string; specialty: string | null; loyalty: Loyalty; cents: number; previousCents: number; engagements: number; firstYear: number;
-  /** Liens publics de cet expert avec des concurrents suivis, sur l'année regardée. */
+  /** Liens publics de cet expert avec d'autres entreprises, sur l'année regardée (base publique). */
   shared: { competitor: string; cents: number; count: number }[];
 };
 
 /**
  * Portefeuille d'experts sur une année : experts engagés (proposition acceptée, date de leur accord : même définition
- * que les statistiques), leur ancienneté dans le portefeuille, et ceux que des concurrents suivis déclarent aussi.
- * Rapprochement avec les déclarations publiques par RPPS, à défaut par nom et prénom.
+ * que les statistiques), leur ancienneté dans le portefeuille, et ceux que d'autres entreprises déclarent aussi dans
+ * la base publique (`market` : import lu et entreprises de l'organisation, écartées ; null sans base chargée).
+ * Rapprochement par RPPS, à défaut par nom et prénom.
  */
-export async function portfolio(orgId: string, year: number) {
-  const [links, publicLinks] = await Promise.all([
-    db.projectExpert.findMany({
-      // Experts engagés : proposition acceptée (même définition que isEngaged, lib/projects).
-      where: { project: { organizationId: orgId }, status: { notIn: ["ATT_EXPERTS", "DECLINE"] } },
-      select: {
-        feeCents: true, respondedAt: true, createdAt: true, practitionerId: true,
-        practitioner: { select: { rpps: true, specialty: true, user: { select: { firstName: true, lastName: true } } } },
-      },
-    }),
-    db.publicLink.findMany({
-      where: { organizationId: orgId, date: bounds(year) },
-      select: { amountCents: true, beneficiaryId: true, beneficiaryName: true, competitor: { select: { name: true } } },
-    }),
-  ]);
-  // Déclarations publiques de l'année, par identifiant et par nom du bénéficiaire.
-  const byKey = new Map<string, typeof publicLinks>();
-  for (const l of publicLinks) {
-    for (const key of [l.beneficiaryId ? `id:${l.beneficiaryId}` : null, l.beneficiaryName ? `nom:${personKey(l.beneficiaryName)}` : null]) {
-      if (key) byKey.set(key, [...(byKey.get(key) ?? []), l]);
-    }
-  }
+export async function portfolio(orgId: string, year: number, market: { importId: string; keys: readonly string[] } | null) {
+  const links = await db.projectExpert.findMany({
+    // Experts engagés : proposition acceptée (même définition que isEngaged, lib/projects).
+    where: { project: { organizationId: orgId }, status: { notIn: ["ATT_EXPERTS", "DECLINE"] } },
+    select: {
+      feeCents: true, respondedAt: true, createdAt: true, practitionerId: true,
+      practitioner: { select: { rpps: true, specialty: true, user: { select: { firstName: true, lastName: true } } } },
+    },
+  });
   type Acc = { name: string; specialty: string | null; rpps: string | null; years: Set<number>; cents: number; previousCents: number; engagements: number };
   const experts = new Map<string, Acc>();
   for (const l of links) {
@@ -54,6 +42,21 @@ export async function portfolio(orgId: string, year: number) {
     if (y === year - 1) e.previousCents += l.feeCents ?? 0;
     experts.set(l.practitionerId, e);
   }
+  // Déclarations publiques de l'année pour ces experts, par entreprise : rapprochées par RPPS et par nom.
+  const all = [...experts.values()];
+  const publicLinks = market && all.length > 0
+    ? await db.$queryRaw<{ nameKey: string; rpps: string | null; company: string; cents: unknown; lines: unknown }[]>`
+        SELECT "nameKey", "rpps", MIN("company") AS company, SUM(CASE WHEN "kind" <> 'convention' THEN "amountCents"::numeric ELSE 0 END) AS cents, COUNT(*) AS lines
+        FROM "MarketLink" WHERE "importId" = ${market.importId} AND "year" = ${year} AND NOT ("companyKey" = ANY(${[...market.keys]}::text[]))
+          AND ("nameKey" = ANY(${all.map((e) => personKey(e.name))}::text[]) OR "rpps" = ANY(${all.flatMap((e) => (e.rpps ? [e.rpps] : []))}::text[]))
+        GROUP BY "nameKey", "rpps", "companyKey"`
+    : [];
+  const byKey = new Map<string, typeof publicLinks>();
+  for (const l of publicLinks) {
+    for (const key of [l.rpps ? `id:${l.rpps}` : null, `nom:${l.nameKey}`]) {
+      if (key) byKey.set(key, [...(byKey.get(key) ?? []), l]);
+    }
+  }
   const rows: PortfolioExpert[] = [];
   for (const [id, e] of experts) {
     const place = loyalty([...e.years], year);
@@ -62,10 +65,10 @@ export async function portfolio(orgId: string, year: number) {
     const found = new Set([...(e.rpps ? byKey.get(`id:${e.rpps}`) ?? [] : []), ...(byKey.get(`nom:${personKey(e.name)}`) ?? [])]);
     const shared = new Map<string, { competitor: string; cents: number; count: number }>();
     for (const l of found) {
-      const s = shared.get(l.competitor.name) ?? { competitor: l.competitor.name, cents: 0, count: 0 };
-      s.cents += l.amountCents;
-      s.count++;
-      shared.set(l.competitor.name, s);
+      const s = shared.get(l.company) ?? { competitor: l.company, cents: 0, count: 0 };
+      s.cents += Number(l.cents ?? 0);
+      s.count += Number(l.lines ?? 0);
+      shared.set(l.company, s);
     }
     rows.push({ id, name: e.name, specialty: e.specialty, loyalty: place, cents: e.cents, previousCents: e.previousCents, engagements: e.engagements, firstYear: Math.min(...e.years), shared: [...shared.values()].sort((a, b) => b.cents - a.cents) });
   }
@@ -82,52 +85,6 @@ export async function portfolio(orgId: string, year: number) {
     shared: active.filter((r) => r.shared.length > 0).length,
     years,
   };
-}
-
-export type CompetitorSummary = {
-  id: string; name: string; aliases: string[]; lines: number;
-  year: { cents: number; lines: number; beneficiaries: number; byKind: Record<LinkKind, { cents: number; lines: number }> };
-  previousCents: number;
-  categories: { label: string; cents: number; lines: number }[];
-  purposes: { label: string; cents: number; lines: number }[];
-  top: { name: string; cents: number; lines: number }[];
-};
-
-/**
- * Déclarations publiques de chaque concurrent suivi sur une année : montants par type de lien, bénéficiaires distincts,
- * catégories et objets les plus déclarés, premiers bénéficiaires. Sommes calculées en numeric (centimes).
- */
-export async function competitorOverview(orgId: string, year: number) {
-  const { gte, lt } = bounds(year);
-  const prev = bounds(year - 1);
-  const competitors = await db.competitor.findMany({ where: { organizationId: orgId }, orderBy: { name: "asc" }, include: { _count: { select: { links: true } } } });
-  type Row = { competitorId: string; label: string | null; cents: unknown; lines: unknown };
-  const num = (v: unknown) => Number(v ?? 0);
-  const [kinds, previous, people, categories, purposes, top, years] = await Promise.all([
-    db.$queryRaw<Row[]>`SELECT "competitorId", "kind"::text AS label, SUM("amountCents"::numeric) AS cents, COUNT(*) AS lines FROM "PublicLink" WHERE "organizationId" = ${orgId} AND "date" >= ${gte} AND "date" < ${lt} GROUP BY 1, 2`,
-    db.$queryRaw<Row[]>`SELECT "competitorId", NULL AS label, SUM("amountCents"::numeric) AS cents, COUNT(*) AS lines FROM "PublicLink" WHERE "organizationId" = ${orgId} AND "date" >= ${prev.gte} AND "date" < ${prev.lt} GROUP BY 1`,
-    db.$queryRaw<Row[]>`SELECT "competitorId", NULL AS label, 0 AS cents, COUNT(DISTINCT COALESCE("beneficiaryId", lower("beneficiaryName"))) AS lines FROM "PublicLink" WHERE "organizationId" = ${orgId} AND "date" >= ${gte} AND "date" < ${lt} GROUP BY 1`,
-    db.$queryRaw<Row[]>`SELECT "competitorId", "category" AS label, SUM("amountCents"::numeric) AS cents, COUNT(*) AS lines FROM "PublicLink" WHERE "organizationId" = ${orgId} AND "date" >= ${gte} AND "date" < ${lt} AND "category" IS NOT NULL GROUP BY 1, 2 ORDER BY 3 DESC`,
-    db.$queryRaw<Row[]>`SELECT "competitorId", "purpose" AS label, SUM("amountCents"::numeric) AS cents, COUNT(*) AS lines FROM "PublicLink" WHERE "organizationId" = ${orgId} AND "date" >= ${gte} AND "date" < ${lt} AND "purpose" IS NOT NULL GROUP BY 1, 2 ORDER BY 3 DESC`,
-    db.$queryRaw<Row[]>`SELECT "competitorId", MIN("beneficiaryName") AS label, SUM("amountCents"::numeric) AS cents, COUNT(*) AS lines FROM "PublicLink" WHERE "organizationId" = ${orgId} AND "date" >= ${gte} AND "date" < ${lt} AND "beneficiaryName" IS NOT NULL GROUP BY 1, COALESCE("beneficiaryId", lower("beneficiaryName")) ORDER BY 3 DESC`,
-    db.$queryRaw<{ year: unknown }[]>`SELECT DISTINCT date_part('year', "date") AS year FROM "PublicLink" WHERE "organizationId" = ${orgId} AND "date" IS NOT NULL ORDER BY 1`,
-  ]);
-  const of = (rows: Row[], id: string) => rows.filter((r) => r.competitorId === id);
-  const ranked = (rows: Row[], id: string, n: number) => of(rows, id).slice(0, n).map((r) => ({ label: r.label ?? "", cents: num(r.cents), lines: num(r.lines) }));
-  const summaries: CompetitorSummary[] = competitors.map((c) => {
-    const byKind = Object.fromEntries(LINK_KINDS.map((k) => {
-      const r = of(kinds, c.id).find((x) => x.label === k);
-      return [k, { cents: num(r?.cents), lines: num(r?.lines) }];
-    })) as CompetitorSummary["year"]["byKind"];
-    return {
-      id: c.id, name: c.name, aliases: c.aliases, lines: c._count.links,
-      year: { cents: LINK_KINDS.reduce((s, k) => s + byKind[k].cents, 0), lines: LINK_KINDS.reduce((s, k) => s + byKind[k].lines, 0), beneficiaries: num(of(people, c.id)[0]?.lines), byKind },
-      previousCents: num(of(previous, c.id)[0]?.cents),
-      categories: ranked(categories, c.id, 6), purposes: ranked(purposes, c.id, 6),
-      top: ranked(top, c.id, 10).map((r) => ({ name: r.label, cents: r.cents, lines: r.lines })),
-    };
-  });
-  return { competitors: summaries, years: years.map((y) => num(y.year)) };
 }
 
 export type ProductRow = {

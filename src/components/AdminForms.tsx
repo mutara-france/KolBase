@@ -4,6 +4,7 @@ import { useActionState } from "react";
 import { ActionForm } from "@/components/ActionForm";
 import { offerExemption } from "@/lib/billing-actions";
 import { addWatchSource } from "@/lib/watch-actions";
+import { startMarketImport } from "@/lib/market-actions";
 
 /**
  * Gratuité offerte par KolBase (administration) : dernier jour offert (aujourd'hui au plus tôt) et motif. Une date
@@ -34,6 +35,19 @@ export function WatchSourceForm() {
         <label>Adresse du flux RSS ou Atom<input name="url" type="url" required placeholder="https://…" /></label>
       </div>
       <button className="btn small" disabled={pending}>{pending ? "Lecture du flux…" : "Ajouter la source"}</button>
+    </ActionForm>
+  );
+}
+
+/** Lien de partage du fichier Transparence Santé (Google Drive ou Google Sheets) et lancement de sa lecture. */
+export function MarketImportForm({ link, busy }: { link: string; busy: boolean }) {
+  const [state, action, pending] = useActionState(startMarketImport, undefined);
+  return (
+    <ActionForm action={action} className="form stack-sm">
+      {state?.error && <p className="notice error" role="alert">{state.error}</p>}
+      {state?.ok && <p className="notice ok" role="status">{state.ok}</p>}
+      <label>Lien de partage du fichier<input name="link" type="url" required defaultValue={link} placeholder="https://drive.google.com/file/d/…" maxLength={600} /></label>
+      <button className="btn small" disabled={pending || busy}>{pending ? "Lancement…" : busy ? "Mise à jour en cours…" : "Mettre à jour"}</button>
     </ActionForm>
   );
 }

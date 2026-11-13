@@ -6,7 +6,7 @@ import { withConsent } from "./consentement.mjs";
 import pg from "pg";
 import { createHmac } from "node:crypto";
 import { PDFDocument } from "pdf-lib";
-import { aiRequests, mails, signatureRequests, startFakes, stripeState, stripeWebhook } from "./faux-services.mjs";
+import { aiRequests, googleFiles, mails, signatureRequests, startFakes, stripeState, stripeWebhook } from "./faux-services.mjs";
 
 const BASE = process.env.BASE ?? "http://localhost:3000";
 const PW = process.env.DEMO_PASSWORD;
@@ -2732,13 +2732,13 @@ async function submitNewOrg(page, siren) {
   await pgc.end();
 }
 
-// ── Option KolBase Intelligence : ajout sur l'abonnement en cours, concurrents suivis, import Transparence Santé ──
+// ── Option KolBase Intelligence : ajout sur l'abonnement en cours, base publique mise à jour par l'administrateur,
+//    comparaison au marché, aux organisations équivalentes et aux organisations choisies, recommandations ──
 {
   const pgc = new pg.Client({ connectionString: process.env.DATABASE_URL });
   await pgc.connect();
   const org = "demo-org-dentalys";
   await pgc.query(`delete from "Competitor" where "organizationId" = $1`, [org]);
-  await pgc.query(`delete from "PublicImport" where "organizationId" = $1`, [org]);
   await pgc.query(`delete from "Subscription" where "organizationId" = $1`, [org]);
   const { ctx, page } = await session();
   await login(page, "claire.morel@demo.kolbase.local");
@@ -2770,7 +2770,7 @@ async function submitNewOrg(page, siren) {
     // Accès libre : la page s'ouvre sans abonnement ni option ; rien n'est à vendre, aucun prix n'est affiché.
     await page.goto(`${BASE}/organisations/${org}/intelligence`);
     t = await text(page);
-    check("Accès libre : Intelligence s'ouvre sans abonnement ni paiement", page.url().endsWith("/intelligence") && /recommandations/i.test(t));
+    check("Accès libre : Intelligence s'ouvre sans abonnement ni paiement", page.url().endsWith("/intelligence") && /ce que kolbase vous recommande/i.test(t));
     await page.goto(`${BASE}/organisations/${org}/abonnement`);
     t = (await text(page)).replace(/\s/g, " ");
     check("Accès libre : aucune option à acheter sur la page Abonnement", !t.includes("KolBase Intelligence") && !t.includes("KolBase Business") && !t.includes("490 €") && (await page.locator('button:has-text("Ajouter l\'option")').count()) === 0);
@@ -2782,53 +2782,125 @@ async function submitNewOrg(page, siren) {
     await savante.ctx.close();
   }
 
-  // Portefeuille : experts engagés de l'organisation, fidélisation.
-  await page.goto(`${BASE}/organisations/${org}/statistiques`);
-  await page.click('a:has-text("KolBase Intelligence")');
-  await page.waitForURL(/\/intelligence/, { timeout: 15000 });
-  // Année du dernier accord d'un expert : la démonstration est datée par rapport au jour du test (début janvier,
-  // l'année civile en cours n'a encore aucun dossier).
+  // Année du dernier accord d'un expert : la démonstration est datée par rapport au jour du test.
   const expert = (await pgc.query(`select u."firstName", u."lastName", pr.rpps, extract(year from coalesce(pe."respondedAt", pe."createdAt"))::int as year from "ProjectExpert" pe join "Project" p on p.id = pe."projectId" join "PractitionerProfile" pr on pr.id = pe."practitionerId" join "User" u on u.id = pr."userId" where p."organizationId" = $1 and pe.status not in ('ATT_EXPERTS', 'DECLINE') and pr.rpps is not null order by coalesce(pe."respondedAt", pe."createdAt") desc limit 1`, [org])).rows[0];
   const year = expert.year;
-  await page.goto(`${BASE}/organisations/${org}/intelligence?annee=${year}`);
+  await pgc.query(`delete from "MarketImport"`);
+  await pgc.query(`delete from "MarketProfile" where "organizationId" = $1`, [org]);
+  const base = `${BASE}/organisations/${org}/intelligence`;
+
+  // Sans base publique : la page le dit, les recommandations viennent des dossiers de l'organisation.
+  await page.goto(`${base}?annee=${year}`);
+  t = await text(page);
+  check("Intelligence : sans base publique, la page l'annonce", t.includes("n'est pas encore chargée par l'équipe KolBase") && /ce que kolbase vous recommande/i.test(t));
+  await page.goto(`${base}?onglet=experts&annee=${year}`);
   t = await text(page);
   check("Intelligence : portefeuille d'experts de l'année", /experts engagés/i.test(t) && /fidélisation/i.test(t) && t.includes(`${expert.firstName} ${expert.lastName}`), `${expert.firstName} ${expert.lastName}`);
 
-  // Concurrents suivis, puis import d'un export Transparence Santé : seules leurs lignes sont conservées.
-  await page.goto(`${BASE}/organisations/${org}/intelligence?onglet=sources`);
-  check("Intelligence : import impossible sans concurrent suivi", (await text(page)).includes("Ajoutez d'abord au moins un concurrent") && (await page.locator('input[name="file"]').count()) === 0);
-  await page.goto(`${BASE}/organisations/${org}/intelligence?onglet=concurrents`);
-  await page.fill('input[name="name"]', "Implants Démo Concurrent");
-  await page.fill('input[name="aliases"]', "IDC Biomatériaux");
-  await page.click('button:has-text("Suivre ce concurrent")');
-  await page.locator("main .notice.ok").waitFor({ timeout: 10000 });
-  await page.goto(`${BASE}/organisations/${org}/intelligence?onglet=sources`);
-  const csv = [
-    "denomination_sociale;lien_interet;date;montant_ttc;benef_nom;benef_prenom;benef_identifiant_valeur;benef_categorie_libelle;motif_lien_interet",
-    `IMPLANTS DEMO CONCURRENT SAS;Convention;${year}-03-14;1500,00;${expert.lastName.toUpperCase()};${expert.firstName};${expert.rpps};Professionnel de santé;Contrat d'intervenant à une manifestation`,
-    `IDC Biomatériaux France;Avantage;02/04/${year};62,50;INCONNU;Paul;;Professionnel de santé;Hospitalité - restauration`,
-    `Société sans rapport;Rémunération;${year}-05-02;800;AUTRE;Jeanne;;Professionnel de santé;Contrat d'expert scientifique`,
-    `IMPLANTS DEMO CONCURRENT SAS;Rémunération;${year - 1}-11-20;2400;INCONNU;Paul;;Professionnel de santé;Contrat d'expert scientifique`,
-  ].join("\n");
-  const upload = () => page.setInputFiles('input[name="file"]', { name: "declarations.csv", mimeType: "text/csv", buffer: Buffer.from(csv) });
-  await upload();
-  await page.check('input[name="licence"]');
-  await page.click('button:has-text("Importer le fichier")');
-  await page.locator("main .notice.ok").waitFor({ timeout: 15000 });
-  check("Import : seules les lignes des concurrents suivis sont conservées", (await text(page)).includes("4 lignes lues, 3 déclarées par vos concurrents suivis, dont 3 nouvelles"), (await text(page)).slice(0, 300));
-  const stored = (await pgc.query(`select count(*)::int as n, count(distinct "competitorId")::int as c from "PublicLink" where "organizationId" = $1`, [org])).rows[0];
-  check("Import : lignes enregistrées dans l'espace de l'organisation", stored.n === 3 && stored.c === 1, JSON.stringify(stored));
-  await upload();
-  await page.check('input[name="licence"]');
-  await page.click('button:has-text("Importer le fichier")');
-  await page.locator('main .notice.ok:has-text("dont 0 nouvelles")').waitFor({ timeout: 15000 }).catch(() => {});
-  check("Import : même fichier déposé deux fois, aucun doublon", (await text(page)).includes("dont 0 nouvelles") && (await pgc.query(`select count(*)::int as n from "PublicLink" where "organizationId" = $1`, [org])).rows[0].n === 3);
-  await page.goto(`${BASE}/organisations/${org}/intelligence?onglet=concurrents&annee=${year}`);
+  // Base publique : fichier fictif au format de l'export officiel (en-têtes de transparence.sante.gouv.fr). Dentalys
+  // (deux entités), cinq entreprises de taille proche du même secteur, un géant, une société d'études hors secteur.
+  const head = "id;entreprise_id;lien_interet;motif_lien_interet;montant;date;identite;prenom;beneficiaire_categorie;beneficiaire_identifiant;profession_libelle;code_postal;ville_sanscedex;dep_code;reg_name;raison_sociale;secteur_activite";
+  let n = 0;
+  const line = (company, sector, kind, motif, amount, y, last, first, dep = "69", region = "Auvergne-Rhône-Alpes", rpps = "") => `${++n};1;${kind};${motif};${amount};${y}-03-14T01:00:00+01:00;${last};${first};Professionnel de santé;${rpps};Chirurgien-dentiste;${dep}000;VILLE DEMO;${dep};${region};${company};${sector}`;
+  const DM = "Dispositifs médicaux";
+  const rows = [
+    // Dentalys : 10 000 € en N (8 000 € en N−1), quatre bénéficiaires dont l'expert de la démonstration.
+    line("DENTALYS IMPLANTS SAS", DM, "remuneration", "Formation", "4000", year, expert.lastName.toUpperCase(), expert.firstName, "69", "Auvergne-Rhône-Alpes", expert.rpps),
+    line("DENTALYS IMPLANTS SAS", DM, "convention", "Formation", "", year, expert.lastName.toUpperCase(), expert.firstName, "69", "Auvergne-Rhône-Alpes", expert.rpps),
+    line("DENTALYS IMPLANTS SAS", DM, "remuneration", "Formation", "3000", year, "FIDELE", "Paul"),
+    line("Dentalys Implants Distribution", DM, "avantage", "Hospitalité", "2000", year, "EXCLUSIF", "Jeanne"),
+    line("Dentalys Implants Distribution", DM, "avantage", "Hospitalité", "1000", year, "SEUL", "Marc"),
+    line("DENTALYS IMPLANTS SAS", DM, "remuneration", "Formation", "8000", year - 1, "FIDELE", "Paul"),
+    // Organisation choisie : elle verse plus que Dentalys à son expert (à protéger), et engage deux experts sans lien avec Dentalys.
+    line("IMPLANTS DEMO CONCURRENT SAS", DM, "remuneration", "Orateur", "9000", year, expert.firstName, expert.lastName.toUpperCase(), "69", "Auvergne-Rhône-Alpes", expert.rpps),
+    line("IMPLANTS DEMO CONCURRENT SAS", DM, "remuneration", "Orateur", "5000", year, "CONVOITE", "Alice", "75", "Île-de-France"),
+    line("IMPLANTS DEMO CONCURRENT SAS", DM, "convention", "Orateur", "", year - 1, "CONVOITE", "Alice", "75", "Île-de-France"),
+    line("IMPLANTS DEMO CONCURRENT SAS", DM, "remuneration", "Orateur", "6000", year - 1, "ANCIEN", "Luc", "75", "Île-de-France"),
+    // Quatre autres entreprises de taille proche (même secteur) : avec la précédente, les cinq équivalentes.
+    ...["ALPHA", "BETA", "GAMMA", "DELTA"].flatMap((name, i) => [
+      line(`${name} DENTAIRE DEMO`, DM, "remuneration", "Orateur", String(6000 + i * 1000), year, "CONVOITE", "Alice", "75", "Île-de-France"),
+      line(`${name} DENTAIRE DEMO`, DM, "remuneration", "Orateur", "4000", year, `EXPERT${i}`, "Rémi", "75", "Île-de-France"),
+      line(`${name} DENTAIRE DEMO`, DM, "remuneration", "Orateur", "5000", year - 1, `EXPERT${i}`, "Rémi", "75", "Île-de-France"),
+    ]),
+    // Hors comparaison : un géant du secteur et une société d'études d'un autre secteur.
+    line("GEANT DEMO MONDIAL", DM, "remuneration", "Recherche", "900000", year, "CHERCHEUR", "Zoé", "31", "Occitanie"),
+    line("ETUDES DEMO LTD", "Autres", "convention", "Étude de marché", "", year, "SONDE", "Yves", "33", "Nouvelle-Aquitaine"),
+    // Lignes illisibles : sans entreprise, type inconnu, date absente — lues, pas conservées.
+    line("", DM, "avantage", "Repas", "30", year, "PERDU", "Paul"),
+    line("ALPHA DENTAIRE DEMO", DM, "inconnu", "Repas", "30", year, "PERDU", "Paul"),
+    `${++n};1;avantage;Repas;30;;PERDU;Paul;Professionnel de santé;;Chirurgien-dentiste;69000;VILLE DEMO;69;Auvergne-Rhône-Alpes;ALPHA DENTAIRE DEMO;${DM}`,
+  ];
+  const FILE = "e2e-fichier-transparence-0001";
+  googleFiles.set(FILE, `﻿${head}\n${rows.join("\n")}\n`);
+  const adm = await session();
+  await login(adm.page, "anne.chevalier@demo.kolbase.local");
+  const done = async (status) => {
+    for (let i = 0; i < 40; i++) {
+      const last = (await pgc.query(`select status, rows, kept, companies, people, error from "MarketImport" order by "createdAt" desc limit 1`)).rows[0];
+      if (last?.status === status) return last;
+      await new Promise((r) => setTimeout(r, 500));
+    }
+    return (await pgc.query(`select status, error from "MarketImport" order by "createdAt" desc limit 1`)).rows[0];
+  };
+  await adm.page.goto(`${BASE}/admin/base-publique`);
+  check("Base publique : page d'administration, aucune donnée au départ", (await text(adm.page)).includes("Aucune base chargée"));
+  await adm.page.fill('input[name="link"]', "https://exemple.org/fichier.csv");
+  await adm.page.click('button:has-text("Mettre à jour")');
+  await adm.page.locator("main .notice.error").waitFor({ timeout: 10000 });
+  check("Base publique : seuls les liens Google Drive ou Google Sheets sont acceptés", (await text(adm.page)).includes("Lien refusé") && (await pgc.query(`select count(*)::int as n from "MarketImport"`)).rows[0].n === 0);
+  // Fichier non partagé (Google renvoie sa page de connexion) : import en échec, expliqué, sans aucune ligne.
+  await adm.page.fill('input[name="link"]', "https://drive.google.com/file/d/e2e-fichier-non-partage-0001/view?usp=sharing");
+  await adm.page.click('button:has-text("Mettre à jour")');
+  let imp = await done("echec");
+  check("Base publique : fichier non partagé, import en échec expliqué", imp?.status === "echec" && imp.error.includes("Tous les utilisateurs disposant du lien") && (await pgc.query(`select count(*)::int as n from "MarketLink"`)).rows[0].n === 0, JSON.stringify(imp));
+  await adm.page.goto(`${BASE}/admin/base-publique`);
+  await adm.page.fill('input[name="link"]', `https://drive.google.com/file/d/${FILE}/view?usp=sharing`);
+  await adm.page.click('button:has-text("Mettre à jour")');
+  imp = await done("pret");
+  check("Base publique : fichier lu par son lien, lignes illisibles écartées", imp?.status === "pret" && imp.rows === rows.length && imp.kept === rows.length - 3 && imp.companies === 9 && imp.people === 12, JSON.stringify(imp));
+  await adm.page.goto(`${BASE}/admin/base-publique`);
+  t = (await text(adm.page)).replace(/\s/g, " ");
+  check("Base publique : données en service résumées pour l'administrateur", /liens publiés/i.test(t) && t.includes(`sur ${rows.length} lignes lues`) && /en service/i.test(t), t.slice(0, 300));
+  const refusedAdmin = await page.goto(`${BASE}/admin/base-publique`);
+  check("Base publique : page fermée aux membres d'organisation", refusedAdmin.status() === 404);
+  await adm.ctx.close();
+
+  // Comparaison : l'organisation est reconnue sous son nom (deux entités), rang, part du marché, équivalentes.
+  await page.goto(`${base}?annee=${year}`);
   t = (await text(page)).replace(/\s/g, " ");
-  check("Concurrents : montants de l'année par type de lien, bénéficiaires", t.includes("1 562,50 €") && /premiers bénéficiaires déclarés/i.test(t) && t.includes("dans votre portefeuille"), t.slice(0, 400));
-  await page.goto(`${BASE}/organisations/${org}/intelligence?annee=${year}`);
-  const row = page.locator("tr", { hasText: `${expert.firstName} ${expert.lastName}` });
-  check("Portefeuille : expert partagé avec un concurrent suivi (rapproché par RPPS)", (await row.innerText()).replace(/\s/g, " ").includes("Implants Démo Concurrent : 1 500 €"), await row.innerText());
+  check("Comparaison : organisation reconnue, montants et rang parmi les entreprises de la base", t.includes("10 000 €") && t.includes("sur 8 entreprises") && /\+25 % par rapport à/.test(t), t.slice(0, 500));
+  check("Comparaison : cinq organisations équivalentes du même secteur, géant et autre secteur écartés", t.includes("5 organisations de taille proche, secteur « Dispositifs médicaux »"), t.slice(0, 600));
+  check("Comparaison : où va le budget, face aux équivalentes et au marché", /où va le budget/i.test(t) && t.includes("Hospitalité") && t.includes("Île-de-France"));
+  const advice = (await page.locator("#recommandations").innerText()).replace(/\s/g, " ");
+  check("Recommandations : expert à protéger, experts à recruter, budget", advice.includes("Un de vos experts est très sollicité par d'autres entreprises") && advice.includes(expert.lastName.toUpperCase()) && /experts? engagés? par vos comparables/.test(advice) && advice.includes("Île-de-France"), advice.slice(0, 700));
+  // Organisation choisie : elle apparaît nommément dans la comparaison.
+  await page.goto(`${base}?onglet=organisations&annee=${year}`);
+  check("Organisations comparées : entités de l'organisation reconnues dans la base", (await text(page)).includes("2 entreprises de la base vous sont rattachées"));
+  await page.fill('input[name="name"]', "Implants Démo Concurrent");
+  await page.click('button:has-text("Ajouter à ma comparaison")');
+  await page.locator("main .notice.ok").waitFor({ timeout: 10000 });
+  await page.fill('input[name="name"]', "Société Inconnue Démo");
+  await page.click('button:has-text("Ajouter à ma comparaison")');
+  await page.locator('main .notice.ok:has-text("aucune entreprise de la base publique")').waitFor({ timeout: 10000 });
+  await page.goto(`${base}?annee=${year}`);
+  const table = (await page.locator('#comparaison table').last().innerText()).replace(/\s/g, " ");
+  check("Comparaison : organisation choisie chiffrée, organisation inconnue signalée", /Implants Démo Concurrent 14 000 €/.test(table) && table.includes("introuvable dans la base publique"), table.slice(0, 500));
+  // Experts : à protéger (l'organisation choisie verse plus), à recruter (engagée par les comparables, sans lien).
+  await page.goto(`${base}?onglet=experts&annee=${year}`);
+  const protect = (await page.locator("#proteger").innerText()).replace(/\s/g, " ");
+  check("Experts à protéger : une autre entreprise verse plus que l'organisation", protect.includes(expert.lastName.toUpperCase()) && protect.includes("IMPLANTS DEMO CONCURRENT SAS : 9 000 €") && protect.includes("Une autre entreprise verse plus que vous") && !protect.includes("EXCLUSIF"), protect.slice(0, 400));
+  const recruit = (await page.locator("#recruter").innerText()).replace(/\s/g, " ");
+  check("Experts à recruter : d'abord celle qu'engagent les comparables, jamais un expert déjà lié", recruit.indexOf("CONVOITE Alice") > 0 && recruit.indexOf("CONVOITE Alice") < recruit.indexOf("EXPERT0") && recruit.includes("5 entreprises") && !recruit.includes("FIDELE") && !recruit.includes(expert.lastName.toUpperCase()), recruit.slice(0, 500));
+  const row = page.locator("#portefeuille tr", { hasText: `${expert.firstName} ${expert.lastName}` });
+  check("Portefeuille : expert partagé avec une autre entreprise (rapproché par RPPS)", (await row.innerText()).replace(/\s/g, " ").includes("IMPLANTS DEMO CONCURRENT SAS : 9 000 €"), await row.innerText());
+  // Nom sous lequel l'organisation déclare : une écriture inconnue la rend introuvable, la page le dit.
+  await page.goto(`${base}?onglet=organisations&annee=${year}`);
+  await page.fill('input[name="names"]', "Raison Sociale Inconnue");
+  await page.click('button:has-text("Enregistrer")');
+  await page.locator("main .notice.error").waitFor({ timeout: 10000 });
+  await page.goto(`${base}?annee=${year}`);
+  check("Comparaison : organisation introuvable sous l'écriture indiquée, signalé", (await text(page)).includes("n'est pas reconnue dans la base publique sous le nom « Raison Sociale Inconnue »"));
+  await pgc.query(`delete from "MarketProfile" where "organizationId" = $1`, [org]);
 
   // Cloisonnement : un membre d'une autre organisation n'accède ni à la page ni aux données importées.
   const other = await session();
@@ -2848,9 +2920,9 @@ async function submitNewOrg(page, siren) {
     check("Intelligence : page refermée après le retrait de l'option", page.url().includes("/abonnement?option=intelligence"));
   }
   // État de départ de la démonstration : abonnement offert sans client Stripe (la suite du parcours facture des
-  // services « hors Stripe » à cette organisation), sans concurrent ni import.
+  // services « hors Stripe » à cette organisation), sans organisation comparée ni base publique.
   await pgc.query(`delete from "Competitor" where "organizationId" = $1`, [org]);
-  await pgc.query(`delete from "PublicImport" where "organizationId" = $1`, [org]);
+  await pgc.query(`delete from "MarketImport"`);
   await pgc.query(`delete from "Subscription" where "organizationId" = $1`, [org]);
   await pgc.query(`insert into "Subscription" ("organizationId", plan, status, "exemptUntil", "exemptNote", "updatedAt") values ($1, 'organisation', 'a_activer', '2099-12-31T23:59:59Z', 'Démonstration', now())`, [org]);
   await ctx.close();
@@ -3119,10 +3191,10 @@ async function submitNewOrg(page, siren) {
   await login(page, "claire.morel@demo.kolbase.local");
   const base = `${BASE}/organisations/${org}/intelligence`;
 
-  // Recommandations : sans produit ni concurrent, les deux premières choses à faire sont dites.
+  // Recommandations : sans produit, la première chose à faire est dite.
   await page.goto(`${base}?annee=${year}`);
   let advice = await page.locator("#recommandations").innerText();
-  check("Recommandations : produits à décrire, concurrents à suivre", advice.includes("Décrivez vos produits pour savoir lesquels recrutent") && advice.includes("Suivez vos concurrents"), advice.slice(0, 300));
+  check("Recommandations : produits à décrire, classés par famille", advice.includes("Décrivez vos produits pour savoir lesquels recrutent") && /produits/i.test(advice.split("Décrivez")[0]), advice.slice(0, 300));
   await page.locator('#recommandations a:has-text("Ouvrir les produits")').first().click();
   await page.waitForURL(/onglet=produits/, { timeout: 15000 });
 
@@ -3164,7 +3236,7 @@ async function submitNewOrg(page, siren) {
   // Recommandations mises à jour ; archivage : l'historique reste, le produit n'est plus proposé.
   await page.goto(`${base}?annee=${year}`);
   advice = await page.locator("#recommandations").innerText();
-  check("Recommandations : suivent les produits (plus de « Décrivez vos produits »)", !advice.includes("Décrivez vos produits") && advice.includes("Suivez vos concurrents"), advice.slice(0, 300));
+  check("Recommandations : suivent les produits (plus de « Décrivez vos produits »)", !advice.includes("Décrivez vos produits"), advice.slice(0, 300));
   await page.goto(`${base}?onglet=produits&annee=${year}`);
   await page.locator("table tr", { hasText: "Nova" }).locator('button:has-text("archiver")').click();
   await page.locator('table tr:has-text("Nova") .pill:has-text("archivé")').waitFor({ timeout: 10000 });
