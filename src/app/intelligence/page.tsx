@@ -6,12 +6,14 @@ import { getT } from "@/lib/i18n/server";
 export async function generateMetadata(): Promise<Metadata> {
   const { t } = await getT();
   const title = t("KolBase Intelligence : pilotez votre KOL management");
-  const description = t("Vos experts, vos produits et vos concurrents sur une même page, avec les recommandations qui en découlent. Option de l'abonnement organisation, pour les industriels.");
+  const description = t("Vos experts, vos produits et vos concurrents sur une même page, avec les recommandations qui en découlent. Pour les industriels.");
   return { title: `${title} — KolBase`, description, alternates: { canonical: "/intelligence" }, openGraph: { siteName: "KolBase", url: "/intelligence", title, description } };
 }
 
 const COPY: OfferCopy = {
-  pill: "Option de l'abonnement · industriels",
+  path: "intelligence",
+  paid: { pill: "Option de l'abonnement · industriels", step: "Un administrateur ajoute l'option depuis la page Abonnement.", note: "Réservée aux industriels abonnés ; ajoutée ou retirée à tout moment." },
+  free: { pill: "En accès libre · industriels", note: "Ouverte à tous les industriels pendant sa mise au point, sans paiement : elle s'ouvre depuis vos Statistiques." },
   title: "Pilotez votre KOL management.",
   accent: "Décidez sur des chiffres.",
   lede: "Vos experts, vos produits et vos concurrents sur une même page, avec les recommandations qui en découlent.",
@@ -24,13 +26,11 @@ const COPY: OfferCopy = {
     { icon: ShieldCheck, title: "Vos données restent les vôtres", text: "L'analyse porte sur vos dossiers, vos événements et vos imports. Aucune donnée d'une autre organisation cliente de KolBase n'est lue." },
   ],
   steps: [
-    "Un administrateur ajoute l'option depuis la page Abonnement.",
     "Le portefeuille et les premières recommandations se lisent aussitôt : ils viennent de vos dossiers existants.",
     "Vous décrivez vos produits et y rattachez vos dossiers, d'un coup quand le titre nomme le produit.",
     "Vous ajoutez vos concurrents et importez leurs déclarations publiques.",
   ],
   notes: [
-    "Réservée aux industriels abonnés ; ajoutée ou retirée à tout moment.",
     "Les recommandations sont des règles lisibles, avec leurs seuils : vous voyez toujours le chiffre qui les déclenche.",
     "La réutilisation de la base Transparence Santé est encadrée par sa licence : votre organisation en répond pour les fichiers qu'elle importe.",
     "Les réseaux sociaux ne sont pas collectés automatiquement : leurs conditions l'interdisent.",

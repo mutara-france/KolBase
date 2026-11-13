@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { db } from "@/lib/db";
 import { formatDate, formatEUR } from "@/lib/events";
-import { ADDONS, addonsFor, addonSource, asInterval, displayStatus, exempt, planFor, PLANS, recurringMonthlyCents, STATUS_LABEL } from "@/lib/billing-plans";
+import { addonActive, addonFree, ADDONS, addonsFor, addonSource, asInterval, displayStatus, exempt, planFor, PLANS, recurringMonthlyCents, STATUS_LABEL } from "@/lib/billing-plans";
 import { stripeEnabled } from "@/lib/billing";
 import { setExemption, setAddonGrant } from "@/lib/billing-actions";
 import { setBrandDomainStatus } from "@/lib/brand-actions";
@@ -202,6 +202,8 @@ export async function BillingAdmin() {
                   <td data-label="Options">
                     {addonsFor(o.kind).length === 0 ? "—" : addonsFor(o.kind).map((a) => {
                       const source = addonSource(o.subscription, a);
+                      // Accès libre : rien à attribuer ; une option déjà souscrite reste signalée (elle est facturée).
+                      if (addonFree(a) && source !== "souscrite") return <div key={a} className="text-xs">{ADDONS[a].label.replace("KolBase ", "")} <span className="pill">accès libre</span></div>;
                       return (
                         <form key={a} action={setAddonGrant} className="inline wrap">
                           <input type="hidden" name="orgId" value={o.id} />
@@ -296,7 +298,7 @@ export function LaunchChecklist({ items }: { items: LaunchItem[] }) {
  * l'hébergeur avant d'être activés ici. Un domaine activé sans y être rattaché n'aboutit nulle part.
  */
 export async function BrandDomainsAdmin() {
-  const brands = await db.orgBrand.findMany({ where: { domain: { not: null } }, orderBy: { domainRequestedAt: "desc" }, include: { organization: { select: { name: true, subscription: { select: { status: true, addons: true, addonsGranted: true } } } } } });
+  const brands = await db.orgBrand.findMany({ where: { domain: { not: null } }, orderBy: { domainRequestedAt: "desc" }, include: { organization: { select: { name: true, kind: true, subscription: { select: { status: true, addons: true, addonsGranted: true } } } } } });
   return (
     <section className="card stack-sm" id="domaines">
       <h2>Noms de domaine (KolBase Business)</h2>
@@ -310,7 +312,7 @@ export async function BrandDomainsAdmin() {
                 const st = b.domainStatus ?? "demande";
                 return (
                   <tr key={b.organizationId}>
-                    <td data-label="Organisation">{b.organization.name}{!addonSource(b.organization.subscription, "business") && <div className="text-xs warn-text">option KolBase Business absente</div>}</td>
+                    <td data-label="Organisation">{b.organization.name}{!addonActive(b.organization.kind, b.organization.subscription, "business") && <div className="text-xs warn-text">option KolBase Business absente</div>}</td>
                     <td data-label="Nom de domaine"><code>{b.domain}</code>{b.domainRequestedAt && <div className="text-xs muted">demandé le {formatDate(b.domainRequestedAt)}</div>}</td>
                     <td data-label="État"><span className={`pill ${st === "active" ? "ok" : "wait"}`}>{st === "active" ? "actif" : st === "retire" ? "à détacher" : "à rattacher"}</span></td>
                     <td>

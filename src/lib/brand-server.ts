@@ -3,7 +3,7 @@ import { cache } from "react";
 import { headers } from "next/headers";
 import { db } from "@/lib/db";
 import { appUrl } from "@/lib/ics";
-import { hasAddon } from "@/lib/billing-plans";
+import { addonActive } from "@/lib/billing-plans";
 import { logoSrc } from "@/lib/logos";
 import { hostOf, type Brand } from "@/lib/brand";
 
@@ -43,9 +43,9 @@ export async function hostBrand(host: string): Promise<HostBrand> {
   if (hit && Date.now() - hit.at < TTL_MS) return hit.value;
   const row = await db.orgBrand.findUnique({
     where: { domain: host },
-    select: { displayName: true, color: true, domainStatus: true, organization: { select: { id: true, name: true, verification: true, logoUpdatedAt: true, subscription: { select: { status: true, addons: true, addonsGranted: true } } } } },
+    select: { displayName: true, color: true, domainStatus: true, organization: { select: { id: true, name: true, kind: true, verification: true, logoUpdatedAt: true, subscription: { select: { status: true, addons: true, addonsGranted: true } } } } },
   });
-  const served = !!row && row.domainStatus === "active" && row.organization.verification === "VERIFIED" && hasAddon(row.organization.subscription, "business");
+  const served = !!row && row.domainStatus === "active" && row.organization.verification === "VERIFIED" && addonActive(row.organization.kind, row.organization.subscription, "business");
   const value: HostBrand = row ? { claimed: true, brand: served ? { orgId: row.organization.id, name: row.displayName || row.organization.name, logo: logoSrc(row.organization), color: row.color } : null } : FREE;
   if (known.size > 500) known.clear();
   known.set(host, { at: Date.now(), value });

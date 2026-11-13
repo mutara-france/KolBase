@@ -6,12 +6,14 @@ import { getT } from "@/lib/i18n/server";
 export async function generateMetadata(): Promise<Metadata> {
   const { t } = await getT();
   const title = t("KolBase Business : votre propre KolBase");
-  const description = t("KolBase à votre adresse, à votre nom, avec votre logo et votre couleur. Option de l'abonnement organisation.");
+  const description = t("KolBase à votre adresse, à votre nom, avec votre logo et votre couleur.");
   return { title: `${title} — KolBase`, description, alternates: { canonical: "/business" }, openGraph: { siteName: "KolBase", url: "/business", title, description } };
 }
 
 const COPY: OfferCopy = {
-  pill: "Option de l'abonnement · toute organisation",
+  path: "marque",
+  paid: { pill: "Option de l'abonnement · toute organisation", step: "Un administrateur ajoute l'option depuis la page Abonnement.", note: "Ouverte à toute organisation abonnée, hors prestataires ; ajoutée ou retirée à tout moment." },
+  free: { pill: "En accès libre · toute organisation", note: "Ouverte à toute organisation, hors prestataires, pendant sa mise au point, sans paiement : un administrateur la règle depuis « Marque et nom de domaine »." },
   title: "Votre propre KolBase,",
   accent: "à votre nom.",
   lede: "Vos équipes travaillent sur KolBase à votre adresse, avec votre logo et votre couleur.",
@@ -24,13 +26,11 @@ const COPY: OfferCopy = {
     { icon: Sparkles, title: "Tout KolBase, sans rien installer", text: "Dossiers, événements, conformité, experts : les mêmes outils, tenus à jour par KolBase." },
   ],
   steps: [
-    "Un administrateur ajoute l'option depuis la page Abonnement.",
     "Vous réglez votre nom affiché et votre couleur, avec un aperçu.",
     "Vous indiquez votre nom de domaine et créez l'enregistrement DNS affiché.",
     "L'équipe KolBase rattache le domaine, vérifie son certificat et l'active.",
   ],
   notes: [
-    "Ouverte à toute organisation abonnée, hors prestataires ; ajoutée ou retirée à tout moment.",
     "Vos experts gardent leur compte et leur espace sur kolbase.io : ils ne se connectent pas sur votre adresse.",
     "KolBase reste l'éditeur du service : les e-mails et les textes légaux sont les siens.",
     "L'activation du nom de domaine est faite par l'équipe KolBase, après votre enregistrement DNS.",

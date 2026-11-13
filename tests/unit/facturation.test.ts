@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { addonOpen, addonPrice, ADDON_KEYS, ADDONS, addonsFor, addonsFromStripe, addonSource, asAddon, billingInfo, canEngage, displayStatus, fromStripeStatus, hasAddon, needsSubscription, planFor, PLANS, recurringMonthlyCents } from "@/lib/billing-plans";
+import { addonActive, addonFree, addonOpen, addonPrice, ADDON_KEYS, ADDONS, addonsFor, addonsFromStripe, addonSource, addonVisible, asAddon, billingInfo, canEngage, displayStatus, fromStripeStatus, hasAddon, needsSubscription, planFor, PLANS, recurringMonthlyCents } from "@/lib/billing-plans";
 import { encodeForm, signWebhook, verifyWebhook } from "@/lib/stripe-core";
 
 describe("facturation", () => {
@@ -92,6 +92,17 @@ describe("options de l'abonnement organisation", () => {
     expect(hasAddon(sub("resiliee", ["intelligence"]), "intelligence")).toBe(false);
     expect(addonSource(sub("resiliee", ["intelligence"], ["intelligence"]), "intelligence")).toBe("offerte");
     expect(hasAddon(sub("a_activer", [], ["business"]), "intelligence")).toBe(false);
+  });
+  it("en accès libre (mise au point) : acquise sans abonnement, pour le type d'organisation concerné seulement", () => {
+    for (const a of ADDON_KEYS) {
+      // Une option est en vente ou en accès libre, jamais les deux ; visible dans les deux cas.
+      expect(addonOpen(a) && addonFree(a)).toBe(false);
+      expect(addonVisible(a)).toBe(addonOpen(a) || addonFree(a));
+      expect(addonActive("PRESTATAIRE", { status: "active", addons: [a], addonsGranted: [a] }, a)).toBe(false);
+      expect(addonActive("INDUSTRIEL", null, a)).toBe(addonFree(a));
+      expect(addonActive("INDUSTRIEL", { status: "a_activer", addons: [], addonsGranted: [a] }, a)).toBe(true);
+    }
+    expect(addonActive("SOCIETE_SAVANTE", { status: "active", addons: [], addonsGranted: ["intelligence"] }, "intelligence")).toBe(false);
   });
   it("relues dans les lignes de l'abonnement Stripe, par produit", () => {
     expect(addonsFromStripe([{ price: { product: "prod_abonnement" } }, { price: { product: ADDONS.business.product } }])).toEqual(["business"]);
