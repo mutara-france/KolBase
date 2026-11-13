@@ -6,7 +6,7 @@ import { Meter, RankedBars, StackedColumns } from "@/components/Charts";
 import { requireMembership } from "@/lib/orgs";
 import { orgStats, STATS_ROLES } from "@/lib/org-stats";
 import { TableWrap } from "@/components/TableWrap";
-import { addonOpen, addonsFor } from "@/lib/billing-plans";
+import { addonsFor, addonVisible } from "@/lib/billing-plans";
 import { getT } from "@/lib/i18n/server";
 import { fmtDate, fmtEur, type T } from "@/lib/i18n";
 
@@ -41,7 +41,7 @@ export default async function Page({ params, searchParams }: { params: Promise<{
       <SiteHeader />
       <main className="stack">
         <PageHead title={t("Statistiques")} desc={t("Budget engagé, experts, événements, délais et conformité de l'organisation, année par année.")}>
-          {addonsFor(org.kind).includes("intelligence") && addonOpen("intelligence") && <Link className="btn ghost small" href={`${base}/intelligence`} title={t("Portefeuille d'experts, fidélisation et déclarations publiques de vos concurrents (option de l'abonnement).")}><Radar size={14} />{" "}{t("KolBase Intelligence")}</Link>}
+          {addonsFor(org.kind).includes("intelligence") && addonVisible("intelligence") && <Link className="btn ghost small" href={`${base}/intelligence`} title={t("Recommandations, portefeuille d'experts, produits et concurrents suivis.")}><Radar size={14} />{" "}{t("KolBase Intelligence")}</Link>}
           <a className="btn ghost small" href={`${base}/statistiques/export?annee=${year}`}><Download size={14} />{" "}{t("Exporter {year} (CSV)", { year })}</a>
           <a className="btn ghost small" href={`${base}/statistiques/comptabilite?annee=${year}`} title={t("Une ligne par engagement : honoraires (bon de commande, centre de coûts, structure facturée, note, paiement) et devis retenus.")}><Download size={14} />{" "}{t("Export comptable {year} (CSV)", { year })}</a>
         </PageHead>

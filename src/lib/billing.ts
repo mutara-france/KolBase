@@ -1,7 +1,7 @@
 import "server-only";
 import { db } from "@/lib/db";
 import { stripe, stripeEnabled, type StripeSubscription } from "@/lib/stripe";
-import { addonHref, addonPrice, ADDONS, addonsFor, addonsFromStripe, asInterval, asObjectId, canEngage, ENGAGING, fromStripeStatus, hasAddon, needsSubscription, planFor, planPrice, PLANS, RUNNING, stripePause, subscribeHref, TRIAL_DAYS, type Addon, type Blocked, type GateLink, type Interval, type Motive } from "@/lib/billing-plans";
+import { addonActive, addonHref, addonPrice, ADDONS, addonsFor, addonsFromStripe, asInterval, asObjectId, canEngage, ENGAGING, fromStripeStatus, needsSubscription, planFor, planPrice, PLANS, RUNNING, stripePause, subscribeHref, TRIAL_DAYS, type Addon, type Blocked, type GateLink, type Interval, type Motive } from "@/lib/billing-plans";
 import { dpaCurrent, dpaHref, dpaMessage } from "@/lib/dpa";
 import { makeT, type T } from "@/lib/i18n";
 import { getT } from "@/lib/i18n/server";
@@ -165,10 +165,10 @@ export async function portalUrl(orgId: string) {
   return p.url;
 }
 
-/** L'organisation dispose-t-elle de l'option (offerte par KolBase, ou souscrite sur un abonnement en cours) ? */
+/** L'organisation dispose-t-elle de l'option (en accès libre, offerte par KolBase, ou souscrite sur un abonnement en cours) ? */
 export async function orgHasAddon(orgId: string, addon: Addon) {
-  const sub = await db.subscription.findUnique({ where: { organizationId: orgId }, select: { status: true, addons: true, addonsGranted: true } });
-  return hasAddon(sub, addon);
+  const org = await db.organization.findUnique({ where: { id: orgId }, select: { kind: true, subscription: { select: { status: true, addons: true, addonsGranted: true } } } });
+  return !!org && addonActive(org.kind, org.subscription, addon);
 }
 
 /** Page d'une option : sans l'option, la page d'abonnement s'ouvre sur sa présentation (null : accès accordé). */

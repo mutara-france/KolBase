@@ -220,6 +220,11 @@ Activer le portail client dans le tableau de bord Stripe (moyen de paiement, fac
 
 ### Options de l'abonnement organisation
 
+> **État actuel : accès libre.** Les deux options sont ouvertes sans paiement à toute organisation du type concerné,
+> le temps de leur mise au point (`free: true`, `open: false` dans `ADDONS`) : aucun prix, aucun achat, rien dans les
+> conditions de vente. Pour les rendre payantes : `free: false` et `open: true` — la page Abonnement, les conditions
+> de vente, les pages de présentation et le parcours de bout en bout suivent ce seul réglage.
+
 Deux options cumulables s'ajoutent à l'abonnement organisation, à sa périodicité (`ADDONS`, `src/lib/billing-plans.ts`) :
 
 - **KolBase Intelligence**, 490 € HT par mois (industriels) : pilotage du KOL management et veille concurrentielle ;

@@ -2742,24 +2742,45 @@ async function submitNewOrg(page, siren) {
   await pgc.query(`delete from "Subscription" where "organizationId" = $1`, [org]);
   const { ctx, page } = await session();
   await login(page, "claire.morel@demo.kolbase.local");
-  // Sans l'option : la page renvoie vers l'abonnement, ouvert sur l'option ; elle s'ajoute à un abonnement en cours.
-  await page.goto(`${BASE}/organisations/${org}/intelligence`);
-  let t = await text(page);
-  check("Intelligence : page réservée à l'option, renvoi vers l'abonnement", page.url().includes("/abonnement?option=intelligence") && t.includes("Cette page fait partie de l'option KolBase Intelligence") && t.replace(/\s/g, " ").includes("490 € HT par mois"));
-  check("Intelligence : pas d'ajout sans abonnement en cours", t.includes("Activez d'abord l'abonnement ci-dessus") && (await page.locator('button:has-text("Ajouter l\'option")').count()) === 0);
-  await page.click('button:has-text("Activer l\'abonnement mensuel")');
-  await page.waitForURL(/\/abonnement\?session=cs_/, { timeout: 15000 });
+  // Options en vente ou en accès libre (mise au point) ? Les conditions de vente n'en donnent les règles que si l'une
+  // est en vente : le parcours suit l'état du produit (ADDONS, lib/billing-plans), sans réglage à tenir en double.
+  const enVente = (await (await fetch(`${BASE}/conditions-de-vente`)).text()).includes("ne peut être souscrite sans lui");
+  let t;
   const option = page.locator('.plan-option:has-text("KolBase Intelligence")');
-  await option.locator('button:has-text("Ajouter l\'option")').click();
-  check("Intelligence : prix et facturation annoncés avant de confirmer", (await option.innerText()).includes("à partir de la fin de votre mois offert"));
-  await option.locator('button:has-text("Confirmer")').click();
-  await page.waitForURL(/resultat=added/, { timeout: 15000 });
-  const sub = [...stripeState.subscriptions.values()].at(-1);
-  const line = sub.items.data.find((i) => i.price.product === "kolbase_option_intelligence");
-  check("Stripe : option en ligne d'abonnement (490 € HT par mois, prorata facturé aussitôt)", sub.items.data.length === 2 && line?.price.unit_amount === 49000 && line?.price.recurring.interval === "month" && sub.lastProration === "always_invoice" && stripeState.products.get("kolbase_option_intelligence")?.name === "KolBase Intelligence", JSON.stringify(sub.items.data));
-  t = await text(page);
-  check("Intelligence : option active sur la page Abonnement", t.includes("KolBase Intelligence est activée") && (await option.innerText()).includes("Active") && (await option.locator('button:has-text("Retirer l\'option")').count()) === 1);
-  check("Options : KolBase Business proposée à côté, non souscrite", (await page.locator('.plan-option:has-text("KolBase Business")').innerText()).replace(/\s/g, " ").includes("990 € HT par mois") && (await page.locator('.plan-option:has-text("KolBase Business") button:has-text("Ajouter l\'option")').count()) === 1);
+  let sub = null;
+  if (enVente) {
+    // Sans l'option : la page renvoie vers l'abonnement, ouvert sur l'option ; elle s'ajoute à un abonnement en cours.
+    await page.goto(`${BASE}/organisations/${org}/intelligence`);
+    t = await text(page);
+    check("Intelligence : page réservée à l'option, renvoi vers l'abonnement", page.url().includes("/abonnement?option=intelligence") && t.includes("Cette page fait partie de l'option KolBase Intelligence") && t.replace(/\s/g, " ").includes("490 € HT par mois"));
+    check("Intelligence : pas d'ajout sans abonnement en cours", t.includes("Activez d'abord l'abonnement ci-dessus") && (await page.locator('button:has-text("Ajouter l\'option")').count()) === 0);
+    await page.click('button:has-text("Activer l\'abonnement mensuel")');
+    await page.waitForURL(/\/abonnement\?session=cs_/, { timeout: 15000 });
+    await option.locator('button:has-text("Ajouter l\'option")').click();
+    check("Intelligence : prix et facturation annoncés avant de confirmer", (await option.innerText()).includes("à partir de la fin de votre mois offert"));
+    await option.locator('button:has-text("Confirmer")').click();
+    await page.waitForURL(/resultat=added/, { timeout: 15000 });
+    sub = [...stripeState.subscriptions.values()].at(-1);
+    const line = sub.items.data.find((i) => i.price.product === "kolbase_option_intelligence");
+    check("Stripe : option en ligne d'abonnement (490 € HT par mois, prorata facturé aussitôt)", sub.items.data.length === 2 && line?.price.unit_amount === 49000 && line?.price.recurring.interval === "month" && sub.lastProration === "always_invoice" && stripeState.products.get("kolbase_option_intelligence")?.name === "KolBase Intelligence", JSON.stringify(sub.items.data));
+    t = await text(page);
+    check("Intelligence : option active sur la page Abonnement", t.includes("KolBase Intelligence est activée") && (await option.innerText()).includes("Active") && (await option.locator('button:has-text("Retirer l\'option")').count()) === 1);
+    check("Options : KolBase Business proposée à côté, non souscrite", (await page.locator('.plan-option:has-text("KolBase Business")').innerText()).replace(/\s/g, " ").includes("990 € HT par mois") && (await page.locator('.plan-option:has-text("KolBase Business") button:has-text("Ajouter l\'option")').count()) === 1);
+  } else {
+    // Accès libre : la page s'ouvre sans abonnement ni option ; rien n'est à vendre, aucun prix n'est affiché.
+    await page.goto(`${BASE}/organisations/${org}/intelligence`);
+    t = await text(page);
+    check("Accès libre : Intelligence s'ouvre sans abonnement ni paiement", page.url().endsWith("/intelligence") && /recommandations/i.test(t));
+    await page.goto(`${BASE}/organisations/${org}/abonnement`);
+    t = (await text(page)).replace(/\s/g, " ");
+    check("Accès libre : aucune option à acheter sur la page Abonnement", !t.includes("KolBase Intelligence") && !t.includes("KolBase Business") && !t.includes("490 €") && (await page.locator('button:has-text("Ajouter l\'option")').count()) === 0);
+    // Réservée aux industriels : une société savante n'y accède pas, même en accès libre.
+    const savante = await session();
+    await login(savante.page, "pierre.vidal@demo.kolbase.local");
+    await savante.page.goto(`${BASE}/organisations/demo-org-cdra/intelligence`);
+    check("Accès libre : Intelligence reste réservée aux industriels", !savante.page.url().endsWith("/intelligence"));
+    await savante.ctx.close();
+  }
 
   // Portefeuille : experts engagés de l'organisation, fidélisation.
   await page.goto(`${BASE}/organisations/${org}/statistiques`);
@@ -2816,14 +2837,16 @@ async function submitNewOrg(page, siren) {
   check("Intelligence : page fermée aux autres organisations", refused.status() === 404);
   await other.ctx.close();
 
-  // Retrait de l'option : ligne supprimée chez Stripe, prorata déduit, page de nouveau fermée (données conservées).
-  await page.goto(`${BASE}/organisations/${org}/abonnement`);
-  await option.locator('button:has-text("Retirer l\'option")').click();
-  await option.locator('button:has-text("Confirmer")').click();
-  await page.waitForURL(/resultat=removed/, { timeout: 15000 });
-  check("Stripe : option retirée (ligne supprimée, prorata déduit)", sub.items.data.length === 1 && sub.lastProration === "create_prorations");
-  await page.goto(`${BASE}/organisations/${org}/intelligence`);
-  check("Intelligence : page refermée après le retrait de l'option", page.url().includes("/abonnement?option=intelligence"));
+  if (enVente) {
+    // Retrait de l'option : ligne supprimée chez Stripe, prorata déduit, page de nouveau fermée (données conservées).
+    await page.goto(`${BASE}/organisations/${org}/abonnement`);
+    await option.locator('button:has-text("Retirer l\'option")').click();
+    await option.locator('button:has-text("Confirmer")').click();
+    await page.waitForURL(/resultat=removed/, { timeout: 15000 });
+    check("Stripe : option retirée (ligne supprimée, prorata déduit)", sub.items.data.length === 1 && sub.lastProration === "create_prorations");
+    await page.goto(`${BASE}/organisations/${org}/intelligence`);
+    check("Intelligence : page refermée après le retrait de l'option", page.url().includes("/abonnement?option=intelligence"));
+  }
   // État de départ de la démonstration : abonnement offert sans client Stripe (la suite du parcours facture des
   // services « hors Stripe » à cette organisation), sans concurrent ni import.
   await pgc.query(`delete from "Competitor" where "organizationId" = $1`, [org]);
@@ -2920,12 +2943,30 @@ async function submitNewOrg(page, siren) {
   await pgc.query(`update "Subscription" set "addonsGranted" = '{}' where "organizationId" = $1`, [org]);
   const { ctx, page } = await session();
   await login(page, "claire.morel@demo.kolbase.local");
-  await page.goto(`${BASE}/organisations/${org}/marque`);
-  let t = await text(page);
-  check("Business : page réservée à l'option, renvoi vers l'abonnement (990 € HT par mois)", page.url().includes("/abonnement?option=business") && t.includes("Cette page fait partie de l'option KolBase Business") && t.replace(/\s/g, " ").includes("990 € HT par mois"));
-  await page.goto(`${BASE}/conditions-de-vente`);
-  t = (await text(page)).replace(/\s/g, " ");
-  check("CGV : les deux options et leurs règles", t.includes("KolBase Intelligence") && t.includes("KolBase Business") && t.includes("990 € HT par mois") && t.includes("9 900 € HT par an") && t.includes("au prorata des jours restants"));
+  const enVente = (await (await fetch(`${BASE}/conditions-de-vente`)).text()).includes("ne peut être souscrite sans lui");
+  let t;
+  if (enVente) {
+    await page.goto(`${BASE}/organisations/${org}/marque`);
+    t = await text(page);
+    check("Business : page réservée à l'option, renvoi vers l'abonnement (990 € HT par mois)", page.url().includes("/abonnement?option=business") && t.includes("Cette page fait partie de l'option KolBase Business") && t.replace(/\s/g, " ").includes("990 € HT par mois"));
+    await page.goto(`${BASE}/conditions-de-vente`);
+    t = (await text(page)).replace(/\s/g, " ");
+    check("CGV : les deux options et leurs règles", t.includes("KolBase Intelligence") && t.includes("KolBase Business") && t.includes("990 € HT par mois") && t.includes("9 900 € HT par an") && t.includes("au prorata des jours restants"));
+  } else {
+    // Accès libre : la page s'ouvre sans option ; les conditions de vente ne citent aucune option ; un prestataire
+    // n'y a pas droit.
+    await page.goto(`${BASE}/organisations/${org}/marque`);
+    t = await text(page);
+    check("Accès libre : la marque se règle sans abonnement ni paiement", page.url().endsWith("/marque") && t.includes("Votre nom de domaine"));
+    await page.goto(`${BASE}/conditions-de-vente`);
+    t = (await text(page)).replace(/\s/g, " ");
+    check("Accès libre : les conditions de vente ne citent aucune option", !t.includes("KolBase Intelligence") && !t.includes("KolBase Business") && !t.includes("ne peut être souscrite sans lui"));
+    const fournisseur = await session();
+    await login(fournisseur.page, "ludovic.perrin@demo.kolbase.local");
+    await fournisseur.page.goto(`${BASE}/organisations/demo-sup-belleville/marque`);
+    check("Accès libre : la marque reste fermée aux prestataires", !fournisseur.page.url().endsWith("/marque"), fournisseur.page.url());
+    await fournisseur.ctx.close();
+  }
   await pgc.query(`update "Subscription" set "addonsGranted" = '{business}' where "organizationId" = $1`, [org]);
 
   // Marque : nom affiché et couleur ; une couleur trop claire pour un texte blanc est refusée.
@@ -3145,10 +3186,12 @@ async function submitNewOrg(page, siren) {
   await footer.locator('a[href="/intelligence"]').click();
   await anon.page.waitForURL(/\/intelligence$/, { timeout: 15000 });
   let t = (await text(anon.page)).replace(/\s/g, " ");
-  check("Présentation d'Intelligence : prix, apports, inscription proposée au visiteur", t.includes("Pilotez votre KOL management") && t.includes("490 € HT par mois") && t.includes("Des recommandations, pas seulement des chiffres") && (await anon.page.locator('main a[href="/inscription?profil=organisation"]').count()) === 1, t.slice(0, 300));
+  // En vente : le prix ; en accès libre (mise au point) : ni prix ni achat.
+  const enVente = t.includes("490 € HT par mois");
+  check("Présentation d'Intelligence : prix ou accès libre, apports, inscription proposée au visiteur", t.includes("Pilotez votre KOL management") && (enVente || (t.includes("En accès libre pendant sa mise au point") && !t.includes("490 €"))) && t.includes("Des recommandations, pas seulement des chiffres") && (await anon.page.locator('main a[href="/inscription?profil=organisation"]').count()) === 1, t.slice(0, 300));
   await anon.page.goto(`${BASE}/business`);
   t = (await text(anon.page)).replace(/\s/g, " ");
-  check("Présentation de Business : prix, apports, limites dites", t.includes("Votre propre KolBase") && t.includes("990 € HT par mois") && t.includes("Vos experts gardent leur compte et leur espace sur kolbase.io") && (await anon.page.title()).includes("KolBase Business"), t.slice(0, 300));
+  check("Présentation de Business : prix ou accès libre, apports, limites dites", t.includes("Votre propre KolBase") && (enVente ? t.includes("990 € HT par mois") : t.includes("En accès libre pendant sa mise au point") && !t.includes("990 €")) && t.includes("Vos experts gardent leur compte et leur espace sur kolbase.io") && (await anon.page.title()).includes("KolBase Business"), t.slice(0, 300));
   const map = await (await anon.ctx.request.get(`${BASE}/sitemap.xml`)).text();
   check("Plan du site : les deux pages y figurent", map.includes("/intelligence</loc>") && map.includes("/business</loc>"));
   await anon.ctx.close();
@@ -3156,7 +3199,7 @@ async function submitNewOrg(page, siren) {
   const { ctx, page } = await session();
   await login(page, "claire.morel@demo.kolbase.local");
   await page.goto(`${BASE}/intelligence`);
-  check("Présentation : un administrateur est mené à son abonnement, ouvert sur l'option", (await page.locator('main a[href="/organisations/demo-org-dentalys/abonnement?option=intelligence#options"]').count()) === 1);
+  check("Présentation : un administrateur est mené à son abonnement (vente) ou à la page de l'option (accès libre)", (await page.locator(`main a[href="/organisations/demo-org-dentalys/${enVente ? "abonnement?option=intelligence#options" : "intelligence"}"]`).count()) === 1);
   await ctx.close();
 }
 

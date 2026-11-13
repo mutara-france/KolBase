@@ -35,17 +35,20 @@ export const planFor = (kind: string): Plan => (kind === "PRESTATAIRE" ? "presta
  * `product` : identifiant du produit Stripe, qui permet de reconnaître l'option dans les lignes d'un abonnement.
  * `open` : option en vente (page Abonnement, conditions de vente). Fermée, elle reste attribuable par KolBase
  * depuis /admin (pilote), le temps que ses pages soient livrées.
+ * `free` : option en accès libre, le temps de sa mise au point — toute organisation du type concerné en dispose,
+ * sans abonnement ni paiement, et elle n'est pas en vente. Pour la « verrouiller » (la rendre payante) : `free: false`
+ * et `open: true` ; les prix, la page Abonnement, les conditions de vente et les pages de présentation suivent.
  */
 export const ADDONS = {
   intelligence: {
-    label: "KolBase Intelligence", cents: 49000, yearCents: 490000, kinds: ["INDUSTRIEL"], product: "kolbase_option_intelligence", open: true,
+    label: "KolBase Intelligence", cents: 49000, yearCents: 490000, kinds: ["INDUSTRIEL"], product: "kolbase_option_intelligence", open: false, free: true,
     pitch: "Pilotage de votre KOL management et veille concurrentielle : portefeuille d'experts, fidélisation, concurrents suivis et experts que vous partagez avec eux.",
   },
   business: {
-    label: "KolBase Business", cents: 99000, yearCents: 990000, kinds: ["INDUSTRIEL", "SOCIETE_SAVANTE", "ASSOCIATION_PRO", "ORGANISME_FORMATION"], product: "kolbase_option_business", open: true,
+    label: "KolBase Business", cents: 99000, yearCents: 990000, kinds: ["INDUSTRIEL", "SOCIETE_SAVANTE", "ASSOCIATION_PRO", "ORGANISME_FORMATION"], product: "kolbase_option_business", open: false, free: true,
     pitch: "Votre propre KolBase : votre nom, votre logo, votre couleur et votre nom de domaine, pour l'espace de vos équipes et votre page publique.",
   },
-} as const satisfies Record<string, { label: string; cents: number; yearCents: number; kinds: readonly string[]; product: string; open: boolean; pitch: string }>;
+} as const satisfies Record<string, { label: string; cents: number; yearCents: number; kinds: readonly string[]; product: string; open: boolean; free: boolean; pitch: string }>;
 export type Addon = keyof typeof ADDONS;
 export const ADDON_KEYS = Object.keys(ADDONS) as Addon[];
 export const asAddon = (v: unknown): Addon | null => (typeof v === "string" && Object.hasOwn(ADDONS, v) ? (v as Addon) : null);
@@ -55,6 +58,10 @@ export const addonPrice = (addon: Addon, interval: Interval) => (interval === "y
 export const addonsFor = (kind: string): Addon[] => ADDON_KEYS.filter((a) => (ADDONS[a].kinds as readonly string[]).includes(kind));
 /** Option en vente ? (lue par une fonction : la valeur change d'une livraison à l'autre) */
 export const addonOpen = (addon: Addon): boolean => ADDONS[addon].open;
+/** Option en accès libre (mise au point) : sans abonnement ni paiement, pour toute organisation du type concerné. */
+export const addonFree = (addon: Addon): boolean => ADDONS[addon].free;
+/** Option à montrer dans les menus et les pages : en vente, ou en accès libre. */
+export const addonVisible = (addon: Addon): boolean => addonOpen(addon) || addonFree(addon);
 
 export type AddonSub = { status: string; addons: readonly string[]; addonsGranted: readonly string[] } | null | undefined;
 /** Abonnement Stripe en cours (essai, actif ou paiement en cours de relance) : ses lignes sont facturées. */
@@ -63,6 +70,11 @@ export const RUNNING: readonly string[] = ["essai", "active", "impayee"];
 export const addonSource = (s: AddonSub, addon: Addon): "offerte" | "souscrite" | null =>
   s?.addonsGranted.includes(addon) ? "offerte" : s?.addons.includes(addon) && RUNNING.includes(s.status) ? "souscrite" : null;
 export const hasAddon = (s: AddonSub, addon: Addon) => addonSource(s, addon) !== null;
+/**
+ * L'organisation dispose-t-elle de l'option ? Elle doit être prévue pour son type ; elle est alors acquise si l'option
+ * est en accès libre, sinon si elle est offerte par KolBase ou souscrite sur un abonnement en cours.
+ */
+export const addonActive = (kind: string, s: AddonSub, addon: Addon) => addonsFor(kind).includes(addon) && (addonFree(addon) || hasAddon(s, addon));
 /** Options reconnues dans les lignes d'un abonnement Stripe (par produit). */
 export const addonsFromStripe = (items: readonly { price?: { product?: string | null } | null }[]): Addon[] =>
   ADDON_KEYS.filter((a) => items.some((i) => i.price?.product === ADDONS[a].product));
