@@ -7,7 +7,7 @@ import { audit } from "@/lib/auth";
 import { requirePlatformAdmin } from "@/lib/platform";
 import { str } from "@/lib/form";
 import { sourceDownload } from "@/lib/market";
-import { IMPORT_STALE_MS, runMarketImport } from "@/lib/market-import";
+import { importInterrupted, runMarketImport } from "@/lib/market-import";
 
 export type ActionState = { error?: string; ok?: string } | undefined;
 
@@ -19,9 +19,14 @@ export async function startMarketImport(_: ActionState, form: FormData): Promise
   const admin = await requirePlatformAdmin();
   const link = str(form, "link", 600);
   if (!sourceDownload(link)) return { error: "Lien refusé : collez le lien de partage d'un fichier CSV sur Google Drive (drive.google.com/file/d/…) ou d'une feuille Google Sheets (docs.google.com/spreadsheets/d/…)." };
-  // Un import resté « en cours » trop longtemps a été interrompu (redémarrage du service) : il est clos.
-  await db.marketImport.updateMany({ where: { status: "en_cours", createdAt: { lt: new Date(Date.now() - IMPORT_STALE_MS) } }, data: { status: "echec", error: "lecture interrompue", finishedAt: new Date() } });
-  if (await db.marketImport.findFirst({ where: { status: "en_cours" }, select: { id: true } })) return { error: "Une mise à jour est déjà en cours : attendez qu'elle se termine." };
+  // Un import interrompu (redémarrage du serveur pendant la lecture) est clos, et ses lignes partielles effacées.
+  const open = await db.marketImport.findMany({ where: { status: "en_cours" }, select: { id: true, status: true, createdAt: true } });
+  const dead = open.filter((i) => importInterrupted(i)).map((i) => i.id);
+  if (dead.length < open.length) return { error: "Une mise à jour est déjà en cours : attendez qu'elle se termine." };
+  if (dead.length) {
+    await db.marketLink.deleteMany({ where: { importId: { in: dead } } });
+    await db.marketImport.updateMany({ where: { id: { in: dead } }, data: { status: "echec", error: "lecture interrompue par un redémarrage du serveur", finishedAt: new Date() } });
+  }
   const imp = await db.marketImport.create({ data: { sourceUrl: link, startedById: admin.id } });
   await audit(admin.id, "market.import", "MarketImport", imp.id, { link });
   after(async () => {

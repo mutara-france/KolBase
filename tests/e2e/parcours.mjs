@@ -2848,11 +2848,19 @@ async function submitNewOrg(page, siren) {
   await adm.page.click('button:has-text("Mettre à jour")');
   await adm.page.locator("main .notice.error").waitFor({ timeout: 10000 });
   check("Base publique : seuls les liens Google Drive ou Google Sheets sont acceptés", (await text(adm.page)).includes("Lien refusé") && (await pgc.query(`select count(*)::int as n from "MarketImport"`)).rows[0].n === 0);
+  // Import interrompu par un redémarrage du serveur (lancé avant son démarrage, resté « en cours ») : la page le dit
+  // aussitôt, et la mise à jour suivante le clôt et efface ses lignes partielles.
+  await pgc.query(`insert into "MarketImport" (id, "sourceUrl", status, rows, kept, "createdAt") values ('e2e-import-interrompu', 'https://drive.google.com/file/d/e2e-fichier-interrompu-0001/view', 'en_cours', 2000, 2000, now() - interval '3 hours')`);
+  await pgc.query(`insert into "MarketLink" (id, "importId", "companyKey", company, kind, year, "amountCents", "personKey", "nameKey", "personName") values ('e2e-lien-partiel', 'e2e-import-interrompu', 'partielle demo', 'PARTIELLE DEMO', 'avantage', 2024, 100, 'x y|69', 'x y', 'X Y')`);
+  await adm.page.goto(`${BASE}/admin/base-publique`);
+  check("Base publique : import interrompu signalé, nouvelle mise à jour possible", (await text(adm.page)).includes("interrompue") && (await adm.page.locator('button:has-text("Mettre à jour")').isEnabled()));
   // Fichier non partagé (Google renvoie sa page de connexion) : import en échec, expliqué, sans aucune ligne.
   await adm.page.fill('input[name="link"]', "https://drive.google.com/file/d/e2e-fichier-non-partage-0001/view?usp=sharing");
   await adm.page.click('button:has-text("Mettre à jour")');
   let imp = await done("echec");
   check("Base publique : fichier non partagé, import en échec expliqué", imp?.status === "echec" && imp.error.includes("Tous les utilisateurs disposant du lien") && (await pgc.query(`select count(*)::int as n from "MarketLink"`)).rows[0].n === 0, JSON.stringify(imp));
+  const closed = (await pgc.query(`select status, error from "MarketImport" where id = 'e2e-import-interrompu'`)).rows[0];
+  check("Base publique : import interrompu clos à la mise à jour suivante, lignes partielles effacées", closed?.status === "echec" && closed.error.includes("redémarrage"), JSON.stringify(closed));
   await adm.page.goto(`${BASE}/admin/base-publique`);
   await adm.page.fill('input[name="link"]', `https://drive.google.com/file/d/${FILE}/view?usp=sharing`);
   await adm.page.click('button:has-text("Mettre à jour")');
@@ -2879,6 +2887,8 @@ async function submitNewOrg(page, siren) {
   await page.fill('input[name="name"]', "Implants Démo Concurrent");
   await page.click('button:has-text("Ajouter à ma comparaison")');
   await page.locator("main .notice.ok").waitFor({ timeout: 10000 });
+  // Page relue avant la seconde saisie : le formulaire se vide après un ajout réussi, parfois après la saisie suivante.
+  await page.goto(`${base}?onglet=organisations&annee=${year}`);
   await page.fill('input[name="name"]', "Société Inconnue Démo");
   await page.click('button:has-text("Ajouter à ma comparaison")');
   await page.locator('main .notice.ok:has-text("aucune entreprise de la base publique")').waitFor({ timeout: 10000 });
